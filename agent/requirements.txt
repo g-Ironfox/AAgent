@@ -1,0 +1,6 @@
+typer
+rich
+motor
+pymongo
+requests
+redis

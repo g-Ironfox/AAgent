@@ -1,0 +1,65 @@
+services:
+  agent:
+    build: ./agent
+    container_name: agent_aagent
+    volumes:
+      - ./agent:/app
+    working_dir: /app
+    command: ["python", "-u", "task_worker.py"]
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - mongodb
+    env_file:
+      - .env
+    networks:
+      - rainbow_net
+
+  qqbot:
+    build: ./qqbot
+    container_name: qqbot_aagent
+    volumes:
+      - ./qqbot:/app
+    working_dir: /app
+    command: ["python", "-u", "listener.py"]
+    restart: unless-stopped
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    networks:
+      - rainbow_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_aagent
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - rainbow_net
+
+  mongodb:
+    image: mongo:8
+    container_name: mongo_aagent
+    ports:
+      - "27015:27017"
+    volumes:
+      - ./data/mongo:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
+    networks:
+      - rainbow_net
+
+networks:
+  rainbow_net:
+    driver: bridge
