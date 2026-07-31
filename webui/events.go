@@ -57,13 +57,15 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 		snapshot.Warnings["worker"] = err.Error()
 	} else {
 		snapshot.Worker = status
-		if status.State == "processing" && status.Event != nil {
-			runningFingerprint = eventFingerprint(status.Event)
-			snapshot.Items = append(snapshot.Items, unifiedEvent{
-				ID: "running-" + runningFingerprint, Status: "running", Source: "worker",
-				StartedAt: status.StartedAt, Event: status.Event,
-			})
+		if status.State == "processing" {
 			snapshot.Summary.Running = 1
+			if status.Event != nil {
+				runningFingerprint = eventFingerprint(status.Event)
+				snapshot.Items = append(snapshot.Items, unifiedEvent{
+					ID: "running-" + runningFingerprint, Status: "running", Source: "worker",
+					StartedAt: status.StartedAt, Event: status.Event,
+				})
+			}
 		}
 	}
 
@@ -80,11 +82,16 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 		if queueErr != nil {
 			snapshot.Warnings["redis"] = "Redis queue is unavailable"
 		} else {
+			seen := map[string]int{}
 			for index := len(rawItems) - 1; index >= 0; index-- {
 				event := decodeQueueEvent(rawItems[index])
+				fingerprint := eventFingerprint(event)
+				seen[fingerprint]++
 				position := int64(len(rawItems) - index)
 				snapshot.Items = append(snapshot.Items, unifiedEvent{
-					ID:     fmt.Sprintf("pending-%d-%s", start+int64(index), eventFingerprint(event)),
+					// 用"内容指纹 + 弹出顺序计数"做稳定 ID:新任务 LPUSH 到队头
+					// 不会改变已有 pending 事件的相对弹出顺序,ID 不变,前端无需重建行
+					ID:     fmt.Sprintf("pending-%s-%d", fingerprint, seen[fingerprint]),
 					Status: "pending", Source: "redis", Position: position, Event: event,
 				})
 			}

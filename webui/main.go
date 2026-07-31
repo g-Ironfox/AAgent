@@ -22,7 +22,6 @@ type server struct {
 	history         *mongo.Collection
 	queueName       string
 	workerStatusKey string
-	chatUserID      string
 }
 
 func main() {
@@ -53,7 +52,6 @@ func main() {
 		redis: redisClient, mongo: mongoClient,
 		history:   mongoClient.Database(env("MONGO_DATABASE", "agent")).Collection(env("MONGO_HISTORY_COLLECTION", "event_history")),
 		queueName: env("AGENT_QUEUE_NAME", "agent_tasks"), workerStatusKey: env("AGENT_WORKER_STATUS_KEY", "aagent:worker:status"),
-		chatUserID: env("WEBUI_USER_ID", env("QQ_TARGET_USER_ID", "web")),
 	}
 	httpServer := &http.Server{
 		Addr: ":" + env("PORT", "8080"), Handler: requestLogger(securityHeaders(app.routes())),

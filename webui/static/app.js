@@ -66,14 +66,22 @@ function renderWorker(worker) {
   const now = Date.now();
   const updated = worker.updated_at ? new Date(worker.updated_at) : null;
   const updatedAt = updated && !Number.isNaN(updated.getTime()) ? updated : null;
-  const stale = worker.state === 'idle' && (!updatedAt || now - updatedAt.getTime() > 15000);
+  const started = worker.started_at ? new Date(worker.started_at) : null;
+  const startedAt = started && !Number.isNaN(started.getTime()) ? started : null;
+  // idle:正常每 ~5s 更新一次,超过 15s 未更新视为疑似离线
+  const idleStale = worker.state === 'idle' && (!updatedAt || now - updatedAt.getTime() > 15000);
+  // processing:进程被硬杀/OOM 时会永远停在 processing,单任务运行超过 10 分钟视为疑似卡死
+  const crashed = worker.state === 'processing' && startedAt && now - startedAt.getTime() > 10 * 60 * 1000;
+  const stale = idleStale || crashed;
   elements.workerCard.className = `worker-state ${stale ? 'stale' : worker.state || 'unknown'}`;
-  if (worker.state === 'processing') {
-    const started = worker.started_at ? new Date(worker.started_at) : null;
-    const seconds = started && !Number.isNaN(started.getTime()) ? Math.max(0, Math.floor((now - started.getTime()) / 1000)) : null;
+  if (crashed) {
+    elements.workerState.textContent = '疑似卡死';
+    elements.workerDetail.textContent = '单任务运行超过 10 分钟,Worker 可能已崩溃';
+  } else if (worker.state === 'processing') {
+    const seconds = startedAt ? Math.max(0, Math.floor((now - startedAt.getTime()) / 1000)) : null;
     elements.workerState.textContent = '正在执行';
     elements.workerDetail.textContent = seconds === null ? '开始时间未知' : `已运行 ${formatDuration(seconds)}`;
-  } else if (stale) {
+  } else if (idleStale) {
     elements.workerState.textContent = '疑似离线';
     elements.workerDetail.textContent = '状态超过 15 秒未更新';
   } else if (worker.state === 'idle') {
