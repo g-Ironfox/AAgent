@@ -2,13 +2,16 @@
 import os
 import time
 import traceback
+from datetime import datetime, timezone
+import json
 
 from history_repository import record_history
 from queue_client import (
     AGENT_QUEUE_NAME,
     pop_from_queue,
     insert_to_queue,
-    publish_to_queue
+    publish_to_queue,
+    set_worker_status,
 )
 from llm import chat_with_deepseek
 from qqapi import send_group_msg, send_private_msg
@@ -49,7 +52,7 @@ def handle_task(e: dict):
                     "tool": tool_name,
                     "args":tool_args,
                     "result": f"Error:{str(error)}",
-                    "success": True,
+                    "success": False,
                 }
             }
         insert_to_queue(AGENT_QUEUE_NAME,r_e)
@@ -60,6 +63,10 @@ def handle_task(e: dict):
         user_id=e['payload']['user_id']
         group_id=e['payload']['group_id']
         res=chat_with_deepseek(user_id,group_id)
+        if not res:
+            # LLM 返回 tool_calls 时 content 为空,不发空消息,等工具链完成后的最终回复
+            print(f"LLM 无文本回复(可能请求了工具调用),不发送消息 user_id={user_id}")
+            return
         if group_id:
             send_group_msg(group_id, res)
             print(f"已发送群消息 group_id={group_id}")
@@ -67,8 +74,20 @@ def handle_task(e: dict):
             send_private_msg(user_id, res)
             print(f"已发送私聊 user_id={user_id}")
     elif e["event_type"]=="response":
-        pass
-
+        tool_calls=e["payload"].get("tool_calls")
+        
+        if tool_calls:
+            events=[]
+            for i in tool_calls:
+                e={
+                    "event_type":"tool",
+                    "payload":{'id':i['id'],
+                        'tool':i['function']['name'],
+                        "args":json.loads(i["function"]["arguments"])
+                    }
+                }
+                insert_to_queue(AGENT_QUEUE_NAME,e)
+            
 def user_interface(task: dict):
     res = None
     raw_message = task.get("raw_message", "")
@@ -104,7 +123,16 @@ deepseek{deepseek_balance if deepseek_balance is not None else "查询失败"}rm
             search_results = tavily_search(query)
             if search_results:
                 res = search_results[0].get('title', '')
-        print(res)
+            else:
+                res = "搜索无结果"
+        # 将命令结果回复给用户（群消息回群，私聊回私聊）
+        if res:
+            if group_id:
+                send_group_msg(group_id, res)
+            else:
+                send_private_msg(user_id, res)
+        else:
+            print("命令无结果:", raw_message)
     else:
         if not raw_message:
             print("空消息，跳过:", task)
@@ -127,10 +155,25 @@ def main():
     print("Agent worker started...")
     while True:
         try:
+            set_worker_status({
+                "state": "idle",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
             task = pop_from_queue(AGENT_QUEUE_NAME, timeout=5)
             if task is None:
                 continue
-            handle_task(task)
+            set_worker_status({
+                "state": "processing",
+                "event": task,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            })
+            try:
+                handle_task(task)
+            finally:
+                set_worker_status({
+                    "state": "idle",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
         except Exception as e:
             print("agent处理失败:", e)
             traceback.print_exc()

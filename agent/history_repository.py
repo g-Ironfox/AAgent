@@ -44,8 +44,8 @@ def get_history_collection():
             name="event_type_created_at",
         )
         _collection.create_index(
-            [("args.id", ASCENDING)],
-            name="tool_call_id",
+            [("payload.id", ASCENDING)],
+            name="tool_call_id_payload",
             sparse=True,
         )
     return _collection

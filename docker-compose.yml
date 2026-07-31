@@ -5,7 +5,7 @@ services:
     volumes:
       - ./agent:/app
     working_dir: /app
-    command: ["python", "-u", "task_worker.py"]
+    command: ["sleep", "infinity"]
     restart: unless-stopped
     depends_on:
       - redis
@@ -21,12 +21,43 @@ services:
     volumes:
       - ./qqbot:/app
     working_dir: /app
-    command: ["python", "-u", "listener.py"]
+    command: ["sleep", "infinity"]
     restart: unless-stopped
     depends_on:
       - redis
     env_file:
       - .env
+    networks:
+      - rainbow_net
+
+  webui:
+    build: ./webui
+    container_name: webui_aagent
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AGENT_QUEUE_NAME: ${AGENT_QUEUE_NAME:-agent_tasks}
+      AGENT_WORKER_STATUS_KEY: ${AGENT_WORKER_STATUS_KEY:-aagent:worker:status}
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASS: ${MONGO_PASS}
+      MONGO_DATABASE: ${MONGO_DATABASE:-agent}
+      MONGO_HISTORY_COLLECTION: ${MONGO_HISTORY_COLLECTION:-event_history}
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks:
       - rainbow_net
 

@@ -63,34 +63,21 @@ def chat_with_deepseek(user_id,group_id):
     e={'event_type':"response",
        "payload":{
            "content":message['content'],
-            "reasoning_content":message['reasoning_content'],
+            "reasoning_content":message.get('reasoning_content'),
             "tool_calls":tool_calls
         }
     }
-
-    
-    events=[e]
-    for i in tool_calls:
-        e={
-            "event_type":"tool",
-            "payload":{'id':i['id'],
-                'tool':i['function']['name'],
-                "args":json.loads(i["function"]["arguments"])
-            }
-        }
-        events.append(e)
     if tool_calls:
-        e={
-            "event_type":"active",
-            "payload":{
-                "user_id":user_id,
-                "group_id":group_id
+        e2={
+                "event_type":"active",
+                "payload":{
+                    "user_id":user_id,
+                    "group_id":group_id
+                }
             }
-        }
-        events.append(e)
-    events=events[::-1]
-    insert_to_queue(AGENT_QUEUE_NAME,*events)
+        insert_to_queue(AGENT_QUEUE_NAME,e2,e)
+    else:
+        insert_to_queue(AGENT_QUEUE_NAME,e)
 
-
-    print(message['content'],message['reasoning_content'],tool_calls)
+    print(message['content'],message.get('reasoning_content'),tool_calls)
     return message['content']

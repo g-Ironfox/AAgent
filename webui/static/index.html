@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent Queue Monitor</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <div><strong>AAgent</strong><span>Queue Monitor</span></div>
+    </div>
+    <div class="controls">
+      <label class="select-control">
+        <span>刷新间隔</span>
+        <select id="interval">
+          <option value="1000">1 秒</option>
+          <option value="2000" selected>2 秒</option>
+          <option value="5000">5 秒</option>
+          <option value="10000">10 秒</option>
+        </select>
+      </label>
+      <button id="pauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新">Ⅱ</button>
+      <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新">↻</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="headline">
+      <div>
+        <p class="eyebrow">AGENT / LIVE OPERATIONS</p>
+        <h1 id="queueName">agent_tasks</h1>
+        <p class="subtitle">同时查看 Agent 状态、Redis 待处理事件和 MongoDB 已消费历史。</p>
+      </div>
+      <div id="connection" class="connection pending"><span></span><strong>正在连接</strong></div>
+    </section>
+
+    <section class="metrics" aria-label="队列指标">
+      <article class="metric primary">
+        <span>当前队列深度</span>
+        <strong id="queueDepth">--</strong>
+        <small id="depthDelta">等待第一份快照</small>
+      </article>
+      <article class="metric">
+        <span>历史载入</span>
+        <strong id="loadedCount">--</strong>
+        <small>最近 100 条 MongoDB 记录</small>
+      </article>
+      <article class="metric">
+        <span>Agent 状态</span>
+        <strong id="agentState">未知</strong>
+        <small id="agentStateDetail">等待状态数据</small>
+      </article>
+      <article class="metric">
+        <span>最后刷新</span>
+        <strong id="lastRefresh">--:--:--</strong>
+        <small id="refreshState">自动刷新已开启</small>
+      </article>
+    </section>
+
+    <section id="currentTask" class="current-task unknown">
+      <div class="current-task-heading">
+        <div>
+          <span class="section-label">当前 Agent</span>
+          <strong id="currentTaskTitle">尚未上报状态</strong>
+        </div>
+        <span id="currentTaskDuration" class="duration">--</span>
+      </div>
+      <p id="currentTaskPreview">Agent 重启并进入主循环后，会在这里显示空闲或正在执行的事件。</p>
+      <details id="currentTaskDetails" hidden>
+        <summary>查看当前事件</summary>
+        <pre id="currentTaskRaw"></pre>
+      </details>
+    </section>
+
+    <section class="workspace">
+      <aside class="breakdown">
+        <div class="section-heading">
+          <div><span>历史事件分布</span><strong>MongoDB 快照</strong></div>
+        </div>
+        <div id="eventBreakdown" class="event-list">
+          <p class="empty-small">暂无数据</p>
+        </div>
+        <div class="order-note">
+          <span>状态说明</span>
+          <p><code>processing</code> 表示 Worker 已弹出事件且尚未返回；<code>idle</code> 表示正在等待。状态无 TTL：执行超过 5 分钟或 <code>idle</code> 超过 15 秒未更新时，页面会标记为疑似异常。</p>
+        </div>
+      </aside>
+
+      <section class="messages">
+        <div class="message-toolbar">
+          <div>
+            <span class="section-label">Redis 待处理事件</span>
+            <strong id="resultCount">0 条</strong>
+          </div>
+          <label class="search">
+            <span aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="搜索消息内容或事件类型" autocomplete="off">
+          </label>
+        </div>
+        <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+        <div id="messageList" class="message-list" aria-live="polite">
+          <div class="empty-state"><strong>正在读取队列</strong><span>Redis 快照会显示在这里</span></div>
+        </div>
+        <div class="order-note">
+          <span>消费顺序</span>
+          <p>列表按消费顺序排列：最上方是下一个被 Worker 弹出（BRPOP）的事件；新 QQ 消息从队列头部进入，排在末尾；工具返回从尾部进入，会被优先消费。</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="history messages">
+      <div class="message-toolbar">
+        <div>
+          <span class="section-label">MongoDB 已消费历史</span>
+          <strong id="historyResultCount">0 条</strong>
+        </div>
+        <label class="search">
+          <span aria-hidden="true">⌕</span>
+          <input id="historySearchInput" type="search" placeholder="搜索历史内容或事件类型" autocomplete="off">
+        </label>
+      </div>
+      <div id="historyErrorBanner" class="error-banner" role="alert" hidden></div>
+      <div id="historyList" class="message-list history-list" aria-live="polite">
+        <div class="empty-state"><strong>正在读取历史</strong><span>MongoDB 事件会显示在这里</span></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

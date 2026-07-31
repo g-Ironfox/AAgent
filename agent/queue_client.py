@@ -9,6 +9,10 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_SOCKET_TIMEOUT = float(os.getenv("REDIS_SOCKET_TIMEOUT", "30"))
 
 AGENT_QUEUE_NAME = os.getenv("AGENT_QUEUE_NAME", "agent_tasks")
+AGENT_WORKER_STATUS_KEY = os.getenv(
+    "AGENT_WORKER_STATUS_KEY",
+    "aagent:worker:status",
+)
 
 
 def get_connection():
@@ -28,6 +32,14 @@ def publish_to_queue(queue_name: str, message: dict):
 def insert_to_queue(queue_name: str, *messages: dict):
     client = get_connection()
     client.rpush(queue_name, *[json.dumps(i, ensure_ascii=False) for i in messages])
+    return True
+
+def set_worker_status(status: dict):
+    client = get_connection()
+    client.set(
+        AGENT_WORKER_STATUS_KEY,
+        json.dumps(status, ensure_ascii=False),
+    )
     return True
 
 def pop_from_queue(queue_name: str, timeout: int = 5):
