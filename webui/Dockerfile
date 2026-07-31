@@ -1,12 +1,16 @@
 FROM golang:1.23-alpine AS builder
 
 WORKDIR /src
-COPY go.mod ./
+
+# go.mod/go.sum 单独复制：这一层只依赖依赖清单，几乎不变，
+# 镜像层缓存长期命中，模块只需下载一次
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go mod tidy \
-    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/webui .
+
+# 依赖已在镜像层内，源码再改也不会触发重新下载
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/webui .
 
 FROM alpine:3.21
 

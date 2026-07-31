@@ -30,7 +30,7 @@ def send_messages(messages,url,key,model):
     print(resp.json())
     return resp.json()["choices"][0]["message"]
 
-def chat_with_deepseek(user_id,group_id):
+def chat_with_deepseek(user_id,group_id,source="qq"):
     h=get_recent_history(limit=10)
     messages = [
         {"role": "system", "content": "你是一个办公助手"},
@@ -38,7 +38,7 @@ def chat_with_deepseek(user_id,group_id):
 
     for i in h[::-1]:
         payload=i.get('payload')
-        if i['event_type']=='qq':
+        if i['event_type'] in ('qq','web'):
             if payload['group_id']:
                 messages.append({"role": "user", "content": f"<groupmsg group={payload['group_id']} sender={payload['user_id']}>{payload['raw_message']}</groupmsg>"})
             else:
@@ -72,7 +72,8 @@ def chat_with_deepseek(user_id,group_id):
                 "event_type":"active",
                 "payload":{
                     "user_id":user_id,
-                    "group_id":group_id
+                    "group_id":group_id,
+                    "source":source
                 }
             }
         insert_to_queue(AGENT_QUEUE_NAME,e2,e)

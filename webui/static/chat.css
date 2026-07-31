@@ -1,0 +1,21 @@
+.chat-main { height:calc(100vh - 68px); width:min(980px,calc(100% - 48px)); padding:20px 0 24px; display:flex; }
+.chat-panel { flex:1; min-height:0; display:flex; flex-direction:column; border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
+.chat-messages { flex:1; min-height:0; overflow-y:auto; padding:22px; display:flex; flex-direction:column; gap:14px; }
+.chat-msg { max-width:min(78%,640px); display:flex; flex-direction:column; gap:5px; }
+.chat-msg.user { align-self:flex-end; align-items:flex-end; }
+.chat-msg.assistant { align-self:flex-start; align-items:flex-start; }
+.chat-meta { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:9px; }
+.chat-source { padding:2px 6px; color:var(--green); background:var(--green-soft); font:700 9px Consolas,monospace; }
+.chat-msg.user .chat-source { color:var(--blue); background:var(--blue-soft); }
+.chat-bubble { padding:10px 14px; border:1px solid var(--line); line-height:1.6; font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.chat-msg.user .chat-bubble { color:#fff; background:var(--ink); border-color:var(--ink); }
+.chat-msg.assistant .chat-bubble { background:#f7f9f7; }
+.chat-bubble.typing { color:var(--muted); font-style:italic; }
+.chat-bubble p { margin:0; }
+.chat-composer { display:flex; align-items:flex-end; gap:10px; padding:14px 16px; border-top:1px solid var(--line); background:#f8faf8; }
+.chat-composer textarea { flex:1; min-height:42px; max-height:160px; padding:10px 12px; resize:none; border:1px solid var(--line); background:#fff; font:inherit; font-size:13px; line-height:1.5; }
+.chat-composer textarea:focus-visible { outline:2px solid var(--green); outline-offset:1px; }
+#sendButton { min-width:88px; height:42px; padding:0 18px; color:#fff; border:1px solid var(--ink); background:var(--ink); font-size:12px; }
+#sendButton:hover { border-color:var(--green); background:var(--green); }
+#sendButton:disabled { cursor:wait; opacity:.55; }
+@media (max-width:560px) { .chat-main { width:calc(100% - 24px); padding:14px 0 18px; height:calc(100vh - 62px); }.chat-msg { max-width:88%; }.chat-composer { padding:10px 12px; } }

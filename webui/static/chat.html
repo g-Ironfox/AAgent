@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent Chat</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/chat.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件控制台">
+      <span class="brand-mark">A</span>
+      <span><strong>AAgent</strong><small>WEB CHAT</small></span>
+    </a>
+    <nav class="page-nav" aria-label="页面切换">
+      <a href="/">事件控制台</a>
+      <a href="/chat.html" class="active" aria-current="page">聊天</a>
+    </nav>
+    <div class="top-actions">
+      <span id="connection" class="connection loading"><i></i><span>连接中</span></span>
+    </div>
+  </header>
+  <main class="chat-main">
+    <section class="chat-panel">
+      <div id="messageList" class="chat-messages" aria-live="polite">
+        <div class="empty-state"><strong>正在加载会话</strong><span>历史消息将在这里显示</span></div>
+      </div>
+      <form id="chatForm" class="chat-composer" autocomplete="off">
+        <textarea id="chatInput" rows="1" placeholder="给 Agent 发送消息…(Enter 发送,Shift+Enter 换行)" aria-label="消息输入"></textarea>
+        <button id="sendButton" type="submit">发送</button>
+      </form>
+      <footer class="panel-footer">
+        <span id="chatStatus">与 Agent 共享同一上下文(QQ + Web)</span>
+        <span id="chatCount">0 条消息</span>
+      </footer>
+    </section>
+  </main>
+  <script type="module" src="/chat.js"></script>
+</body>
+</html>

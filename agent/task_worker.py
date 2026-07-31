@@ -25,6 +25,9 @@ def handle_task(e: dict):
     if e['event_type'] == "qq":
         print(f"QQ事件:{e['payload']}")
         user_interface(e['payload'])
+    elif e['event_type'] == "web":
+        print(f"Web事件:{e['payload']}")
+        user_interface(e['payload'])
     elif e['event_type'] == 'tool':
         print(f"工具事件:{e['payload']}")
         tool_id = e['payload']['id']
@@ -59,15 +62,26 @@ def handle_task(e: dict):
 
     elif e["event_type"]=="tool_return":
         pass
+    elif e["event_type"]=="web_reply":
+        # 仅记录历史,供 Web 聊天页展示;不触发任何业务逻辑
+        pass
     elif e["event_type"]=="active":
         user_id=e['payload']['user_id']
         group_id=e['payload']['group_id']
-        res=chat_with_deepseek(user_id,group_id)
+        source=e['payload'].get('source','qq')
+        res=chat_with_deepseek(user_id,group_id,source)
         if not res:
             # LLM 返回 tool_calls 时 content 为空,不发空消息,等工具链完成后的最终回复
             print(f"LLM 无文本回复(可能请求了工具调用),不发送消息 user_id={user_id}")
             return
-        if group_id:
+        if source == "web":
+            # 网页聊天:回复写入事件队列,由 WebUI 聊天页从历史中读取展示
+            insert_to_queue(AGENT_QUEUE_NAME, {
+                "event_type": "web_reply",
+                "payload": {"content": res, "user_id": user_id},
+            })
+            print(f"已写入 Web 回复 user_id={user_id}")
+        elif group_id:
             send_group_msg(group_id, res)
             print(f"已发送群消息 group_id={group_id}")
         else:
@@ -94,6 +108,7 @@ def user_interface(task: dict):
     raw_message = task.get("raw_message", "")
     group_id = task.get("group_id")
     user_id = task.get("user_id")
+    source = task.get("source", "qq")
     if not isinstance(raw_message, str):
         raw_message = ""
 
@@ -126,9 +141,14 @@ deepseek{deepseek_balance if deepseek_balance is not None else "查询失败"}rm
                 res = search_results[0].get('title', '')
             else:
                 res = "搜索无结果"
-        # 将命令结果回复给用户（群消息回群，私聊回私聊）
+        # 将命令结果回复给用户(网页回复进队列,群消息回群,私聊回私聊)
         if res:
-            if group_id:
+            if source == "web":
+                insert_to_queue(AGENT_QUEUE_NAME, {
+                    "event_type": "web_reply",
+                    "payload": {"content": res, "user_id": user_id},
+                })
+            elif group_id:
                 send_group_msg(group_id, res)
             else:
                 send_private_msg(user_id, res)
@@ -141,12 +161,14 @@ deepseek{deepseek_balance if deepseek_balance is not None else "查询失败"}rm
 
         print("收到任务:", task)
 
-        if str(user_id) == TARGET_USER_ID and (not group_id or f'[CQ:at,qq={BOT_ID}]' in raw_message):
+        # 网页消息天然来自控制台所有者,直接放行;QQ 消息仍需校验目标用户
+        if source == "web" or (str(user_id) == TARGET_USER_ID and (not group_id or f'[CQ:at,qq={BOT_ID}]' in raw_message)):
             e={
                 "event_type":"active",
                 "payload":{
                     "user_id":user_id,
                     "group_id":group_id,
+                    "source":source,
                 }
             }
             publish_to_queue(AGENT_QUEUE_NAME,e)
