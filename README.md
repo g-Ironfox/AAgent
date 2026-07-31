@@ -1,69 +1,53 @@
 # AAgent
 
-AAgent 是一个受 CPU 取指、执行与写回循环启发的**事件脉冲驱动 Agent 运行时**。
-系统把消息、模型响应、工具调用和工具结果统一表示为事件,由单个 worker
-一次执行一个事件,再通过后续事件持续推进任务。Redis 保存待执行事件,
-MongoDB 保存事件历史与运行上下文。
+AAgent 是一个持续存在、统一认知并统一决策的 Agent 运行时,而不是多会话聊天服务。
 
-> 事件是指令,队列是控制流,Agent 按脉冲执行。
+> 一个决策中心,一个全局认知,一条连续时间线。
 
-当前 `qqbot` 是唯一的外部事件源,但它只是过渡阶段的消息渠道适配器,
-并不是 AAgent 的产品边界。未来将以 `webui` 作为主要交互界面和事件入口,
-用于提交任务、管理会话、观察执行过程并触发主动任务;QQ 则保留为可选接入渠道。
+## 核心约束
 
-系统目前由事件到达触发下一步,队列为空时进入等待。未来计划加入空闲时钟事件,
-让 Agent 在没有用户消息时也能执行检查、计划、提醒和后台任务。
+- MongoDB 已提交事件历史是唯一权威上下文;
+- `agent` 单 worker 串行推进 LLM 与工具链;
+- 外部事件只能进入 Redis 队列,不能并发修改上下文;
+- QQ 是当前主要事件源,WebUI 当前主要用于监控。
 
-## Execution Model
+完整设计依据见[设计哲学](docs/00-设计哲学.md),未实现能力见[路线图与创新](docs/06-路线图与创新.md)。
 
-- **串行执行**:同一时刻只处理一个事件,保证工具链和状态写回顺序确定。
-- **事件脉冲**:上一步产生后续事件时立即继续;无事件时阻塞等待。
-- **统一入口**:QQ、WebUI、HTTP API、Webhook 和时钟最终都转换为统一事件。
-- **演进方向**:会话之间并行,会话内部串行;WebUI 从监控面板演进为主要工作台。
+## 快速启动
 
-## Services
+1. 安装 Docker Desktop 与 Docker Compose;
+2. 复制环境变量模板并填写所有 `replace-me`;
+3. 构建并启动服务;
+4. 查看核心日志。
 
-- `agent`:串行消费事件,调用模型与工具,并产生后续事件。
-- `webui`:当前用于队列、worker 状态与历史监控;未来作为主要交互和事件入口。
-- `qqbot`:当前的 QQ WebSocket 事件适配器;未来作为可选消息渠道。
-- `redis`:事件队列与调度顺序。
-- `mongodb`:事件历史与运行上下文。
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env
+docker compose up --build -d
+docker compose logs -f agent qqbot
+```
 
-## Documentation
+WebUI 地址:`http://localhost:8080`。完整变量说明、端口和安全检查见[配置与部署](docs/04-配置与部署.md)。
 
-The project documentation is split by responsibility under [`docs/`](docs/README.md):
+## 服务
 
-| Document | Content |
-|----------|---------|
-| [00-设计哲学](docs/00-设计哲学.md) | CPU-inspired execution model, event pulses, WebUI-first direction |
-| [01-系统架构](docs/01-系统架构.md) | Service topology, event-driven design, data storage |
-| [02-事件与队列](docs/02-事件与队列.md) | Event types, state machine, queue priority, typical flow |
-| [03-模块详解](docs/03-模块详解.md) | Per-module responsibilities and interfaces |
-| [04-配置与部署](docs/04-配置与部署.md) | Env vars, Docker Compose, directory layout, security |
-| [05-已知问题](docs/05-已知问题.md) | Known issues and improvement suggestions |
+| 服务 | 职责 |
+|------|------|
+| `agent` | 串行消费事件,调用 LLM 与工具 |
+| `qqbot` | 接收 QQ WebSocket 事件并写入队列 |
+| `webui` | 展示健康状态、队列、worker 状态与历史 |
+| `redis` | 编排事件顺序并缓冲入口流量 |
+| `mongodb` | 保存全局事件历史与权威上下文 |
 
-## Setup
+## 文档
 
-1. Install Docker Desktop with Docker Compose.
-2. Copy `.env.example` to `.env`.
-3. Replace every `replace-me` value with your own credentials and IDs.
-4. Start the services:
+从[文档导航](docs/README.md)按任务选择阅读路径:
 
-   ```powershell
-   docker compose up --build -d
-   ```
+- 理解运行方式:[系统架构](docs/01-系统架构.md) → [事件与队列](docs/02-事件与队列.md);
+- 修改代码:[模块详解](docs/03-模块详解.md);
+- 排查风险:[已知问题](docs/05-已知问题.md);
+- 查看未来计划:[路线图与创新](docs/06-路线图与创新.md)。
 
-5. Follow application logs:
+## 安全
 
-   ```powershell
-   docker compose logs -f agent qqbot
-   ```
-
-Stop the project with `docker compose down`. Runtime database files are stored
-under `data/` and are intentionally excluded from Git.
-
-## Security
-
-Never commit `.env`, API keys, access tokens, or the contents of `data/`.
-Credentials that have appeared in source code or Git history must be revoked
-and replaced at the provider before publishing the repository.
+不要提交 `.env`、API Key、访问 Token 或 `data/`。曾出现在源码或 Git 历史中的凭据必须先吊销,再从服务商处生成新凭据。

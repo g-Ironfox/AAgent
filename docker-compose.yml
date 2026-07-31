@@ -5,7 +5,7 @@ services:
     volumes:
       - ./agent:/app
     working_dir: /app
-    command: ["sleep", "infinity"]
+    command: ["python", "task_worker.py"]
     restart: unless-stopped
     depends_on:
       - redis
@@ -21,7 +21,7 @@ services:
     volumes:
       - ./qqbot:/app
     working_dir: /app
-    command: ["sleep", "infinity"]
+    command: ["python", "listener.py"]
     restart: unless-stopped
     depends_on:
       - redis

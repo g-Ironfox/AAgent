@@ -86,7 +86,8 @@ def handle_task(e: dict):
                         "args":json.loads(i["function"]["arguments"])
                     }
                 }
-                insert_to_queue(AGENT_QUEUE_NAME,e)
+                events.append(e)
+            insert_to_queue(AGENT_QUEUE_NAME,events[::-1])
             
 def user_interface(task: dict):
     res = None
