@@ -1,0 +1,17 @@
+# ============================================================
+# GitHub Linguist 语言统计配置
+# 本项目是 Python 后端项目,webui 里的 JS 只是辅助前端,
+# 将它们从语言统计中排除,避免仓库被误判为 JavaScript。
+# 参考:https://github.com/github-linguist/linguist#overrides
+# ============================================================
+
+# 排除 Web 前端资源(不计入语言统计)
+webui/static/app.js   linguist-vendored
+webui/sync-test.js    linguist-vendored
+
+# 可选:若想让 JS 计入统计但归类为 Python,改用下面这行:
+# webui/static/app.js   linguist-language=Python
+# webui/sync-test.js    linguist-language=Python
+
+# 文档类文件不计入统计
+*.md linguist-documentation
