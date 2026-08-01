@@ -57,4 +57,3 @@ func TestValidateWorkerStatus(t *testing.T) {
 		}
 	}
 }
-

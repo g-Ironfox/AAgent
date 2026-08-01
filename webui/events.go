@@ -56,7 +56,7 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 	snapshot := eventsSnapshot{
 		Queue: s.queueName, FetchedAt: time.Now().UTC(),
 		Sources: sourceStatus{MongoDB: "unavailable", Redis: "unavailable", Worker: "unavailable"},
-		Items: make([]unifiedEvent, 0, limit*2+1), Warnings: map[string]string{},
+		Items:   make([]unifiedEvent, 0, limit*2+1), Warnings: map[string]string{},
 	}
 	pendingItems := make([]unifiedEvent, 0, limit)
 

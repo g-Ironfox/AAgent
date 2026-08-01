@@ -4,10 +4,6 @@
 
 data/
 
-agent/2.py
-agent/3.py
-agent/script.py
-
 __pycache__/
 *.py[cod]
 *$py.class
