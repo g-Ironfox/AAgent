@@ -33,7 +33,13 @@ type unifiedEvent struct {
 type eventSummary struct {
 	Pending int64 `json:"pending"`
 	Running int64 `json:"running"`
-	Done    int64 `json:"done"`
+	History int64 `json:"history"`
+}
+
+type sourceStatus struct {
+	MongoDB string `json:"mongodb"`
+	Redis   string `json:"redis"`
+	Worker  string `json:"worker"`
 }
 
 type eventsSnapshot struct {
@@ -41,6 +47,7 @@ type eventsSnapshot struct {
 	FetchedAt time.Time         `json:"fetched_at"`
 	Worker    workerStatus      `json:"worker"`
 	Summary   eventSummary      `json:"summary"`
+	Sources   sourceStatus      `json:"sources"`
 	Items     []unifiedEvent    `json:"items"`
 	Warnings  map[string]string `json:"warnings,omitempty"`
 }
@@ -48,6 +55,7 @@ type eventsSnapshot struct {
 func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot {
 	snapshot := eventsSnapshot{
 		Queue: s.queueName, FetchedAt: time.Now().UTC(),
+		Sources: sourceStatus{MongoDB: "unavailable", Redis: "unavailable", Worker: "unavailable"},
 		Items: make([]unifiedEvent, 0, limit*2+1), Warnings: map[string]string{},
 	}
 	pendingItems := make([]unifiedEvent, 0, limit)
@@ -56,9 +64,12 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 	var runningFingerprint string
 	var runningItem *unifiedEvent
 	if err != nil {
+		snapshot.Worker = status
+		snapshot.Sources.Worker = workerSourceStatus(status.State)
 		snapshot.Warnings["worker"] = err.Error()
 	} else {
 		snapshot.Worker = status
+		snapshot.Sources.Worker = workerSourceStatus(status.State)
 		if status.State == "processing" {
 			snapshot.Summary.Running = 1
 			if status.Event != nil {
@@ -76,6 +87,7 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 	if err != nil {
 		snapshot.Warnings["redis"] = "Redis queue is unavailable"
 	} else {
+		snapshot.Sources.Redis = "ok"
 		snapshot.Summary.Pending = queueLength
 		start := queueLength - limit
 		if start < 0 {
@@ -83,6 +95,7 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 		}
 		rawItems, queueErr := s.redis.LRange(ctx, s.queueName, start, queueLength-1).Result()
 		if queueErr != nil {
+			snapshot.Sources.Redis = "unavailable"
 			snapshot.Warnings["redis"] = "Redis queue is unavailable"
 		} else {
 			seen := map[string]int{}
@@ -108,9 +121,11 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 	if err != nil {
 		snapshot.Warnings["mongodb"] = "MongoDB history is unavailable"
 	} else {
+		snapshot.Sources.MongoDB = "ok"
 		defer cursor.Close(ctx)
 		var historyItems []bson.M
 		if err := cursor.All(ctx, &historyItems); err != nil {
+			snapshot.Sources.MongoDB = "unavailable"
 			snapshot.Warnings["mongodb"] = "MongoDB history could not be decoded"
 		} else {
 			runningIndex := latestMatchingHistoryIndex(historyItems, runningFingerprint)
@@ -127,7 +142,7 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 					ID: "done-" + fingerprint + "-" + fmt.Sprint(createdAt), Status: "done",
 					Source: "mongodb", CreatedAt: createdAt, Event: event,
 				})
-				snapshot.Summary.Done++
+				snapshot.Summary.History++
 			}
 		}
 	}
@@ -149,13 +164,39 @@ func (s *server) readWorkerStatus(ctx context.Context) (workerStatus, error) {
 		return workerStatus{State: "unknown"}, nil
 	}
 	if err != nil {
-		return workerStatus{}, errors.New("Worker status is unavailable")
+		return workerStatus{State: "unavailable"}, errors.New("Worker status is unavailable")
 	}
 	var status workerStatus
 	if err := json.Unmarshal([]byte(raw), &status); err != nil {
-		return workerStatus{}, errors.New("Worker status is invalid")
+		return workerStatus{State: "invalid"}, errors.New("Worker status is invalid")
+	}
+	if err := validateWorkerStatus(status); err != nil {
+		return workerStatus{State: "invalid"}, err
 	}
 	return status, nil
+}
+
+func validateWorkerStatus(status workerStatus) error {
+	if status.State != "idle" && status.State != "processing" {
+		return errors.New("Worker status has an unknown state")
+	}
+	if status.State == "processing" && status.Event == nil {
+		return errors.New("Worker processing status has no event")
+	}
+	return nil
+}
+
+func workerSourceStatus(state string) string {
+	switch state {
+	case "idle", "processing":
+		return "ok"
+	case "unknown":
+		return "missing"
+	case "unavailable":
+		return "unavailable"
+	default:
+		return "invalid"
+	}
 }
 
 func decodeQueueEvent(raw string) map[string]any {

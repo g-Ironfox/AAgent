@@ -33,12 +33,11 @@ code { padding:2px 5px; background:#e5e8e4; font-family:Consolas,monospace; }
 .sync-meta { min-width:160px; padding-left:18px; border-left:2px solid var(--line); display:grid; gap:3px; }
 .sync-meta span,.sync-meta small { color:var(--muted); font-size:10px; }
 .sync-meta strong { font:700 17px Consolas,monospace; }
-.status-strip { display:grid; grid-template-columns:repeat(3,minmax(150px,1fr)) minmax(230px,1.15fr); border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
+.status-strip { display:grid; grid-template-columns:repeat(2,minmax(150px,1fr)) minmax(230px,1.15fr); border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
 .status-strip>div { min-height:96px; padding:18px 20px; border-right:1px solid var(--line); display:flex; flex-direction:column; justify-content:center; }
 .status-strip>div:last-child { border-right:0; }
 .status-strip span,.status-strip small { color:var(--muted); font-size:10px; }
 .status-strip strong { margin:6px 0 3px; font:700 28px Georgia,"Microsoft YaHei",serif; }
-.running-stat strong { color:#8a5c08; }
 .worker-summary { border-left:4px solid #bcc6c0; }
 .worker-summary.processing { border-left-color:var(--amber); background:var(--amber-soft); }
 .worker-summary.idle { border-left-color:var(--green); }

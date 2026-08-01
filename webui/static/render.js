@@ -5,6 +5,7 @@ const emptyText = {
   running: ['当前无执行事件', '当前执行不符合筛选条件'],
   pending: ['Redis 队列已清空', '等待队列中没有匹配事件'],
 };
+const sourceByStatus = { done: 'mongodb', running: 'worker', pending: 'redis' };
 
 export function eventType(item) {
   return String(item.event?.event_type || '未分类');
@@ -48,22 +49,22 @@ export function populateTypes(select, items) {
   select.value = types.includes(selected) ? selected : 'all';
 }
 
-export function renderTimeline(sections, items, filtered) {
+export function renderTimeline(sections, items, filtered, sources = {}) {
   const groups = { done: [], running: [], pending: [] };
   for (const item of items) {
     if (groups[item.status]) groups[item.status].push(item);
   }
   const counts = {};
   for (const status of ['done', 'running', 'pending']) {
-    counts[status] = renderSection(sections[status], groups[status], status, filtered);
+    counts[status] = renderSection(sections[status], groups[status], status, filtered, sources);
   }
   return counts;
 }
 
-function renderSection(section, items, status, filtered) {
+function renderSection(section, items, status, filtered, sources) {
   section.count.textContent = String(items.length);
   if (!items.length) {
-    renderEmpty(section.list, status, filtered);
+    renderEmpty(section.list, status, filtered, sources[sourceByStatus[status]]);
     return 0;
   }
 
@@ -78,16 +79,25 @@ function renderSection(section, items, status, filtered) {
   return items.length;
 }
 
-function renderEmpty(container, status, filtered) {
+function renderEmpty(container, status, filtered, sourceStatus) {
   const empty = document.createElement('div');
   empty.className = `empty-state ${status}`;
   const title = document.createElement('strong');
-  title.textContent = filtered ? emptyText[status][1] : emptyText[status][0];
+  const unavailable = unavailableText[status]?.[sourceStatus];
+  title.textContent = unavailable && !filtered ? unavailable : filtered ? emptyText[status][1] : emptyText[status][0];
   const detail = document.createElement('span');
-  detail.textContent = status === 'running' ? 'Worker 空闲时这里保持为时间轴锚点' : '该存储层没有待展示的事件';
+  detail.textContent = unavailable && !filtered
+    ? '请检查对应服务连接或状态上报'
+    : status === 'running' ? 'Worker 空闲时这里保持为时间轴锚点' : '该存储层没有待展示的事件';
   empty.append(title, detail);
   container.replaceChildren(empty);
 }
+
+const unavailableText = {
+  done: { unavailable: 'MongoDB 历史不可用' },
+  running: { missing: 'Worker 尚未上报', unavailable: 'Worker 状态不可用', invalid: 'Worker 状态无效' },
+  pending: { unavailable: 'Redis 队列不可用' },
+};
 
 function createEventRow(item) {
   const row = document.createElement('article');

@@ -4,7 +4,7 @@ import { eventType, populateTypes, renderTimeline } from './render.js';
 const state = { snapshot: null, paused: false, loading: false, timer: null };
 const elements = {
   connection: document.querySelector('#connection'), queueName: document.querySelector('#queueName'),
-  pendingCount: document.querySelector('#pendingCount'), runningCount: document.querySelector('#runningCount'), doneCount: document.querySelector('#doneCount'),
+  pendingCount: document.querySelector('#pendingCount'), doneCount: document.querySelector('#doneCount'),
   workerCard: document.querySelector('#workerCard'), workerState: document.querySelector('#workerState'), workerDetail: document.querySelector('#workerDetail'),
   lastRefresh: document.querySelector('#lastRefresh'), refreshState: document.querySelector('#refreshState'), warningBanner: document.querySelector('#warningBanner'),
   resultCount: document.querySelector('#resultCount'), searchInput: document.querySelector('#searchInput'), typeFilter: document.querySelector('#typeFilter'),
@@ -43,9 +43,8 @@ async function refresh() {
 function renderSnapshot() {
   const snapshot = state.snapshot;
   elements.queueName.textContent = snapshot.queue;
-  elements.pendingCount.textContent = Number(snapshot.summary.pending).toLocaleString('zh-CN');
-  elements.runningCount.textContent = Number(snapshot.summary.running).toLocaleString('zh-CN');
-  elements.doneCount.textContent = Number(snapshot.summary.done).toLocaleString('zh-CN');
+  elements.pendingCount.textContent = formatSummaryCount(snapshot.summary.pending, snapshot.sources?.redis === 'ok');
+  elements.doneCount.textContent = formatSummaryCount(snapshot.summary.history, snapshot.sources?.mongodb === 'ok');
   elements.lastRefresh.textContent = new Date(snapshot.fetched_at).toLocaleTimeString('zh-CN', { hour12: false });
   renderWorker(snapshot.worker || {});
   renderWarnings(snapshot.warnings);
@@ -60,7 +59,7 @@ function renderFilteredEvents() {
     if (selectedType !== 'all' && eventType(item) !== selectedType) return false;
     return !query || JSON.stringify(item.event).toLocaleLowerCase('zh-CN').includes(query);
   });
-  const counts = renderTimeline(elements.sections, items, Boolean(query) || selectedType !== 'all');
+  const counts = renderTimeline(elements.sections, items, Boolean(query) || selectedType !== 'all', state.snapshot.sources);
   elements.resultCount.textContent = `${counts.done + counts.running + counts.pending} 条事件`;
 }
 
@@ -74,7 +73,13 @@ function renderWorker(worker) {
   const crashed = worker.state === 'processing' && startedAt && now - startedAt.getTime() > 10 * 60 * 1000;
   const stale = idleStale || crashed;
   elements.workerCard.className = `worker-summary ${stale ? 'stale' : worker.state || 'unknown'}`;
-  if (crashed) {
+  if (worker.state === 'unavailable') {
+    elements.workerState.textContent = '不可用';
+    elements.workerDetail.textContent = '无法读取 Worker 状态';
+  } else if (worker.state === 'invalid') {
+    elements.workerState.textContent = '状态无效';
+    elements.workerDetail.textContent = 'Worker 状态数据格式不正确';
+  } else if (crashed) {
     elements.workerState.textContent = '疑似卡死';
     elements.workerDetail.textContent = '单任务运行超过 10 分钟,Worker 可能已崩溃';
   } else if (worker.state === 'processing') {
@@ -91,6 +96,10 @@ function renderWorker(worker) {
     elements.workerState.textContent = '尚未上报';
     elements.workerDetail.textContent = 'Worker 状态 Key 不存在';
   }
+}
+
+function formatSummaryCount(value, available) {
+  return available && Number.isFinite(Number(value)) ? Number(value).toLocaleString('zh-CN') : '--';
 }
 
 function renderWarnings(warnings) {

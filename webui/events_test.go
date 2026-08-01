@@ -19,3 +19,42 @@ func TestLatestMatchingHistoryIndexUsesNewestDuplicate(t *testing.T) {
 		t.Fatalf("expected newest matching history index 0, got %d", index)
 	}
 }
+
+func TestWorkerSourceStatus(t *testing.T) {
+	tests := map[string]string{
+		"idle":        "ok",
+		"processing":  "ok",
+		"unknown":     "missing",
+		"unavailable": "unavailable",
+		"invalid":     "invalid",
+		"unexpected":  "invalid",
+	}
+	for state, want := range tests {
+		if got := workerSourceStatus(state); got != want {
+			t.Errorf("workerSourceStatus(%q) = %q, want %q", state, got, want)
+		}
+	}
+}
+
+func TestValidateWorkerStatus(t *testing.T) {
+	valid := []workerStatus{
+		{State: "idle"},
+		{State: "processing", Event: map[string]any{"event_type": "active"}},
+	}
+	for _, status := range valid {
+		if err := validateWorkerStatus(status); err != nil {
+			t.Errorf("validateWorkerStatus(%q) returned unexpected error: %v", status.State, err)
+		}
+	}
+
+	invalid := []workerStatus{
+		{State: "unknown"},
+		{State: "processing"},
+	}
+	for _, status := range invalid {
+		if err := validateWorkerStatus(status); err == nil {
+			t.Errorf("validateWorkerStatus(%q) accepted invalid status", status.State)
+		}
+	}
+}
+
