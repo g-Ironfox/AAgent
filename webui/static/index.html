@@ -14,6 +14,10 @@
       <span class="brand-name"><strong>AAgent</strong><small>EVENT STREAM</small></span>
     </a>
     <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a class="active" href="/">事件流</a>
+        <a href="/chat.html">Chat</a>
+      </nav>
       <span id="connection" class="connection loading"><i></i><span>连接中</span></span>
       <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="interval"><option value="500">0.5s</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
       <button id="pauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新"><span class="pause-icon" aria-hidden="true"></span></button>
@@ -22,19 +26,6 @@
   </header>
 
   <main>
-    <section class="page-heading">
-      <div>
-        <p class="eyebrow">LIVE EVENT TIMELINE</p>
-        <h1>过去、现在与下一步</h1>
-        <p>队列 <code id="queueName">agent_tasks</code> 的连续执行视图</p>
-      </div>
-      <div class="sync-meta">
-        <span>最后同步</span>
-        <strong id="lastRefresh">--:--:--</strong>
-        <small id="refreshState">自动刷新已开启</small>
-      </div>
-    </section>
-
     <section class="status-strip" aria-label="运行概览">
       <div><span>已加载历史</span><strong id="doneCount">--</strong><small>MongoDB 当前窗口</small></div>
       <div><span>等待执行</span><strong id="pendingCount">--</strong><small>Redis 队列总数</small></div>
@@ -44,7 +35,16 @@
     <section class="stream-panel">
       <div class="toolbar">
         <div class="toolbar-title"><strong>事件时间轴</strong><span id="resultCount">0 条事件</span></div>
+        <div class="sync-meta">
+          <span>最后同步</span>
+          <strong id="lastRefresh">--:--:--</strong>
+          <small id="refreshState">自动刷新已开启</small>
+        </div>
         <div class="toolbar-fields">
+          <button id="runningButton" class="running-button" type="button" title="回到正在执行" aria-label="回到正在执行">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+            <span>回到正在执行</span>
+          </button>
           <div class="type-filter" id="typeFilter">
             <span class="sr-only">事件类型</span>
             <button type="button" class="type-filter-toggle" aria-haspopup="true" aria-expanded="false"><span class="type-filter-label">全部类型</span><span class="type-filter-caret" aria-hidden="true"></span></button>
