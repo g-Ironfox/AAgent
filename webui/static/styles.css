@@ -108,7 +108,6 @@ code { padding:2px 5px; background:#e5e8e4; font-family:Consolas,monospace; }
 .event-type { max-width:180px; padding:3px 7px; color:#59635e; background:#edf0ed; font:700 10px Consolas,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 [data-status="pending"] .event-type { color:var(--blue); background:var(--blue-soft); }
 [data-status="running"] .event-type { color:#855b0d; background:#ffe8b3; }
-.event-id { color:var(--muted); font:9px Consolas,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .event-preview { margin:0; color:#46514c; font:11px/1.55 Consolas,"Microsoft YaHei",monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .source-cell { display:flex; flex-direction:column; gap:4px; }
 .source-cell strong { font-size:10px; }

@@ -13,9 +13,8 @@ export function eventType(item) {
 
 export function eventPreview(item) {
   const payload = item.event?.payload;
-  if (item.event?.event_type === 'active' && payload) {
-    const target = payload.group_id ? `群 ${payload.group_id}` : `用户 ${payload.user_id ?? '未知'}`;
-    return `请求 LLM 处理 · ${target}`;
+  if (item.event?.event_type === 'active') {
+    return '请求 LLM 处理';
   }
   const candidates = [payload?.raw_message, payload?.content, payload?.result, payload?.message, payload?.tool, payload?.raw];
   const text = candidates.find((value) => typeof value === 'string' && value.trim());
@@ -123,7 +122,7 @@ function createEventRow(item) {
   row.addEventListener('animationend', () => row.classList.remove('enter'), { once: true });
   row.innerHTML = `
     <div class="state-cell"><span class="status-dot"></span><div><strong></strong><small></small></div></div>
-    <div class="event-main"><div class="event-title"><span class="event-type"></span><span class="event-id"></span></div><p class="event-preview"></p></div>
+    <div class="event-main"><div class="event-title"><span class="event-type"></span></div><p class="event-preview"></p></div>
     <div class="source-cell"><strong></strong><small></small></div>
     <button class="details-button" type="button" aria-label="展开事件详情" title="展开事件详情"></button>
     <div class="event-details"><pre></pre></div>`;
@@ -142,15 +141,8 @@ function updateEventRow(row, item) {
   row.querySelector('.state-cell strong').textContent = statusText[item.status] || item.status;
   row.querySelector('.state-cell small').textContent = item.status === 'pending' ? `QUEUE ${item.position}` : item.status.toUpperCase();
   row.querySelector('.event-type').textContent = eventType(item);
-  row.querySelector('.event-id').textContent = shortIdentifier(item);
   row.querySelector('.event-preview').textContent = eventPreview(item);
   row.querySelector('.source-cell strong').textContent = sourceText[item.source] || item.source;
   row.querySelector('.source-cell small').textContent = eventTime(item);
   row.querySelector('pre').textContent = JSON.stringify(item.event, null, 2);
-}
-
-function shortIdentifier(item) {
-  const payload = item.event?.payload;
-  const id = payload?.id || payload?.user_id || payload?.message_id;
-  return id ? String(id) : item.id.slice(-10);
 }
