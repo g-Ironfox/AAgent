@@ -26,6 +26,8 @@ def send_messages(messages,url,key,model):
         json=payload,
         timeout=(5, 60)
     )
+    if resp.status_code == 402:
+        return 402
     resp.raise_for_status()
     print(resp.json())
     return resp.json()["choices"][0]["message"]
@@ -44,12 +46,9 @@ def chat_with_deepseek(user_id,group_id):
             else:
                 messages.append({"role": "user", "content": f"<privatemsg sender={payload['user_id']}>{payload['raw_message']}</privatemsg>"})
         if i['event_type']=='tool_return':
-            messages.append({"role":"tool","tool_call_id":payload['id'],'content':payload['result']})
+            messages.append({"role":"user",'content':f"Tool {payload['tool']} args({json.dumps(payload['args'])}) result: {payload['result']}"})
         if i['event_type']=='response':
-            if not payload["tool_calls"]:
-                messages.append({"role":"assistant","content":payload["content"]})
-            else:
-                messages.append({"role":"assistant","content":payload["content"],"tool_calls":payload["tool_calls"]})
+            messages.append({"role":"assistant","content":payload["content"]})
     print(messages)
     message = send_messages(
         messages,
@@ -58,6 +57,9 @@ def chat_with_deepseek(user_id,group_id):
         DEEPSEEK_MODEL
     )
 
+    if message ==402:
+        return "[-]余额不足"
+    
     tool_calls=message.get('tool_calls') if message.get('tool_calls') else []
 
     e={'event_type':"response",

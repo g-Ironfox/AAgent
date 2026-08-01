@@ -1,5 +1,10 @@
-const statusText = { running: '进行中', pending: '将进行', done: '已处理' };
+const statusText = { running: '正在执行', pending: '等待执行', done: '执行历史' };
 const sourceText = { worker: 'Worker', redis: 'Redis', mongodb: 'MongoDB' };
+const emptyText = {
+  done: ['MongoDB 没有历史记录', '当前筛选没有匹配的历史事件'],
+  running: ['当前无执行事件', '当前执行不符合筛选条件'],
+  pending: ['Redis 队列已清空', '等待队列中没有匹配事件'],
+};
 
 export function eventType(item) {
   return String(item.event?.event_type || '未分类');
@@ -7,7 +12,11 @@ export function eventType(item) {
 
 export function eventPreview(item) {
   const payload = item.event?.payload;
-  const candidates = [payload?.raw_message, payload?.result, payload?.message, payload?.tool, payload?.raw];
+  if (item.event?.event_type === 'active' && payload) {
+    const target = payload.group_id ? `群 ${payload.group_id}` : `用户 ${payload.user_id ?? '未知'}`;
+    return `请求 LLM 处理 · ${target}`;
+  }
+  const candidates = [payload?.raw_message, payload?.content, payload?.result, payload?.message, payload?.tool, payload?.raw];
   const text = candidates.find((value) => typeof value === 'string' && value.trim());
   return text ? text.slice(0, 260) : JSON.stringify(payload ?? item.event).slice(0, 260);
 }
@@ -39,27 +48,45 @@ export function populateTypes(select, items) {
   select.value = types.includes(selected) ? selected : 'all';
 }
 
-export function renderEvents(container, items) {
+export function renderTimeline(sections, items, filtered) {
+  const groups = { done: [], running: [], pending: [] };
+  for (const item of items) {
+    if (groups[item.status]) groups[item.status].push(item);
+  }
+  const counts = {};
+  for (const status of ['done', 'running', 'pending']) {
+    counts[status] = renderSection(sections[status], groups[status], status, filtered);
+  }
+  return counts;
+}
+
+function renderSection(section, items, status, filtered) {
+  section.count.textContent = String(items.length);
   if (!items.length) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    const title = document.createElement('strong');
-    title.textContent = '没有符合条件的事件';
-    const detail = document.createElement('span');
-    detail.textContent = '调整状态、类型或搜索条件';
-    empty.append(title, detail);
-    container.replaceChildren(empty);
-    return;
+    renderEmpty(section.list, status, filtered);
+    return 0;
   }
 
-  const existing = new Map([...container.querySelectorAll('.event-row')].map((node) => [node.dataset.id, node]));
+  const existing = new Map([...section.list.querySelectorAll('.event-row')].map((node) => [node.dataset.id, node]));
   const fragment = document.createDocumentFragment();
   for (const item of items) {
     const node = existing.get(item.id) || createEventRow(item);
     updateEventRow(node, item);
     fragment.append(node);
   }
-  container.replaceChildren(fragment);
+  section.list.replaceChildren(fragment);
+  return items.length;
+}
+
+function renderEmpty(container, status, filtered) {
+  const empty = document.createElement('div');
+  empty.className = `empty-state ${status}`;
+  const title = document.createElement('strong');
+  title.textContent = filtered ? emptyText[status][1] : emptyText[status][0];
+  const detail = document.createElement('span');
+  detail.textContent = status === 'running' ? 'Worker 空闲时这里保持为时间轴锚点' : '该存储层没有待展示的事件';
+  empty.append(title, detail);
+  container.replaceChildren(empty);
 }
 
 function createEventRow(item) {

@@ -1,14 +1,19 @@
 import { fetchEvents } from './api.js';
-import { eventType, eventPreview, eventTime, populateTypes, renderEvents } from './render.js';
+import { eventType, populateTypes, renderTimeline } from './render.js';
 
-const state = { snapshot: null, filter: 'all', paused: false, loading: false, timer: null, listSignature: '' };
+const state = { snapshot: null, paused: false, loading: false, timer: null };
 const elements = {
   connection: document.querySelector('#connection'), queueName: document.querySelector('#queueName'),
   pendingCount: document.querySelector('#pendingCount'), runningCount: document.querySelector('#runningCount'), doneCount: document.querySelector('#doneCount'),
   workerCard: document.querySelector('#workerCard'), workerState: document.querySelector('#workerState'), workerDetail: document.querySelector('#workerDetail'),
   lastRefresh: document.querySelector('#lastRefresh'), refreshState: document.querySelector('#refreshState'), warningBanner: document.querySelector('#warningBanner'),
-  eventList: document.querySelector('#eventList'), resultCount: document.querySelector('#resultCount'), searchInput: document.querySelector('#searchInput'), typeFilter: document.querySelector('#typeFilter'),
+  resultCount: document.querySelector('#resultCount'), searchInput: document.querySelector('#searchInput'), typeFilter: document.querySelector('#typeFilter'),
   interval: document.querySelector('#interval'), pauseButton: document.querySelector('#pauseButton'), refreshButton: document.querySelector('#refreshButton'),
+  sections: {
+    done: { list: document.querySelector('#historyList'), count: document.querySelector('#historyVisibleCount') },
+    running: { list: document.querySelector('#runningList'), count: document.querySelector('#runningVisibleCount') },
+    pending: { list: document.querySelector('#pendingList'), count: document.querySelector('#pendingVisibleCount') },
+  },
 };
 
 async function refresh() {
@@ -17,16 +22,17 @@ async function refresh() {
   elements.refreshButton.disabled = true;
   try {
     const snapshot = await fetchEvents();
-    const oldTypes = state.snapshot ? state.snapshot.items.map(eventType).join('|') : '';
-    const newTypes = snapshot.items.map(eventType).join('|');
+    const oldTypes = state.snapshot ? new Set(state.snapshot.items.map(eventType)) : null;
+    const newTypes = new Set(snapshot.items.map(eventType));
     state.snapshot = snapshot;
-    if (oldTypes !== newTypes) populateTypes(elements.typeFilter, snapshot.items);
+    const typesChanged = !oldTypes || oldTypes.size !== newTypes.size || [...oldTypes].some((type) => !newTypes.has(type));
+    if (typesChanged) populateTypes(elements.typeFilter, snapshot.items);
     renderSnapshot();
     setConnection(true);
   } catch (error) {
     setConnection(false);
     elements.warningBanner.hidden = false;
-    elements.warningBanner.textContent = `事件接口不可用：${error.message}`;
+    elements.warningBanner.textContent = `事件接口不可用：${error.message}${state.snapshot ? '，页面展示最后一次成功快照' : ''}`;
   } finally {
     state.loading = false;
     elements.refreshButton.disabled = false;
@@ -51,15 +57,11 @@ function renderFilteredEvents() {
   const query = elements.searchInput.value.trim().toLocaleLowerCase('zh-CN');
   const selectedType = elements.typeFilter.value;
   const items = state.snapshot.items.filter((item) => {
-    if (state.filter !== 'all' && item.status !== state.filter) return false;
     if (selectedType !== 'all' && eventType(item) !== selectedType) return false;
     return !query || JSON.stringify(item.event).toLocaleLowerCase('zh-CN').includes(query);
   });
-  const signature = items.map((item) => `${item.id}|${item.status}|${item.position ?? ''}|${eventPreview(item)}|${eventTime(item)}`).join('\u0001');
-  if (signature === state.listSignature) return;
-  state.listSignature = signature;
-  renderEvents(elements.eventList, items);
-  elements.resultCount.textContent = `${items.length} 条事件`;
+  const counts = renderTimeline(elements.sections, items, Boolean(query) || selectedType !== 'all');
+  elements.resultCount.textContent = `${counts.done + counts.running + counts.pending} 条事件`;
 }
 
 function renderWorker(worker) {
@@ -68,12 +70,10 @@ function renderWorker(worker) {
   const updatedAt = updated && !Number.isNaN(updated.getTime()) ? updated : null;
   const started = worker.started_at ? new Date(worker.started_at) : null;
   const startedAt = started && !Number.isNaN(started.getTime()) ? started : null;
-  // idle:正常每 ~5s 更新一次,超过 15s 未更新视为疑似离线
   const idleStale = worker.state === 'idle' && (!updatedAt || now - updatedAt.getTime() > 15000);
-  // processing:进程被硬杀/OOM 时会永远停在 processing,单任务运行超过 10 分钟视为疑似卡死
   const crashed = worker.state === 'processing' && startedAt && now - startedAt.getTime() > 10 * 60 * 1000;
   const stale = idleStale || crashed;
-  elements.workerCard.className = `worker-state ${stale ? 'stale' : worker.state || 'unknown'}`;
+  elements.workerCard.className = `worker-summary ${stale ? 'stale' : worker.state || 'unknown'}`;
   if (crashed) {
     elements.workerState.textContent = '疑似卡死';
     elements.workerDetail.textContent = '单任务运行超过 10 分钟,Worker 可能已崩溃';
@@ -99,15 +99,6 @@ function renderWarnings(warnings) {
   elements.warningBanner.textContent = messages.join(' · ');
 }
 
-function setFilter(filter) {
-  state.filter = filter;
-  document.querySelectorAll('[data-filter]').forEach((button) => button.classList.toggle('active', button.dataset.filter === filter));
-  document.querySelectorAll('[data-summary-filter]').forEach((button) => {
-    button.classList.toggle('active', filter !== 'all' && button.dataset.summaryFilter === filter);
-  });
-  renderFilteredEvents();
-}
-
 function setConnection(online) {
   elements.connection.className = `connection ${online ? 'online' : 'offline'}`;
   elements.connection.querySelector('span').textContent = online ? '已同步' : '连接失败';
@@ -123,8 +114,6 @@ function schedule() {
   if (!state.paused) state.timer = window.setTimeout(refresh, Number(elements.interval.value));
 }
 
-document.querySelectorAll('[data-filter]').forEach((button) => button.addEventListener('click', () => setFilter(button.dataset.filter)));
-document.querySelectorAll('[data-summary-filter]').forEach((button) => button.addEventListener('click', () => setFilter(button.dataset.summaryFilter)));
 elements.searchInput.addEventListener('input', renderFilteredEvents);
 elements.typeFilter.addEventListener('change', renderFilteredEvents);
 elements.interval.addEventListener('change', schedule);

@@ -50,9 +50,11 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 		Queue: s.queueName, FetchedAt: time.Now().UTC(),
 		Items: make([]unifiedEvent, 0, limit*2+1), Warnings: map[string]string{},
 	}
+	pendingItems := make([]unifiedEvent, 0, limit)
 
 	status, err := s.readWorkerStatus(ctx)
 	var runningFingerprint string
+	var runningItem *unifiedEvent
 	if err != nil {
 		snapshot.Warnings["worker"] = err.Error()
 	} else {
@@ -61,10 +63,11 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 			snapshot.Summary.Running = 1
 			if status.Event != nil {
 				runningFingerprint = eventFingerprint(status.Event)
-				snapshot.Items = append(snapshot.Items, unifiedEvent{
+				running := unifiedEvent{
 					ID: "running-" + runningFingerprint, Status: "running", Source: "worker",
 					StartedAt: status.StartedAt, Event: status.Event,
-				})
+				}
+				runningItem = &running
 			}
 		}
 	}
@@ -88,7 +91,7 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 				fingerprint := eventFingerprint(event)
 				seen[fingerprint]++
 				position := int64(len(rawItems) - index)
-				snapshot.Items = append(snapshot.Items, unifiedEvent{
+				pendingItems = append(pendingItems, unifiedEvent{
 					// 用"内容指纹 + 弹出顺序计数"做稳定 ID:新任务 LPUSH 到队头
 					// 不会改变已有 pending 事件的相对弹出顺序,ID 不变,前端无需重建行
 					ID:     fmt.Sprintf("pending-%s-%d", fingerprint, seen[fingerprint]),
@@ -100,7 +103,7 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 
 	cursor, err := s.history.Find(
 		ctx, bson.D{},
-		options.Find().SetProjection(bson.D{{Key: "_id", Value: 0}}).SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(limit),
+		options.Find().SetProjection(bson.D{{Key: "_id", Value: 0}}).SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(limit),
 	)
 	if err != nil {
 		snapshot.Warnings["mongodb"] = "MongoDB history is unavailable"
@@ -110,13 +113,14 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 		if err := cursor.All(ctx, &historyItems); err != nil {
 			snapshot.Warnings["mongodb"] = "MongoDB history could not be decoded"
 		} else {
-			for _, item := range historyItems {
+			runningIndex := latestMatchingHistoryIndex(historyItems, runningFingerprint)
+			for index := len(historyItems) - 1; index >= 0; index-- {
+				item := historyItems[index]
 				createdAt := item["created_at"]
 				delete(item, "created_at")
 				event := map[string]any(item)
 				fingerprint := eventFingerprint(event)
-				if runningFingerprint != "" && fingerprint == runningFingerprint {
-					runningFingerprint = ""
+				if index == runningIndex {
 					continue
 				}
 				snapshot.Items = append(snapshot.Items, unifiedEvent{
@@ -127,6 +131,11 @@ func (s *server) eventSnapshot(ctx context.Context, limit int64) eventsSnapshot 
 			}
 		}
 	}
+
+	if runningItem != nil {
+		snapshot.Items = append(snapshot.Items, *runningItem)
+	}
+	snapshot.Items = append(snapshot.Items, pendingItems...)
 
 	if len(snapshot.Warnings) == 0 {
 		snapshot.Warnings = nil
@@ -165,4 +174,22 @@ func eventFingerprint(event map[string]any) string {
 		hash *= 1099511628211
 	}
 	return strconv.FormatUint(hash, 36)
+}
+
+func latestMatchingHistoryIndex(items []bson.M, fingerprint string) int {
+	if fingerprint == "" {
+		return -1
+	}
+	for index, item := range items {
+		event := make(map[string]any, len(item))
+		for key, value := range item {
+			if key != "created_at" {
+				event[key] = value
+			}
+		}
+		if eventFingerprint(event) == fingerprint {
+			return index
+		}
+	}
+	return -1
 }

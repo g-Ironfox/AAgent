@@ -4,47 +4,88 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>AAgent Event Console</title>
+  <title>AAgent 事件流</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="AAgent 事件控制台">
-      <span class="brand-mark">A</span>
-      <span><strong>AAgent</strong><small>EVENT CONSOLE</small></span>
+    <a class="brand" href="/" aria-label="AAgent 事件流">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>EVENT STREAM</small></span>
     </a>
     <div class="top-actions">
       <span id="connection" class="connection loading"><i></i><span>连接中</span></span>
       <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="interval"><option value="1000">1s</option><option value="2000" selected>2s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
       <button id="pauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新"><span class="pause-icon" aria-hidden="true"></span></button>
-      <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg class="refresh-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+      <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
     </div>
   </header>
+
   <main>
     <section class="page-heading">
-      <div><p class="eyebrow">LIVE OPERATIONS</p><h1>事件流水</h1><p><code id="queueName">agent_tasks</code> 中的待处理事件、当前执行和最近处理记录。</p></div>
-      <div id="workerCard" class="worker-state"><span>WORKER</span><strong id="workerState">检测中</strong><small id="workerDetail">等待状态快照</small></div>
+      <div>
+        <p class="eyebrow">LIVE EVENT TIMELINE</p>
+        <h1>过去、现在与下一步</h1>
+        <p>队列 <code id="queueName">agent_tasks</code> 的连续执行视图</p>
+      </div>
+      <div class="sync-meta">
+        <span>最后同步</span>
+        <strong id="lastRefresh">--:--:--</strong>
+        <small id="refreshState">自动刷新已开启</small>
+      </div>
     </section>
-    <section class="summary" aria-label="任务状态统计">
-      <button class="summary-item pending" type="button" data-summary-filter="pending"><span>将进行</span><strong id="pendingCount">--</strong><small>Redis 队列</small></button>
-      <button class="summary-item running" type="button" data-summary-filter="running"><span>进行中</span><strong id="runningCount">--</strong><small>Worker 当前事件</small></button>
-      <button class="summary-item done" type="button" data-summary-filter="done"><span>已处理</span><strong id="doneCount">--</strong><small>最近 MongoDB 记录</small></button>
-      <div class="summary-meta"><span>最后同步</span><strong id="lastRefresh">--:--:--</strong><small id="refreshState">自动刷新已开启</small></div>
+
+    <section class="status-strip" aria-label="运行概览">
+      <div><span>执行历史</span><strong id="doneCount">--</strong><small>MongoDB 已加载</small></div>
+      <div class="running-stat"><span>正在执行</span><strong id="runningCount">--</strong><small>MongoDB / Worker</small></div>
+      <div><span>等待执行</span><strong id="pendingCount">--</strong><small>Redis 队列总数</small></div>
+      <div id="workerCard" class="worker-summary unknown"><span>WORKER</span><strong id="workerState">检测中</strong><small id="workerDetail">等待状态快照</small></div>
     </section>
-    <section class="event-panel">
+
+    <section class="stream-panel">
       <div class="toolbar">
-        <div class="segments" role="group" aria-label="状态筛选"><button class="active" type="button" data-filter="all">全部</button><button type="button" data-filter="running">进行中</button><button type="button" data-filter="pending">将进行</button><button type="button" data-filter="done">已处理</button></div>
+        <div class="toolbar-title"><strong>事件时间轴</strong><span id="resultCount">0 条事件</span></div>
         <div class="toolbar-fields">
           <label class="type-filter"><span class="sr-only">事件类型</span><select id="typeFilter"><option value="all">全部类型</option></select></label>
           <label class="search"><span class="search-icon" aria-hidden="true"></span><input id="searchInput" type="search" placeholder="搜索事件内容" autocomplete="off"></label>
         </div>
       </div>
+
       <div id="warningBanner" class="warning-banner" role="alert" hidden></div>
-      <div class="list-head" aria-hidden="true"><span>状态 / 顺序</span><span>事件</span><span>来源 / 时间</span><span></span></div>
-      <div id="eventList" class="event-list" aria-live="polite"><div class="empty-state"><strong>正在建立事件快照</strong><span>统一任务流将在这里出现</span></div></div>
-      <footer class="panel-footer"><span id="resultCount">0 条事件</span><span>MongoDB 表示已进入处理流程，不代表业务执行成功</span></footer>
+
+      <div class="timeline">
+        <section id="historySection" class="event-section history-section" aria-labelledby="historyTitle">
+          <header class="section-heading">
+            <div class="section-marker"><span></span></div>
+            <div><p>PAST · MONGODB</p><h2 id="historyTitle">执行历史</h2></div>
+            <span id="historyVisibleCount" class="section-count">0</span>
+          </header>
+          <div class="list-head" aria-hidden="true"><span>阶段</span><span>事件</span><span>时间 / 来源</span><span></span></div>
+          <div id="historyList" class="event-list"></div>
+        </section>
+
+        <section id="runningSection" class="event-section running-section" aria-labelledby="runningTitle">
+          <header class="section-heading">
+            <div class="section-marker"><span></span></div>
+            <div><p>NOW · WORKER</p><h2 id="runningTitle">正在执行</h2></div>
+            <span id="runningVisibleCount" class="section-count">0</span>
+          </header>
+          <div id="runningList" class="event-list"></div>
+        </section>
+
+        <section id="pendingSection" class="event-section pending-section" aria-labelledby="pendingTitle">
+          <header class="section-heading">
+            <div class="section-marker"><span></span></div>
+            <div><p>NEXT · REDIS</p><h2 id="pendingTitle">等待执行</h2></div>
+            <span id="pendingVisibleCount" class="section-count">0</span>
+          </header>
+          <div class="list-head" aria-hidden="true"><span>队列位置</span><span>事件</span><span>顺序 / 来源</span><span></span></div>
+          <div id="pendingList" class="event-list"></div>
+        </section>
+      </div>
     </section>
   </main>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>

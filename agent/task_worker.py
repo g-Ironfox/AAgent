@@ -87,7 +87,7 @@ def handle_task(e: dict):
                     }
                 }
                 events.append(e)
-            insert_to_queue(AGENT_QUEUE_NAME,events[::-1])
+            insert_to_queue(AGENT_QUEUE_NAME,*events[::-1])
             
 def user_interface(task: dict):
     res = None
