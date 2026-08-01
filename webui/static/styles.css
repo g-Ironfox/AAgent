@@ -45,6 +45,11 @@ code { padding:2px 5px; background:#e5e8e4; font-family:Consolas,monospace; }
 .toolbar-title span { color:var(--muted); font-size:10px; }
 .toolbar .sync-meta { min-width:132px; padding-left:14px; border-left:1px solid var(--line); }
 .toolbar-fields { display:flex; gap:8px; }
+.running-button { height:34px; padding:0 10px; display:flex; align-items:center; gap:6px; color:var(--ink); border:1px solid var(--line); background:#fafbf9; font-size:11px; white-space:nowrap; }
+.running-button:hover { color:var(--ink); border-color:var(--line); background:var(--surface); }
+.running-button.has-running { color:var(--green); border-color:#b9d4c8; background:var(--green-soft); }
+.running-button.has-running:hover { color:var(--green); border-color:var(--green); background:#d7ece2; }
+.running-button svg { flex:0 0 auto; }
 .type-filter { position:relative; }
 .type-filter-toggle,.search { height:34px; border:1px solid var(--line); background:#fafbf9; }
 .type-filter-toggle { position:relative; min-width:130px; padding:0 28px 0 11px; color:var(--ink); font-size:11px; text-align:left; }

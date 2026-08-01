@@ -9,6 +9,7 @@ const elements = {
   lastRefresh: document.querySelector('#lastRefresh'), refreshState: document.querySelector('#refreshState'), warningBanner: document.querySelector('#warningBanner'),
   resultCount: document.querySelector('#resultCount'), searchInput: document.querySelector('#searchInput'), typeFilter: document.querySelector('#typeFilter'),
   timeline: document.querySelector('.timeline'), runningSection: document.querySelector('#runningSection'),
+  runningButton: document.querySelector('#runningButton'),
   interval: document.querySelector('#interval'), pauseButton: document.querySelector('#pauseButton'), refreshButton: document.querySelector('#refreshButton'),
   sections: {
     done: { list: document.querySelector('#historyList'), count: document.querySelector('#historyVisibleCount') },
@@ -48,6 +49,7 @@ function renderSnapshot() {
   elements.lastRefresh.textContent = new Date(snapshot.fetched_at).toLocaleTimeString('zh-CN', { hour12: false });
   renderWorker(snapshot.worker || {});
   renderWarnings(snapshot.warnings);
+  elements.runningButton.classList.toggle('has-running', snapshot.items.some((item) => item.status === 'running'));
   renderFilteredEvents();
 }
 
@@ -129,6 +131,9 @@ function schedule() {
 
 elements.searchInput.addEventListener('input', renderFilteredEvents);
 elements.interval.addEventListener('change', schedule);
+elements.runningButton.addEventListener('click', () => {
+  elements.timeline.scrollTo({ top: elements.runningSection.offsetTop, behavior: 'smooth' });
+});
 
 function initTypeFilter() {
   const container = elements.typeFilter;
