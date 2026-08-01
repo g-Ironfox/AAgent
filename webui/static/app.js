@@ -1,13 +1,14 @@
 import { fetchEvents } from './api.js';
 import { eventType, populateTypes, renderTimeline, syncTypeFilterLabel } from './render.js';
 
-const state = { snapshot: null, paused: false, loading: false, timer: null, selectedTypes: new Set() };
+const state = { snapshot: null, paused: false, loading: false, timer: null, selectedTypes: new Set(), initialPositioned: false };
 const elements = {
-  connection: document.querySelector('#connection'), queueName: document.querySelector('#queueName'),
+  connection: document.querySelector('#connection'),
   pendingCount: document.querySelector('#pendingCount'), doneCount: document.querySelector('#doneCount'),
   workerCard: document.querySelector('#workerCard'), workerState: document.querySelector('#workerState'), workerDetail: document.querySelector('#workerDetail'),
   lastRefresh: document.querySelector('#lastRefresh'), refreshState: document.querySelector('#refreshState'), warningBanner: document.querySelector('#warningBanner'),
   resultCount: document.querySelector('#resultCount'), searchInput: document.querySelector('#searchInput'), typeFilter: document.querySelector('#typeFilter'),
+  timeline: document.querySelector('.timeline'), runningSection: document.querySelector('#runningSection'),
   interval: document.querySelector('#interval'), pauseButton: document.querySelector('#pauseButton'), refreshButton: document.querySelector('#refreshButton'),
   sections: {
     done: { list: document.querySelector('#historyList'), count: document.querySelector('#historyVisibleCount') },
@@ -42,7 +43,6 @@ async function refresh() {
 
 function renderSnapshot() {
   const snapshot = state.snapshot;
-  elements.queueName.textContent = snapshot.queue;
   elements.pendingCount.textContent = formatSummaryCount(snapshot.summary.pending, snapshot.sources?.redis === 'ok');
   elements.doneCount.textContent = formatSummaryCount(snapshot.summary.history, snapshot.sources?.mongodb === 'ok');
   elements.lastRefresh.textContent = new Date(snapshot.fetched_at).toLocaleTimeString('zh-CN', { hour12: false });
@@ -61,6 +61,10 @@ function renderFilteredEvents() {
   });
   const counts = renderTimeline(elements.sections, items, Boolean(query) || selectedTypes.size > 0, state.snapshot.sources);
   elements.resultCount.textContent = `${counts.done + counts.running + counts.pending} 条事件`;
+  if (!state.initialPositioned) {
+    elements.timeline.scrollTop = elements.runningSection.offsetTop;
+    state.initialPositioned = true;
+  }
 }
 
 function renderWorker(worker) {

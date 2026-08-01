@@ -22,19 +22,6 @@
   </header>
 
   <main>
-    <section class="page-heading">
-      <div>
-        <p class="eyebrow">LIVE EVENT TIMELINE</p>
-        <h1>过去、现在与下一步</h1>
-        <p>队列 <code id="queueName">agent_tasks</code> 的连续执行视图</p>
-      </div>
-      <div class="sync-meta">
-        <span>最后同步</span>
-        <strong id="lastRefresh">--:--:--</strong>
-        <small id="refreshState">自动刷新已开启</small>
-      </div>
-    </section>
-
     <section class="status-strip" aria-label="运行概览">
       <div><span>已加载历史</span><strong id="doneCount">--</strong><small>MongoDB 当前窗口</small></div>
       <div><span>等待执行</span><strong id="pendingCount">--</strong><small>Redis 队列总数</small></div>
@@ -44,6 +31,11 @@
     <section class="stream-panel">
       <div class="toolbar">
         <div class="toolbar-title"><strong>事件时间轴</strong><span id="resultCount">0 条事件</span></div>
+        <div class="sync-meta">
+          <span>最后同步</span>
+          <strong id="lastRefresh">--:--:--</strong>
+          <small id="refreshState">自动刷新已开启</small>
+        </div>
         <div class="toolbar-fields">
           <div class="type-filter" id="typeFilter">
             <span class="sr-only">事件类型</span>
