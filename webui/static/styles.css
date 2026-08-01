@@ -140,7 +140,7 @@ code { padding:2px 5px; background:#e5e8e4; font-family:Consolas,monospace; }
 .chat-message { width:min(78%,720px); margin:0 0 22px auto; animation:message-in 220ms ease both; }
 .message-meta { margin-bottom:6px; display:flex; justify-content:flex-end; gap:10px; color:var(--muted); font:9px Consolas,monospace; }
 .message-meta strong { color:var(--green); }
-.chat-message p { margin:0; padding:14px 16px; color:#fff; background:var(--ink); border-left:4px solid var(--green); font:13px/1.65 "Microsoft YaHei",sans-serif; white-space:pre-wrap; overflow-wrap:anywhere; }
+.chat-message p { margin:0; padding:14px 16px; color:#29443a; background:#e5f2eb; border:1px solid #c8dfd2; border-left:4px solid var(--green); font:13px/1.65 "Microsoft YaHei",sans-serif; white-space:pre-wrap; overflow-wrap:anywhere; }
 .chat-composer { margin:0; padding:13px max(24px,calc((100% - 860px)/2)); border-top:1px solid var(--line); background:#fff; }
 .chat-composer textarea { width:100%; max-height:180px; min-height:52px; padding:14px 15px; resize:none; color:var(--ink); border:1px solid #bdc7c1; background:#fbfcfa; font:13px/1.65 "Microsoft YaHei",sans-serif; }
 .chat-composer textarea:focus { border-color:var(--green); outline:2px solid rgba(19,119,90,.12); }

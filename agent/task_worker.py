@@ -25,6 +25,14 @@ def handle_task(e: dict):
     if e['event_type'] == "qq":
         print(f"QQ事件:{e['payload']}")
         user_interface(e['payload'])
+    elif e['event_type'] == "webui":
+        e={
+            "event_type":"active",
+            "payload":{
+            }
+        }
+        publish_to_queue(AGENT_QUEUE_NAME,e)
+        
     elif e['event_type'] == 'tool':
         print(f"工具事件:{e['payload']}")
         tool_id = e['payload']['id']
@@ -60,19 +68,23 @@ def handle_task(e: dict):
     elif e["event_type"]=="tool_return":
         pass
     elif e["event_type"]=="active":
-        user_id=e['payload']['user_id']
-        group_id=e['payload']['group_id']
-        res=chat_with_deepseek(user_id,group_id)
-        if not res:
-            # LLM 返回 tool_calls 时 content 为空,不发空消息,等工具链完成后的最终回复
-            print(f"LLM 无文本回复(可能请求了工具调用),不发送消息 user_id={user_id}")
-            return
-        if group_id:
-            send_group_msg(group_id, res)
-            print(f"已发送群消息 group_id={group_id}")
+        content,reasoning,tool_calls=chat_with_deepseek()
+        e={'event_type':"response",
+        "payload":{
+            "content":content,
+                "reasoning":reasoning,
+                "tool_calls":tool_calls
+            }
+        }
+        if tool_calls:
+            e2={
+                    "event_type":"active",
+                    "payload":{
+                    }
+                }
+            insert_to_queue(AGENT_QUEUE_NAME,e2,e)
         else:
-            send_private_msg(user_id, res)
-            print(f"已发送私聊 user_id={user_id}")
+            insert_to_queue(AGENT_QUEUE_NAME,e)
     elif e["event_type"]=="response":
         tool_calls=e["payload"].get("tool_calls")
         

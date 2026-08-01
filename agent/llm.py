@@ -32,7 +32,7 @@ def send_messages(messages,url,key,model):
     print(resp.json())
     return resp.json()["choices"][0]["message"]
 
-def chat_with_deepseek(user_id,group_id):
+def chat_with_deepseek():
     h=get_recent_history(limit=10)
     messages = [
         {"role": "system", "content": "你是一个办公助手"},
@@ -47,8 +47,12 @@ def chat_with_deepseek(user_id,group_id):
                 messages.append({"role": "user", "content": f"<privatemsg sender={payload['user_id']}>{payload['raw_message']}</privatemsg>"})
         if i['event_type']=='tool_return':
             messages.append({"role":"user",'content':f"Tool {payload['tool']} args({json.dumps(payload['args'])}) result: {payload['result']}"})
+        if i['event_type']=='webui':
+            messages.append({"role":"user",'content':f"<UserMsg>{payload['message']}</UserMsg>"})
+
         if i['event_type']=='response':
             messages.append({"role":"assistant","content":payload["content"]})
+        
     print(messages)
     message = send_messages(
         messages,
@@ -58,28 +62,8 @@ def chat_with_deepseek(user_id,group_id):
     )
 
     if message ==402:
-        return "[-]余额不足"
+        return "[-]余额不足","",[]
     
     tool_calls=message.get('tool_calls') if message.get('tool_calls') else []
-
-    e={'event_type':"response",
-       "payload":{
-           "content":message['content'],
-            "reasoning_content":message.get('reasoning_content'),
-            "tool_calls":tool_calls
-        }
-    }
-    if tool_calls:
-        e2={
-                "event_type":"active",
-                "payload":{
-                    "user_id":user_id,
-                    "group_id":group_id
-                }
-            }
-        insert_to_queue(AGENT_QUEUE_NAME,e2,e)
-    else:
-        insert_to_queue(AGENT_QUEUE_NAME,e)
-
-    print(message['content'],message.get('reasoning_content'),tool_calls)
-    return message['content']
+    reasoning=message.get('reasoning_content') if message.get('reasoning_content') else ""
+    return message['content'],reasoning,tool_calls
