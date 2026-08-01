@@ -15,6 +15,7 @@ func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/events", s.events)
+	mux.HandleFunc("POST /api/chat", s.submitChat)
 	mux.Handle("GET /", staticHandler())
 	return mux
 }

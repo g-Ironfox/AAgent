@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent Chat</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件流">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>CHAT CONSOLE</small></span>
+    </a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a>
+        <a class="active" href="/chat.html" aria-current="page">Chat</a>
+      </nav>
+      <span id="chatConnection" class="connection online"><i></i><span>准备就绪</span></span>
+    </div>
+  </header>
+
+  <main class="chat-main">
+    <section class="chat-workspace" aria-labelledby="chatTitle">
+      <header class="chat-heading">
+        <div>
+          <p>WEBUI · REDIS</p>
+          <h1 id="chatTitle">新对话</h1>
+        </div>
+        <div class="queue-indicator">
+          <span>目标队列</span>
+          <strong id="queueName">agent_tasks</strong>
+        </div>
+      </header>
+
+      <div id="messageList" class="message-list" aria-live="polite">
+        <div id="chatEmpty" class="chat-empty">
+          <span class="empty-mark" aria-hidden="true">A</span>
+          <strong>开始一段对话</strong>
+          <small>消息将在发送后进入 Agent 任务队列</small>
+        </div>
+      </div>
+
+      <form id="chatForm" class="chat-composer">
+        <label for="messageInput" class="sr-only">消息</label>
+        <textarea id="messageInput" name="message" rows="1" maxlength="4000" placeholder="输入消息…" autocomplete="off" required></textarea>
+        <div class="composer-actions">
+          <span id="sendStatus" class="send-status" role="status"></span>
+          <span id="characterCount" class="character-count">0 / 4000</span>
+          <button id="sendButton" class="send-button" type="submit">发送</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="/chat.js"></script>
+</body>
+</html>
