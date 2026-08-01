@@ -2,14 +2,13 @@ services:
   agent:
     build: ./agent
     container_name: agent_aagent
-    volumes:
-      - ./agent:/app
-    working_dir: /app
-    command: ["sleep", "infinity"]
+    command: ["python", "task_worker.py"]
     restart: unless-stopped
     depends_on:
-      - redis
-      - mongodb
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
     env_file:
       - .env
     networks:
@@ -18,13 +17,11 @@ services:
   qqbot:
     build: ./qqbot
     container_name: qqbot_aagent
-    volumes:
-      - ./qqbot:/app
-    working_dir: /app
-    command: ["sleep", "infinity"]
+    command: ["python", "listener.py"]
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     networks:
@@ -38,7 +35,7 @@ services:
       redis:
         condition: service_healthy
       mongodb:
-        condition: service_started
+        condition: service_healthy
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -65,8 +62,6 @@ services:
     image: redis:7-alpine
     container_name: redis_aagent
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - ./data/redis:/data
     command: ["redis-server", "--appendonly", "yes"]
@@ -81,13 +76,17 @@ services:
   mongodb:
     image: mongo:8
     container_name: mongo_aagent
-    ports:
-      - "27015:27017"
     volumes:
       - ./data/mongo:/data/db
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\" | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - rainbow_net
 
