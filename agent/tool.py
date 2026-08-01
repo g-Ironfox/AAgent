@@ -1,6 +1,7 @@
 import json
 import os
 from itertools import cycle
+from qqapi import *
 
 import requests
 
@@ -112,6 +113,48 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "send_group_msg",
+            "description": "发送群消息",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "group_id": {
+                        "type": "string",
+                        "description": "group_id"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "消息内容"
+                    },
+                },
+                "required": ["group_id","message"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_private_msg",
+            "description": "发送私聊消息",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "user_id"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "消息内容"
+                    },
+                },
+                "required": ["group_id","message"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "tavily_search",
             "description": "使用 Tavily 搜索引擎进行网络搜索，适合获取实时或最新信息",
             "parameters": {
@@ -139,6 +182,10 @@ def execute_tool(id,tool,args):
         result = kimiBalance()
     elif tool == "tavily_search":
         result = tavily_search(args.get("keyword", ""))
+    elif tool =="send_group_msg":
+        result = send_group_msg(args.get("group_id", ""),args.get("message", ""))
+    elif tool =="send_private_msg":
+        result = send_private_msg(args.get("user_id", ""),args.get("message", ""))
     else:
         result = f"未知工具: {tool}"
 
