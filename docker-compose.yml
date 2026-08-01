@@ -67,7 +67,7 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 3s
       timeout: 3s
       retries: 10
     networks:
@@ -83,10 +83,10 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\" | grep -q 1"]
-      interval: 10s
+      interval: 3s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 10s
     networks:
       - rainbow_net
 
