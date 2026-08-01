@@ -1,7 +1,7 @@
 import { fetchEvents } from './api.js';
-import { eventType, populateTypes, renderTimeline } from './render.js';
+import { eventType, populateTypes, renderTimeline, syncTypeFilterLabel } from './render.js';
 
-const state = { snapshot: null, paused: false, loading: false, timer: null };
+const state = { snapshot: null, paused: false, loading: false, timer: null, selectedTypes: new Set() };
 const elements = {
   connection: document.querySelector('#connection'), queueName: document.querySelector('#queueName'),
   pendingCount: document.querySelector('#pendingCount'), doneCount: document.querySelector('#doneCount'),
@@ -26,7 +26,7 @@ async function refresh() {
     const newTypes = new Set(snapshot.items.map(eventType));
     state.snapshot = snapshot;
     const typesChanged = !oldTypes || oldTypes.size !== newTypes.size || [...oldTypes].some((type) => !newTypes.has(type));
-    if (typesChanged) populateTypes(elements.typeFilter, snapshot.items);
+    if (typesChanged) populateTypes(elements.typeFilter, snapshot.items, state.selectedTypes);
     renderSnapshot();
     setConnection(true);
   } catch (error) {
@@ -54,12 +54,12 @@ function renderSnapshot() {
 function renderFilteredEvents() {
   if (!state.snapshot) return;
   const query = elements.searchInput.value.trim().toLocaleLowerCase('zh-CN');
-  const selectedType = elements.typeFilter.value;
+  const selectedTypes = state.selectedTypes;
   const items = state.snapshot.items.filter((item) => {
-    if (selectedType !== 'all' && eventType(item) !== selectedType) return false;
+    if (selectedTypes.size > 0 && !selectedTypes.has(eventType(item))) return false;
     return !query || JSON.stringify(item.event).toLocaleLowerCase('zh-CN').includes(query);
   });
-  const counts = renderTimeline(elements.sections, items, Boolean(query) || selectedType !== 'all', state.snapshot.sources);
+  const counts = renderTimeline(elements.sections, items, Boolean(query) || selectedTypes.size > 0, state.snapshot.sources);
   elements.resultCount.textContent = `${counts.done + counts.running + counts.pending} 条事件`;
 }
 
@@ -124,8 +124,45 @@ function schedule() {
 }
 
 elements.searchInput.addEventListener('input', renderFilteredEvents);
-elements.typeFilter.addEventListener('change', renderFilteredEvents);
 elements.interval.addEventListener('change', schedule);
+
+function initTypeFilter() {
+  const container = elements.typeFilter;
+  const toggle = container.querySelector('.type-filter-toggle');
+  const menu = container.querySelector('.type-filter-menu');
+  const closeMenu = () => {
+    menu.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+  toggle.addEventListener('click', () => {
+    const opening = menu.hidden;
+    menu.hidden = !opening;
+    toggle.setAttribute('aria-expanded', String(opening));
+  });
+  document.addEventListener('click', (event) => {
+    if (!container.contains(event.target)) closeMenu();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeMenu();
+  });
+  menu.addEventListener('click', (event) => {
+    if (!event.target.closest('.type-filter-clear')) return;
+    state.selectedTypes.clear();
+    for (const box of menu.querySelectorAll('input[type="checkbox"]')) box.checked = false;
+    syncTypeFilterLabel(container, state.selectedTypes);
+    renderFilteredEvents();
+  });
+  menu.addEventListener('change', (event) => {
+    const box = event.target;
+    if (!(box instanceof HTMLInputElement) || box.type !== 'checkbox') return;
+    if (box.checked) state.selectedTypes.add(box.value);
+    else state.selectedTypes.delete(box.value);
+    syncTypeFilterLabel(container, state.selectedTypes);
+    renderFilteredEvents();
+  });
+}
+
+initTypeFilter();
 elements.refreshButton.addEventListener('click', refresh);
 elements.pauseButton.addEventListener('click', () => {
   state.paused = !state.paused;

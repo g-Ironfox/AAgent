@@ -31,22 +31,38 @@ export function eventTime(item) {
     : '时间未知';
 }
 
-export function populateTypes(select, items) {
-  const selected = select.value;
+export function populateTypes(container, items, selected) {
   const types = [...new Set(items.map(eventType))].sort((left, right) => left.localeCompare(right, 'zh-CN'));
-  const fragment = document.createDocumentFragment();
-  const all = document.createElement('option');
-  all.value = 'all';
-  all.textContent = '全部类型';
-  fragment.append(all);
-  for (const type of types) {
-    const option = document.createElement('option');
-    option.value = type;
-    option.textContent = type;
-    fragment.append(option);
+  for (const value of [...selected]) {
+    if (!types.includes(value)) selected.delete(value);
   }
-  select.replaceChildren(fragment);
-  select.value = types.includes(selected) ? selected : 'all';
+  const fragment = document.createDocumentFragment();
+  const clear = document.createElement('button');
+  clear.type = 'button';
+  clear.className = 'type-filter-clear';
+  clear.textContent = '全部类型';
+  fragment.append(clear);
+  for (const type of types) {
+    const label = document.createElement('label');
+    label.className = 'type-filter-option';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.value = type;
+    box.checked = selected.has(type);
+    const text = document.createElement('span');
+    text.textContent = type;
+    label.append(box, text);
+    fragment.append(label);
+  }
+  container.querySelector('.type-filter-menu').replaceChildren(fragment);
+  syncTypeFilterLabel(container, selected);
+}
+
+export function syncTypeFilterLabel(container, selected) {
+  const label = container.querySelector('.type-filter-label');
+  if (selected.size === 0) label.textContent = '全部类型';
+  else if (selected.size === 1) label.textContent = [...selected][0];
+  else label.textContent = `已选 ${selected.size} 项`;
 }
 
 export function renderTimeline(sections, items, filtered, sources = {}) {

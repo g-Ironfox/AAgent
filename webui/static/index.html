@@ -15,7 +15,7 @@
     </a>
     <div class="top-actions">
       <span id="connection" class="connection loading"><i></i><span>连接中</span></span>
-      <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="interval"><option value="1000">1s</option><option value="2000" selected>2s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
+      <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="interval"><option value="500">0.5s</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
       <button id="pauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新"><span class="pause-icon" aria-hidden="true"></span></button>
       <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
     </div>
@@ -45,7 +45,11 @@
       <div class="toolbar">
         <div class="toolbar-title"><strong>事件时间轴</strong><span id="resultCount">0 条事件</span></div>
         <div class="toolbar-fields">
-          <label class="type-filter"><span class="sr-only">事件类型</span><select id="typeFilter"><option value="all">全部类型</option></select></label>
+          <div class="type-filter" id="typeFilter">
+            <span class="sr-only">事件类型</span>
+            <button type="button" class="type-filter-toggle" aria-haspopup="true" aria-expanded="false"><span class="type-filter-label">全部类型</span><span class="type-filter-caret" aria-hidden="true"></span></button>
+            <div class="type-filter-menu" hidden></div>
+          </div>
           <label class="search"><span class="search-icon" aria-hidden="true"></span><input id="searchInput" type="search" placeholder="搜索事件内容" autocomplete="off"></label>
         </div>
       </div>
