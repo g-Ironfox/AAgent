@@ -1,7 +1,8 @@
 import { fetchEvents } from './api.js';
 import { eventType, populateTypes, renderTimeline, syncTypeFilterLabel } from './render.js';
+import { captureAnchorState, restoreAnchorState } from './scroll-anchor.js';
 
-const state = { snapshot: null, paused: false, loading: false, timer: null, selectedTypes: new Set(), initialPositioned: false };
+const state = { snapshot: null, paused: false, loading: false, timer: null, selectedTypes: new Set(), initialPositioned: false, anchorRestoreSuppressedUntil: 0 };
 const elements = {
   connection: document.querySelector('#connection'),
   pendingCount: document.querySelector('#pendingCount'), doneCount: document.querySelector('#doneCount'),
@@ -61,11 +62,18 @@ function renderFilteredEvents() {
     if (selectedTypes.size > 0 && !selectedTypes.has(eventType(item))) return false;
     return !query || JSON.stringify(item.event).toLocaleLowerCase('zh-CN').includes(query);
   });
+  const anchorState = state.initialPositioned ? captureAnchorState(elements.timeline, '.event-row') : null;
   const counts = renderTimeline(elements.sections, items, Boolean(query) || selectedTypes.size > 0, state.snapshot.sources);
   elements.resultCount.textContent = `${counts.done + counts.running + counts.pending} 条事件`;
   if (!state.initialPositioned) {
     elements.timeline.scrollTop = elements.runningSection.offsetTop;
     state.initialPositioned = true;
+  } else if (anchorState && Date.now() > state.anchorRestoreSuppressedUntil) {
+    window.requestAnimationFrame(() => {
+      if (Date.now() > state.anchorRestoreSuppressedUntil) {
+        restoreAnchorState(elements.timeline, anchorState, '.event-row');
+      }
+    });
   }
 }
 
@@ -132,6 +140,7 @@ function schedule() {
 elements.searchInput.addEventListener('input', renderFilteredEvents);
 elements.interval.addEventListener('change', schedule);
 elements.runningButton.addEventListener('click', () => {
+  state.anchorRestoreSuppressedUntil = Date.now() + 1200;
   elements.timeline.scrollTo({ top: elements.runningSection.offsetTop, behavior: 'smooth' });
 });
 
