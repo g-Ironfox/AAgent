@@ -70,9 +70,11 @@ def handle_task(e: dict):
         pass
     elif e["event_type"]=="active":
 
+        with open("prompt/system.txt", "r", encoding="utf-8") as f:
+            system_prompt = f.read().replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
         h=get_recent_history(limit=10)
         messages = [
-            {"role": "system", "content": "你是一个办公助手"},
+            {"role": "system", "content": system_prompt},
         ]
 
         for i in h[::-1]:
@@ -147,51 +149,51 @@ def user_interface(task: dict):
     if not isinstance(raw_message, str):
         raw_message = ""
 
-    if raw_message.startswith('/'):
-        command_text = raw_message[1:].strip()
-        if not command_text:
-            return
-        command_parts = command_text.split(maxsplit=1)
-        cmd = command_parts[0]
-        if cmd == 'dsB':
-            balance = deepseekBalance()
-            res = f"{balance}rmb" if balance is not None else "DeepSeek 余额查询失败"
-        elif cmd == 'kmB':
-            balance = kimiBalance()
-            res = f"{balance}rmb" if balance is not None else "Kimi 余额查询失败"
-        elif cmd == 'B':
-            kimi_balance = kimiBalance()
-            deepseek_balance = deepseekBalance()
-            res = f'''余额
-kimi{kimi_balance if kimi_balance is not None else "查询失败"}rmb
-deepseek{deepseek_balance if deepseek_balance is not None else "查询失败"}rmb
-'''
-        elif cmd == "search":
-            query = command_parts[1].strip() if len(command_parts) > 1 else ""
-            if not query:
+    if str(user_id) == TARGET_USER_ID and (not group_id or f'[CQ:at,qq={BOT_ID}]' in raw_message):
+        if raw_message.startswith('/'):
+            command_text = raw_message[1:].strip()
+            if not command_text:
                 return
-            print(query)
-            search_results = tavily_search(query)
-            if search_results:
-                res = search_results[0].get('title', '')
+            command_parts = command_text.split(maxsplit=1)
+            cmd = command_parts[0]
+            if cmd == 'dsB':
+                balance = deepseekBalance()
+                res = f"{balance}rmb" if balance is not None else "DeepSeek 余额查询失败"
+            elif cmd == 'kmB':
+                balance = kimiBalance()
+                res = f"{balance}rmb" if balance is not None else "Kimi 余额查询失败"
+            elif cmd == 'B':
+                kimi_balance = kimiBalance()
+                deepseek_balance = deepseekBalance()
+                res = f'''余额
+    kimi{kimi_balance if kimi_balance is not None else "查询失败"}rmb
+    deepseek{deepseek_balance if deepseek_balance is not None else "查询失败"}rmb
+    '''
+            elif cmd == "search":
+                query = command_parts[1].strip() if len(command_parts) > 1 else ""
+                if not query:
+                    return
+                print(query)
+                search_results = tavily_search(query)
+                if search_results:
+                    res = search_results[0].get('title', '')
+                else:
+                    res = "搜索无结果"
+            # 将命令结果回复给用户（群消息回群，私聊回私聊）
+            if res:
+                if group_id:
+                    send_group_msg(group_id, res)
+                else:
+                    send_private_msg(user_id, res)
             else:
-                res = "搜索无结果"
-        # 将命令结果回复给用户（群消息回群，私聊回私聊）
-        if res:
-            if group_id:
-                send_group_msg(group_id, res)
-            else:
-                send_private_msg(user_id, res)
+                print("命令无结果:", raw_message)
         else:
-            print("命令无结果:", raw_message)
-    else:
-        if not raw_message:
-            print("空消息，跳过:", task)
-            return
+            if not raw_message:
+                print("空消息，跳过:", task)
+                return
 
-        print("收到任务:", task)
+            print("收到任务:", task)
 
-        if str(user_id) == TARGET_USER_ID and (not group_id or f'[CQ:at,qq={BOT_ID}]' in raw_message):
             e={
                 "event_type":"active",
                 "payload":{

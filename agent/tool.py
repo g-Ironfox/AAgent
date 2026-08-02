@@ -120,11 +120,11 @@ tools = [
                 "properties": {
                     "group_id": {
                         "type": "string",
-                        "description": "group_id"
+                        "description": "群号"
                     },
                     "message": {
                         "type": "string",
-                        "description": "消息内容"
+                        "description": "消息内容 `[CQ:at,qq=QQ号]`可用于艾特用户"
                     },
                 },
                 "required": ["group_id","message"]
@@ -141,11 +141,11 @@ tools = [
                 "properties": {
                     "user_id": {
                         "type": "string",
-                        "description": "user_id"
+                        "description": "QQ号"
                     },
                     "message": {
                         "type": "string",
-                        "description": "消息内容"
+                        "description": "消息内容 `[CQ:at,qq=QQ号]`可用于艾特用户"
                     },
                 },
                 "required": ["user_id","message"]
