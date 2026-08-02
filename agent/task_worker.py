@@ -85,7 +85,7 @@ def handle_task(e: dict):
                         messages.append({"role": "user", "content": f"<QQ event='msg' type='private' sender_id={payload['user_id']}>{payload['raw_message']}</QQ>"})
             if i['event_type']=='tool_return':
                 messages.append({"role":"user",'content':f"Tool {payload['tool']} args({json.dumps(payload['args'])}) result: {payload['result']}"})
-            if i['event_type']=='terminal':
+            if i['event_type']=='webui':
                 messages.append({"role":"user",'content':f"<Command>{payload['message']}</Command>"})
 
             if i['event_type']=='response':
