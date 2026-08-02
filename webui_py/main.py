@@ -107,10 +107,10 @@ async def terminal_body_guard(request: Request, call_next):
     return await call_next(request)
 
 
-def validate_limit(limit: int) -> int | JSONResponse:
+def limit_error(limit: int) -> JSONResponse | None:
     if limit < 1 or limit > 300:
         return JSONResponse(status_code=400, content={"error": "limit must be between 1 and 300"})
-    return limit
+    return None
 
 
 def event_fingerprint(event: dict[str, Any]) -> str:
@@ -137,7 +137,7 @@ def decode_queue_event(raw: str) -> dict[str, Any]:
         return {"event_type": "raw", "payload": {"raw": raw}}
 
 
-def worker_source_status(state: str) -> str:
+def worker_source_status(state: Any) -> str:
     if state in {"idle", "processing"}:
         return "ok"
     if state == "unknown":
@@ -158,105 +158,123 @@ def read_worker_status() -> tuple[dict[str, Any], str | None]:
         status = json.loads(raw)
     except json.JSONDecodeError:
         return {"state": "invalid"}, "Worker status is invalid"
+    if not isinstance(status, dict):
+        return {"state": "invalid"}, "Worker status must be a JSON object"
     if status.get("state") not in {"idle", "processing"}:
         return {"state": "invalid"}, "Worker status has an unknown state"
-    if status["state"] == "processing" and "event" not in status:
-        return {"state": "invalid"}, "Worker processing status has no event"
+    if status["state"] == "processing" and not isinstance(status.get("event"), dict):
+        return {"state": "invalid"}, "Worker processing status has no event object"
     return status, None
 
 
-def event_snapshot(limit: int) -> dict[str, Any]:
-    snapshot: dict[str, Any] = {
-        "queue": QUEUE_NAME,
-        "fetched_at": datetime.now(timezone.utc),
-        "worker": {"state": "unknown"},
-        "summary": {"pending": 0, "running": 0, "history": 0},
-        "sources": {"mongodb": "unavailable", "redis": "unavailable", "worker": "unavailable"},
-        "items": [],
-        "warnings": {},
-    }
-    pending_items: list[dict[str, Any]] = []
-
-    status, status_error = read_worker_status()
-    snapshot["worker"] = status
-    snapshot["sources"]["worker"] = worker_source_status(status.get("state", "invalid"))
-    if status_error:
-        snapshot["warnings"]["worker"] = status_error
-
+def worker_stage() -> tuple[dict[str, Any], str, str | None, dict[str, Any] | None, str]:
+    status, warning = read_worker_status()
+    running_item: dict[str, Any] | None = None
     running_fingerprint = ""
-    running = None
     if status.get("state") == "processing":
-        snapshot["summary"]["running"] = 1
         event = status.get("event")
         if isinstance(event, dict):
             running_fingerprint = event_fingerprint(event)
-            running = {
+            running_item = {
                 "id": f"running-{running_fingerprint}",
                 "status": "running",
                 "source": "worker",
                 "started_at": status.get("started_at", ""),
                 "event": event,
             }
+    return status, worker_source_status(status.get("state")), warning, running_item, running_fingerprint
 
+
+def pending_stage(limit: int) -> tuple[list[dict[str, Any]], int, str, str | None]:
     try:
         queue_length = redis_client.llen(QUEUE_NAME)
-        snapshot["sources"]["redis"] = "ok"
-        snapshot["summary"]["pending"] = queue_length
         start = max(queue_length - limit, 0)
         raw_items = redis_client.lrange(QUEUE_NAME, start, queue_length - 1)
-        seen: dict[str, int] = {}
-        for index in range(len(raw_items) - 1, -1, -1):
-            event = decode_queue_event(raw_items[index])
-            fingerprint = event_fingerprint(event)
-            seen[fingerprint] = seen.get(fingerprint, 0) + 1
-            pending_items.append(
-                {
-                    "id": f"pending-{fingerprint}-{seen[fingerprint]}",
-                    "status": "pending",
-                    "source": "redis",
-                    "position": len(raw_items) - index,
-                    "event": event,
-                }
-            )
     except redis.RedisError:
-        snapshot["warnings"]["redis"] = "Redis queue is unavailable"
+        return [], 0, "unavailable", "Redis queue is unavailable"
 
+    counts: dict[str, int] = {}
+    items: list[dict[str, Any]] = []
+    for index in range(len(raw_items) - 1, -1, -1):
+        event = decode_queue_event(raw_items[index])
+        fingerprint = event_fingerprint(event)
+        counts[fingerprint] = counts.get(fingerprint, 0) + 1
+        items.append(
+            {
+                "id": f"pending-{fingerprint}-{counts[fingerprint]}",
+                "status": "pending",
+                "source": "redis",
+                "position": len(raw_items) - index,
+                "event": event,
+            }
+        )
+    return items, queue_length, "ok", None
+
+
+def history_stage(limit: int, running_fingerprint: str) -> tuple[list[dict[str, Any]], str, str | None]:
     try:
         documents = list(history.find({}, {"_id": 0}).sort("_id", DESCENDING).limit(limit))
-        snapshot["sources"]["mongodb"] = "ok"
-        running_index = -1
-        if running_fingerprint:
-            for index, document in enumerate(documents):
-                event = {key: value for key, value in document.items() if key != "created_at"}
-                if event_fingerprint(event) == running_fingerprint:
-                    running_index = index
-                    break
-        history_items = []
-        for index, document in enumerate(documents):
-            created_at = document.pop("created_at", None)
-            event = document
-            fingerprint = event_fingerprint(event)
-            if index == running_index:
-                continue
-            history_items.append(
-                {
-                    "id": f"done-{fingerprint}-{created_at}",
-                    "status": "done",
-                    "source": "mongodb",
-                    "created_at": created_at,
-                    "event": event,
-                }
-            )
-            snapshot["summary"]["history"] += 1
-        snapshot["items"].extend(reversed(history_items))
     except PyMongoError:
-        snapshot["warnings"]["mongodb"] = "MongoDB history is unavailable"
+        return [], "unavailable", "MongoDB history is unavailable"
 
-    if running:
-        snapshot["items"].append(running)
+    running_index = -1
+    if running_fingerprint:
+        for index, document in enumerate(documents):
+            event = {key: value for key, value in document.items() if key != "created_at"}
+            if event_fingerprint(event) == running_fingerprint:
+                running_index = index
+                break
+
+    items: list[dict[str, Any]] = []
+    for index, document in enumerate(documents):
+        if index == running_index:
+            continue
+        created_at = document.get("created_at")
+        event = {key: value for key, value in document.items() if key != "created_at"}
+        fingerprint = event_fingerprint(event)
+        items.append(
+            {
+                "id": f"done-{fingerprint}-{created_at}",
+                "status": "done",
+                "source": "mongodb",
+                "created_at": created_at,
+                "event": event,
+            }
+        )
+    return items, "ok", None
+
+
+def event_snapshot(limit: int) -> dict[str, Any]:
+    worker, worker_source, worker_warning, running_item, running_fingerprint = worker_stage()
+    pending_items, pending_count, redis_source, redis_warning = pending_stage(limit)
+    history_items, mongo_source, mongo_warning = history_stage(limit, running_fingerprint)
+
+    snapshot: dict[str, Any] = {
+        "queue": QUEUE_NAME,
+        "fetched_at": datetime.now(timezone.utc),
+        "worker": worker,
+        "summary": {
+            "pending": pending_count,
+            "running": 1 if running_item else 0,
+            "history": len(history_items),
+        },
+        "sources": {"mongodb": mongo_source, "redis": redis_source, "worker": worker_source},
+        "items": list(reversed(history_items)),
+    }
+
+    warnings = {}
+    if worker_warning:
+        warnings["worker"] = worker_warning
+    if redis_warning:
+        warnings["redis"] = redis_warning
+    if mongo_warning:
+        warnings["mongodb"] = mongo_warning
+    if warnings:
+        snapshot["warnings"] = warnings
+
+    if running_item:
+        snapshot["items"].append(running_item)
     snapshot["items"].extend(pending_items)
-    if not snapshot["warnings"]:
-        snapshot.pop("warnings")
     return snapshot
 
 
@@ -271,18 +289,17 @@ def health():
 
 @app.get("/api/events")
 def events(limit: int = Query(150)):
-    checked = validate_limit(limit)
-    if isinstance(checked, JSONResponse):
-        return checked
-    return event_snapshot(checked)
+    error = limit_error(limit)
+    if error:
+        return error
+    return event_snapshot(limit)
 
 
 @app.get("/api/terminal/history")
 def terminal_history(limit: int = Query(150)):
-    checked = validate_limit(limit)
-    if isinstance(checked, JSONResponse):
-        return checked
-    limit = checked
+    error = limit_error(limit)
+    if error:
+        return error
     try:
         documents = list(
             history.find({"event_type": {"$in": ["webui", "response"]}})
@@ -294,9 +311,10 @@ def terminal_history(limit: int = Query(150)):
 
     items = []
     for document in reversed(documents):
-        object_id = document.pop("_id", None)
-        created_at = document.pop("created_at", None)
-        items.append({"id": str(object_id) if object_id else "", "created_at": created_at, "event": document})
+        object_id = document.get("_id")
+        created_at = document.get("created_at")
+        event = {key: value for key, value in document.items() if key not in {"_id", "created_at"}}
+        items.append({"id": str(object_id) if object_id else "", "created_at": created_at, "event": event})
     return {"fetched_at": datetime.now(timezone.utc), "items": items}
 
 
