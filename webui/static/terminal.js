@@ -1,6 +1,6 @@
 import { fetchTerminalHistory, submitTerminal } from './api.js';
 
-const state = { sending: false, paused: false, loading: false, timer: null, seen: new Set() };
+const state = { sending: false, paused: false, loading: false, historyLoaded: false, timer: null, seen: new Set() };
 const elements = {
   form: document.querySelector('#terminalForm'),
   input: document.querySelector('#messageInput'),
@@ -9,6 +9,7 @@ const elements = {
   characterCount: document.querySelector('#characterCount'),
   messageList: document.querySelector('#messageList'),
   empty: document.querySelector('#terminalEmpty'),
+  latestButton: document.querySelector('#terminalLatestButton'),
   queueName: document.querySelector('#queueName'),
   lastRefresh: document.querySelector('#terminalLastRefresh'),
   refreshState: document.querySelector('#terminalRefreshState'),
@@ -48,6 +49,7 @@ function resizeInput() {
 }
 
 function appendHistory(items) {
+  const wasNearBottom = isNearBottom();
   let appended = false;
   for (const item of items) {
     if (!item.id || state.seen.has(item.id)) continue;
@@ -55,7 +57,21 @@ function appendHistory(items) {
     appendMessage(item);
     appended = true;
   }
-  if (appended) elements.messageList.scrollTo({ top: elements.messageList.scrollHeight, behavior: 'smooth' });
+  if (appended) {
+    if (!state.historyLoaded || wasNearBottom) {
+      elements.messageList.scrollTo({
+        top: elements.messageList.scrollHeight,
+        behavior: state.historyLoaded ? 'smooth' : 'auto',
+      });
+    }
+    if (state.historyLoaded && !wasNearBottom) elements.latestButton.classList.add('has-updates');
+  }
+  state.historyLoaded = true;
+}
+
+function isNearBottom() {
+  const remaining = elements.messageList.scrollHeight - elements.messageList.scrollTop - elements.messageList.clientHeight;
+  return remaining <= 24;
 }
 
 function appendMessage(item) {
@@ -122,6 +138,13 @@ elements.form.addEventListener('submit', (event) => {
 });
 elements.interval.addEventListener('change', scheduleRefresh);
 elements.refreshButton.addEventListener('click', refreshStatus);
+elements.latestButton.addEventListener('click', () => {
+  elements.latestButton.classList.remove('has-updates');
+  elements.messageList.scrollTo({ top: elements.messageList.scrollHeight, behavior: 'smooth' });
+});
+elements.messageList.addEventListener('scroll', () => {
+  if (isNearBottom()) elements.latestButton.classList.remove('has-updates');
+});
 elements.pauseButton.addEventListener('click', () => {
   state.paused = !state.paused;
   elements.pauseButton.classList.toggle('active', state.paused);

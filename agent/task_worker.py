@@ -24,7 +24,8 @@ def handle_task(e: dict):
     record_history(e)
     if e['event_type'] == "qq":
         print(f"QQ事件:{e['payload']}")
-        user_interface(e['payload'])
+        if e['payload']['post_type']=="message":
+            user_interface(e['payload'])
     elif e['event_type'] == "webui":
         e={
             "event_type":"active",

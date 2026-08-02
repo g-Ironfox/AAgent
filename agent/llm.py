@@ -41,14 +41,15 @@ def chat_with_deepseek():
     for i in h[::-1]:
         payload=i.get('payload')
         if i['event_type']=='qq':
-            if payload['group_id']:
-                messages.append({"role": "user", "content": f"<groupmsg group_id={payload['group_id']} sender_id={payload['user_id']}>{payload['raw_message']}</groupmsg>"})
-            else:
-                messages.append({"role": "user", "content": f"<privatemsg sender_id={payload['user_id']}>{payload['raw_message']}</privatemsg>"})
+            if i['payload']["post_type"]=="message":
+                if payload['group_id']:
+                    messages.append({"role": "user", "content": f"<QQ event='msg' type='group' group_id={payload['group_id']} sender_id={payload['user_id']}>{payload['raw_message']}</QQ>"})
+                else:
+                    messages.append({"role": "user", "content": f"<QQ event='msg' type='private' sender_id={payload['user_id']}>{payload['raw_message']}</QQ>"})
         if i['event_type']=='tool_return':
             messages.append({"role":"user",'content':f"Tool {payload['tool']} args({json.dumps(payload['args'])}) result: {payload['result']}"})
         if i['event_type']=='webui':
-            messages.append({"role":"system",'content':f"<AdminMsg>{payload['message']}</AdminMsg>"})
+            messages.append({"role":"system",'content':f"<Msg role='admin'>{payload['message']}</Msg>"})
 
         if i['event_type']=='response':
             messages.append({"role":"assistant","content":payload["content"]})

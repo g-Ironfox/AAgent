@@ -36,9 +36,15 @@
           <p>WEBUI · MONGODB</p>
           <h1 id="terminalTitle">全局终端</h1>
         </div>
-        <div class="queue-indicator">
-          <span>目标队列</span>
-          <strong id="queueName">agent_tasks</strong>
+        <div class="terminal-heading-actions">
+          <button id="terminalLatestButton" class="running-button terminal-latest-button" type="button" title="跳到最新消息" aria-label="跳到最新消息">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="m6 13 6 6 6-6"></path></svg>
+            <span>跳到最新</span>
+          </button>
+          <div class="queue-indicator">
+            <span>目标队列</span>
+            <strong id="queueName">agent_tasks</strong>
+          </div>
         </div>
       </header>
 
