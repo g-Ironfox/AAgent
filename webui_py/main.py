@@ -302,7 +302,7 @@ def terminal_history(limit: int = Query(150)):
         return error
     try:
         documents = list(
-            history.find({"event_type": {"$in": ["webui", "response"]}})
+            history.find({"event_type": {"$in": ["terminal", "response"]}})
             .sort("_id", DESCENDING)
             .limit(limit)
         )
@@ -329,7 +329,7 @@ def submit_terminal(payload: TerminalRequest):
         return JSONResponse(status_code=400, content={"error": "暂不支持文件附件"})
 
     event = {
-        "event_type": "webui",
+        "event_type": "terminal",
         "time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "payload": {"message": message, "files": []},
     }

@@ -2,10 +2,9 @@
 
 ## 你可以从信息源接受外部信息
 - QQ:
-  私信 
-  群消息 格式如`<QQ event='msg' type='group' group_id={payload['group_id']} sender_id=发送者qq号>消息内容</QQ>`
+  描述:QQ事件
+  私信 格式如`<QQ event='msg' type='private' sender_id=发送者qq号>消息内容</QQ>`
+  群消息 格式如`<QQ event='msg' type='group' group_id=群号 sender_id=发送者qq号>消息内容</QQ>`
 - Terminal:
-  
-
-                    else:
-                        messages.append({"role": "user", "content": f"<QQ event='msg' type='private' sender_id={payload['user_id']}>{payload['raw_message']}</QQ>"})
+  描述:来自控制台的指令
+  格式如<Terminal>内容</Terminal>

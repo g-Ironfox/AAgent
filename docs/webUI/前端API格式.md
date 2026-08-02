@@ -69,7 +69,7 @@
 
 ## 3. GET /api/terminal/history
 
-终端历史：仅 MongoDB 已消费的 `webui` / `response` 事件（终端不读取 Redis pending 与 Worker running）。
+终端历史：仅 MongoDB 已消费的 `terminal` / `response` 事件（终端不读取 Redis pending 与 Worker running）。
 
 - Query：`limit`（可选，`1..300`，默认 `150`）；
 - `200`：
@@ -82,7 +82,7 @@
       "id": "688e5c4f...",
       "created_at": "2026-08-02T11:03:58Z",
       "event": {
-        "event_type": "webui",
+        "event_type": "terminal",
         "payload": { "message": "检查当前任务", "files": [] }
       }
     },
@@ -98,7 +98,7 @@
 }
 ```
 
-- 查询条件：`event_type in ["webui", "response"]`，按 `_id` 倒序取最近窗口，服务端反转为正序；
+- 查询条件：`event_type in ["terminal", "response"]`，按 `_id` 倒序取最近窗口，服务端反转为正序；
 - `id` 是 MongoDB ObjectID 字符串，是前端追加去重的**稳定身份**；`created_at` 是 `record_history()` 的时间，不是浏览器提交时间；
 - `503`（MongoDB 不可用）：`{"error": "终端历史暂时不可用"}`。
 
@@ -121,7 +121,7 @@
 ```json
 {
   "event": {
-    "event_type": "webui",
+    "event_type": "terminal",
     "time": "2026-08-02T11:04:01Z",
     "payload": { "message": "检查当前任务", "files": [] }
   },
