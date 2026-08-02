@@ -29,14 +29,9 @@ services:
       redis:
         condition: service_started
 
-  webui:
-    depends_on:
-      redis:
-        condition: service_started
-      mongodb:
-        condition: service_started
-
   webui_py:
+    volumes:
+      - ./webui_py:/app
     depends_on:
       redis:
         condition: service_started

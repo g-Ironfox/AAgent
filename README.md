@@ -27,7 +27,7 @@ docker compose up --build -d
 docker compose logs -f agent qqbot
 ```
 
-WebUI 地址:`http://localhost:8080`。完整变量说明、端口和安全检查见[配置与部署](docs/04-配置与部署.md)。
+WebUI 地址:`http://localhost:8081`。完整变量说明、端口和安全检查见[配置与部署](docs/04-配置与部署.md)。
 
 ## 服务
 
@@ -35,7 +35,7 @@ WebUI 地址:`http://localhost:8080`。完整变量说明、端口和安全检�
 |------|------|
 | `agent` | 串行消费事件,调用 LLM 与工具,生成 response 事件写入历史 |
 | `qqbot` | 接收 QQ WebSocket 事件并写入队列 |
-| `webui` | 展示事件流与 Worker 状态;作为事件入口提交用户消息 |
+| `webui_py` | 展示事件流与 Worker 状态;作为事件入口提交用户消息(FastAPI) |
 | `redis` | 编排事件顺序并缓冲入口流量 |
 | `mongodb` | 保存全局事件历史与权威上下文 |
 
