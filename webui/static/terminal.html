@@ -4,37 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>AAgent Chat</title>
+  <title>AAgent 终端</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/" aria-label="AAgent 事件流">
       <span class="brand-mark" aria-hidden="true">A</span>
-      <span class="brand-name"><strong>AAgent</strong><small>CHAT CONSOLE</small></span>
+      <span class="brand-name"><strong>AAgent</strong><small>TERMINAL CONSOLE</small></span>
     </a>
     <div class="top-actions">
       <nav class="page-nav" aria-label="页面导航">
         <a href="/">事件流</a>
-        <a class="active" href="/chat.html" aria-current="page">Chat</a>
+        <a class="active" href="/terminal.html" aria-current="page">终端</a>
       </nav>
       <div class="sync-meta topbar-sync">
         <span>最后同步</span>
-        <strong id="chatLastRefresh">同步中</strong>
-        <small id="chatRefreshState">自动刷新已开启</small>
+        <strong id="terminalLastRefresh">同步中</strong>
+        <small id="terminalRefreshState">自动刷新已开启</small>
       </div>
-      <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="chatInterval"><option value="500">0.5s</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
-      <button id="chatPauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新"><span class="pause-icon" aria-hidden="true"></span></button>
-      <button id="chatRefreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+      <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="terminalInterval"><option value="500">0.5s</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
+      <button id="terminalPauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新"><span class="pause-icon" aria-hidden="true"></span></button>
+      <button id="terminalRefreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
     </div>
   </header>
 
-  <main class="chat-main">
-    <section class="chat-workspace" aria-labelledby="chatTitle">
-      <header class="chat-heading">
+  <main class="terminal-main">
+    <section class="terminal-workspace" aria-labelledby="terminalTitle">
+      <header class="terminal-heading">
         <div>
           <p>WEBUI · MONGODB</p>
-          <h1 id="chatTitle">全局终端</h1>
+          <h1 id="terminalTitle">全局终端</h1>
         </div>
         <div class="queue-indicator">
           <span>目标队列</span>
@@ -43,14 +43,14 @@
       </header>
 
       <div id="messageList" class="message-list" aria-live="polite">
-        <div id="chatEmpty" class="chat-empty">
+        <div id="terminalEmpty" class="terminal-empty">
           <span class="empty-mark" aria-hidden="true">A</span>
           <strong>终端</strong>
           <small>已消费的终端命令与 Agent 响应将在这里追加</small>
         </div>
       </div>
 
-      <form id="chatForm" class="chat-composer">
+      <form id="terminalForm" class="terminal-composer">
         <label for="messageInput" class="sr-only">消息</label>
         <textarea id="messageInput" name="message" rows="1" maxlength="4000" placeholder="输入消息…" autocomplete="off" required></textarea>
         <div class="composer-actions">
@@ -62,6 +62,6 @@
     </section>
   </main>
 
-  <script type="module" src="/chat.js"></script>
+  <script type="module" src="/terminal.js"></script>
 </body>
 </html>

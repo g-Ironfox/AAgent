@@ -13,11 +13,11 @@ export async function fetchEvents(limit = 150) {
   }
 }
 
-export async function fetchChatHistory(limit = 150) {
+export async function fetchTerminalHistory(limit = 150) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(`/api/chat/history?limit=${limit}`, { cache: 'no-store', signal: controller.signal });
+    const response = await fetch(`/api/terminal/history?limit=${limit}`, { cache: 'no-store', signal: controller.signal });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
     return body;
@@ -26,11 +26,11 @@ export async function fetchChatHistory(limit = 150) {
   }
 }
 
-export async function submitChat(message) {
+export async function submitTerminal(message) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch('/api/chat', {
+    const response = await fetch('/api/terminal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, files: [] }),

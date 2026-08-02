@@ -1,20 +1,20 @@
-import { fetchChatHistory, submitChat } from './api.js';
+import { fetchTerminalHistory, submitTerminal } from './api.js';
 
 const state = { sending: false, paused: false, loading: false, timer: null, seen: new Set() };
 const elements = {
-  form: document.querySelector('#chatForm'),
+  form: document.querySelector('#terminalForm'),
   input: document.querySelector('#messageInput'),
   sendButton: document.querySelector('#sendButton'),
   sendStatus: document.querySelector('#sendStatus'),
   characterCount: document.querySelector('#characterCount'),
   messageList: document.querySelector('#messageList'),
-  empty: document.querySelector('#chatEmpty'),
+  empty: document.querySelector('#terminalEmpty'),
   queueName: document.querySelector('#queueName'),
-  lastRefresh: document.querySelector('#chatLastRefresh'),
-  refreshState: document.querySelector('#chatRefreshState'),
-  interval: document.querySelector('#chatInterval'),
-  pauseButton: document.querySelector('#chatPauseButton'),
-  refreshButton: document.querySelector('#chatRefreshButton'),
+  lastRefresh: document.querySelector('#terminalLastRefresh'),
+  refreshState: document.querySelector('#terminalRefreshState'),
+  interval: document.querySelector('#terminalInterval'),
+  pauseButton: document.querySelector('#terminalPauseButton'),
+  refreshButton: document.querySelector('#terminalRefreshButton'),
 };
 
 async function refreshStatus() {
@@ -22,7 +22,7 @@ async function refreshStatus() {
   state.loading = true;
   elements.refreshButton.disabled = true;
   try {
-    const snapshot = await fetchChatHistory();
+    const snapshot = await fetchTerminalHistory();
     appendHistory(snapshot.items);
     elements.lastRefresh.textContent = new Date(snapshot.fetched_at).toLocaleTimeString('zh-CN', { hour12: false });
     elements.lastRefresh.classList.remove('sync-error');
@@ -64,7 +64,7 @@ function appendMessage(item) {
   const payload = event.payload || {};
   elements.empty?.remove();
   const article = document.createElement('article');
-  article.className = `chat-message ${type === 'response' ? 'response-message' : 'command-message'}`;
+  article.className = `terminal-message ${type === 'response' ? 'response-message' : 'command-message'}`;
   article.dataset.id = item.id;
 
   const meta = document.createElement('div');
@@ -98,7 +98,7 @@ async function sendMessage() {
   elements.sendStatus.textContent = '正在入队…';
 
   try {
-    const result = await submitChat(message);
+    const result = await submitTerminal(message);
     elements.queueName.textContent = result.queue;
     elements.input.value = '';
     elements.sendStatus.className = 'send-status success';

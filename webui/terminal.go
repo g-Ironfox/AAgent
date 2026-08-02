@@ -16,33 +16,33 @@ import (
 )
 
 const (
-	maxChatBodyBytes = 16 * 1024
-	maxChatRunes     = 4000
+	maxTerminalBodyBytes = 16 * 1024
+	maxTerminalRunes     = 4000
 )
 
-type chatRequest struct {
+type terminalRequest struct {
 	Message string   `json:"message"`
 	Files   []string `json:"files"`
 }
 
-type chatPayload struct {
+type terminalPayload struct {
 	Message string   `json:"message"`
 	Files   []string `json:"files"`
 }
 
-type chatEvent struct {
-	EventType string      `json:"event_type"`
-	Time      string      `json:"time"`
-	Payload   chatPayload `json:"payload"`
+type terminalEvent struct {
+	EventType string          `json:"event_type"`
+	Time      string          `json:"time"`
+	Payload   terminalPayload `json:"payload"`
 }
 
-type chatHistoryItem struct {
+type terminalHistoryItem struct {
 	ID        string         `json:"id"`
 	CreatedAt any            `json:"created_at"`
 	Event     map[string]any `json:"event"`
 }
 
-func (s *server) chatHistory(response http.ResponseWriter, request *http.Request) {
+func (s *server) terminalHistory(response http.ResponseWriter, request *http.Request) {
 	limit, err := queryInt(request, "limit", 150, 1, 300)
 	if err != nil {
 		writeJSON(response, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -67,14 +67,14 @@ func (s *server) chatHistory(response http.ResponseWriter, request *http.Request
 		writeJSON(response, http.StatusServiceUnavailable, map[string]string{"error": "无法读取终端历史"})
 		return
 	}
-	items := make([]chatHistoryItem, 0, len(documents))
+	items := make([]terminalHistoryItem, 0, len(documents))
 	for index := len(documents) - 1; index >= 0; index-- {
 		document := documents[index]
 		id := historyDocumentID(document["_id"])
 		createdAt := document["created_at"]
 		delete(document, "_id")
 		delete(document, "created_at")
-		items = append(items, chatHistoryItem{ID: id, CreatedAt: createdAt, Event: map[string]any(document)})
+		items = append(items, terminalHistoryItem{ID: id, CreatedAt: createdAt, Event: map[string]any(document)})
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"fetched_at": time.Now().UTC(), "items": items})
 }
@@ -86,12 +86,12 @@ func historyDocumentID(value any) string {
 	return ""
 }
 
-func (s *server) submitChat(response http.ResponseWriter, request *http.Request) {
-	request.Body = http.MaxBytesReader(response, request.Body, maxChatBodyBytes)
+func (s *server) submitTerminal(response http.ResponseWriter, request *http.Request) {
+	request.Body = http.MaxBytesReader(response, request.Body, maxTerminalBodyBytes)
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
 
-	var input chatRequest
+	var input terminalRequest
 	if err := decoder.Decode(&input); err != nil {
 		writeJSON(response, http.StatusBadRequest, map[string]string{"error": "请求必须是有效的 JSON"})
 		return
@@ -106,7 +106,7 @@ func (s *server) submitChat(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusBadRequest, map[string]string{"error": "消息不能为空"})
 		return
 	}
-	if utf8.RuneCountInString(message) > maxChatRunes {
+	if utf8.RuneCountInString(message) > maxTerminalRunes {
 		writeJSON(response, http.StatusBadRequest, map[string]string{"error": "消息不能超过 4000 个字符"})
 		return
 	}
@@ -115,10 +115,10 @@ func (s *server) submitChat(response http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	event := chatEvent{
+	event := terminalEvent{
 		EventType: "webui",
 		Time:      time.Now().UTC().Format(time.RFC3339Nano),
-		Payload: chatPayload{
+		Payload: terminalPayload{
 			Message: message,
 			Files:   []string{},
 		},
