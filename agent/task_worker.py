@@ -5,7 +5,7 @@ import traceback
 from datetime import datetime, timezone
 import json
 
-from history_repository import record_history
+from history_repository import record_history,get_recent_history
 from queue_client import (
     AGENT_QUEUE_NAME,
     pop_from_queue,
@@ -69,12 +69,35 @@ def handle_task(e: dict):
     elif e["event_type"]=="tool_return":
         pass
     elif e["event_type"]=="active":
-        content,reasoning,tool_calls=chat_with_deepseek()
+
+        h=get_recent_history(limit=10)
+        messages = [
+            {"role": "system", "content": "你是一个办公助手"},
+        ]
+
+        for i in h[::-1]:
+            payload=i.get('payload')
+            if i['event_type']=='qq':
+                if i['payload']["post_type"]=="message":
+                    if payload['group_id']:
+                        messages.append({"role": "user", "content": f"<QQ event='msg' type='group' group_id={payload['group_id']} sender_id={payload['user_id']}>{payload['raw_message']}</QQ>"})
+                    else:
+                        messages.append({"role": "user", "content": f"<QQ event='msg' type='private' sender_id={payload['user_id']}>{payload['raw_message']}</QQ>"})
+            if i['event_type']=='tool_return':
+                messages.append({"role":"user",'content':f"Tool {payload['tool']} args({json.dumps(payload['args'])}) result: {payload['result']}"})
+            if i['event_type']=='webui':
+                messages.append({"role":"user",'content':f"<Msg role='admin'>{payload['message']}</Msg>"})
+
+            if i['event_type']=='response':
+                messages.append({"role":"assistant","content":payload["content"]})
+
+        content,reasoning,tool_calls=chat_with_deepseek(messages)
         e={'event_type':"response",
         "payload":{
-            "content":content,
+                "content":content,
                 "reasoning":reasoning,
-                "tool_calls":tool_calls
+                "tool_calls":tool_calls,
+                "context":messages
             }
         }
         if tool_calls:
