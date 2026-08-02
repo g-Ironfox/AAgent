@@ -1,6 +1,6 @@
-import { fetchEvents, submitChat } from './api.js';
+import { fetchChatHistory, submitChat } from './api.js';
 
-const state = { sending: false, paused: false, loading: false, timer: null };
+const state = { sending: false, paused: false, loading: false, timer: null, seen: new Set() };
 const elements = {
   form: document.querySelector('#chatForm'),
   input: document.querySelector('#messageInput'),
@@ -22,7 +22,8 @@ async function refreshStatus() {
   state.loading = true;
   elements.refreshButton.disabled = true;
   try {
-    const snapshot = await fetchEvents(1);
+    const snapshot = await fetchChatHistory();
+    appendHistory(snapshot.items);
     elements.lastRefresh.textContent = new Date(snapshot.fetched_at).toLocaleTimeString('zh-CN', { hour12: false });
     elements.lastRefresh.classList.remove('sync-error');
   } catch (error) {
@@ -46,28 +47,44 @@ function resizeInput() {
   elements.characterCount.textContent = `${[...elements.input.value].length} / 4000`;
 }
 
-function appendMessage(event) {
+function appendHistory(items) {
+  let appended = false;
+  for (const item of items) {
+    if (!item.id || state.seen.has(item.id)) continue;
+    state.seen.add(item.id);
+    appendMessage(item);
+    appended = true;
+  }
+  if (appended) elements.messageList.scrollTo({ top: elements.messageList.scrollHeight, behavior: 'smooth' });
+}
+
+function appendMessage(item) {
+  const event = item.event || {};
+  const type = event.event_type;
+  const payload = event.payload || {};
   elements.empty?.remove();
   const article = document.createElement('article');
-  article.className = 'chat-message';
+  article.className = `chat-message ${type === 'response' ? 'response-message' : 'command-message'}`;
+  article.dataset.id = item.id;
 
   const meta = document.createElement('div');
   meta.className = 'message-meta';
   const author = document.createElement('strong');
-  author.textContent = 'YOU';
+  author.textContent = type === 'response' ? 'AGENT' : 'TERMINAL';
   const time = document.createElement('time');
-  const sentAt = new Date(event.time);
-  time.dateTime = event.time;
+  const sentAt = new Date(item.created_at);
+  time.dateTime = item.created_at;
   time.textContent = Number.isNaN(sentAt.getTime())
-    ? event.time
+    ? '时间未知'
     : sentAt.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
   meta.append(author, time);
 
   const content = document.createElement('p');
-  content.textContent = event.payload.message;
+  content.textContent = type === 'response'
+    ? payload.content || (payload.tool_calls?.length ? '[工具调用]' : '[空响应]')
+    : payload.message || '[空命令]';
   article.append(meta, content);
   elements.messageList.append(article);
-  elements.messageList.scrollTo({ top: elements.messageList.scrollHeight, behavior: 'smooth' });
 }
 
 async function sendMessage() {
@@ -82,11 +99,10 @@ async function sendMessage() {
 
   try {
     const result = await submitChat(message);
-    appendMessage(result.event);
     elements.queueName.textContent = result.queue;
     elements.input.value = '';
     elements.sendStatus.className = 'send-status success';
-    elements.sendStatus.textContent = '已进入队列';
+    elements.sendStatus.textContent = '已优先入队，等待消费';
     refreshStatus();
   } catch (error) {
     elements.sendStatus.className = 'send-status error';
