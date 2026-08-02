@@ -15,7 +15,7 @@ from queue_client import (
 )
 from llm import chat_with_deepseek
 from qqapi import send_group_msg, send_private_msg
-from tool import *
+from tool import execute_tool, deepseekBalance, kimiBalance, tavily_search
 
 TARGET_USER_ID = os.environ["QQ_TARGET_USER_ID"]
 BOT_ID = os.environ["QQ_BOT_ID"]
@@ -89,7 +89,7 @@ def handle_task(e: dict):
                 messages.append({"role":"user",'content':f"<Msg role='admin'>{payload['message']}</Msg>"})
 
             if i['event_type']=='response':
-                messages.append({"role":"assistant","content":payload["content"]})
+                messages.append({"role":"assistant","content":payload["content"] or ""})
 
         content,reasoning,tool_calls=chat_with_deepseek(messages)
         e={'event_type':"response",
@@ -115,11 +115,25 @@ def handle_task(e: dict):
         if tool_calls:
             events=[]
             for i in tool_calls:
+                try:
+                    args=json.loads(i["function"]["arguments"])
+                except (json.JSONDecodeError, TypeError):
+                    events.append({
+                        "event_type":"tool_return",
+                        "payload":{
+                            "id":i['id'],
+                            "tool":i['function']['name'],
+                            "args":i["function"]["arguments"],
+                            "result":"Error: 工具参数 JSON 解析失败",
+                            "success": False,
+                        }
+                    })
+                    continue
                 e={
                     "event_type":"tool",
                     "payload":{'id':i['id'],
                         'tool':i['function']['name'],
-                        "args":json.loads(i["function"]["arguments"])
+                        "args":args
                     }
                 }
                 events.append(e)

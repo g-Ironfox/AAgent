@@ -83,10 +83,11 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\" | grep -q 1"]
-      interval: 3s
+      interval: 30s
+      start_interval: 2s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 60s
     networks:
       - rainbow_net
 

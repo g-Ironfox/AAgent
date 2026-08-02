@@ -1,7 +1,7 @@
 import json
 import os
 from itertools import cycle
-from qqapi import *
+from qqapi import send_group_msg, send_private_msg
 
 import requests
 
@@ -148,7 +148,7 @@ tools = [
                         "description": "消息内容"
                     },
                 },
-                "required": ["group_id","message"]
+                "required": ["user_id","message"]
             }
         }
     },

@@ -69,7 +69,7 @@ def get_recent_history(limit: int = 10, event_type: str | None = None) -> list[d
     cursor = (
         get_history_collection()
         .find(query, {"_id": 0})
-        .sort("created_at", DESCENDING)
+        .sort("_id", DESCENDING)
         .limit(limit)
     )
     return list(cursor)

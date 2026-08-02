@@ -1,6 +1,2 @@
-typer
-rich
 redis
-motor
-pymongo
 websockets
