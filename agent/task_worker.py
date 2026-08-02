@@ -26,7 +26,7 @@ def handle_task(e: dict):
         print(f"QQ事件:{e['payload']}")
         if e['payload']['post_type']=="message":
             user_interface(e['payload'])
-    elif e['event_type'] == "terminal":
+    elif e['event_type'] == "webui":
         e={
             "event_type":"active",
             "payload":{
