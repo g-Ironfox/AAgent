@@ -84,13 +84,23 @@ function renderSection(section, items, status, filtered, sources) {
   }
 
   const existing = new Map([...section.list.querySelectorAll('.event-row')].map((node) => [node.dataset.id, node]));
-  const fragment = document.createDocumentFragment();
+  let current = section.list.firstElementChild;
   for (const item of items) {
     const node = existing.get(item.id) || createEventRow(item);
     updateEventRow(node, item);
-    fragment.append(node);
+    existing.delete(item.id);
+    if (node === current) {
+      current = current.nextElementSibling;
+    } else {
+      section.list.insertBefore(node, current);
+    }
   }
-  section.list.replaceChildren(fragment);
+  for (const node of existing.values()) node.remove();
+  while (current) {
+    const next = current.nextElementSibling;
+    current.remove();
+    current = next;
+  }
   return items.length;
 }
 
@@ -144,5 +154,11 @@ function updateEventRow(row, item) {
   row.querySelector('.event-preview').textContent = eventPreview(item);
   row.querySelector('.source-cell strong').textContent = sourceText[item.source] || item.source;
   row.querySelector('.source-cell small').textContent = eventTime(item);
-  row.querySelector('pre').textContent = JSON.stringify(item.event, null, 2);
+  const details = row.querySelector('pre');
+  const content = JSON.stringify(item.event, null, 2);
+  if (details.textContent !== content) {
+    const scrollTop = details.scrollTop;
+    details.textContent = content;
+    details.scrollTop = scrollTop;
+  }
 }
