@@ -4,7 +4,6 @@ import { captureAnchorState, restoreAnchorState } from './scroll-anchor.js';
 
 const state = { snapshot: null, paused: false, loading: false, timer: null, selectedTypes: new Set(), initialPositioned: false, anchorRestoreSuppressedUntil: 0 };
 const elements = {
-  connection: document.querySelector('#connection'),
   pendingCount: document.querySelector('#pendingCount'), doneCount: document.querySelector('#doneCount'),
   workerCard: document.querySelector('#workerCard'), workerState: document.querySelector('#workerState'), workerDetail: document.querySelector('#workerDetail'),
   lastRefresh: document.querySelector('#lastRefresh'), refreshState: document.querySelector('#refreshState'), warningBanner: document.querySelector('#warningBanner'),
@@ -123,8 +122,8 @@ function renderWarnings(warnings) {
 }
 
 function setConnection(online) {
-  elements.connection.className = `connection ${online ? 'online' : 'offline'}`;
-  elements.connection.querySelector('span').textContent = online ? '已同步' : '连接失败';
+  elements.lastRefresh.classList.toggle('sync-error', !online);
+  if (!online) elements.lastRefresh.textContent = '同步失败';
 }
 
 function formatDuration(seconds) {

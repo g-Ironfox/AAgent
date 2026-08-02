@@ -18,7 +18,11 @@
         <a class="active" href="/">事件流</a>
         <a href="/chat.html">Chat</a>
       </nav>
-      <span id="connection" class="connection loading"><i></i><span>连接中</span></span>
+      <div class="sync-meta topbar-sync">
+        <span>最后同步</span>
+        <strong id="lastRefresh">同步中</strong>
+        <small id="refreshState">自动刷新已开启</small>
+      </div>
       <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="interval"><option value="500">0.5s</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
       <button id="pauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新"><span class="pause-icon" aria-hidden="true"></span></button>
       <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
@@ -35,11 +39,6 @@
     <section class="stream-panel">
       <div class="toolbar">
         <div class="toolbar-title"><strong>事件时间轴</strong><span id="resultCount">0 条事件</span></div>
-        <div class="sync-meta">
-          <span>最后同步</span>
-          <strong id="lastRefresh">--:--:--</strong>
-          <small id="refreshState">自动刷新已开启</small>
-        </div>
         <div class="toolbar-fields">
           <button id="runningButton" class="running-button" type="button" title="回到正在执行" aria-label="回到正在执行">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
