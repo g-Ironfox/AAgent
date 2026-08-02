@@ -117,7 +117,7 @@ code { padding:2px 5px; background:#e5e8e4; font-family:Consolas,monospace; }
 .event-row.expanded .details-button::after { display:none; }
 .event-details { grid-column:2/5; display:none; margin-top:4px; }
 .event-row.expanded .event-details { display:block; }
-.event-details pre { max-height:330px; margin:0; padding:14px; overflow:auto; color:#dce9e4; background:#1c2824; font:10px/1.6 Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+.event-details pre { margin:0; padding:14px; overflow:visible; color:#dce9e4; background:#1c2824; font:10px/1.6 Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 .empty-state { min-height:120px; display:grid; place-content:center; gap:6px; text-align:center; border-bottom:1px solid var(--line); background:#fbfcfa; }
 .empty-state strong { font:700 14px Georgia,"Microsoft YaHei",serif; }
 .empty-state span { color:var(--muted); font-size:10px; }

@@ -1,6 +1,7 @@
 import { fetchTerminalHistory, submitTerminal } from './api.js';
+import { createAutoRefresh } from './auto-refresh.js';
 
-const state = { sending: false, paused: false, loading: false, historyLoaded: false, timer: null, seen: new Set() };
+const state = { sending: false, loading: false, historyLoaded: false, seen: new Set() };
 const elements = {
   form: document.querySelector('#terminalForm'),
   input: document.querySelector('#messageInput'),
@@ -33,13 +34,8 @@ async function refreshStatus() {
   } finally {
     state.loading = false;
     elements.refreshButton.disabled = false;
-    scheduleRefresh();
+    autoRefresh.schedule();
   }
-}
-
-function scheduleRefresh() {
-  window.clearTimeout(state.timer);
-  if (!state.paused) state.timer = window.setTimeout(refreshStatus, Number(elements.interval.value));
 }
 
 function resizeInput() {
@@ -136,7 +132,6 @@ elements.form.addEventListener('submit', (event) => {
   event.preventDefault();
   sendMessage();
 });
-elements.interval.addEventListener('change', scheduleRefresh);
 elements.refreshButton.addEventListener('click', refreshStatus);
 elements.latestButton.addEventListener('click', () => {
   elements.latestButton.classList.remove('has-updates');
@@ -144,16 +139,6 @@ elements.latestButton.addEventListener('click', () => {
 });
 elements.messageList.addEventListener('scroll', () => {
   if (isNearBottom()) elements.latestButton.classList.remove('has-updates');
-});
-elements.pauseButton.addEventListener('click', () => {
-  state.paused = !state.paused;
-  elements.pauseButton.classList.toggle('active', state.paused);
-  elements.pauseButton.querySelector('.pause-icon').classList.toggle('play', state.paused);
-  elements.pauseButton.title = state.paused ? '继续自动刷新' : '暂停自动刷新';
-  elements.pauseButton.setAttribute('aria-label', elements.pauseButton.title);
-  elements.refreshState.textContent = state.paused ? '自动刷新已暂停' : '自动刷新已开启';
-  if (state.paused) scheduleRefresh();
-  else refreshStatus();
 });
 elements.input.addEventListener('input', () => {
   resizeInput();
@@ -164,6 +149,14 @@ elements.input.addEventListener('keydown', (event) => {
     event.preventDefault();
     sendMessage();
   }
+});
+
+const autoRefresh = createAutoRefresh({
+  refresh: refreshStatus,
+  interval: elements.interval,
+  pauseButton: elements.pauseButton,
+  refreshState: elements.refreshState,
+  onResume: refreshStatus,
 });
 
 resizeInput();

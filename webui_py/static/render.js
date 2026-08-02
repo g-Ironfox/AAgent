@@ -84,11 +84,16 @@ function renderSection(section, items, status, filtered, sources) {
   }
 
   const existing = new Map([...section.list.querySelectorAll('.event-row')].map((node) => [node.dataset.id, node]));
+  let reusableRunningNode = status === 'running' && items.length === 1 && existing.size === 1
+    ? existing.values().next().value
+    : null;
   let current = section.list.firstElementChild;
   for (const item of items) {
-    const node = existing.get(item.id) || createEventRow(item);
+    const node = existing.get(item.id) || reusableRunningNode || createEventRow(item);
+    const previousId = node.dataset.id;
+    reusableRunningNode = null;
     updateEventRow(node, item);
-    existing.delete(item.id);
+    existing.delete(previousId);
     if (node === current) {
       current = current.nextElementSibling;
     } else {
@@ -157,8 +162,6 @@ function updateEventRow(row, item) {
   const details = row.querySelector('pre');
   const content = JSON.stringify(item.event, null, 2);
   if (details.textContent !== content) {
-    const scrollTop = details.scrollTop;
     details.textContent = content;
-    details.scrollTop = scrollTop;
   }
 }

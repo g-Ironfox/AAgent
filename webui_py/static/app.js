@@ -1,8 +1,9 @@
 import { fetchEvents } from './api.js';
+import { createAutoRefresh } from './auto-refresh.js';
 import { eventType, populateTypes, renderTimeline, syncTypeFilterLabel } from './render.js';
 import { captureAnchorState, restoreAnchorState } from './scroll-anchor.js';
 
-const state = { snapshot: null, paused: false, loading: false, timer: null, selectedTypes: new Set(), initialPositioned: false, anchorRestoreSuppressedUntil: 0 };
+const state = { snapshot: null, loading: false, selectedTypes: new Set(), initialPositioned: false, anchorRestoreSuppressedUntil: 0 };
 const elements = {
   pendingCount: document.querySelector('#pendingCount'), doneCount: document.querySelector('#doneCount'),
   workerCard: document.querySelector('#workerCard'), workerState: document.querySelector('#workerState'), workerDetail: document.querySelector('#workerDetail'),
@@ -38,7 +39,7 @@ async function refresh() {
   } finally {
     state.loading = false;
     elements.refreshButton.disabled = false;
-    schedule();
+    autoRefresh.schedule();
   }
 }
 
@@ -131,13 +132,7 @@ function formatDuration(seconds) {
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-function schedule() {
-  window.clearTimeout(state.timer);
-  if (!state.paused) state.timer = window.setTimeout(refresh, Number(elements.interval.value));
-}
-
 elements.searchInput.addEventListener('input', renderFilteredEvents);
-elements.interval.addEventListener('change', schedule);
 elements.runningButton.addEventListener('click', () => {
   state.anchorRestoreSuppressedUntil = Date.now() + 1200;
   elements.timeline.scrollTo({ top: elements.runningSection.offsetTop, behavior: 'smooth' });
@@ -181,14 +176,11 @@ function initTypeFilter() {
 
 initTypeFilter();
 elements.refreshButton.addEventListener('click', refresh);
-elements.pauseButton.addEventListener('click', () => {
-  state.paused = !state.paused;
-  elements.pauseButton.classList.toggle('active', state.paused);
-  elements.pauseButton.querySelector('.pause-icon').classList.toggle('play', state.paused);
-  elements.pauseButton.title = state.paused ? '继续自动刷新' : '暂停自动刷新';
-  elements.pauseButton.setAttribute('aria-label', elements.pauseButton.title);
-  elements.refreshState.textContent = state.paused ? '自动刷新已暂停' : '自动刷新已开启';
-  schedule();
+const autoRefresh = createAutoRefresh({
+  refresh,
+  interval: elements.interval,
+  pauseButton: elements.pauseButton,
+  refreshState: elements.refreshState,
 });
 
 refresh();
