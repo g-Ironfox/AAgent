@@ -35,9 +35,11 @@ def apply_system_prompt(system_prompt: str):
 
 def initialize_system_prompt():
     cached_prompt = get_system_prompt()
+    """
     if cached_prompt is None:
         set_system_prompt(read_system_prompt())
         return
+    """
     apply_system_prompt(cached_prompt)
 
 def handle_task(e: dict):
@@ -103,7 +105,7 @@ def handle_task(e: dict):
                     else:
                         messages.append({"role": "user", "content": f"<QQ event='msg' type='private' sender_id={payload['user_id']}>{payload['raw_message']}</QQ>"})
             if i['event_type']=='tool_return':
-                messages.append({"role":"user",'content':f"Tool {payload['tool']} args({json.dumps(payload['args'])}) result: {payload['result']}"})
+                messages.append({"role":"user",'content':f"Tool {payload['tool']} args({json.dumps(payload['args'],ensure_ascii=True)}) result: {payload['result']}"})
             if i['event_type']=='terminal':
                 messages.append({"role":"user",'content':f"<Command>{payload['message']}</Command>"})
 
