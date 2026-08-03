@@ -20,6 +20,8 @@ logger = logging.getLogger("aagent.webui")
 
 MAX_TERMINAL_RUNES = 4000
 MAX_TERMINAL_BODY_BYTES = 16 * 1024
+MAX_SYSTEM_PROMPT_CHARS = 100_000
+MAX_SETTINGS_BODY_BYTES = 512 * 1024
 
 
 def env(name: str, fallback: str) -> str:
@@ -37,6 +39,7 @@ REDIS_ADDRESS = redis_address()
 REDIS_DB = int(env("REDIS_DB", "0"))
 QUEUE_NAME = env("AGENT_QUEUE_NAME", "agent_tasks")
 WORKER_STATUS_KEY = env("AGENT_WORKER_STATUS_KEY", "aagent:worker:status")
+SYSTEM_PROMPT_KEY = env("AGENT_SYSTEM_PROMPT_KEY", "aagent:settings:system_prompt")
 MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
@@ -72,6 +75,12 @@ class TerminalRequest(BaseModel):
     files: list[str] = Field(default_factory=list)
 
 
+class SystemPromptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    system_prompt: str
+
+
 app = FastAPI(title="AAgent WebUI")
 
 
@@ -96,12 +105,17 @@ async def request_logger(request: Request, call_next):
 
 @app.middleware("http")
 async def terminal_body_guard(request: Request, call_next):
-    if request.method == "POST" and request.url.path == "/api/terminal":
+    body_limits = {
+        "/api/terminal": (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
+        "/api/settings/system-prompt": (MAX_SETTINGS_BODY_BYTES, "请求体不能超过 512 KB"),
+    }
+    if request.method == "POST" and request.url.path in body_limits:
         content_length = request.headers.get("content-length")
         if content_length:
             try:
-                if int(content_length) > MAX_TERMINAL_BODY_BYTES:
-                    return JSONResponse(status_code=400, content={"error": "请求体不能超过 16 KB"})
+                limit, error_message = body_limits[request.url.path]
+                if int(content_length) > limit:
+                    return JSONResponse(status_code=400, content={"error": error_message})
             except ValueError:
                 pass
     return await call_next(request)
@@ -293,6 +307,37 @@ def events(limit: int = Query(150)):
     if error:
         return error
     return event_snapshot(limit)
+
+
+@app.get("/api/settings")
+def settings():
+    try:
+        system_prompt = redis_client.get(SYSTEM_PROMPT_KEY)
+    except redis.RedisError:
+        return JSONResponse(status_code=503, content={"error": "设置暂时不可用"})
+    if system_prompt is None:
+        return JSONResponse(status_code=503, content={"error": "Agent 尚未初始化设置"})
+    return {"system_prompt": system_prompt}
+
+
+@app.post("/api/settings/system-prompt", status_code=202)
+def update_system_prompt(payload: SystemPromptRequest):
+    system_prompt = payload.system_prompt
+    if not system_prompt.strip():
+        return JSONResponse(status_code=400, content={"error": "System prompt 不能为空"})
+    if len(system_prompt) > MAX_SYSTEM_PROMPT_CHARS:
+        return JSONResponse(status_code=400, content={"error": "System prompt 不能超过 100000 个字符"})
+
+    event = {
+        "event_type": "setting",
+        "time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "payload": {"system_prompt": system_prompt},
+    }
+    try:
+        redis_client.rpush(QUEUE_NAME, json.dumps(event, ensure_ascii=False, separators=(",", ":")))
+    except redis.RedisError:
+        return JSONResponse(status_code=503, content={"error": "消息队列暂时不可用"})
+    return {"event": event, "queue": QUEUE_NAME}
 
 
 @app.get("/api/terminal/history")

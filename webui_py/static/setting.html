@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 设置</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/setting.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件流">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>AGENT SETTINGS</small></span>
+    </a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a>
+        <a href="/terminal.html">终端</a>
+        <a class="active" href="/setting.html" aria-current="page">设置</a>
+      </nav>
+      <div class="setting-state" aria-live="polite">
+        <span>配置状态</span>
+        <strong id="settingState">读取中</strong>
+      </div>
+    </div>
+  </header>
+
+  <main class="setting-main">
+    <section class="setting-workspace" aria-labelledby="settingTitle">
+      <header class="setting-heading">
+        <div>
+          <p>AGENT · SYSTEM</p>
+          <h1 id="settingTitle">System Prompt</h1>
+        </div>
+        <span id="characterCount" class="setting-count">0 / 100000</span>
+      </header>
+
+      <form id="settingForm" class="setting-form">
+        <label for="systemPrompt" class="sr-only">System prompt</label>
+        <textarea id="systemPrompt" name="systemPrompt" maxlength="100000" spellcheck="false" required disabled></textarea>
+        <footer class="setting-actions">
+          <span id="saveStatus" class="save-status" role="status"></span>
+          <button id="reloadButton" class="secondary-button" type="button" disabled>重新读取</button>
+          <button id="saveButton" class="save-button" type="submit" disabled>保存并应用</button>
+        </footer>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="/setting.js"></script>
+</body>
+</html>

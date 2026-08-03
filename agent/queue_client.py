@@ -13,6 +13,10 @@ AGENT_WORKER_STATUS_KEY = os.getenv(
     "AGENT_WORKER_STATUS_KEY",
     "aagent:worker:status",
 )
+AGENT_SYSTEM_PROMPT_KEY = os.getenv(
+    "AGENT_SYSTEM_PROMPT_KEY",
+    "aagent:settings:system_prompt",
+)
 
 
 def get_connection():
@@ -41,6 +45,15 @@ def set_worker_status(status: dict):
         json.dumps(status, ensure_ascii=False),
     )
     return True
+
+def set_system_prompt(system_prompt: str):
+    client = get_connection()
+    client.set(AGENT_SYSTEM_PROMPT_KEY, system_prompt)
+    return True
+
+def get_system_prompt():
+    client = get_connection()
+    return client.get(AGENT_SYSTEM_PROMPT_KEY)
 
 def pop_from_queue(queue_name: str, timeout: int = 5):
     client = get_connection()

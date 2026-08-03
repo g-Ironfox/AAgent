@@ -4,13 +4,16 @@ import time
 import traceback
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 
 from history_repository import record_history,get_recent_history
 from queue_client import (
     AGENT_QUEUE_NAME,
+    get_system_prompt,
     pop_from_queue,
     insert_to_queue,
     publish_to_queue,
+    set_system_prompt,
     set_worker_status,
 )
 from llm import chat_with_deepseek
@@ -19,6 +22,23 @@ from tool import execute_tool, deepseekBalance, kimiBalance, tavily_search
 
 TARGET_USER_ID = os.environ["QQ_TARGET_USER_ID"]
 BOT_ID = os.environ["QQ_BOT_ID"]
+SYSTEM_PROMPT_PATH = Path(__file__).parent / "prompt" / "system.txt"
+
+def read_system_prompt() -> str:
+    return SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+
+def apply_system_prompt(system_prompt: str):
+    temporary_path = SYSTEM_PROMPT_PATH.with_suffix(".txt.tmp")
+    temporary_path.write_text(system_prompt, encoding="utf-8")
+    temporary_path.replace(SYSTEM_PROMPT_PATH)
+    set_system_prompt(system_prompt)
+
+def initialize_system_prompt():
+    cached_prompt = get_system_prompt()
+    if cached_prompt is None:
+        set_system_prompt(read_system_prompt())
+        return
+    apply_system_prompt(cached_prompt)
 
 def handle_task(e: dict):
     def qq(e):
@@ -64,12 +84,11 @@ def handle_task(e: dict):
             }
         insert_to_queue(AGENT_QUEUE_NAME,r_e)
     def setting(e):
-        if e['payload'].get('system_prompt'):
-            with open("prompt/system.txt", "w", encoding="utf-8") as f:
-                f.write(e['payload']['system_prompt'])
+        system_prompt = e['payload'].get('system_prompt')
+        if isinstance(system_prompt, str) and system_prompt:
+            apply_system_prompt(system_prompt)
     def active(e):
-        with open("prompt/system.txt", "r", encoding="utf-8") as f:
-            system_prompt = f.read().replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
+        system_prompt = read_system_prompt().replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
         h=get_recent_history(limit=10)
         messages = [
             {"role": "system", "content": system_prompt},
@@ -220,6 +239,7 @@ def user_interface(task: dict):
 
 def main():
     print("Agent worker started...")
+    initialize_system_prompt()
     while True:
         try:
             set_worker_status({

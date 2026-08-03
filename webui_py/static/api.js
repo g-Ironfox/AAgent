@@ -28,3 +28,15 @@ export function submitTerminal(message) {
     body: JSON.stringify({ message, files: [] }),
   });
 }
+
+export function fetchSettings() {
+  return request('/api/settings');
+}
+
+export function submitSystemPrompt(systemPrompt) {
+  return request('/api/settings/system-prompt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system_prompt: systemPrompt }),
+  });
+}
