@@ -16,7 +16,7 @@ from queue_client import (
     set_system_prompt,
     set_worker_status,
 )
-from llm import chat_with_deepseek
+from llm import chat_with_deepseek,chat_with_llama_cpp
 from qqapi import send_group_msg, send_private_msg
 from tool import execute_tool, deepseekBalance, kimiBalance, tavily_search
 

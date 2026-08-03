@@ -44,3 +44,15 @@ def chat_with_deepseek(messages):
     tool_calls=message.get('tool_calls') if message.get('tool_calls') else []
     reasoning=message.get('reasoning_content') if message.get('reasoning_content') else ""
     return message['content'],reasoning,tool_calls
+
+def chat_with_llama_cpp(messages):
+    message = send_messages(
+        messages,
+        "http://127.0.0.1:8080",
+        "",
+        ""
+    )
+    
+    tool_calls=message.get('tool_calls') if message.get('tool_calls') else []
+    reasoning=message.get('reasoning_content') if message.get('reasoning_content') else ""
+    return message['content'],reasoning,tool_calls
