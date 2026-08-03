@@ -21,20 +21,18 @@ TARGET_USER_ID = os.environ["QQ_TARGET_USER_ID"]
 BOT_ID = os.environ["QQ_BOT_ID"]
 
 def handle_task(e: dict):
-    record_history(e)
-    if e['event_type'] == "qq":
+    def qq(e):
         print(f"QQ事件:{e['payload']}")
         if e['payload']['post_type']=="message":
             user_interface(e['payload'])
-    elif e['event_type'] == "terminal":
+    def terminal(e):
         e={
             "event_type":"active",
             "payload":{
             }
         }
         publish_to_queue(AGENT_QUEUE_NAME,e)
-        
-    elif e['event_type'] == 'tool':
+    def tool(e):
         print(f"工具事件:{e['payload']}")
         tool_id = e['payload']['id']
         tool_name = e['payload']['tool']
@@ -65,11 +63,11 @@ def handle_task(e: dict):
                 }
             }
         insert_to_queue(AGENT_QUEUE_NAME,r_e)
-
-    elif e["event_type"]=="tool_return":
-        pass
-    elif e["event_type"]=="active":
-
+    def setting(e):
+        if e['payload'].get('system_prompt'):
+            with open("prompt/system.txt", "w", encoding="utf-8") as f:
+                f.write(e['payload']['system_prompt'])
+    def active(e):
         with open("prompt/system.txt", "r", encoding="utf-8") as f:
             system_prompt = f.read().replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
         h=get_recent_history(limit=10)
@@ -111,7 +109,9 @@ def handle_task(e: dict):
             insert_to_queue(AGENT_QUEUE_NAME,e2,e)
         else:
             insert_to_queue(AGENT_QUEUE_NAME,e)
-    elif e["event_type"]=="response":
+    def tool_return(e):
+        pass
+    def response(e):
         tool_calls=e["payload"].get("tool_calls")
         
         if tool_calls:
@@ -140,6 +140,20 @@ def handle_task(e: dict):
                 }
                 events.append(e)
             insert_to_queue(AGENT_QUEUE_NAME,*events[::-1])
+    handle_map = {
+        "qq": qq,
+        "terminal": terminal,
+        "tool": tool,
+        "tool_return": tool_return,
+        "setting": setting,
+        "active": active,
+        "response": response,
+    }
+
+    record_history(e)
+    handler = handle_map.get(e['event_type'])
+    handler(e)
+    
             
 def user_interface(task: dict):
     res = None
