@@ -17,6 +17,14 @@ export function fetchEvents(limit = 150) {
   return request(`/api/events?limit=${limit}`);
 }
 
+export function deleteEvent(payload) {
+  return request('/api/events', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchTerminalHistory(limit = 150) {
   return request(`/api/terminal/history?limit=${limit}`);
 }

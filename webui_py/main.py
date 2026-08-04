@@ -2,11 +2,14 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import redis
+from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -79,6 +82,15 @@ class SystemPromptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     system_prompt: str
+
+
+class DeleteEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    doc_id: str | None = None
+    position: int | None = None
+    fingerprint: str | None = None
 
 
 app = FastAPI(title="AAgent WebUI")
@@ -219,6 +231,7 @@ def pending_stage(limit: int) -> tuple[list[dict[str, Any]], int, str, str | Non
                 "status": "pending",
                 "source": "redis",
                 "position": len(raw_items) - index,
+                "fingerprint": fingerprint,
                 "event": event,
             }
         )
@@ -227,14 +240,14 @@ def pending_stage(limit: int) -> tuple[list[dict[str, Any]], int, str, str | Non
 
 def history_stage(limit: int, running_fingerprint: str) -> tuple[list[dict[str, Any]], str, str | None]:
     try:
-        documents = list(history.find({}, {"_id": 0}).sort("_id", DESCENDING).limit(limit))
+        documents = list(history.find({}).sort("_id", DESCENDING).limit(limit))
     except PyMongoError:
         return [], "unavailable", "MongoDB history is unavailable"
 
     running_index = -1
     if running_fingerprint:
         for index, document in enumerate(documents):
-            event = {key: value for key, value in document.items() if key != "created_at"}
+            event = {key: value for key, value in document.items() if key not in {"_id", "created_at"}}
             if event_fingerprint(event) == running_fingerprint:
                 running_index = index
                 break
@@ -244,7 +257,7 @@ def history_stage(limit: int, running_fingerprint: str) -> tuple[list[dict[str, 
         if index == running_index:
             continue
         created_at = document.get("created_at")
-        event = {key: value for key, value in document.items() if key != "created_at"}
+        event = {key: value for key, value in document.items() if key not in {"_id", "created_at"}}
         fingerprint = event_fingerprint(event)
         items.append(
             {
@@ -252,6 +265,7 @@ def history_stage(limit: int, running_fingerprint: str) -> tuple[list[dict[str, 
                 "status": "done",
                 "source": "mongodb",
                 "created_at": created_at,
+                "doc_id": str(document.get("_id", "")),
                 "event": event,
             }
         )
@@ -307,6 +321,57 @@ def events(limit: int = Query(150)):
     if error:
         return error
     return event_snapshot(limit)
+
+
+DELETE_PENDING_SCRIPT = """
+local current = redis.call('LINDEX', KEYS[1], -tonumber(ARGV[1]))
+if not current then return 0 end
+if current ~= ARGV[2] then return -1 end
+redis.call('LSET', KEYS[1], -tonumber(ARGV[1]), ARGV[3])
+return redis.call('LREM', KEYS[1], 1, ARGV[3])
+"""
+
+
+@app.delete("/api/events")
+def delete_event(payload: DeleteEventRequest):
+    if payload.status == "done":
+        if not payload.doc_id:
+            return JSONResponse(status_code=400, content={"error": "缺少历史记录 ID"})
+        try:
+            object_id = ObjectId(payload.doc_id)
+        except InvalidId:
+            return JSONResponse(status_code=400, content={"error": "历史记录 ID 无效"})
+        try:
+            result = history.delete_one({"_id": object_id})
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "MongoDB 历史暂时不可用"})
+        if result.deleted_count == 0:
+            return JSONResponse(status_code=404, content={"error": "历史记录不存在或已被删除"})
+        return {"deleted": True, "status": "done"}
+
+    if payload.status == "pending":
+        if payload.position is None or payload.position < 1 or not payload.fingerprint:
+            return JSONResponse(status_code=400, content={"error": "缺少队列位置或事件指纹"})
+        try:
+            raw = redis_client.lindex(QUEUE_NAME, -payload.position)
+        except redis.RedisError:
+            return JSONResponse(status_code=503, content={"error": "Redis 队列暂时不可用"})
+        if raw is None:
+            return JSONResponse(status_code=404, content={"error": "队列事件不存在或已被处理"})
+        if event_fingerprint(decode_queue_event(raw)) != payload.fingerprint:
+            return JSONResponse(status_code=409, content={"error": "队列已发生变化，请刷新后重试"})
+        marker = f"__aagent_deleted__{uuid.uuid4().hex}"
+        try:
+            removed = redis_client.eval(DELETE_PENDING_SCRIPT, 1, QUEUE_NAME, str(payload.position), raw, marker)
+        except redis.RedisError:
+            return JSONResponse(status_code=503, content={"error": "Redis 队列暂时不可用"})
+        if removed == -1:
+            return JSONResponse(status_code=409, content={"error": "队列已发生变化，请刷新后重试"})
+        if removed == 0:
+            return JSONResponse(status_code=404, content={"error": "队列事件不存在或已被处理"})
+        return {"deleted": True, "status": "pending"}
+
+    return JSONResponse(status_code=400, content={"error": "不支持删除该状态的事件"})
 
 
 @app.get("/api/settings")

@@ -1,6 +1,6 @@
-import { fetchEvents } from './api.js';
+import { deleteEvent, fetchEvents } from './api.js';
 import { createAutoRefresh } from './auto-refresh.js';
-import { eventType, populateTypes, renderTimeline, syncTypeFilterLabel } from './render.js';
+import { eventType, populateTypes, renderTimeline, setEventDeleteHandler, syncTypeFilterLabel } from './render.js';
 import { captureAnchorState, restoreAnchorState } from './scroll-anchor.js';
 
 const state = { snapshot: null, loading: false, selectedTypes: new Set(), initialPositioned: false, anchorRestoreSuppressedUntil: 0 };
@@ -174,7 +174,26 @@ function initTypeFilter() {
   });
 }
 
+async function handleDeleteEvent(item) {
+  const message = item.status === 'pending'
+    ? '确定从等待队列中删除该事件吗？'
+    : '确定删除该历史事件吗？删除后不可恢复。';
+  if (!window.confirm(message)) return;
+  const payload = item.status === 'pending'
+    ? { status: 'pending', position: item.position, fingerprint: item.fingerprint }
+    : { status: 'done', doc_id: item.doc_id };
+  try {
+    await deleteEvent(payload);
+  } catch (error) {
+    elements.warningBanner.hidden = false;
+    elements.warningBanner.textContent = `删除失败：${error.message}`;
+  } finally {
+    refresh();
+  }
+}
+
 initTypeFilter();
+setEventDeleteHandler(handleDeleteEvent);
 elements.refreshButton.addEventListener('click', refresh);
 const autoRefresh = createAutoRefresh({
   refresh,

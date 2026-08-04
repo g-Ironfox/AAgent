@@ -7,6 +7,12 @@ const emptyText = {
 };
 const sourceByStatus = { done: 'mongodb', running: 'worker', pending: 'redis' };
 
+let deleteHandler = null;
+
+export function setEventDeleteHandler(handler) {
+  deleteHandler = handler;
+}
+
 export function eventType(item) {
   return String(item.event?.event_type || '未分类');
 }
@@ -139,7 +145,7 @@ function createEventRow(item) {
     <div class="state-cell"><span class="status-dot"></span><div><strong></strong><small></small></div></div>
     <div class="event-main"><div class="event-title"><span class="event-type"></span></div><p class="event-preview"></p></div>
     <div class="source-cell"><strong></strong><small></small></div>
-    <button class="details-button" type="button" aria-label="展开事件详情" title="展开事件详情"></button>
+    <div class="row-actions"><button class="delete-button" type="button" aria-label="删除事件" title="删除事件"></button><button class="details-button" type="button" aria-label="展开事件详情" title="展开事件详情"></button></div>
     <div class="event-details"><pre></pre></div>`;
   row.querySelector('.details-button').addEventListener('click', () => {
     const expanded = row.classList.toggle('expanded');
@@ -147,12 +153,17 @@ function createEventRow(item) {
     button.title = expanded ? '收起事件详情' : '展开事件详情';
     button.setAttribute('aria-label', button.title);
   });
+  row.querySelector('.delete-button').addEventListener('click', () => {
+    if (deleteHandler && row._item) deleteHandler(row._item);
+  });
   return row;
 }
 
 function updateEventRow(row, item) {
+  row._item = item;
   row.dataset.id = item.id;
   row.dataset.status = item.status;
+  row.querySelector('.delete-button').hidden = item.status === 'running';
   row.querySelector('.state-cell strong').textContent = statusText[item.status] || item.status;
   row.querySelector('.state-cell small').textContent = item.status === 'pending' ? `QUEUE ${item.position}` : item.status.toUpperCase();
   row.querySelector('.event-type').textContent = eventType(item);
