@@ -67,6 +67,18 @@
 - 同一事件跨状态迁移（pending → running → done）时 ID 前缀不同，前端创建新节点，不跨区复用 DOM；
 - 事件自身的 `event` 字段即 [06-格式规范](../06-格式规范.md) 第 1 节定义的事件结构。
 
+### 2.2 PUT /api/events
+
+修改等待执行或历史事件。执行中的事件不可修改。
+
+- 历史事件请求：`{"status":"done","doc_id":"<ObjectID>","event":{...}}`；
+- 等待事件请求：`{"status":"pending","position":1,"fingerprint":"<内容指纹>","event":{...}}`；
+- `event` 必须是包含非空字符串 `event_type` 的 JSON 对象，`_id` 与 `created_at` 字段会被忽略，编码后不能超过 256 KB；
+- 修改历史事件时保留原 `_id` 与 `created_at`；修改等待事件时以 Lua 脚本原子校验队列位置和原始内容后替换；
+- `200`：`{"updated":true,"status":"done|pending","fingerprint":"<新内容指纹>",...}`；
+- `400`：请求字段、事件格式或状态无效；`404`：目标已不存在；`409`：等待队列已变化；`503`：对应存储暂时不可用；
+- 前端保存前解析 JSON；格式无效时停留在编辑态并显示错误，不发送请求；忽略缩进和对象键顺序后内容未变化时直接退出编辑态，不重复提交；保存成功后从“保存”恢复为“编辑”，取消则丢弃未保存内容；详情展开状态在保存及自动刷新后保持不变。
+
 ## 3. GET /api/terminal/history
 
 终端历史：仅 MongoDB 已消费的 `terminal` / `response` 事件（终端不读取 Redis pending 与 Worker running）。

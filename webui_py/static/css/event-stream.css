@@ -84,6 +84,17 @@
 .event-details { grid-column:2/5; display:none; margin-top:4px; }
 .event-row.expanded .event-details { display:block; }
 .event-details pre { margin:0; padding:14px; overflow:visible; color:#dce9e4; background:#1c2824; font:10px/1.6 Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+.details-toolbar { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:6px; }
+.edit-status { color:var(--muted); font-size:10px; }
+.event-row.edit-error .edit-status { color:var(--red); font-weight:700; }
+.edit-button,.cancel-edit-button { height:26px; padding:0 12px; border:1px solid var(--line); background:#fff; color:var(--muted); font-size:10px; cursor:pointer; }
+.edit-button:hover { color:var(--green); border-color:var(--green); }
+.cancel-edit-button:hover { color:var(--ink); border-color:var(--muted); }
+.edit-button:disabled { opacity:.55; cursor:default; }
+.event-editor { display:block; width:100%; box-sizing:border-box; field-sizing:content; margin:0; padding:14px; border:0; outline:1px solid var(--line); resize:none; color:#dce9e4; background:#1c2824; font:10px/1.6 Consolas,monospace; white-space:pre-wrap; overflow:hidden; overflow-wrap:anywhere; }
+.event-editor[hidden] { display:none; }
+.event-editor:focus { outline-color:var(--green); }
+.event-row.edit-error .event-editor { outline-color:var(--red); }
 .empty-state { min-height:120px; display:grid; place-content:center; gap:6px; text-align:center; border-bottom:1px solid var(--line); background:#fbfcfa; }
 .empty-state strong { font:700 14px Georgia,"Microsoft YaHei",serif; }
 .empty-state span { color:var(--muted); font-size:10px; }

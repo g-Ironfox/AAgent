@@ -25,6 +25,7 @@ MAX_TERMINAL_RUNES = 4000
 MAX_TERMINAL_BODY_BYTES = 16 * 1024
 MAX_SYSTEM_PROMPT_CHARS = 100_000
 MAX_SETTINGS_BODY_BYTES = 512 * 1024
+MAX_EVENT_BODY_BYTES = 256 * 1024
 
 
 def env(name: str, fallback: str) -> str:
@@ -93,6 +94,16 @@ class DeleteEventRequest(BaseModel):
     fingerprint: str | None = None
 
 
+class UpdateEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    event: dict[str, Any]
+    doc_id: str | None = None
+    position: int | None = None
+    fingerprint: str | None = None
+
+
 app = FastAPI(title="AAgent WebUI")
 
 
@@ -118,14 +129,16 @@ async def request_logger(request: Request, call_next):
 @app.middleware("http")
 async def terminal_body_guard(request: Request, call_next):
     body_limits = {
-        "/api/terminal": (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
-        "/api/settings/system-prompt": (MAX_SETTINGS_BODY_BYTES, "请求体不能超过 512 KB"),
+        ("POST", "/api/terminal"): (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
+        ("POST", "/api/settings/system-prompt"): (MAX_SETTINGS_BODY_BYTES, "请求体不能超过 512 KB"),
+        ("PUT", "/api/events"): (MAX_EVENT_BODY_BYTES, "请求体不能超过 256 KB"),
     }
-    if request.method == "POST" and request.url.path in body_limits:
+    body_limit = body_limits.get((request.method, request.url.path))
+    if body_limit:
         content_length = request.headers.get("content-length")
         if content_length:
             try:
-                limit, error_message = body_limits[request.url.path]
+                limit, error_message = body_limit
                 if int(content_length) > limit:
                     return JSONResponse(status_code=400, content={"error": error_message})
             except ValueError:
@@ -372,6 +385,69 @@ def delete_event(payload: DeleteEventRequest):
         return {"deleted": True, "status": "pending"}
 
     return JSONResponse(status_code=400, content={"error": "不支持删除该状态的事件"})
+
+
+UPDATE_PENDING_SCRIPT = """
+local current = redis.call('LINDEX', KEYS[1], -tonumber(ARGV[1]))
+if not current then return 0 end
+if current ~= ARGV[2] then return -1 end
+redis.call('LSET', KEYS[1], -tonumber(ARGV[1]), ARGV[3])
+return 1
+"""
+
+
+@app.put("/api/events")
+def update_event(payload: UpdateEventRequest):
+    event = {key: value for key, value in payload.event.items() if key not in {"_id", "created_at"}}
+    if not event:
+        return JSONResponse(status_code=400, content={"error": "事件内容不能为空"})
+    if not isinstance(event.get("event_type"), str) or not event["event_type"].strip():
+        return JSONResponse(status_code=400, content={"error": "事件缺少有效的 event_type 字段"})
+    encoded = json.dumps(event, ensure_ascii=False)
+    if len(encoded.encode("utf-8")) > MAX_EVENT_BODY_BYTES:
+        return JSONResponse(status_code=400, content={"error": "事件内容不能超过 256 KB"})
+
+    if payload.status == "done":
+        if not payload.doc_id:
+            return JSONResponse(status_code=400, content={"error": "缺少历史记录 ID"})
+        try:
+            object_id = ObjectId(payload.doc_id)
+        except InvalidId:
+            return JSONResponse(status_code=400, content={"error": "历史记录 ID 无效"})
+        try:
+            existing = history.find_one({"_id": object_id}, {"created_at": 1})
+            if existing is None:
+                return JSONResponse(status_code=404, content={"error": "历史记录不存在或已被删除"})
+            document = dict(event)
+            if "created_at" in existing:
+                document["created_at"] = existing["created_at"]
+            history.replace_one({"_id": object_id}, document)
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "MongoDB 历史暂时不可用"})
+        return {"updated": True, "status": "done", "doc_id": payload.doc_id, "fingerprint": event_fingerprint(event)}
+
+    if payload.status == "pending":
+        if payload.position is None or payload.position < 1 or not payload.fingerprint:
+            return JSONResponse(status_code=400, content={"error": "缺少队列位置或事件指纹"})
+        try:
+            raw = redis_client.lindex(QUEUE_NAME, -payload.position)
+        except redis.RedisError:
+            return JSONResponse(status_code=503, content={"error": "Redis 队列暂时不可用"})
+        if raw is None:
+            return JSONResponse(status_code=404, content={"error": "队列事件不存在或已被处理"})
+        if event_fingerprint(decode_queue_event(raw)) != payload.fingerprint:
+            return JSONResponse(status_code=409, content={"error": "队列已发生变化，请刷新后重试"})
+        try:
+            updated = redis_client.eval(UPDATE_PENDING_SCRIPT, 1, QUEUE_NAME, str(payload.position), raw, encoded)
+        except redis.RedisError:
+            return JSONResponse(status_code=503, content={"error": "Redis 队列暂时不可用"})
+        if updated == -1:
+            return JSONResponse(status_code=409, content={"error": "队列已发生变化，请刷新后重试"})
+        if updated == 0:
+            return JSONResponse(status_code=404, content={"error": "队列事件不存在或已被处理"})
+        return {"updated": True, "status": "pending", "position": payload.position, "fingerprint": event_fingerprint(event)}
+
+    return JSONResponse(status_code=400, content={"error": "不支持修改该状态的事件"})
 
 
 @app.get("/api/settings")

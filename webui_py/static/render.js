@@ -8,9 +8,28 @@ const emptyText = {
 const sourceByStatus = { done: 'mongodb', running: 'worker', pending: 'redis' };
 
 let deleteHandler = null;
+let editHandler = null;
+const expandedKeys = new Set();
 
 export function setEventDeleteHandler(handler) {
   deleteHandler = handler;
+}
+
+export function setEventEditHandler(handler) {
+  editHandler = handler;
+}
+
+function itemKey(item) {
+  if (item.status === 'done') return `done:${item.doc_id}`;
+  if (item.status === 'pending') return `pending:${item.fingerprint}:${item.position}`;
+  return `running:${item.id}`;
+}
+
+export function remapExpandedKey(previous, next) {
+  const oldKey = itemKey(previous);
+  if (!expandedKeys.has(oldKey)) return;
+  expandedKeys.delete(oldKey);
+  expandedKeys.add(itemKey(next));
 }
 
 export function eventType(item) {
@@ -146,17 +165,83 @@ function createEventRow(item) {
     <div class="event-main"><div class="event-title"><span class="event-type"></span></div><p class="event-preview"></p></div>
     <div class="source-cell"><strong></strong><small></small></div>
     <div class="row-actions"><button class="delete-button" type="button" aria-label="删除事件" title="删除事件"></button><button class="details-button" type="button" aria-label="展开事件详情" title="展开事件详情"></button></div>
-    <div class="event-details"><pre></pre></div>`;
+    <div class="event-details"><pre></pre><textarea class="event-editor" spellcheck="false" hidden></textarea><div class="details-toolbar"><span class="edit-status"></span><button class="cancel-edit-button" type="button" hidden>取消</button><button class="edit-button" type="button">编辑</button></div></div>`;
   row.querySelector('.details-button').addEventListener('click', () => {
     const expanded = row.classList.toggle('expanded');
     const button = row.querySelector('.details-button');
     button.title = expanded ? '收起事件详情' : '展开事件详情';
     button.setAttribute('aria-label', button.title);
+    if (row._item) {
+      const key = itemKey(row._item);
+      if (expanded) expandedKeys.add(key);
+      else expandedKeys.delete(key);
+    }
   });
   row.querySelector('.delete-button').addEventListener('click', () => {
     if (deleteHandler && row._item) deleteHandler(row._item);
   });
+  row.querySelector('.event-editor').addEventListener('input', () => {
+    row.classList.remove('edit-error');
+    row.querySelector('.edit-status').textContent = '';
+  });
+  row.querySelector('.cancel-edit-button').addEventListener('click', () => cancelEventEdit(row));
+  row.querySelector('.edit-button').addEventListener('click', () => toggleEventEdit(row));
   return row;
+}
+
+function cancelEventEdit(row) {
+  const details = row.querySelector('pre');
+  const editor = row.querySelector('.event-editor');
+  row.classList.remove('editing');
+  editor.value = '';
+  editor.hidden = true;
+  details.hidden = false;
+  row.querySelector('.cancel-edit-button').hidden = true;
+  row.querySelector('.edit-button').textContent = '编辑';
+  row.querySelector('.edit-status').textContent = '';
+  row.classList.remove('edit-error');
+}
+
+async function toggleEventEdit(row) {
+  const button = row.querySelector('.edit-button');
+  const cancelButton = row.querySelector('.cancel-edit-button');
+  const status = row.querySelector('.edit-status');
+  const details = row.querySelector('pre');
+  const editor = row.querySelector('.event-editor');
+  if (!row.classList.contains('editing')) {
+    if (!row._item) return;
+    editor.value = JSON.stringify(row._item.event, null, 2);
+    editor.hidden = false;
+    details.hidden = true;
+    row.classList.add('editing');
+    row.classList.remove('edit-error');
+    button.textContent = '保存';
+    cancelButton.hidden = false;
+    status.textContent = '';
+    editor.focus({ preventScroll: true });
+    return;
+  }
+  if (!editHandler || !row._item) return;
+  button.disabled = true;
+  status.textContent = '保存中…';
+  try {
+    const result = await editHandler(row._item, editor.value);
+    const event = result.event;
+    row._item = { ...row._item, event };
+    details.textContent = JSON.stringify(event, null, 2);
+    row.classList.remove('editing');
+    row.classList.remove('edit-error');
+    editor.hidden = true;
+    details.hidden = false;
+    button.textContent = '编辑';
+    cancelButton.hidden = true;
+    status.textContent = result.updated ? '已保存' : '内容未改动';
+  } catch (error) {
+    row.classList.add('edit-error');
+    status.textContent = error.message || '保存失败';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function updateEventRow(row, item) {
@@ -164,12 +249,19 @@ function updateEventRow(row, item) {
   row.dataset.id = item.id;
   row.dataset.status = item.status;
   row.querySelector('.delete-button').hidden = item.status === 'running';
+  row.querySelector('.edit-button').hidden = item.status === 'running';
   row.querySelector('.state-cell strong').textContent = statusText[item.status] || item.status;
   row.querySelector('.state-cell small').textContent = item.status === 'pending' ? `QUEUE ${item.position}` : item.status.toUpperCase();
   row.querySelector('.event-type').textContent = eventType(item);
   row.querySelector('.event-preview').textContent = eventPreview(item);
   row.querySelector('.source-cell strong').textContent = sourceText[item.source] || item.source;
   row.querySelector('.source-cell small').textContent = eventTime(item);
+  if (row.classList.contains('editing')) return;
+  const expanded = expandedKeys.has(itemKey(item));
+  row.classList.toggle('expanded', expanded);
+  const button = row.querySelector('.details-button');
+  button.title = expanded ? '收起事件详情' : '展开事件详情';
+  button.setAttribute('aria-label', button.title);
   const details = row.querySelector('pre');
   const content = JSON.stringify(item.event, null, 2);
   if (details.textContent !== content) {

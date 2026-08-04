@@ -1,6 +1,6 @@
-import { deleteEvent, fetchEvents } from './api.js';
+import { deleteEvent, fetchEvents, updateEvent } from './api.js';
 import { createAutoRefresh } from './auto-refresh.js';
-import { eventType, populateTypes, renderTimeline, setEventDeleteHandler, syncTypeFilterLabel } from './render.js';
+import { eventType, populateTypes, remapExpandedKey, renderTimeline, setEventDeleteHandler, setEventEditHandler, syncTypeFilterLabel } from './render.js';
 import { captureAnchorState, restoreAnchorState } from './scroll-anchor.js';
 
 const state = { snapshot: null, loading: false, selectedTypes: new Set(), initialPositioned: false, anchorRestoreSuppressedUntil: 0 };
@@ -192,8 +192,50 @@ async function handleDeleteEvent(item) {
   }
 }
 
+async function handleEditEvent(item, rawText) {
+  if (item.status === 'running') throw new Error('执行中的事件不可编辑');
+  let event;
+  try {
+    event = JSON.parse(rawText);
+  } catch {
+    throw new Error('JSON 格式无效，请修正后再保存');
+  }
+  if (!event || typeof event !== 'object' || Array.isArray(event)) {
+    throw new Error('事件内容必须是 JSON 对象');
+  }
+  if (canonicalJson(event) === canonicalJson(item.event)) {
+    return { event: item.event, updated: false };
+  }
+  const payload = item.status === 'pending'
+    ? { status: 'pending', position: item.position, fingerprint: item.fingerprint, event }
+    : { status: 'done', doc_id: item.doc_id, event };
+  try {
+    const result = await updateEvent(payload);
+    remapExpandedKey(item, {
+      ...item,
+      fingerprint: result.fingerprint ?? item.fingerprint,
+      position: result.position ?? item.position,
+    });
+    refresh();
+    return { event, updated: true };
+  } catch (error) {
+    elements.warningBanner.hidden = false;
+    elements.warningBanner.textContent = `保存失败：${error.message}`;
+    throw error;
+  }
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 initTypeFilter();
 setEventDeleteHandler(handleDeleteEvent);
+setEventEditHandler(handleEditEvent);
 elements.refreshButton.addEventListener('click', refresh);
 const autoRefresh = createAutoRefresh({
   refresh,

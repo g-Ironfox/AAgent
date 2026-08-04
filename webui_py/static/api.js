@@ -25,6 +25,14 @@ export function deleteEvent(payload) {
   });
 }
 
+export function updateEvent(payload) {
+  return request('/api/events', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchTerminalHistory(limit = 150) {
   return request(`/api/terminal/history?limit=${limit}`);
 }
