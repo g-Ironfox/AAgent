@@ -49,6 +49,7 @@ services:
       MONGO_PASS: ${MONGO_PASS}
       MONGO_DATABASE: ${MONGO_DATABASE:-agent}
       MONGO_HISTORY_COLLECTION: ${MONGO_HISTORY_COLLECTION:-event_history}
+      MONGO_DOCUMENT_COLLECTION: ${MONGO_DOCUMENT_COLLECTION:-documents}
     ports:
       - "8081:8081"
     healthcheck:

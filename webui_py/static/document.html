@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 文档</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/document.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件流">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>DOCUMENTS</small></span>
+    </a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a>
+        <a href="/terminal.html">终端</a>
+        <a class="active" href="/document.html" aria-current="page">文档</a>
+        <a href="/setting.html">设置</a>
+      </nav>
+      <div class="document-state" aria-live="polite"><span>文档状态</span><strong id="documentState">读取中</strong></div>
+    </div>
+  </header>
+
+  <main class="document-main">
+    <section class="document-workspace" aria-label="文档工作区">
+      <aside class="document-sidebar" aria-label="文档列表">
+        <header class="sidebar-heading">
+          <div><p>DOCUMENTS</p><h1>文档库</h1></div>
+          <button id="createButton" class="create-button" type="button" title="新建文档" aria-label="新建文档">+</button>
+        </header>
+        <div id="documentList" class="document-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="document-editor" aria-labelledby="editorTitle">
+        <header class="editor-heading">
+          <div class="editor-title-wrap">
+            <label for="documentTitle" class="sr-only">文档标题</label>
+            <input id="documentTitle" class="document-title" maxlength="200" placeholder="未命名文档" disabled>
+            <span id="updatedAt" class="updated-at"></span>
+          </div>
+          <div class="editor-mode" role="group" aria-label="文档模式">
+            <button class="mode-button active" type="button" data-mode="edit">编辑</button>
+            <button class="mode-button" type="button" data-mode="preview">预览</button>
+          </div>
+        </header>
+        <div class="editor-content">
+          <label for="documentContent" class="sr-only">文档正文</label>
+          <textarea id="documentContent" maxlength="1000000" placeholder="开始记录..." spellcheck="false" disabled></textarea>
+          <pre id="documentPreview" class="document-preview" hidden></pre>
+          <div id="documentEmpty" class="document-empty"><strong>选择一篇文档</strong><span>或新建一篇开始记录</span></div>
+        </div>
+        <footer class="editor-actions">
+          <span id="saveStatus" class="save-status" role="status"></span>
+          <span id="characterCount" class="document-count">0 字</span>
+          <button id="deleteButton" class="delete-button" type="button" disabled>删除</button>
+          <button id="saveButton" class="save-button" type="button" disabled>保存</button>
+        </footer>
+      </section>
+    </section>
+  </main>
+
+  <script type="module" src="/document.js"></script>
+</body>
+</html>

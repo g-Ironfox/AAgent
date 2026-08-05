@@ -56,3 +56,31 @@ export function submitSystemPrompt(systemPrompt) {
     body: JSON.stringify({ system_prompt: systemPrompt }),
   });
 }
+
+export function fetchDocuments() {
+  return request('/api/documents');
+}
+
+export function fetchDocument(documentId) {
+  return request(`/api/documents/${encodeURIComponent(documentId)}`);
+}
+
+export function createDocument(title, content = '') {
+  return request('/api/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, content }),
+  });
+}
+
+export function updateDocument(documentId, title, content) {
+  return request(`/api/documents/${encodeURIComponent(documentId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, content }),
+  });
+}
+
+export function deleteDocument(documentId) {
+  return request(`/api/documents/${encodeURIComponent(documentId)}`, { method: 'DELETE' });
+}

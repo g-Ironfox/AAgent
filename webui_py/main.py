@@ -26,6 +26,9 @@ MAX_TERMINAL_BODY_BYTES = 16 * 1024
 MAX_SYSTEM_PROMPT_CHARS = 100_000
 MAX_SETTINGS_BODY_BYTES = 512 * 1024
 MAX_EVENT_BODY_BYTES = 256 * 1024
+MAX_DOCUMENT_TITLE_CHARS = 200
+MAX_DOCUMENT_CONTENT_CHARS = 1_000_000
+MAX_DOCUMENT_BODY_BYTES = 1024 * 1024
 
 
 def env(name: str, fallback: str) -> str:
@@ -48,6 +51,7 @@ MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
+MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
 
 redis_client = redis.Redis.from_url(
     f"redis://{REDIS_ADDRESS}/{REDIS_DB}",
@@ -70,6 +74,7 @@ if os.getenv("MONGO_USER"):
     )
 mongo_client = MongoClient(**mongo_kwargs)
 history: Collection = mongo_client[MONGO_DATABASE][MONGO_HISTORY_COLLECTION]
+documents: Collection = mongo_client[MONGO_DATABASE][MONGO_DOCUMENT_COLLECTION]
 
 
 class TerminalRequest(BaseModel):
@@ -104,6 +109,13 @@ class UpdateEventRequest(BaseModel):
     fingerprint: str | None = None
 
 
+class DocumentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=MAX_DOCUMENT_TITLE_CHARS)
+    content: str = Field(default="", max_length=MAX_DOCUMENT_CONTENT_CHARS)
+
+
 app = FastAPI(title="AAgent WebUI")
 
 
@@ -134,6 +146,10 @@ async def terminal_body_guard(request: Request, call_next):
         ("PUT", "/api/events"): (MAX_EVENT_BODY_BYTES, "请求体不能超过 256 KB"),
     }
     body_limit = body_limits.get((request.method, request.url.path))
+    if request.method in {"POST", "PUT"} and (
+        request.url.path == "/api/documents" or request.url.path.startswith("/api/documents/")
+    ):
+        body_limit = (MAX_DOCUMENT_BODY_BYTES, "文档请求体不能超过 1 MB")
     if body_limit:
         content_length = request.headers.get("content-length")
         if content_length:
@@ -150,6 +166,25 @@ def limit_error(limit: int) -> JSONResponse | None:
     if limit < 1 or limit > 300:
         return JSONResponse(status_code=400, content={"error": "limit must be between 1 and 300"})
     return None
+
+
+def document_id(value: str) -> ObjectId | JSONResponse:
+    try:
+        return ObjectId(value)
+    except InvalidId:
+        return JSONResponse(status_code=400, content={"error": "文档 ID 无效"})
+
+
+def document_response(document: dict[str, Any], include_content: bool = True) -> dict[str, Any]:
+    response = {
+        "id": str(document["_id"]),
+        "title": document.get("title", ""),
+        "created_at": document.get("created_at"),
+        "updated_at": document.get("updated_at"),
+    }
+    if include_content:
+        response["content"] = document.get("content", "")
+    return response
 
 
 def event_fingerprint(event: dict[str, Any]) -> str:
@@ -524,6 +559,80 @@ def submit_terminal(payload: TerminalRequest):
     except redis.RedisError:
         return JSONResponse(status_code=503, content={"error": "消息队列暂时不可用"})
     return {"event": event, "queue": QUEUE_NAME}
+
+
+@app.get("/api/documents")
+def list_documents():
+    try:
+        items = documents.find({}, {"title": 1, "created_at": 1, "updated_at": 1}).sort("updated_at", DESCENDING)
+        return {"items": [document_response(item, include_content=False) for item in items]}
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "文档列表暂时不可用"})
+
+
+@app.post("/api/documents", status_code=201)
+def create_document(payload: DocumentRequest):
+    title = payload.title.strip()
+    if not title:
+        return JSONResponse(status_code=400, content={"error": "文档标题不能为空"})
+    now = datetime.now(timezone.utc)
+    document = {"title": title, "content": payload.content, "created_at": now, "updated_at": now}
+    try:
+        result = documents.insert_one(document)
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法创建文档"})
+    document["_id"] = result.inserted_id
+    return document_response(document)
+
+
+@app.get("/api/documents/{document_id_value}")
+def get_document(document_id_value: str):
+    object_id = document_id(document_id_value)
+    if isinstance(object_id, JSONResponse):
+        return object_id
+    try:
+        document = documents.find_one({"_id": object_id})
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "文档暂时不可用"})
+    if document is None:
+        return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
+    return document_response(document)
+
+
+@app.put("/api/documents/{document_id_value}")
+def update_document(document_id_value: str, payload: DocumentRequest):
+    object_id = document_id(document_id_value)
+    if isinstance(object_id, JSONResponse):
+        return object_id
+    title = payload.title.strip()
+    if not title:
+        return JSONResponse(status_code=400, content={"error": "文档标题不能为空"})
+    updated_at = datetime.now(timezone.utc)
+    try:
+        document = documents.find_one_and_update(
+            {"_id": object_id},
+            {"$set": {"title": title, "content": payload.content, "updated_at": updated_at}},
+            return_document=True,
+        )
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法保存文档"})
+    if document is None:
+        return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
+    return document_response(document)
+
+
+@app.delete("/api/documents/{document_id_value}")
+def delete_document(document_id_value: str):
+    object_id = document_id(document_id_value)
+    if isinstance(object_id, JSONResponse):
+        return object_id
+    try:
+        result = documents.delete_one({"_id": object_id})
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法删除文档"})
+    if result.deleted_count == 0:
+        return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
+    return {"deleted": True, "id": document_id_value}
 
 
 static_directory = Path(__file__).parent / "static"
