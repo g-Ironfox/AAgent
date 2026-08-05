@@ -151,21 +151,26 @@ def create_document(title='未命名文档',content=''):
     now = datetime.now(timezone.utc)
     if len(content)>MAX_DOCUMENT_CONTENT_CHARS:
         raise ValueError(f"文档内容过长,最大允许{MAX_DOCUMENT_CONTENT_CHARS}字符")
-    res=documents_collection.insert_one({"title":title,"content":content,"updated_at":now,"created_at":now})
+    res=documents_collection.insert_one({"title":title,"content":content,"pinned":False,"updated_at":now,"created_at":now})
     doc_id=res.inserted_id
     return f"{doc_id} created"
 
 
 def list_documents():
     res=''
-    docs_list=list(documents_collection.find())
-    for i in docs_list:
-        res+=f"  - {i['title']} <id:{str(i['_id'])}>\n "       
+    docs_list=list(documents_collection.find())  
     if not docs_list:
         res="没有文档存在" 
-    return res
+    return docs_list
 
-
+def system_documents_prompt():
+    prompt="index_of_documents:"
+    pinned=''
+    for i in list_documents():
+        prompt+=f"  - {i['title']} <id:{str(i['_id'])}>\n "     
+        if i.get("pinned"):
+            pinned+=f"{document_wrapper(str(i['_id']))}\n"
+    return prompt+pinned
 
 @tool(
     "重命名文档",

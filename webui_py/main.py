@@ -116,6 +116,12 @@ class DocumentRequest(BaseModel):
     content: str = Field(default="", max_length=MAX_DOCUMENT_CONTENT_CHARS)
 
 
+class DocumentPinRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pinned: bool
+
+
 app = FastAPI(title="AAgent WebUI")
 
 
@@ -179,6 +185,7 @@ def document_response(document: dict[str, Any], include_content: bool = True) ->
     response = {
         "id": str(document["_id"]),
         "title": document.get("title", ""),
+        "pinned": bool(document.get("pinned", False)),
         "created_at": document.get("created_at"),
         "updated_at": document.get("updated_at"),
     }
@@ -564,7 +571,7 @@ def submit_terminal(payload: TerminalRequest):
 @app.get("/api/documents")
 def list_documents():
     try:
-        items = documents.find({}, {"title": 1, "created_at": 1, "updated_at": 1}).sort("updated_at", DESCENDING)
+        items = documents.find({}, {"title": 1, "pinned": 1, "created_at": 1, "updated_at": 1}).sort("updated_at", DESCENDING)
         return {"items": [document_response(item, include_content=False) for item in items]}
     except PyMongoError:
         return JSONResponse(status_code=503, content={"error": "文档列表暂时不可用"})
@@ -576,7 +583,7 @@ def create_document(payload: DocumentRequest):
     if not title:
         return JSONResponse(status_code=400, content={"error": "文档标题不能为空"})
     now = datetime.now(timezone.utc)
-    document = {"title": title, "content": payload.content, "created_at": now, "updated_at": now}
+    document = {"title": title, "content": payload.content, "pinned": False, "created_at": now, "updated_at": now}
     try:
         result = documents.insert_one(document)
     except PyMongoError:
@@ -616,6 +623,24 @@ def update_document(document_id_value: str, payload: DocumentRequest):
         )
     except PyMongoError:
         return JSONResponse(status_code=503, content={"error": "暂时无法保存文档"})
+    if document is None:
+        return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
+    return document_response(document)
+
+
+@app.patch("/api/documents/{document_id_value}/pin")
+def update_document_pin(document_id_value: str, payload: DocumentPinRequest):
+    object_id = document_id(document_id_value)
+    if isinstance(object_id, JSONResponse):
+        return object_id
+    try:
+        document = documents.find_one_and_update(
+            {"_id": object_id},
+            {"$set": {"pinned": payload.pinned}},
+            return_document=True,
+        )
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法更新文档钉住状态"})
     if document is None:
         return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
     return document_response(document)

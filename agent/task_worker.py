@@ -19,7 +19,7 @@ from queue_client import (
 )
 from llm import chat_with_deepseek,chat_with_llama_cpp
 from tools.tool import execute_tool
-from tools.documents import list_documents
+from tools.documents import system_documents_prompt
 
 
 TARGET_USER_ID = os.environ["QQ_TARGET_USER_ID"]
@@ -114,7 +114,7 @@ def handle_task(e: dict):
             apply_system_prompt(system_prompt)
     def active(e):
         system_prompt = read_system_prompt().replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
-        system_prompt = system_prompt.replace("{{DOCUMENTS_INDEX}}",list_documents())
+        system_prompt = system_prompt.replace("{{SYSTEM_DOCUMENTS_PROMPT}}",system_documents_prompt())
         skills=[]
 
         h=get_recent_history(limit=16)

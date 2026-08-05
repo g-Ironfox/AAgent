@@ -1,4 +1,4 @@
-import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDocument } from './api.js?v=documents-1';
+import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDocument, updateDocumentPin } from './api.js?v=documents-2';
 
 const state = { documents: [], current: null, saved: null, loading: false, saving: false, mode: 'preview' };
 const elements = {
@@ -6,6 +6,7 @@ const elements = {
   uploadButton: document.querySelector('#uploadButton'),
   uploadInput: document.querySelector('#uploadInput'),
   downloadButton: document.querySelector('#downloadButton'),
+  pinButton: document.querySelector('#pinButton'),
   editButton: document.querySelector('#editButton'),
   cancelButton: document.querySelector('#cancelButton'),
   deleteButton: document.querySelector('#deleteButton'),
@@ -49,6 +50,10 @@ function updateControls() {
   elements.createButton.disabled = busy;
   elements.uploadButton.disabled = busy;
   elements.downloadButton.disabled = !active || busy;
+  elements.pinButton.disabled = !active || busy;
+  elements.pinButton.textContent = state.current?.pinned ? '已钉住' : '钉住';
+  elements.pinButton.classList.toggle('pinned', Boolean(state.current?.pinned));
+  elements.pinButton.setAttribute('aria-pressed', String(Boolean(state.current?.pinned)));
   elements.editButton.textContent = state.mode === 'edit' ? '保存' : '编辑';
   elements.editButton.classList.toggle('save-button', state.mode === 'edit');
   elements.editButton.disabled = !active || busy || (state.mode === 'edit' && (!changed || !elements.title.value.trim()));
@@ -139,6 +144,12 @@ function renderList() {
     button.type = 'button';
     const title = document.createElement('strong');
     title.textContent = documentItem.title;
+    if (documentItem.pinned) {
+      const pin = document.createElement('span');
+      pin.className = 'document-pin';
+      pin.textContent = '钉住';
+      title.append(' ', pin);
+    }
     const updated = document.createElement('small');
     updated.textContent = formatDate(documentItem.updated_at);
     button.append(title, updated);
@@ -156,6 +167,26 @@ function applyDocument(documentItem) {
   elements.updatedAt.textContent = formatDate(documentItem.created_at, '创建于');
   renderList();
   updateControls();
+}
+
+async function togglePin() {
+  if (!state.current || state.loading || state.saving) return;
+  state.saving = true;
+  setStatus('正在更新钉住状态…');
+  updateControls();
+  try {
+    const documentItem = await updateDocumentPin(state.current.id, !state.current.pinned);
+    const index = state.documents.findIndex((item) => item.id === documentItem.id);
+    if (index >= 0) state.documents[index] = documentItem;
+    applyDocument({ ...state.current, ...documentItem });
+    elements.documentState.textContent = '已同步';
+    setStatus(documentItem.pinned ? '文档已钉住' : '已取消钉住', 'success');
+  } catch (error) {
+    setStatus(error.name === 'AbortError' ? '更新超时，请重试' : error.message, 'error');
+  } finally {
+    state.saving = false;
+    updateControls();
+  }
 }
 
 async function loadDocuments() {
@@ -290,6 +321,7 @@ async function removeCurrentDocument() {
 elements.createButton.addEventListener('click', createNewDocument);
 elements.uploadButton.addEventListener('click', () => elements.uploadInput.click());
 elements.downloadButton.addEventListener('click', downloadCurrentDocument);
+elements.pinButton.addEventListener('click', togglePin);
 elements.uploadInput.addEventListener('change', async () => {
   await importMarkdownFiles(elements.uploadInput.files, elements.uploadInput.files.length === 1);
   elements.uploadInput.value = '';

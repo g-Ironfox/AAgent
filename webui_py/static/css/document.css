@@ -12,6 +12,9 @@
 .file-button { height:32px; padding:0 10px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:10px; white-space:nowrap; }
 .file-button:hover { border-color:var(--green); color:var(--green); }
 .file-button:disabled { cursor:not-allowed; opacity:.5; }
+.pin-button { height:32px; padding:0 10px; color:var(--green); border:1px solid var(--green); background:#fff; font-size:10px; white-space:nowrap; }
+.pin-button:hover,.pin-button.pinned { color:#fff; border-color:var(--green); background:var(--green); }
+.pin-button:disabled { cursor:not-allowed; opacity:.5; }
 .create-button { width:32px; height:32px; padding:0; color:#fff; border:1px solid var(--ink); background:var(--ink); font-size:23px; line-height:1; }
 .create-button:hover { border-color:var(--green); background:var(--green); }
 .create-button:disabled { cursor:wait; opacity:.5; }
@@ -20,6 +23,7 @@
 .document-item:hover { background:#f0f5f1; }
 .document-item.active { background:var(--green-soft); box-shadow:inset 3px 0 var(--green); }
 .document-item strong { font-size:12px; overflow-wrap:anywhere; white-space:normal; }
+.document-pin { color:var(--green); font:700 9px Consolas,"Microsoft YaHei",monospace; }
 .document-item small,.list-empty { color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
 .list-empty { margin:20px 16px; }
 .document-editor { min-width:0; min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
