@@ -17,3 +17,7 @@
 ## 好友列表
 - 管理员:3363336986
 - 老汤圆:3521466632
+
+## 文档
+index_of_documents:
+{{DOCUMENTS_INDEX}}

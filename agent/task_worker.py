@@ -5,6 +5,7 @@ import traceback
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import tools.qq
 
 from history_repository import record_history,get_recent_history
 from queue_client import (
@@ -17,8 +18,9 @@ from queue_client import (
     set_worker_status,
 )
 from llm import chat_with_deepseek,chat_with_llama_cpp
-from qqapi import send_group_msg, send_private_msg
-from tool import execute_tool, deepseekBalance, kimiBalance, tavily_search
+from tools.tool import execute_tool
+from tools.documents import list_documents
+
 
 TARGET_USER_ID = os.environ["QQ_TARGET_USER_ID"]
 BOT_ID = os.environ["QQ_BOT_ID"]
@@ -46,7 +48,28 @@ def handle_task(e: dict):
     def qq(e):
         print(f"QQ事件:{e['payload']}")
         if e['payload']['post_type']=="message":
-            user_interface(e['payload'])
+            raw_message = e['payload'].get("raw_message", "")
+            group_id = e['payload'].get("group_id")
+            user_id = e['payload'].get("user_id")
+            if not isinstance(raw_message, str):
+                raw_message = ""
+        
+            if str(user_id) == TARGET_USER_ID and (not group_id or f'[CQ:at,qq={BOT_ID}]' in raw_message):
+                
+                if not raw_message:
+                    print("空消息，跳过:", e['payload'])
+                    return
+        
+                print("收到任务:", e['payload'])
+        
+                e={
+                    "event_type":"active",
+                    "payload":{
+                        "user_id":user_id,
+                        "group_id":group_id,
+                    }
+                }
+                publish_to_queue(AGENT_QUEUE_NAME,e)
     def terminal(e):
         e={
             "event_type":"active",
@@ -91,9 +114,9 @@ def handle_task(e: dict):
             apply_system_prompt(system_prompt)
     def active(e):
         system_prompt = read_system_prompt().replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
+        system_prompt = system_prompt.replace("{{DOCUMENTS_INDEX}}",list_documents())
         skills=[]
-"""        with open('prompt/skills/现实v2.txt','r') as s:
-            skills.append("\n".join(s.readlines()))"""
+
         h=get_recent_history(limit=16)
         messages = [
             {"role": "system", "content": system_prompt},
@@ -101,6 +124,7 @@ def handle_task(e: dict):
         ]
 
         context=[]
+
 
         for i in h[::-1]:
             payload=i.get('payload')
@@ -185,69 +209,6 @@ def handle_task(e: dict):
     handler = handle_map.get(e['event_type'])
     handler(e)
     
-            
-def user_interface(task: dict):
-    res = None
-    raw_message = task.get("raw_message", "")
-    group_id = task.get("group_id")
-    user_id = task.get("user_id")
-    if not isinstance(raw_message, str):
-        raw_message = ""
-
-    if str(user_id) == TARGET_USER_ID and (not group_id or f'[CQ:at,qq={BOT_ID}]' in raw_message):
-        if raw_message.startswith('/'):
-            command_text = raw_message[1:].strip()
-            if not command_text:
-                return
-            command_parts = command_text.split(maxsplit=1)
-            cmd = command_parts[0]
-            if cmd == 'dsB':
-                balance = deepseekBalance()
-                res = f"{balance}rmb" if balance is not None else "DeepSeek 余额查询失败"
-            elif cmd == 'kmB':
-                balance = kimiBalance()
-                res = f"{balance}rmb" if balance is not None else "Kimi 余额查询失败"
-            elif cmd == 'B':
-                kimi_balance = kimiBalance()
-                deepseek_balance = deepseekBalance()
-                res = f'''余额
-    kimi{kimi_balance if kimi_balance is not None else "查询失败"}rmb
-    deepseek{deepseek_balance if deepseek_balance is not None else "查询失败"}rmb
-    '''
-            elif cmd == "search":
-                query = command_parts[1].strip() if len(command_parts) > 1 else ""
-                if not query:
-                    return
-                print(query)
-                search_results = tavily_search(query)
-                if search_results:
-                    res = search_results[0].get('title', '')
-                else:
-                    res = "搜索无结果"
-            # 将命令结果回复给用户（群消息回群，私聊回私聊）
-            if res:
-                if group_id:
-                    send_group_msg(group_id, res)
-                else:
-                    send_private_msg(user_id, res)
-            else:
-                print("命令无结果:", raw_message)
-        else:
-            if not raw_message:
-                print("空消息，跳过:", task)
-                return
-
-            print("收到任务:", task)
-
-            e={
-                "event_type":"active",
-                "payload":{
-                    "user_id":user_id,
-                    "group_id":group_id,
-                }
-            }
-            publish_to_queue(AGENT_QUEUE_NAME,e)
-
 
 def main():
     print("Agent worker started...")

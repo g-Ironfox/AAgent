@@ -2,7 +2,7 @@
 import os
 
 import requests
-from tool import tools
+from tools.tool import tools
 
 DEEPSEEK_BASE_URL = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
 DEEPSEEK_API_KEY = os.environ["DEEPSEEK_API_KEY"]
