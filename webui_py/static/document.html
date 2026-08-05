@@ -30,7 +30,11 @@
       <aside class="document-sidebar" aria-label="文档列表">
         <header class="sidebar-heading">
           <div><p>DOCUMENTS</p><h1>文档库</h1></div>
-          <button id="createButton" class="create-button" type="button" title="新建文档" aria-label="新建文档">+</button>
+          <div class="library-actions">
+            <button id="uploadButton" class="file-button" type="button">上传</button>
+            <button id="createButton" class="create-button" type="button" title="新建文档" aria-label="新建文档">+</button>
+          </div>
+          <input id="uploadInput" class="sr-only" type="file" accept=".md,.txt,text/markdown,text/plain" multiple>
         </header>
         <div id="documentList" class="document-list" aria-live="polite"></div>
       </aside>
@@ -42,7 +46,10 @@
             <input id="documentTitle" class="document-title" maxlength="200" placeholder="未命名文档" disabled>
             <span id="updatedAt" class="updated-at"></span>
           </div>
-          <button id="deleteButton" class="delete-button" type="button" disabled>删除</button>
+          <div class="document-actions">
+            <button id="downloadButton" class="file-button" type="button" disabled>下载 .md</button>
+            <button id="deleteButton" class="delete-button" type="button" disabled>删除</button>
+          </div>
         </header>
         <div class="editor-content">
           <label for="documentContent" class="sr-only">文档正文</label>
@@ -60,6 +67,6 @@
     </section>
   </main>
 
-  <script type="module" src="/document.js"></script>
+  <script type="module" src="/document.js?v=documents-2"></script>
 </body>
 </html>

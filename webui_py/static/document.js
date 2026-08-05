@@ -3,6 +3,9 @@ import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDo
 const state = { documents: [], current: null, saved: null, loading: false, saving: false, mode: 'preview' };
 const elements = {
   createButton: document.querySelector('#createButton'),
+  uploadButton: document.querySelector('#uploadButton'),
+  uploadInput: document.querySelector('#uploadInput'),
+  downloadButton: document.querySelector('#downloadButton'),
   editButton: document.querySelector('#editButton'),
   cancelButton: document.querySelector('#cancelButton'),
   deleteButton: document.querySelector('#deleteButton'),
@@ -44,6 +47,8 @@ function updateControls() {
   elements.title.disabled = !active || busy || state.mode !== 'edit';
   elements.content.disabled = !active || busy || state.mode !== 'edit';
   elements.createButton.disabled = busy;
+  elements.uploadButton.disabled = busy;
+  elements.downloadButton.disabled = !active || busy;
   elements.editButton.textContent = state.mode === 'edit' ? '保存' : '编辑';
   elements.editButton.classList.toggle('save-button', state.mode === 'edit');
   elements.editButton.disabled = !active || busy || (state.mode === 'edit' && (!changed || !elements.title.value.trim()));
@@ -54,6 +59,69 @@ function updateControls() {
   elements.empty.hidden = active;
   elements.preview.hidden = !active || state.mode !== 'preview';
   elements.content.hidden = !active || state.mode !== 'edit';
+}
+
+function markdownTitle(fileName) {
+  const title = fileName.replace(/\.(md|txt)$/i, '').trim() || '未命名文档';
+  return [...title].slice(0, 200).join('');
+}
+
+function validateMarkdownFile(file) {
+  if (!/\.(md|txt)$/i.test(file.name)) throw new Error(`“${file.name}”不是 .md 或 .txt 文件`);
+}
+
+async function importMarkdownFiles(fileList, selectImported) {
+  const files = [...fileList];
+  if (!files.length || state.loading || state.saving) return;
+  if (selectImported && isChanged() && !window.confirm('当前修改尚未保存，仍要上传并打开新文档吗？')) return;
+
+  state.saving = true;
+  setStatus(files.length === 1 ? '正在上传…' : `正在导入 0/${files.length}…`);
+  updateControls();
+  const imported = [];
+  const failures = [];
+  for (const [index, file] of files.entries()) {
+    try {
+      validateMarkdownFile(file);
+      const content = await file.text();
+      if ([...content].length > 1_000_000) throw new Error('正文超过 100 万字符');
+      imported.push(await createDocument(markdownTitle(file.name), content));
+    } catch (error) {
+      failures.push(`${file.name}: ${error.message}`);
+    }
+    if (files.length > 1) setStatus(`正在导入 ${index + 1}/${files.length}…`);
+  }
+
+  state.documents.unshift(...imported.reverse());
+  if (selectImported && imported.length) {
+    state.mode = 'preview';
+    applyDocument(imported[imported.length - 1]);
+  } else {
+    renderList();
+  }
+  state.saving = false;
+  elements.documentState.textContent = failures.length ? '部分同步' : '已同步';
+  if (failures.length) {
+    setStatus(`已导入 ${imported.length} 个，失败 ${failures.length} 个：${failures.join('；')}`, 'error');
+  } else {
+    setStatus(files.length === 1 ? '上传完成' : `已导入 ${imported.length} 个文档`, 'success');
+  }
+  updateControls();
+}
+
+function downloadCurrentDocument() {
+  if (!state.current || state.loading || state.saving) return;
+  const content = state.mode === 'edit' ? elements.content.value : state.current.content;
+  const safeTitle = (elements.title.value.trim() || state.current.title || '未命名文档')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    .replace(/[. ]+$/g, '') || '未命名文档';
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${safeTitle}.md`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus('下载已开始', 'success');
 }
 
 function renderList() {
@@ -81,9 +149,9 @@ function renderList() {
 
 function applyDocument(documentItem) {
   state.current = documentItem;
-  state.saved = { title: documentItem.title, content: documentItem.content };
   elements.title.value = documentItem.title;
   elements.content.value = documentItem.content;
+  state.saved = currentInput();
   elements.preview.textContent = documentItem.content;
   elements.updatedAt.textContent = formatDate(documentItem.created_at, '创建于');
   renderList();
@@ -220,6 +288,12 @@ async function removeCurrentDocument() {
 }
 
 elements.createButton.addEventListener('click', createNewDocument);
+elements.uploadButton.addEventListener('click', () => elements.uploadInput.click());
+elements.downloadButton.addEventListener('click', downloadCurrentDocument);
+elements.uploadInput.addEventListener('change', async () => {
+  await importMarkdownFiles(elements.uploadInput.files, elements.uploadInput.files.length === 1);
+  elements.uploadInput.value = '';
+});
 elements.editButton.addEventListener('click', () => {
   if (state.mode === 'edit') saveCurrentDocument();
   else startEditing();

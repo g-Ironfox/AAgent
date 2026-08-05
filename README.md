@@ -14,7 +14,7 @@ AAgent 是一个持续存在、统一认知并统一决策的 Agent 运行时,�
 完整设计依据见[设计哲学](docs/00-设计哲学.md),未实现能力见[路线图与创新](docs/05-路线图与创新.md)。
 
 ## 快速启动
-
+0. QQ需配置NapNeko/NapCatQQ!
 1. 安装 Docker Desktop 与 Docker Compose;
 2. 复制环境变量模板并填写所有 `replace-me`;
 3. 构建并启动服务;
