@@ -22,10 +22,10 @@ function setStatus(message, type = '') {
   elements.saveStatus.textContent = message;
 }
 
-function formatDate(value) {
+function formatDate(value, label = '更新于') {
   if (!value) return '';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : `更新于 ${date.toLocaleString('zh-CN', { hour12: false })}`;
+  return Number.isNaN(date.getTime()) ? '' : `${label} ${date.toLocaleString('zh-CN', { hour12: false })}`;
 }
 
 function currentInput() {
@@ -72,7 +72,7 @@ function renderList() {
     const title = document.createElement('strong');
     title.textContent = documentItem.title;
     const updated = document.createElement('small');
-    updated.textContent = formatDate(documentItem.updated_at).replace('更新于 ', '');
+    updated.textContent = formatDate(documentItem.updated_at);
     button.append(title, updated);
     button.addEventListener('click', () => selectDocument(documentItem.id));
     elements.documentList.append(button);
@@ -85,7 +85,7 @@ function applyDocument(documentItem) {
   elements.title.value = documentItem.title;
   elements.content.value = documentItem.content;
   elements.preview.textContent = documentItem.content;
-  elements.updatedAt.textContent = formatDate(documentItem.updated_at);
+  elements.updatedAt.textContent = formatDate(documentItem.created_at, '创建于');
   renderList();
   updateControls();
 }
