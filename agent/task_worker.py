@@ -92,7 +92,7 @@ def handle_task(e: dict):
     def active(e):
         system_prompt = read_system_prompt().replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
         skills=[]
-        with open('prompt/skills/现实.txt','r') as s:
+        with open('prompt/skills/现实v2.txt','r') as s:
             skills.append("\n".join(s.readlines()))
         h=get_recent_history(limit=16)
         messages = [
