@@ -1,7 +1,8 @@
 import json
 import os
 from itertools import cycle
-from qqapi import send_group_msg, send_private_msg
+from qqapi import send_group_msg as qq_send_group_msg
+from qqapi import send_private_msg as qq_send_private_msg
 
 import requests
 
@@ -26,6 +27,31 @@ if not TAVILY_API_KEYS:
 
 TAVILY_API_KEY_CYCLE = cycle(TAVILY_API_KEYS)
 
+tools = []
+tool_handlers = {}
+
+
+def tool(description, parameters=None, name=None):
+    def register(function):
+        tool_name = name or function.__name__
+        if tool_name in tool_handlers:
+            raise ValueError(f"工具已注册: {tool_name}")
+
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": tool_name,
+                "description": description,
+                "parameters": parameters or {"type": "object", "properties": {}}
+            }
+        })
+        tool_handlers[tool_name] = function
+        return function
+
+    return register
+
+
+@tool("查询 DeepSeek API 账户余额", name="get_deepseek_balance")
 def deepseekBalance():
     url = f"{DEEPSEEK_BASE_URL}/v1/user/balance"
     headers = {
@@ -38,6 +64,7 @@ def deepseekBalance():
         return response.json()['balance_infos'][0]['total_balance']
     return None
 
+@tool("查询 Kimi API 账户余额", name="get_kimi_balance")
 def kimiBalance():
     url = f"{KIMI_BASE_URL}/v1/users/me/balance"
     headers = {
@@ -51,6 +78,16 @@ def kimiBalance():
     return None
 
 
+@tool(
+    "使用 Tavily 搜索引擎进行网络搜索，适合获取实时或最新信息",
+    {
+        "type": "object",
+        "properties": {
+            "keyword": {"type": "string", "description": "搜索关键词"}
+        },
+        "required": ["keyword"]
+    }
+)
 def tavily_search(keyword):
     url = "https://api.tavily.com/search"
     payload = {
@@ -92,102 +129,41 @@ def bocha_search(keyword):
 
     print(response.json())
 
-# ========== 工具定义（Tool Schemas） ==========
-tools = [
+@tool(
+    "发送群消息",
     {
-        "type": "function",
-        "function": {
-            "name": "get_deepseek_balance",
-            "description": "查询 DeepSeek API 账户余额",
-            "parameters": {"type": "object", "properties": {}}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_kimi_balance",
-            "description": "查询 Kimi API 账户余额",
-            "parameters": {"type": "object", "properties": {}}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "send_group_msg",
-            "description": "发送群消息",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "group_id": {
-                        "type": "string",
-                        "description": "群号"
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "消息内容 `[CQ:at,qq=QQ号]`可用于艾特用户"
-                    },
-                },
-                "required": ["group_id","message"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "send_private_msg",
-            "description": "发送私聊消息",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "QQ号"
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "消息内容 `[CQ:at,qq=QQ号]`可用于艾特用户"
-                    },
-                },
-                "required": ["user_id","message"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "tavily_search",
-            "description": "使用 Tavily 搜索引擎进行网络搜索，适合获取实时或最新信息",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "keyword": {
-                        "type": "string",
-                        "description": "搜索关键词"
-                    }
-                },
-                "required": ["keyword"]
-            }
-        }
+        "type": "object",
+        "properties": {
+            "group_id": {"type": "string", "description": "群号"},
+            "message": {"type": "string", "description": "消息内容 `[CQ:at,qq=QQ号]`可用于艾特用户"}
+        },
+        "required": ["group_id", "message"]
     }
-]
+)
+def send_group_msg(group_id, message):
+    return qq_send_group_msg(group_id, message)
 
 
-
-# ========== 工具执行器 ==========
+@tool(
+    "发送私聊消息",
+    {
+        "type": "object",
+        "properties": {
+            "user_id": {"type": "string", "description": "QQ号"},
+            "message": {"type": "string", "description": "消息内容 `[CQ:at,qq=QQ号]`可用于艾特用户"}
+        },
+        "required": ["user_id", "message"]
+    }
+)
+def send_private_msg(user_id, message):
+    return qq_send_private_msg(user_id, message)
 
 def execute_tool(id,tool,args):
-    if tool == "get_deepseek_balance":
-        result = deepseekBalance()
-    elif tool == "get_kimi_balance":
-        result = kimiBalance()
-    elif tool == "tavily_search":
-        result = tavily_search(args.get("keyword", ""))
-    elif tool =="send_group_msg":
-        result = send_group_msg(args.get("group_id", ""),args.get("message", ""))
-    elif tool =="send_private_msg":
-        result = send_private_msg(args.get("user_id", ""),args.get("message", ""))
-    else:
-        result = f"未知工具: {tool}"
+    handler = tool_handlers.get(tool)
+    if handler is None:
+        return f"未知工具: {tool}"
+
+    result = handler(**args)
 
     # 将结果转为字符串（如果是列表等复杂类型，可做适当格式化）
     if isinstance(result, (list, dict)):
