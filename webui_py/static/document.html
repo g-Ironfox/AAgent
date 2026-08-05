@@ -42,10 +42,7 @@
             <input id="documentTitle" class="document-title" maxlength="200" placeholder="未命名文档" disabled>
             <span id="updatedAt" class="updated-at"></span>
           </div>
-          <div class="editor-mode" role="group" aria-label="文档模式">
-            <button class="mode-button active" type="button" data-mode="preview">预览</button>
-            <button class="mode-button" type="button" data-mode="edit">编辑</button>
-          </div>
+          <button id="deleteButton" class="delete-button" type="button" disabled>删除</button>
         </header>
         <div class="editor-content">
           <label for="documentContent" class="sr-only">文档正文</label>
@@ -56,9 +53,8 @@
         <footer class="editor-actions">
           <span id="saveStatus" class="save-status" role="status"></span>
           <span id="characterCount" class="document-count">0 字</span>
-          <button id="renameButton" class="secondary-button" type="button" disabled>重命名</button>
-          <button id="deleteButton" class="delete-button" type="button" disabled>删除</button>
-          <button id="saveButton" class="save-button" type="button" disabled>保存</button>
+          <button id="cancelButton" class="cancel-button" type="button" disabled hidden>取消</button>
+          <button id="editButton" class="edit-button" type="button" disabled>编辑</button>
         </footer>
       </section>
     </section>

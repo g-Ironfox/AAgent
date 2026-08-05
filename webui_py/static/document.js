@@ -3,9 +3,9 @@ import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDo
 const state = { documents: [], current: null, saved: null, loading: false, saving: false, mode: 'preview' };
 const elements = {
   createButton: document.querySelector('#createButton'),
-  renameButton: document.querySelector('#renameButton'),
+  editButton: document.querySelector('#editButton'),
+  cancelButton: document.querySelector('#cancelButton'),
   deleteButton: document.querySelector('#deleteButton'),
-  saveButton: document.querySelector('#saveButton'),
   documentList: document.querySelector('#documentList'),
   title: document.querySelector('#documentTitle'),
   content: document.querySelector('#documentContent'),
@@ -15,7 +15,6 @@ const elements = {
   saveStatus: document.querySelector('#saveStatus'),
   characterCount: document.querySelector('#characterCount'),
   updatedAt: document.querySelector('#updatedAt'),
-  modeButtons: document.querySelectorAll('.mode-button'),
 };
 
 function setStatus(message, type = '') {
@@ -45,17 +44,16 @@ function updateControls() {
   elements.title.disabled = !active || busy || state.mode !== 'edit';
   elements.content.disabled = !active || busy || state.mode !== 'edit';
   elements.createButton.disabled = busy;
-  elements.renameButton.disabled = !active || busy;
+  elements.editButton.textContent = state.mode === 'edit' ? '保存' : '编辑';
+  elements.editButton.classList.toggle('save-button', state.mode === 'edit');
+  elements.editButton.disabled = !active || busy || (state.mode === 'edit' && (!changed || !elements.title.value.trim()));
+  elements.cancelButton.disabled = !active || busy || state.mode !== 'edit';
+  elements.cancelButton.hidden = state.mode !== 'edit';
   elements.deleteButton.disabled = !active || busy;
-  elements.saveButton.disabled = !active || busy || !changed || !elements.title.value.trim();
   elements.characterCount.textContent = `${[...elements.content.value].length} 字`;
   elements.empty.hidden = active;
   elements.preview.hidden = !active || state.mode !== 'preview';
   elements.content.hidden = !active || state.mode !== 'edit';
-  elements.modeButtons.forEach((button) => {
-    button.classList.toggle('active', button.dataset.mode === state.mode);
-    button.disabled = !active || busy;
-  });
 }
 
 function renderList() {
@@ -117,6 +115,7 @@ async function selectDocument(documentId) {
   setStatus('');
   updateControls();
   try {
+    state.mode = 'preview';
     applyDocument(await fetchDocument(documentId));
     elements.documentState.textContent = '已同步';
   } catch (error) {
@@ -133,6 +132,7 @@ async function createNewDocument() {
   state.saving = true;
   setStatus('正在新建…');
   updateControls();
+  let created = false;
   try {
     const documentItem = await createDocument('未命名文档');
     state.documents.unshift(documentItem);
@@ -140,23 +140,17 @@ async function createNewDocument() {
     applyDocument(documentItem);
     elements.documentState.textContent = '已同步';
     setStatus('已创建', 'success');
-    elements.title.focus();
-    elements.title.select();
+    created = true;
   } catch (error) {
     setStatus(error.name === 'AbortError' ? '新建超时，请重试' : error.message, 'error');
   } finally {
     state.saving = false;
     updateControls();
+    if (created) {
+      elements.title.focus();
+      elements.title.select();
+    }
   }
-}
-
-function renameCurrentDocument() {
-  if (!state.current || state.loading || state.saving) return;
-  state.mode = 'edit';
-  updateControls();
-  setStatus('修改标题后点击「保存」');
-  elements.title.focus();
-  elements.title.select();
 }
 
 async function saveCurrentDocument() {
@@ -170,6 +164,7 @@ async function saveCurrentDocument() {
     const index = state.documents.findIndex((item) => item.id === documentItem.id);
     if (index >= 0) state.documents[index] = documentItem;
     else state.documents.unshift(documentItem);
+    state.mode = 'preview';
     applyDocument(documentItem);
     elements.documentState.textContent = '已同步';
     setStatus('已保存', 'success');
@@ -179,6 +174,23 @@ async function saveCurrentDocument() {
     state.saving = false;
     updateControls();
   }
+}
+
+function startEditing() {
+  if (!state.current || state.loading || state.saving) return;
+  state.mode = 'edit';
+  setStatus('');
+  updateControls();
+}
+
+function cancelEditing() {
+  if (!state.current || state.loading || state.saving || state.mode !== 'edit') return;
+  elements.title.value = state.saved.title;
+  elements.content.value = state.saved.content;
+  elements.preview.textContent = state.saved.content;
+  state.mode = 'preview';
+  setStatus('');
+  updateControls();
 }
 
 async function removeCurrentDocument() {
@@ -191,6 +203,7 @@ async function removeCurrentDocument() {
     state.documents = state.documents.filter((item) => item.id !== state.current.id);
     state.current = null;
     state.saved = null;
+    state.mode = 'preview';
     elements.title.value = '';
     elements.content.value = '';
     elements.preview.textContent = '';
@@ -207,17 +220,13 @@ async function removeCurrentDocument() {
 }
 
 elements.createButton.addEventListener('click', createNewDocument);
-elements.renameButton.addEventListener('click', renameCurrentDocument);
-elements.saveButton.addEventListener('click', saveCurrentDocument);
+elements.editButton.addEventListener('click', () => {
+  if (state.mode === 'edit') saveCurrentDocument();
+  else startEditing();
+});
+elements.cancelButton.addEventListener('click', cancelEditing);
 elements.deleteButton.addEventListener('click', removeCurrentDocument);
 elements.title.addEventListener('input', () => { setStatus(''); updateControls(); });
-elements.title.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && !event.isComposing) {
-    event.preventDefault();
-    if (isChanged()) saveCurrentDocument();
-  }
-});
 elements.content.addEventListener('input', () => { elements.preview.textContent = elements.content.value; setStatus(''); updateControls(); });
-elements.modeButtons.forEach((button) => button.addEventListener('click', () => { state.mode = button.dataset.mode; updateControls(); }));
 
 loadDocuments();

@@ -22,14 +22,17 @@
 .editor-heading { background:#fff; }
 .editor-title-wrap { min-width:0; display:grid; gap:5px; }
 .document-title { width:100%; min-width:0; padding:1px 0; color:var(--ink); border:0; background:transparent; font:700 22px Georgia,"Microsoft YaHei",serif; }
+.document-title:not(:disabled) { border-bottom:2px solid var(--green); }
 .document-title:focus { outline:0; border-bottom:2px solid var(--green); }
 .document-title:disabled { color:var(--ink); }
 .updated-at { color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
-.editor-mode { height:34px; display:flex; border:1px solid var(--line); }
-.mode-button { min-width:48px; padding:0 10px; color:var(--muted); border:0; border-left:1px solid var(--line); background:#f5f7f4; font-size:11px; }
-.mode-button:first-child { border-left:0; }
-.mode-button.active { color:#fff; background:var(--ink); }
-.mode-button:disabled { cursor:not-allowed; opacity:.55; }
+.edit-button,.cancel-button,.delete-button { height:34px; padding:0 16px; font-size:11px; }
+.edit-button,.cancel-button { color:var(--ink); border:1px solid var(--line); background:#fafbf9; }
+.edit-button:hover,.cancel-button:hover { border-color:var(--ink); background:#fff; }
+.edit-button.save-button { color:#fff; border-color:var(--ink); background:var(--ink); }
+.edit-button.save-button:hover { border-color:var(--green); background:var(--green); }
+.edit-button:disabled,.edit-button:disabled:hover,.cancel-button:disabled { cursor:not-allowed; opacity:.5; }
+.edit-button.save-button:disabled,.edit-button.save-button:disabled:hover { border-color:var(--ink); background:var(--ink); }
 .editor-content { position:relative; min-height:0; background-color:#fafbf9; }
 .editor-content textarea,.document-preview { width:100%; height:100%; margin:0; padding:24px; color:var(--ink); border:0; background:transparent; font:13px/28px Consolas,"Microsoft YaHei",monospace; tab-size:2; }
 .editor-content textarea { height:100%; resize:none; overflow:auto; background-image:linear-gradient(rgba(23,32,29,.035) 1px,transparent 1px); background-size:100% 28px; background-attachment:local; background-origin:content-box; }
@@ -44,13 +47,8 @@
 .save-status.success { color:var(--green); }
 .save-status.error { color:var(--red); }
 .document-count { color:var(--muted); font:10px Consolas,monospace; }
-.secondary-button,.delete-button,.save-button { height:34px; padding:0 16px; font-size:11px; }
-.secondary-button { color:var(--ink); border:1px solid var(--line); background:#fafbf9; }
-.secondary-button:hover { border-color:var(--ink); background:#fff; }
 .delete-button { color:var(--red); border:1px solid #dfb8b4; background:#fff; }
 .delete-button:hover { color:#fff; border-color:var(--red); background:var(--red); }
-.save-button { color:#fff; border:1px solid var(--ink); background:var(--ink); }
-.save-button:hover { border-color:var(--green); background:var(--green); }
-.secondary-button:disabled,.delete-button:disabled,.save-button:disabled { cursor:not-allowed; opacity:.5; }
+.delete-button:disabled { cursor:not-allowed; opacity:.5; }
 @media (max-width:1000px) { .document-workspace { grid-template-columns:230px minmax(0,1fr); } }
 @media (max-width:700px) { .document-main { width:100%; padding:0; } .document-state { min-width:0; padding-left:10px; } .document-state span { display:none; } .document-workspace { grid-template-columns:1fr; overflow:auto; border-width:0; } .document-sidebar { min-height:175px; max-height:230px; border-right:0; border-bottom:1px solid var(--line); } .sidebar-heading,.editor-heading { min-height:66px; padding:11px 14px; } .sidebar-heading h1 { font-size:20px; } .document-title { font-size:19px; } .editor-content { min-height:300px; } .editor-content textarea,.document-preview { padding:18px 14px; } .editor-actions { padding:11px 14px; } }
