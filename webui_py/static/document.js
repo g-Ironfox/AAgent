@@ -3,6 +3,7 @@ import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDo
 const state = { documents: [], current: null, saved: null, loading: false, saving: false, mode: 'preview' };
 const elements = {
   createButton: document.querySelector('#createButton'),
+  renameButton: document.querySelector('#renameButton'),
   deleteButton: document.querySelector('#deleteButton'),
   saveButton: document.querySelector('#saveButton'),
   documentList: document.querySelector('#documentList'),
@@ -44,6 +45,7 @@ function updateControls() {
   elements.title.disabled = !active || busy || state.mode !== 'edit';
   elements.content.disabled = !active || busy || state.mode !== 'edit';
   elements.createButton.disabled = busy;
+  elements.renameButton.disabled = !active || busy;
   elements.deleteButton.disabled = !active || busy;
   elements.saveButton.disabled = !active || busy || !changed || !elements.title.value.trim();
   elements.characterCount.textContent = `${[...elements.content.value].length} 字`;
@@ -148,6 +150,15 @@ async function createNewDocument() {
   }
 }
 
+function renameCurrentDocument() {
+  if (!state.current || state.loading || state.saving) return;
+  state.mode = 'edit';
+  updateControls();
+  setStatus('修改标题后点击「保存」');
+  elements.title.focus();
+  elements.title.select();
+}
+
 async function saveCurrentDocument() {
   const input = currentInput();
   if (!state.current || !input.title || state.saving) return;
@@ -196,9 +207,16 @@ async function removeCurrentDocument() {
 }
 
 elements.createButton.addEventListener('click', createNewDocument);
+elements.renameButton.addEventListener('click', renameCurrentDocument);
 elements.saveButton.addEventListener('click', saveCurrentDocument);
 elements.deleteButton.addEventListener('click', removeCurrentDocument);
 elements.title.addEventListener('input', () => { setStatus(''); updateControls(); });
+elements.title.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.isComposing) {
+    event.preventDefault();
+    if (isChanged()) saveCurrentDocument();
+  }
+});
 elements.content.addEventListener('input', () => { elements.preview.textContent = elements.content.value; setStatus(''); updateControls(); });
 elements.modeButtons.forEach((button) => button.addEventListener('click', () => { state.mode = button.dataset.mode; updateControls(); }));
 

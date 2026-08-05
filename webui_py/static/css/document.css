@@ -44,11 +44,13 @@
 .save-status.success { color:var(--green); }
 .save-status.error { color:var(--red); }
 .document-count { color:var(--muted); font:10px Consolas,monospace; }
-.delete-button,.save-button { height:34px; padding:0 16px; font-size:11px; }
+.secondary-button,.delete-button,.save-button { height:34px; padding:0 16px; font-size:11px; }
+.secondary-button { color:var(--ink); border:1px solid var(--line); background:#fafbf9; }
+.secondary-button:hover { border-color:var(--ink); background:#fff; }
 .delete-button { color:var(--red); border:1px solid #dfb8b4; background:#fff; }
 .delete-button:hover { color:#fff; border-color:var(--red); background:var(--red); }
 .save-button { color:#fff; border:1px solid var(--ink); background:var(--ink); }
 .save-button:hover { border-color:var(--green); background:var(--green); }
-.delete-button:disabled,.save-button:disabled { cursor:not-allowed; opacity:.5; }
+.secondary-button:disabled,.delete-button:disabled,.save-button:disabled { cursor:not-allowed; opacity:.5; }
 @media (max-width:1000px) { .document-workspace { grid-template-columns:230px minmax(0,1fr); } }
 @media (max-width:700px) { .document-main { width:100%; padding:0; } .document-state { min-width:0; padding-left:10px; } .document-state span { display:none; } .document-workspace { grid-template-columns:1fr; overflow:auto; border-width:0; } .document-sidebar { min-height:175px; max-height:230px; border-right:0; border-bottom:1px solid var(--line); } .sidebar-heading,.editor-heading { min-height:66px; padding:11px 14px; } .sidebar-heading h1 { font-size:20px; } .document-title { font-size:19px; } .editor-content { min-height:300px; } .editor-content textarea,.document-preview { padding:18px 14px; } .editor-actions { padding:11px 14px; } }
