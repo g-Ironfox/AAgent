@@ -636,6 +636,15 @@ def delete_document(document_id_value: str):
 
 
 static_directory = Path(__file__).parent / "static"
-app.mount("/", StaticFiles(directory=static_directory, html=True), name="static")
+
+
+class RevalidatingStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: dict[str, Any]):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", RevalidatingStaticFiles(directory=static_directory, html=True), name="static")
 
 logger.info("event console configured address=%s queue=%s", REDIS_ADDRESS, QUEUE_NAME)

@@ -1,6 +1,6 @@
-import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDocument } from './api.js';
+import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDocument } from './api.js?v=documents-1';
 
-const state = { documents: [], current: null, saved: null, loading: false, saving: false, mode: 'edit' };
+const state = { documents: [], current: null, saved: null, loading: false, saving: false, mode: 'preview' };
 const elements = {
   createButton: document.querySelector('#createButton'),
   deleteButton: document.querySelector('#deleteButton'),
@@ -134,6 +134,7 @@ async function createNewDocument() {
   try {
     const documentItem = await createDocument('未命名文档');
     state.documents.unshift(documentItem);
+    state.mode = 'edit';
     applyDocument(documentItem);
     elements.documentState.textContent = '已同步';
     setStatus('已创建', 'success');
