@@ -46,7 +46,7 @@ REDIS_ADDRESS = redis_address()
 REDIS_DB = int(env("REDIS_DB", "0"))
 QUEUE_NAME = env("AGENT_QUEUE_NAME", "agent_tasks")
 WORKER_STATUS_KEY = env("AGENT_WORKER_STATUS_KEY", "aagent:worker:status")
-SYSTEM_PROMPT_KEY = env("AGENT_SYSTEM_PROMPT_KEY", "aagent:settings:system_prompt")
+SETTINGS_KEY = env("AGENT_SETTINGS_KEY", "aagent:settings")
 MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
@@ -495,12 +495,18 @@ def update_event(payload: UpdateEventRequest):
 @app.get("/api/settings")
 def settings():
     try:
-        system_prompt = redis_client.get(SYSTEM_PROMPT_KEY)
+        raw = redis_client.get(SETTINGS_KEY)
     except redis.RedisError:
         return JSONResponse(status_code=503, content={"error": "设置暂时不可用"})
-    if system_prompt is None:
+    if raw is None:
         return JSONResponse(status_code=503, content={"error": "Agent 尚未初始化设置"})
-    return {"system_prompt": system_prompt}
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("system_prompt"), str):
+        return JSONResponse(status_code=503, content={"error": "Agent 尚未初始化设置"})
+    return data
 
 
 @app.post("/api/settings/system-prompt", status_code=202)

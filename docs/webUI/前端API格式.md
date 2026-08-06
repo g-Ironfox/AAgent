@@ -148,10 +148,10 @@
 
 ## 5. GET /api/settings
 
-读取 **Agent 已应用** 的设置值。WebUI 不读取 Agent 容器文件，也不直接写该 Redis Key。
+读取 **Agent 已应用** 的设置值。设置以 JSON 对象存在 Redis `aagent:settings`(可配置 `AGENT_SETTINGS_KEY`),该接口把**整个设置对象原样返回**,后续新增字段直接追加即可;WebUI 不读取 Agent 容器文件,也不直接写该 Key。
 
-- `200`：`{"system_prompt": "..."}`；
-- `503`：Redis 不可用时返回 `{"error": "设置暂时不可用"}`；Agent 尚未初始化 Key 时返回 `{"error": "Agent 尚未初始化设置"}`。
+- `200`：`{"system_prompt": "...", ...}`(当前仅含 `system_prompt`);
+- `503`：Redis 不可用时返回 `{"error": "设置暂时不可用"}`；Agent 尚未初始化设置时返回 `{"error": "Agent 尚未初始化设置"}`。
 
 ## 6. POST /api/settings/system-prompt
 
@@ -160,7 +160,7 @@
 - 请求体：`{"system_prompt": "..."}`；
 - `system_prompt` 去除首尾空白后必须非空，原值最长 100000 字符；请求体上限 512 KB；
 - `202`：返回 `setting` 事件及 `queue`，仅表示事件已 `RPUSH` 优先入队；
-- Worker 原子覆盖 `prompt/system.txt` 成功后才更新 Redis 当前值；前端轮询 `GET /api/settings`，目标值回显后才报告已应用；
+- Worker 原子写入 Redis 设置(`aagent:settings` 的 `system_prompt` 字段)后,前端轮询 `GET /api/settings`，目标值回显后才报告已应用；
 - `400`：空值、超长或请求体过大；`503`：队列不可用。
 
 ## 7. 文档管理 API
@@ -174,22 +174,25 @@
   "_id": "ObjectId",
   "title": "文档标题",
   "content": "正文",
+  "pinned": false,
   "created_at": "UTC datetime",
   "updated_at": "UTC datetime"
 }
 ```
+
+`pinned` 为布尔钉住标记(默认 `false`);旧文档可能缺失该字段,响应层按 `false` 兼容。
 
 ### 7.1 GET /api/documents
 
 文档列表，仅返回左侧列表所需的元数据、不含正文，按 `updated_at` 降序：
 
 ```json
-{ "items": [ { "id": "...", "title": "...", "created_at": "...", "updated_at": "..." } ] }
+{ "items": [ { "id": "...", "title": "...", "pinned": false, "created_at": "...", "updated_at": "..." } ] }
 ```
 
 ### 7.2 POST /api/documents
 
-创建文档。请求体 `{"title": "...", "content": "..."}`；标题去除首尾空白后必须非空、最长 200 字符，正文最长 1000000 字符，请求体上限 1 MB；`201` 返回完整文档（含 `content`）。
+创建文档。请求体 `{"title": "...", "content": "..."}`；标题去除首尾空白后必须非空、最长 200 字符，正文最长 1000000 字符，请求体上限 1 MB；`201` 返回完整文档（含 `content`），新建文档 `pinned` 恒为 `false`。
 
 ### 7.3 GET /api/documents/{id}
 
@@ -197,9 +200,13 @@
 
 ### 7.4 PUT /api/documents/{id}
 
-整体更新标题与正文并刷新 `updated_at`；校验同创建，`200` 返回更新后的完整文档。
+整体更新标题与正文并刷新 `updated_at`；校验同创建，`200` 返回更新后的完整文档。仅更新 `title`/`content`/`updated_at`，不触碰 `pinned`。
 
-### 7.5 DELETE /api/documents/{id}
+### 7.5 PATCH /api/documents/{id}/pin
+
+切换钉住状态。请求体 `{"pinned": true|false}`；仅更新 `pinned` 字段，不触碰标题、正文与 `updated_at`；`200` 返回更新后的完整文档。
+
+### 7.6 DELETE /api/documents/{id}
 
 删除文档；`200` 返回 `{"deleted": true, "id": "..."}`。
 

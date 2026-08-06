@@ -10,6 +10,8 @@ import tools.qq
 from history_repository import record_history,get_recent_history
 from queue_client import (
     AGENT_QUEUE_NAME,
+    clear_legacy_system_prompt,
+    get_legacy_system_prompt,
     get_system_prompt,
     pop_from_queue,
     insert_to_queue,
@@ -24,25 +26,34 @@ from tools.documents import system_documents_prompt
 
 TARGET_USER_ID = os.environ["QQ_TARGET_USER_ID"]
 BOT_ID = os.environ["QQ_BOT_ID"]
-SYSTEM_PROMPT_PATH = Path(__file__).parent / "prompt" / "system.txt"
+SETTINGS_PATH = Path(__file__).parent / "settings.json"
+
+def default_system_prompt() -> str:
+    """settings.json 仅作为首次启动/无缓存时的默认种子,运行时真源在 Redis"""
+    settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    system_prompt = settings.get("system_prompt")
+    if not isinstance(system_prompt, str) or not system_prompt:
+        raise ValueError("settings.json system_prompt must be a non-empty string")
+    return system_prompt
 
 def read_system_prompt() -> str:
-    return SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+    system_prompt = get_system_prompt()
+    if system_prompt is None:
+        return default_system_prompt()
+    return system_prompt
 
 def apply_system_prompt(system_prompt: str):
-    temporary_path = SYSTEM_PROMPT_PATH.with_suffix(".txt.tmp")
-    temporary_path.write_text(system_prompt, encoding="utf-8")
-    temporary_path.replace(SYSTEM_PROMPT_PATH)
     set_system_prompt(system_prompt)
 
 def initialize_system_prompt():
-    cached_prompt = get_system_prompt()
-    """
-    if cached_prompt is None:
-        set_system_prompt(read_system_prompt())
+    if get_system_prompt() is not None:
         return
-    """
-    apply_system_prompt(cached_prompt)
+    legacy = get_legacy_system_prompt()
+    if legacy:
+        set_system_prompt(legacy)
+        clear_legacy_system_prompt()
+        return
+    set_system_prompt(default_system_prompt())
 
 def handle_task(e: dict):
     def qq(e):

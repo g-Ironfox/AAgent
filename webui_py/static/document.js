@@ -1,4 +1,4 @@
-import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDocument, updateDocumentPin } from './api.js?v=documents-2';
+import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDocument, updateDocumentPin } from './api.js?v=documents-3';
 
 const state = { documents: [], current: null, saved: null, loading: false, saving: false, mode: 'preview' };
 const elements = {
@@ -176,9 +176,10 @@ async function togglePin() {
   updateControls();
   try {
     const documentItem = await updateDocumentPin(state.current.id, !state.current.pinned);
+    state.current = { ...state.current, pinned: documentItem.pinned };
     const index = state.documents.findIndex((item) => item.id === documentItem.id);
-    if (index >= 0) state.documents[index] = documentItem;
-    applyDocument({ ...state.current, ...documentItem });
+    if (index >= 0) state.documents[index] = { ...state.documents[index], pinned: documentItem.pinned };
+    renderList();
     elements.documentState.textContent = '已同步';
     setStatus(documentItem.pinned ? '文档已钉住' : '已取消钉住', 'success');
   } catch (error) {

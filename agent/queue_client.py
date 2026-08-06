@@ -13,6 +13,12 @@ AGENT_WORKER_STATUS_KEY = os.getenv(
     "AGENT_WORKER_STATUS_KEY",
     "aagent:worker:status",
 )
+# 整个设置以一个 JSON 对象存在单个 Key 下,运行时以 Redis 为唯一真源
+AGENT_SETTINGS_KEY = os.getenv(
+    "AGENT_SETTINGS_KEY",
+    "aagent:settings",
+)
+# 旧版扁平 Key(仅首次启动迁移用,不写入)
 AGENT_SYSTEM_PROMPT_KEY = os.getenv(
     "AGENT_SYSTEM_PROMPT_KEY",
     "aagent:settings:system_prompt",
@@ -46,14 +52,39 @@ def set_worker_status(status: dict):
     )
     return True
 
-def set_system_prompt(system_prompt: str):
+def get_settings() -> dict:
     client = get_connection()
-    client.set(AGENT_SYSTEM_PROMPT_KEY, system_prompt)
+    raw = client.get(AGENT_SETTINGS_KEY)
+    if raw is None:
+        return {}
+    try:
+        settings = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return settings if isinstance(settings, dict) else {}
+
+def set_settings(settings: dict) -> bool:
+    client = get_connection()
+    client.set(AGENT_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False))
     return True
 
+def set_system_prompt(system_prompt: str) -> bool:
+    settings = get_settings()
+    settings["system_prompt"] = system_prompt
+    return set_settings(settings)
+
 def get_system_prompt():
+    return get_settings().get("system_prompt")
+
+def get_legacy_system_prompt():
+    """读取旧版扁平 Key,仅首次启动迁移用"""
     client = get_connection()
     return client.get(AGENT_SYSTEM_PROMPT_KEY)
+
+def clear_legacy_system_prompt() -> bool:
+    client = get_connection()
+    client.delete(AGENT_SYSTEM_PROMPT_KEY)
+    return True
 
 def pop_from_queue(queue_name: str, timeout: int = 5):
     client = get_connection()
