@@ -92,3 +92,11 @@ export function updateDocumentPin(documentId, pinned) {
 export function deleteDocument(documentId) {
   return request(`/api/documents/${encodeURIComponent(documentId)}`, { method: 'DELETE' });
 }
+
+export function submitMaxContextCount(maxContextCount) {
+  return request('/api/settings/max-context-count', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_context_count: maxContextCount }),
+  });
+}

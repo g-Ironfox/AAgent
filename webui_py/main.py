@@ -90,6 +90,12 @@ class SystemPromptRequest(BaseModel):
     system_prompt: str
 
 
+class MaxContextCountRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_context_count: str
+
+
 class DeleteEventRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -521,6 +527,24 @@ def update_system_prompt(payload: SystemPromptRequest):
         "event_type": "setting",
         "time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "payload": {"system_prompt": system_prompt},
+    }
+    try:
+        redis_client.rpush(QUEUE_NAME, json.dumps(event, ensure_ascii=False, separators=(",", ":")))
+    except redis.RedisError:
+        return JSONResponse(status_code=503, content={"error": "消息队列暂时不可用"})
+    return {"event": event, "queue": QUEUE_NAME}
+
+
+@app.post("/api/settings/max-context-count", status_code=202)
+def update_max_context_count(payload: MaxContextCountRequest):
+    max_context_count = payload.max_context_count.strip()
+    if not max_context_count.isdigit() or int(max_context_count) <= 0:
+        return JSONResponse(status_code=400, content={"error": "最大召回窗口必须是正整数"})
+
+    event = {
+        "event_type": "setting",
+        "time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "payload": {"max_context_count": max_context_count},
     }
     try:
         redis_client.rpush(QUEUE_NAME, json.dumps(event, ensure_ascii=False, separators=(",", ":")))

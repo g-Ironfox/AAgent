@@ -10,14 +10,12 @@ import tools.qq
 from history_repository import record_history,get_recent_history
 from queue_client import (
     AGENT_QUEUE_NAME,
-    clear_legacy_system_prompt,
-    get_legacy_system_prompt,
-    get_system_prompt,
     pop_from_queue,
     insert_to_queue,
     publish_to_queue,
-    set_system_prompt,
     set_worker_status,
+    set_settings,
+    get_settings
 )
 from llm import chat_with_deepseek,chat_with_llama_cpp
 from tools.tool import execute_tool
@@ -28,34 +26,18 @@ TARGET_USER_ID = os.environ["QQ_TARGET_USER_ID"]
 BOT_ID = os.environ["QQ_BOT_ID"]
 SETTINGS_PATH = Path(__file__).parent / "settings.json"
 
-def default_system_prompt() -> str:
-    """settings.json 仅作为首次启动/无缓存时的默认种子,运行时真源在 Redis"""
+def read_settings_file() -> dict:
     settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-    system_prompt = settings.get("system_prompt")
-    if not isinstance(system_prompt, str) or not system_prompt:
-        raise ValueError("settings.json system_prompt must be a non-empty string")
-    return system_prompt
+    return settings
 
-def read_system_prompt() -> str:
-    system_prompt = get_system_prompt()
-    if system_prompt is None:
-        return default_system_prompt()
-    return system_prompt
+def write_settings_file(settings):
+    SETTINGS_PATH.write_text(json.dumps(settings,ensure_ascii=False),encoding="utf-8")
 
-def apply_system_prompt(system_prompt: str):
-    set_system_prompt(system_prompt)
-
-def initialize_system_prompt():
-    if get_system_prompt() is not None:
-        return
-    legacy = get_legacy_system_prompt()
-    if legacy:
-        set_system_prompt(legacy)
-        clear_legacy_system_prompt()
-        return
-    set_system_prompt(default_system_prompt())
+def initialize_settings():
+    set_settings(read_settings_file())
 
 def handle_task(e: dict):
+    settings=get_settings()
     def qq(e):
         print(f"QQ事件:{e['payload']}")
         if e['payload']['post_type']=="message":
@@ -119,16 +101,18 @@ def handle_task(e: dict):
                 }
             }
         insert_to_queue(AGENT_QUEUE_NAME,r_e)
+
     def setting(e):
-        system_prompt = e['payload'].get('system_prompt')
-        if isinstance(system_prompt, str) and system_prompt:
-            apply_system_prompt(system_prompt)
+        settings.update(e['payload'])
+        write_settings_file(settings)
+        set_settings(settings)
+
     def active(e):
-        system_prompt = read_system_prompt().replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
+        system_prompt = set_settings['system_prompt'].replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
         system_prompt = system_prompt.replace("{{SYSTEM_DOCUMENTS_PROMPT}}",system_documents_prompt())
         skills=[]
 
-        h=get_recent_history(limit=16)
+        h=get_recent_history(limit=int(settings.get('max_context_count')))
         messages = [
             {"role": "system", "content": system_prompt},
             {"role":"user","content":"\n".join(skills)}
@@ -223,7 +207,7 @@ def handle_task(e: dict):
 
 def main():
     print("Agent worker started...")
-    initialize_system_prompt()
+    initialize_settings()
     while True:
         try:
             set_worker_status({

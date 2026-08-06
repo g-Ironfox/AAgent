@@ -68,24 +68,6 @@ def set_settings(settings: dict) -> bool:
     client.set(AGENT_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False))
     return True
 
-def set_system_prompt(system_prompt: str) -> bool:
-    settings = get_settings()
-    settings["system_prompt"] = system_prompt
-    return set_settings(settings)
-
-def get_system_prompt():
-    return get_settings().get("system_prompt")
-
-def get_legacy_system_prompt():
-    """读取旧版扁平 Key,仅首次启动迁移用"""
-    client = get_connection()
-    return client.get(AGENT_SYSTEM_PROMPT_KEY)
-
-def clear_legacy_system_prompt() -> bool:
-    client = get_connection()
-    client.delete(AGENT_SYSTEM_PROMPT_KEY)
-    return True
-
 def pop_from_queue(queue_name: str, timeout: int = 5):
     client = get_connection()
     item = client.brpop(queue_name, timeout=timeout)

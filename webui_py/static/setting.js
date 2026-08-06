@@ -1,8 +1,8 @@
-import { fetchSettings, submitSystemPrompt } from './api.js';
+import { fetchSettings, submitMaxContextCount, submitSystemPrompt } from './api.js';
 
 const APPLY_TIMEOUT_MS = 30000;
 const POLL_INTERVAL_MS = 500;
-const state = { loading: false, saving: false, initialized: false, appliedPrompt: '' };
+const state = { loading: false, saving: false, contextCountSaving: false, initialized: false, appliedPrompt: '', appliedContextCount: '' };
 const elements = {
   form: document.querySelector('#settingForm'),
   input: document.querySelector('#systemPrompt'),
@@ -11,6 +11,10 @@ const elements = {
   saveStatus: document.querySelector('#saveStatus'),
   settingState: document.querySelector('#settingState'),
   characterCount: document.querySelector('#characterCount'),
+  contextCountForm: document.querySelector('#contextCountForm'),
+  contextCountInput: document.querySelector('#maxContextCount'),
+  contextCountStatus: document.querySelector('#contextCountStatus'),
+  contextCountSaveButton: document.querySelector('#contextCountSaveButton'),
 };
 
 function setStatus(message, type = '') {
@@ -25,6 +29,9 @@ function updateControls() {
   elements.reloadButton.disabled = busy;
   elements.saveButton.disabled = busy || !state.initialized || !changed || !elements.input.value.trim();
   elements.characterCount.textContent = `${[...elements.input.value].length} / 100000`;
+  elements.contextCountInput.disabled = state.loading || state.contextCountSaving || !state.initialized;
+  elements.contextCountSaveButton.disabled = state.loading || state.contextCountSaving || !state.initialized
+    || !elements.contextCountInput.value || elements.contextCountInput.value === state.appliedContextCount;
 }
 
 async function loadSettings({ preserveInput = false } = {}) {
@@ -32,12 +39,15 @@ async function loadSettings({ preserveInput = false } = {}) {
   state.loading = true;
   elements.settingState.textContent = '读取中';
   setStatus('');
+  elements.contextCountStatus.textContent = '';
   updateControls();
   try {
     const settings = await fetchSettings();
     state.appliedPrompt = settings.system_prompt;
+    state.appliedContextCount = settings.max_context_count == null ? '' : String(settings.max_context_count);
     state.initialized = true;
     if (!preserveInput) elements.input.value = state.appliedPrompt;
+    if (!preserveInput) elements.contextCountInput.value = state.appliedContextCount;
     elements.settingState.textContent = '已同步';
   } catch (error) {
     elements.settingState.textContent = '不可用';
@@ -81,13 +91,41 @@ async function saveSettings() {
   }
 }
 
+async function saveContextCount() {
+  const maxContextCount = elements.contextCountInput.value;
+  if (!maxContextCount || state.contextCountSaving) return;
+  state.contextCountSaving = true;
+  elements.contextCountStatus.textContent = '正在入队…';
+  updateControls();
+  try {
+    await submitMaxContextCount(maxContextCount);
+    elements.contextCountStatus.textContent = '已入队，等待 Agent 应用';
+    await loadSettings({ preserveInput: true });
+    if (state.appliedContextCount !== maxContextCount) throw new Error('等待 Agent 应用设置超时，请重新读取确认');
+    elements.contextCountStatus.textContent = '已同步';
+  } catch (error) {
+    elements.contextCountStatus.textContent = error.message;
+  } finally {
+    state.contextCountSaving = false;
+    updateControls();
+  }
+}
+
 elements.form.addEventListener('submit', (event) => {
   event.preventDefault();
   saveSettings();
 });
+elements.contextCountForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  saveContextCount();
+});
 elements.reloadButton.addEventListener('click', () => loadSettings());
 elements.input.addEventListener('input', () => {
   if (elements.saveStatus.classList.contains('error')) setStatus('');
+  updateControls();
+});
+elements.contextCountInput.addEventListener('input', () => {
+  elements.contextCountStatus.textContent = '';
   updateControls();
 });
 
