@@ -190,3 +190,23 @@ def rename_document(doc_id,title):
         raise ValueError(f"文档不存在: {doc_id}")
     res = documents_collection.find_one_and_update({"_id":ObjectId(doc_id)},{"$set":{"title":title,"updated_at":now}})
     return f"{res['title']} : {str(res['_id'])}"
+
+
+@tool(
+    "钉子工具,把文档完整内容钉在上下文中始终展示",
+    {
+        "type": "object",
+        "properties": {
+            "doc_id": {"type": "string", "description": "文档ID"},
+            "pinned": {"type": "boolean", "description": "是否钉住"},
+        },
+        "required": ["doc_id","pinned"]
+    }
+)
+def pin_document(doc_id,pinned):
+    now = datetime.now(timezone.utc)
+    doc = documents_collection.find_one({"_id":ObjectId(doc_id)})
+    if doc is None:
+        raise ValueError(f"文档不存在: {doc_id}")
+    res = documents_collection.find_one_and_update({"_id":ObjectId(doc_id)},{"$set":{"pinned":pinned}}) # pin不算update
+    return f"{res['title']} : {str(res['_id'])}"
