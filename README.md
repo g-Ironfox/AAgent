@@ -51,3 +51,7 @@ WebUI 地址:`http://localhost:8081`。完整变量说明、端口和安全检�
 ## 安全
 
 不要提交 `.env`、API Key、访问 Token 或 `data/`。曾出现在源码或 Git 历史中的凭据必须先吊销,再从服务商处生成新凭据。
+
+## 彩蛋
+
+agent/test.py

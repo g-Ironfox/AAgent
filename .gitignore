@@ -4,6 +4,9 @@
 
 data/
 
+# 运行时配置,含个人 QQ 号等敏感信息,不应提交
+agent/settings.json
+
 __pycache__/
 *.py[cod]
 *$py.class
