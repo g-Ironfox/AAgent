@@ -5,7 +5,9 @@ import traceback
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+
 import tools.qq
+import tools.bilibili
 
 from history_repository import record_history,get_recent_history
 from queue_client import (
