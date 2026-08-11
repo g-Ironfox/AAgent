@@ -58,11 +58,10 @@ def record_history(e: dict):
     }
     return get_history_collection().insert_one(document).inserted_id
 
-def get_recent_history(limit: int = 10, event_type: str | None = None) -> list[dict]:
+def get_recent_history(limit: int = 10, query: dict = {}, event_type: str | None = None) -> list[dict]:
     if limit <= 0:
         return []
 
-    query = {}
     if event_type is not None:
         query["event_type"] = event_type
 

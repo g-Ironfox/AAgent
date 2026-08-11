@@ -112,37 +112,40 @@ def handle_task(e: dict):
     def active(e):
         system_prompt = settings['system_prompt'].replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
         system_prompt = system_prompt.replace("{{SYSTEM_DOCUMENTS_PROMPT}}",system_documents_prompt())
-        skills=[]
 
-        h=get_recent_history(limit=int(settings.get('max_context_count')))
+        h=get_recent_history(limit=int(settings.get('max_context_count')))[::-1]
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role":"user","content":"\n".join(skills)}
         ]
 
         context=[]
 
-
-        for i in h[::-1]:
+        for i in h:
             payload=i.get('payload')
             if i['event_type']=='qq':
                 if i['payload']["post_type"]=="message":
-                    if payload['group_id']:
-                        context.append(f"<QQ event='msg' type='group' group_id={payload['group_id']} sender_id={payload['user_id']}>{payload['raw_message']}</QQ>")
+                    if (not payload['group_id']) and str(payload['user_id']) == str(TARGET_USER_ID):
+                        
+                        context.append(f"<Command source='qq'>{payload['raw_message']}</Command>")
                     else:
-                        context.append(f"<QQ event='msg' type='private' sender_id={payload['user_id']}>{payload['raw_message']}</QQ>")
+                        #context.append(f"<QQ event='msg' type='group' group_id={payload['group_id']}  sender_id={payload['user_id']}>{payload['raw_message']}</QQ>")
+                        pass
+                #if i['payload']["post_type"]=="send" and str(i['payload']["target_id"]) == str(TARGET_USER_ID):
+                #    context.append(f"<QQ event='msg' sender_id=self>{payload['raw_message']}</QQ>")
+
             if i['event_type']=='tool_return':
-                context.append(f"<tool name={payload['tool']} args={json.dumps(payload['args'],ensure_ascii=False)}> result: {payload['result']}</tool>")
+                context.append(f"""<tool>
+<tool_name>{payload['tool']}</tool_name>
+<tool_args>{json.dumps(payload['args'],ensure_ascii=False)}</tool_args>
+<tool_result>{payload['result']}</tool_result>
+</tool>""")
             if i['event_type']=='terminal':
-                context.append(f"<Command>{payload['message']}</Command>")
+                context.append(f"<Command source='terminal'>{payload['message']}</Command>")
 
             if i['event_type']=='response':
-                if context:
-                    messages.append({"role":"user","content":"\n".join(context)})
-                    context=[]
-                messages.append({"role":"assistant","content":payload["content"] or ""})
-        if context:
-            messages.append({"role":"user","content":"\n".join(context)})
+                if payload.get("content"):
+                    context.append(f"<response target='terminal'>{payload['content']}</response>")
+        messages.append({"role":"user","content":"\n".join(context)})
         content,reasoning,tool_calls=chat_with_deepseek(messages)
         e={'event_type':"response",
         "payload":{

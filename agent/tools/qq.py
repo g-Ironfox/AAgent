@@ -1,6 +1,7 @@
 from tools.tool import tool
-from tools.qqapi import send_group_msg as qq_send_group_msg
-from tools.qqapi import send_private_msg as qq_send_private_msg
+from tools.qqapi import send_group_msg,send_private_msg,get_group_member_info,get_group_list,get_group_msg_history
+
+from queue_client import publish_to_queue,AGENT_QUEUE_NAME
 
 @tool(
     "发送群消息",
@@ -13,8 +14,23 @@ from tools.qqapi import send_private_msg as qq_send_private_msg
         "required": ["group_id", "message"]
     }
 )
-def send_group_msg(group_id, message):
-    return qq_send_group_msg(group_id, message)
+def qq_send_group_msg(group_id, message):
+    e={
+        "event_type":"qq",
+        "payload":{
+            "post_type":"send",
+            "group_id": group_id,
+            "raw_message": message,
+            "message": {
+                "type": "text",
+                "data": {
+                "text": message
+                }
+            }
+        }
+    }
+    publish_to_queue(AGENT_QUEUE_NAME,e)
+    return send_group_msg(group_id, message)
 
 
 @tool(
@@ -28,5 +44,20 @@ def send_group_msg(group_id, message):
         "required": ["user_id", "message"]
     }
 )
-def send_private_msg(user_id, message):
-    return qq_send_private_msg(user_id, message)
+def qq_send_private_msg(user_id, message):
+    e={
+        "event_type":"qq",
+        "payload":{
+            "post_type":"send",
+            "target_id": user_id,
+            "raw_message": message,
+            "message": {
+                "type": "text",
+                "data": {
+                "text": message
+                }
+            }
+        }
+    }
+    publish_to_queue(AGENT_QUEUE_NAME,e)
+    return send_private_msg(user_id, message)

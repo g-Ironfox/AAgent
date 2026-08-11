@@ -2,6 +2,7 @@ import json
 import os
 from itertools import cycle
 
+
 import requests
 
 DEEPSEEK_BASE_URL = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
