@@ -26,7 +26,7 @@ if not TAVILY_API_KEYS:
 
 TAVILY_API_KEY_CYCLE = cycle(TAVILY_API_KEYS)
 
-tools = []
+registered_tools = []
 tool_handlers = {}
 
 
@@ -36,7 +36,7 @@ def tool(description, parameters=None, name=None):
         if tool_name in tool_handlers:
             raise ValueError(f"工具已注册: {tool_name}")
 
-        tools.append({
+        registered_tools.append({
             "type": "function",
             "function": {
                 "name": tool_name,

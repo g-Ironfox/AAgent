@@ -1,20 +1,17 @@
 # agent/llm.py
 import os
-
 import requests
-from tools.tool import registered_tools
 
 DEEPSEEK_BASE_URL = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
 DEEPSEEK_API_KEY = os.environ["DEEPSEEK_API_KEY"]
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
 
-def send_messages(messages,url,key,model,tools):
+def send_messages(messages,url,key,model):
     """发送请求到 DeepSeek 并返回 message 对象"""
     payload = {
         "model": model,
         "messages": messages,
-        "tools": tools,
-        
+        # "tools": tools
     }
     resp = requests.post(
         f"{url.rstrip('/')}/chat/completions",
@@ -31,13 +28,12 @@ def send_messages(messages,url,key,model,tools):
     print(resp.json())
     return resp.json()["choices"][0]["message"]
 
-def chat_with_deepseek(messages,tools=registered_tools):
+def chat_with_deepseek(messages):
     message = send_messages(
         messages,
         DEEPSEEK_BASE_URL,
         DEEPSEEK_API_KEY,
-        DEEPSEEK_MODEL,
-        tools,
+        DEEPSEEK_MODEL
     )
 
     if message ==402:

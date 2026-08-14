@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 子 Agent</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/event-stream.css">
+  <link rel="stylesheet" href="/css/subagents.css">
+</head>
+<body class="subagent-page">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件流"><span class="brand-mark" aria-hidden="true">A</span><span class="brand-name"><strong>AAgent</strong><small>SUBAGENTS</small></span></a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航"><a href="/">事件流</a><a class="active" href="/subagents.html" aria-current="page">子 Agent</a><a href="/terminal.html">终端</a><a href="/document.html">文档</a><a href="/setting.html">设置</a></nav>
+      <div class="sync-meta topbar-sync"><span>最后同步</span><strong id="lastRefresh">同步中</strong><small id="refreshState">自动刷新已开启</small></div>
+      <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="interval"><option value="500">0.5s</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
+      <button id="pauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新"><span class="pause-icon" aria-hidden="true"></span></button>
+      <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+    </div>
+  </header>
+  <main class="subagents-main">
+    <aside class="agent-sidebar" aria-label="子 Agent 列表"><div class="sidebar-heading"><p>REGISTERED</p><h1>子 Agent</h1><span id="agentCount">0</span></div><div id="agentList" class="agent-list"></div></aside>
+    <section class="agent-workspace" aria-label="子 Agent 事件时间轴">
+      <header class="agent-overview"><div><p id="agentEyebrow">SUBAGENT</p><h2 id="agentTitle">选择子 Agent</h2><span id="agentDescription">等待注册表数据</span></div><div class="agent-storage"><span>QUEUE</span><code id="queueName">--</code><span>HISTORY</span><code id="historyCollection">--</code></div></header>
+      <details class="prompt-documents">
+        <summary><span class="prompt-documents-title"><small>SYSTEM PROMPT</small><strong id="promptDocumentsTitle">提示词文档</strong></span><span id="selectedDocumentCount">已选择 0 个</span><span class="prompt-documents-caret" aria-hidden="true"></span></summary>
+        <div class="prompt-documents-popover" aria-labelledby="promptDocumentsTitle">
+          <div class="prompt-documents-controls"><span>选择注入系统提示词的文档</span><div id="documentSelect" class="document-options" role="group" aria-describedby="documentSelectionStatus"></div></div>
+          <div class="prompt-documents-actions"><span id="documentSelectionStatus" role="status">尚未加载</span><button id="saveDocumentsButton" type="button" disabled>保存选择</button></div>
+        </div>
+      </details>
+      <section class="status-strip" aria-label="子 Agent 运行概览"><div><span>已加载历史</span><strong id="doneCount">--</strong><small>MongoDB 当前窗口</small></div><div><span>等待执行</span><strong id="pendingCount">--</strong><small>Redis 队列总数</small></div><div id="workerCard" class="worker-summary unknown"><span>WORKER</span><strong id="workerState">检测中</strong><small id="workerDetail">等待状态快照</small></div></section>
+      <section class="stream-panel"><div class="toolbar"><div class="toolbar-title"><strong>事件时间轴</strong><span id="resultCount">0 条事件</span></div><div class="toolbar-fields"><div class="type-filter" id="typeFilter"><button type="button" class="type-filter-toggle" aria-haspopup="true" aria-expanded="false"><span class="type-filter-label">全部类型</span><span class="type-filter-caret" aria-hidden="true"></span></button><div class="type-filter-menu" hidden></div></div><label class="search"><span class="search-icon" aria-hidden="true"></span><input id="searchInput" type="search" placeholder="搜索事件内容" autocomplete="off"></label></div></div><div id="warningBanner" class="warning-banner" role="alert" hidden></div><div class="timeline">
+        <section class="event-section history-section"><header class="section-heading"><div class="section-marker"><span></span></div><div><p>PAST · MONGODB</p><h2>执行历史</h2></div><span id="historyVisibleCount" class="section-count">0</span></header><div class="list-head" aria-hidden="true"><span>阶段</span><span>事件</span><span>时间 / 来源</span><span></span></div><div id="historyList" class="event-list"></div></section>
+        <section id="runningSection" class="event-section running-section"><header class="section-heading"><div class="section-marker"><span></span></div><div><p>NOW · WORKER</p><h2>正在执行</h2></div><span id="runningVisibleCount" class="section-count">0</span></header><div id="runningList" class="event-list"></div></section>
+        <section class="event-section pending-section"><header class="section-heading"><div class="section-marker"><span></span></div><div><p>NEXT · REDIS</p><h2>等待执行</h2></div><span id="pendingVisibleCount" class="section-count">0</span></header><div class="list-head" aria-hidden="true"><span>队列位置</span><span>事件</span><span>顺序 / 来源</span><span></span></div><div id="pendingList" class="event-list"></div></section>
+      </div></section>
+    </section>
+  </main>
+  <script type="module" src="/subagents.js"></script>
+</body>
+</html>

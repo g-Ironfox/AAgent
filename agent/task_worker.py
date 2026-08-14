@@ -11,7 +11,7 @@ import tools.bilibili
 
 from history_repository import record_history,get_recent_history
 from queue_client import (
-    AGENT_QUEUE_NAME,
+    MAIN_AGENT_QUEUE_NAME,
     pop_from_queue,
     insert_to_queue,
     publish_to_queue,
@@ -64,15 +64,15 @@ def handle_task(e: dict):
                         "group_id":group_id,
                     }
                 }
-                publish_to_queue(AGENT_QUEUE_NAME,e)
+                publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
     def terminal(e):
         e={
             "event_type":"active",
             "payload":{
             }
         }
-        publish_to_queue(AGENT_QUEUE_NAME,e)
-    def tool(e):
+        publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+    def tool_excute(e):
         print(f"工具事件:{e['payload']}")
         tool_id = e['payload']['id']
         tool_name = e['payload']['tool']
@@ -102,7 +102,7 @@ def handle_task(e: dict):
                     "success": False,
                 }
             }
-        insert_to_queue(AGENT_QUEUE_NAME,r_e)
+        insert_to_queue(MAIN_AGENT_QUEUE_NAME,r_e)
 
     def setting(e):
         settings.update(e['payload'])
@@ -110,6 +110,14 @@ def handle_task(e: dict):
         set_settings(settings)
 
     def active(e):
+        task_content=""
+        return_queue = MAIN_AGENT_QUEUE_NAME
+        if e.get("payload"):
+            p = e.get("payload")
+            task_content = p.get("task_content")
+            # return_queue = p.get("return_queue")
+        
+
         system_prompt = settings['system_prompt'].replace("{{TARGET_USER_ID}}", TARGET_USER_ID).replace("{{BOT_ID}}", BOT_ID)
         system_prompt = system_prompt.replace("{{SYSTEM_DOCUMENTS_PROMPT}}",system_documents_prompt())
 
@@ -145,7 +153,19 @@ def handle_task(e: dict):
             if i['event_type']=='response':
                 if payload.get("content"):
                     context.append(f"<response target='terminal'>{payload['content']}</response>")
+
+            if i['event_type']=='application':
+                task_content=f"""<application>
+                <sub_agent_name>{payload.get("sub_agent_name")}</sub_agent_name>
+                <apply_tool_name>{payload.get("tool_name")}</apply_tool_name>
+                <apply_tool_arguments>{payload.get("arguments")}</apply_tool_arguments>
+                """
+                context.append(task_content)
         messages.append({"role":"user","content":"\n".join(context)})
+
+        if task_content:
+            messages.append({"role":"user","content":task_content})
+
         content,reasoning,tool_calls=chat_with_deepseek(messages)
         e={'event_type':"response",
         "payload":{
@@ -161,9 +181,10 @@ def handle_task(e: dict):
                     "payload":{
                     }
                 }
-            insert_to_queue(AGENT_QUEUE_NAME,e2,e)
+            insert_to_queue(MAIN_AGENT_QUEUE_NAME,e2)
+            insert_to_queue(return_queue,e)
         else:
-            insert_to_queue(AGENT_QUEUE_NAME,e)
+            insert_to_queue(return_queue,e)
     def tool_return(e):
         pass
     def response(e):
@@ -187,22 +208,45 @@ def handle_task(e: dict):
                     })
                     continue
                 e={
-                    "event_type":"tool",
+                    "event_type":"tool_excute",
                     "payload":{'id':i['id'],
                         'tool':i['function']['name'],
                         "args":args
                     }
                 }
                 events.append(e)
-            insert_to_queue(AGENT_QUEUE_NAME,*events[::-1])
+            insert_to_queue(MAIN_AGENT_QUEUE_NAME,*events[::-1])
+
+    def rpc_review(e):
+        pass
+
+    def rpc_apply(e):
+        p=e.get('payload')
+        if not p:
+            return
+        tool_name=p.get("tool_name")
+        tool_arguments=p.get("tool_arguments")
+        subagent_name=p.get("subagent_name")
+        callback_queue_name=p.get("callback_queue_name")
+        e = {
+            "event_type":"rpc_review",
+            "subagent_name":subagent_name,
+            "callback_queue_name":callback_queue_name,
+            "tool_name":tool_name,
+            "tool_arguments":tool_arguments
+        }
+        publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+
     handle_map = {
         "qq": qq,
         "terminal": terminal,
-        "tool": tool,
+        "tool_excute": tool_excute,
         "tool_return": tool_return,
         "setting": setting,
         "active": active,
         "response": response,
+        "rpc_review":rpc_review,
+        "rpc_apply":rpc_apply
     }
 
     record_history(e)
@@ -219,7 +263,7 @@ def main():
                 "state": "idle",
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             })
-            task = pop_from_queue(AGENT_QUEUE_NAME, timeout=5)
+            task = pop_from_queue(MAIN_AGENT_QUEUE_NAME, timeout=5)
             if task is None:
                 continue
             set_worker_status({

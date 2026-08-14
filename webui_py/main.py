@@ -29,6 +29,7 @@ MAX_EVENT_BODY_BYTES = 256 * 1024
 MAX_DOCUMENT_TITLE_CHARS = 200
 MAX_DOCUMENT_CONTENT_CHARS = 1_000_000
 MAX_DOCUMENT_BODY_BYTES = 1024 * 1024
+MAX_SUBAGENT_DOCUMENTS = 100
 
 
 def env(name: str, fallback: str) -> str:
@@ -44,7 +45,7 @@ def redis_address() -> str:
 
 REDIS_ADDRESS = redis_address()
 REDIS_DB = int(env("REDIS_DB", "0"))
-QUEUE_NAME = env("AGENT_QUEUE_NAME", "agent_tasks")
+QUEUE_NAME = env("MAIN_AGENT_QUEUE_NAME", "main_agent_queue")
 WORKER_STATUS_KEY = env("AGENT_WORKER_STATUS_KEY", "aagent:worker:status")
 SETTINGS_KEY = env("AGENT_SETTINGS_KEY", "aagent:settings")
 MONGO_HOST = env("MONGO_HOST", "mongodb")
@@ -52,6 +53,33 @@ MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
 MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
+
+
+class SubagentSpec(BaseModel):
+    id: str
+    name: str
+    description: str
+    queue: str
+    history_collection: str
+    worker_status_key: str
+
+
+class SubagentSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_ids: list[str] = Field(default_factory=list, max_length=MAX_SUBAGENT_DOCUMENTS)
+
+
+SUBAGENTS: dict[str, SubagentSpec] = {
+    "qq": SubagentSpec(
+        id="qq",
+        name="QQ Agent",
+        description="处理 QQ 消息与会话事件",
+        queue=env("QQ_AGENT_QUEUE_NAME", "subagent:qq:tasks"),
+        history_collection=env("QQ_AGENT_HISTORY_COLLECTION", "subagent_qq_history"),
+        worker_status_key=env("QQ_AGENT_WORKER_STATUS_KEY", "subagent:qq:worker:status"),
+    ),
+}
 
 redis_client = redis.Redis.from_url(
     f"redis://{REDIS_ADDRESS}/{REDIS_DB}",
@@ -234,9 +262,9 @@ def worker_source_status(state: Any) -> str:
     return "invalid"
 
 
-def read_worker_status() -> tuple[dict[str, Any], str | None]:
+def read_worker_status(worker_status_key: str = WORKER_STATUS_KEY) -> tuple[dict[str, Any], str | None]:
     try:
-        raw = redis_client.get(WORKER_STATUS_KEY)
+        raw = redis_client.get(worker_status_key)
     except redis.RedisError:
         return {"state": "unavailable"}, "Worker status is unavailable"
     if raw is None:
@@ -254,8 +282,8 @@ def read_worker_status() -> tuple[dict[str, Any], str | None]:
     return status, None
 
 
-def worker_stage() -> tuple[dict[str, Any], str, str | None, dict[str, Any] | None, str]:
-    status, warning = read_worker_status()
+def worker_stage(worker_status_key: str = WORKER_STATUS_KEY) -> tuple[dict[str, Any], str, str | None, dict[str, Any] | None, str]:
+    status, warning = read_worker_status(worker_status_key)
     running_item: dict[str, Any] | None = None
     running_fingerprint = ""
     if status.get("state") == "processing":
@@ -272,11 +300,11 @@ def worker_stage() -> tuple[dict[str, Any], str, str | None, dict[str, Any] | No
     return status, worker_source_status(status.get("state")), warning, running_item, running_fingerprint
 
 
-def pending_stage(limit: int) -> tuple[list[dict[str, Any]], int, str, str | None]:
+def pending_stage(limit: int, queue_name: str = QUEUE_NAME) -> tuple[list[dict[str, Any]], int, str, str | None]:
     try:
-        queue_length = redis_client.llen(QUEUE_NAME)
+        queue_length = redis_client.llen(queue_name)
         start = max(queue_length - limit, 0)
-        raw_items = redis_client.lrange(QUEUE_NAME, start, queue_length - 1)
+        raw_items = redis_client.lrange(queue_name, start, queue_length - 1)
     except redis.RedisError:
         return [], 0, "unavailable", "Redis queue is unavailable"
 
@@ -299,9 +327,11 @@ def pending_stage(limit: int) -> tuple[list[dict[str, Any]], int, str, str | Non
     return items, queue_length, "ok", None
 
 
-def history_stage(limit: int, running_fingerprint: str) -> tuple[list[dict[str, Any]], str, str | None]:
+def history_stage(
+    limit: int, running_fingerprint: str, history_collection: Collection = history
+) -> tuple[list[dict[str, Any]], str, str | None]:
     try:
-        documents = list(history.find({}).sort("_id", DESCENDING).limit(limit))
+        documents = list(history_collection.find({}).sort("_id", DESCENDING).limit(limit))
     except PyMongoError:
         return [], "unavailable", "MongoDB history is unavailable"
 
@@ -333,13 +363,18 @@ def history_stage(limit: int, running_fingerprint: str) -> tuple[list[dict[str, 
     return items, "ok", None
 
 
-def event_snapshot(limit: int) -> dict[str, Any]:
-    worker, worker_source, worker_warning, running_item, running_fingerprint = worker_stage()
-    pending_items, pending_count, redis_source, redis_warning = pending_stage(limit)
-    history_items, mongo_source, mongo_warning = history_stage(limit, running_fingerprint)
+def event_snapshot(
+    limit: int,
+    queue_name: str = QUEUE_NAME,
+    history_collection: Collection = history,
+    worker_status_key: str = WORKER_STATUS_KEY,
+) -> dict[str, Any]:
+    worker, worker_source, worker_warning, running_item, running_fingerprint = worker_stage(worker_status_key)
+    pending_items, pending_count, redis_source, redis_warning = pending_stage(limit, queue_name)
+    history_items, mongo_source, mongo_warning = history_stage(limit, running_fingerprint, history_collection)
 
     snapshot: dict[str, Any] = {
-        "queue": QUEUE_NAME,
+        "queue": queue_name,
         "fetched_at": datetime.now(timezone.utc),
         "worker": worker,
         "summary": {
@@ -382,6 +417,106 @@ def events(limit: int = Query(150)):
     if error:
         return error
     return event_snapshot(limit)
+
+
+def subagent_spec(agent_id: str) -> SubagentSpec | JSONResponse:
+    spec = SUBAGENTS.get(agent_id)
+    if spec is None:
+        return JSONResponse(status_code=404, content={"error": "子 Agent 不存在"})
+    return spec
+
+
+def subagent_settings_key(agent_id: str) -> str:
+    return f"subagent:{agent_id}:settings"
+
+
+def selected_document_ids(agent_id: str) -> list[str]:
+    raw = redis_client.get(subagent_settings_key(agent_id))
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    document_ids = value.get("document_ids", []) if isinstance(value, dict) else []
+    return [item for item in document_ids if isinstance(item, str)]
+
+
+@app.get("/api/subagents")
+def list_subagents():
+    items = []
+    for spec in SUBAGENTS.values():
+        snapshot = event_snapshot(
+            1,
+            queue_name=spec.queue,
+            history_collection=mongo_client[MONGO_DATABASE][spec.history_collection],
+            worker_status_key=spec.worker_status_key,
+        )
+        items.append(
+            {
+                "id": spec.id,
+                "name": spec.name,
+                "description": spec.description,
+                "queue": spec.queue,
+                "history_collection": spec.history_collection,
+                "worker_status_key": spec.worker_status_key,
+                "summary": snapshot["summary"],
+                "worker": snapshot["worker"],
+                "sources": snapshot["sources"],
+            }
+        )
+    return {"items": items}
+
+
+@app.get("/api/subagents/{agent_id}/events")
+def subagent_events(agent_id: str, limit: int = Query(150)):
+    error = limit_error(limit)
+    if error:
+        return error
+    spec = subagent_spec(agent_id)
+    if isinstance(spec, JSONResponse):
+        return spec
+    snapshot = event_snapshot(
+        limit,
+        queue_name=spec.queue,
+        history_collection=mongo_client[MONGO_DATABASE][spec.history_collection],
+        worker_status_key=spec.worker_status_key,
+    )
+    snapshot["agent"] = {"id": spec.id, "name": spec.name, "description": spec.description}
+    return snapshot
+
+
+@app.get("/api/subagents/{agent_id}/settings")
+def get_subagent_settings(agent_id: str):
+    spec = subagent_spec(agent_id)
+    if isinstance(spec, JSONResponse):
+        return spec
+    try:
+        return {"document_ids": selected_document_ids(agent_id)}
+    except redis.RedisError as error:
+        return JSONResponse(status_code=503, content={"error": str(error)})
+
+
+@app.put("/api/subagents/{agent_id}/settings")
+def update_subagent_settings(agent_id: str, payload: SubagentSettingsRequest):
+    spec = subagent_spec(agent_id)
+    if isinstance(spec, JSONResponse):
+        return spec
+    unique_ids = list(dict.fromkeys(payload.document_ids))
+    try:
+        object_ids = [ObjectId(document_id) for document_id in unique_ids]
+    except InvalidId:
+        return JSONResponse(status_code=400, content={"error": "文档 ID 无效"})
+    try:
+        existing_ids = {str(item["_id"]) for item in documents.find({"_id": {"$in": object_ids}}, {"_id": 1})}
+        missing_ids = [document_id for document_id in unique_ids if document_id not in existing_ids]
+        if missing_ids:
+            return JSONResponse(status_code=400, content={"error": "包含不存在的文档", "document_ids": missing_ids})
+        settings = {"document_ids": unique_ids}
+        redis_client.set(subagent_settings_key(agent_id), json.dumps(settings, ensure_ascii=False))
+        return settings
+    except (redis.RedisError, PyMongoError) as error:
+        return JSONResponse(status_code=503, content={"error": str(error)})
 
 
 DELETE_PENDING_SCRIPT = """

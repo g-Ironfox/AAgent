@@ -4,7 +4,7 @@ import json
 import os
 
 import websockets
-from queue_client import AGENT_QUEUE_NAME, publish_to_queue
+from queue_client import QQ_AGENT_QUEUE_NAME, publish_to_queue
 
 WS_URI = os.environ["QQ_WS_URI"]
 WS_HEADERS = {
@@ -67,7 +67,7 @@ async def listen():
                     if task:
                         await asyncio.to_thread(
                             publish_to_queue,
-                            AGENT_QUEUE_NAME,
+                            QQ_AGENT_QUEUE_NAME,
                             task
                         )
                         print("已直接写入 agent 队列:", task)

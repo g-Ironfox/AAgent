@@ -28,7 +28,7 @@
 
 ```json
 {
-  "queue": "agent_tasks",
+  "queue": "main_agent_queue",
   "fetched_at": "2026-08-02T11:04:01Z",
   "worker": {
     "state": "idle",
@@ -137,7 +137,7 @@
     "time": "2026-08-02T11:04:01Z",
     "payload": { "message": "检查当前任务", "files": [] }
   },
-  "queue": "agent_tasks"
+  "queue": "main_agent_queue"
 }
 ```
 

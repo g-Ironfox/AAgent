@@ -17,6 +17,26 @@ export function fetchEvents(limit = 150) {
   return request(`/api/events?limit=${limit}`);
 }
 
+export function fetchSubagents() {
+  return request('/api/subagents');
+}
+
+export function fetchSubagentEvents(agentId, limit = 150) {
+  return request(`/api/subagents/${encodeURIComponent(agentId)}/events?limit=${limit}`);
+}
+
+export function fetchSubagentSettings(agentId) {
+  return request(`/api/subagents/${encodeURIComponent(agentId)}/settings`);
+}
+
+export function updateSubagentSettings(agentId, documentIds) {
+  return request(`/api/subagents/${encodeURIComponent(agentId)}/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document_ids: documentIds }),
+  });
+}
+
 export function deleteEvent(payload) {
   return request('/api/events', {
     method: 'DELETE',

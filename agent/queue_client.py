@@ -8,7 +8,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_SOCKET_TIMEOUT = float(os.getenv("REDIS_SOCKET_TIMEOUT", "30"))
 
-AGENT_QUEUE_NAME = os.getenv("AGENT_QUEUE_NAME", "agent_tasks")
+MAIN_AGENT_QUEUE_NAME = os.getenv("MAIN_AGENT_QUEUE_NAME", "main_agent_queue")
 AGENT_WORKER_STATUS_KEY = os.getenv(
     "AGENT_WORKER_STATUS_KEY",
     "aagent:worker:status",

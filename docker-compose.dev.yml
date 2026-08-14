@@ -4,8 +4,8 @@
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #
 # 与正式配置(docker-compose.yml)的区别:
-#   - agent / qqbot 挂载宿主机源码,修改后无需重新构建镜像
-#   - agent / qqbot 以 sleep infinity 启动,可 docker compose exec 手动运行入口
+#   - agent / qqbot / qqbot_consumer 挂载宿主机源码,修改后无需重新构建镜像
+#   - agent / qqbot / qqbot_consumer 以 sleep infinity 启动,可 docker compose exec 手动运行入口
 #   - redis / mongodb 暴露宿主机端口,方便用本机工具排查数据
 #
 # 发布时不要叠加本文件,直接使用 docker-compose.yml 即可。
@@ -27,6 +27,16 @@ services:
     command: ["sleep", "infinity"]
     depends_on:
       redis:
+        condition: service_started
+
+  qqbot_consumer:
+    volumes:
+      - ./qqbot_consumer:/app
+    command: ["sleep", "infinity"]
+    depends_on:
+      redis:
+        condition: service_started
+      mongodb:
         condition: service_started
 
   webui_py:
