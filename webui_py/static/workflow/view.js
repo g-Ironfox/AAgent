@@ -1,43 +1,77 @@
-import { deleteNode, llmNodes, nodeById, state } from './model.js';
+import { deleteNode, nodeById, state } from './model.js';
 
 export function createWorkflowView(elements, connections, markChanged) {
-  function nodeDescription(node) {
-    if (node.type === 'input') return [['输出', 'control + content'], ['来源', '用户输入']];
-    if (node.type === 'router') return [['模式', 'LLM 多选一'], ['候选', `${llmNodes().length} 个 LLM`]];
-    return [['模型', node.model], ['Tools', `${node.tools.length} 个已挂载`]];
+  const portRowHeight = 28;
+  const portTopInset = 8;
+
+  function nodePorts(node) {
+    if (node.type === 'input') {
+      return [
+        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+        { id: 'content-out', direction: 'output', type: 'content', label: '输入内容', title: '输入内容', multiple: true },
+      ];
+    }
+    if (node.type === 'router') {
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+        ...node.branches.map((branch) => ({ id: branch.id, direction: 'output', type: 'control', label: branch.name, title: branch.name, multiple: false })),
+      ];
+    }
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+      { id: 'content-in', direction: 'input', type: 'content', label: '上下文', title: '上下文', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+    ];
+  }
+
+  function createNodeUI(node) {
+    const element = document.createElement('button');
+    const ports = nodePorts(node);
+    const inputs = ports.filter((port) => port.direction === 'input');
+    const outputs = ports.filter((port) => port.direction === 'output');
+    const bodyRows = Math.max(inputs.length, outputs.length);
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : 'L';
+
+    element.type = 'button';
+    element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;
+    element.style.left = `${node.x}px`;
+    element.style.top = `${node.y}px`;
+    element.dataset.nodeId = node.id;
+
+    const head = document.createElement('span');
+    head.className = 'flow-node-head';
+    head.innerHTML = `<span class="node-symbol ${node.type}-symbol">${symbol}</span><span><strong></strong><small></small></span>`;
+    head.querySelector('strong').textContent = node.name;
+    head.querySelector('small').textContent = node.type.toUpperCase();
+
+    const body = document.createElement('span');
+    body.className = 'flow-node-body';
+    body.style.height = `${Math.max(70, portTopInset + bodyRows * portRowHeight)}px`;
+    for (const port of ports) {
+      const portElement = document.createElement('span');
+      const row = port.direction === 'input' ? inputs.indexOf(port) : outputs.indexOf(port);
+      portElement.className = 'node-port';
+      portElement.style.top = `${portTopInset + row * portRowHeight}px`;
+      portElement.dataset.portId = port.id;
+      portElement.dataset.portDirection = port.direction;
+      portElement.dataset.portType = port.type;
+      portElement.dataset.portMultiple = String(port.multiple === true);
+      portElement.dataset.portLabel = port.label;
+      portElement.title = port.title;
+      body.append(portElement);
+    }
+
+    element.append(head, body);
+    element.addEventListener('click', () => selectNode(node.id));
+    element.querySelectorAll('.node-port').forEach((port) => connections.bindConnectionPort(port, node));
+    connections.bindNodeDrag(element, node);
+    return element;
   }
 
   function renderNodes() {
     const fragment = document.createDocumentFragment();
     for (const node of state.nodes) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;
-      button.style.left = `${node.x}px`;
-      button.style.top = `${node.y}px`;
-      button.dataset.nodeId = node.id;
-      button.innerHTML = `
-        ${node.type !== 'input' ? '<span class="node-port input" data-port-direction="input" data-port-type="control" title="控制流输入"></span>' : ''}
-        ${node.type === 'llm' ? '<span class="node-port text-input" data-port-direction="input" data-port-type="content" title="文本输入"></span>' : ''}
-        <span class="node-port output" data-port-direction="output" data-port-type="control" title="控制流输出"></span>
-        ${node.type === 'input' ? '<span class="node-port content-output" data-port-direction="output" data-port-type="content" title="文本输出"></span>' : ''}
-        <span class="flow-node-header"><span class="node-symbol ${node.type}-symbol">${node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : 'L'}</span><span><strong></strong><small></small></span></span>
-        <span class="flow-node-body"></span>`;
-      button.querySelector('.flow-node-header strong').textContent = node.name;
-      button.querySelector('.flow-node-header small').textContent = node.type.toUpperCase();
-      const body = button.querySelector('.flow-node-body');
-      for (const [label, value] of nodeDescription(node)) {
-        const detail = document.createElement('span');
-        detail.className = 'node-detail';
-        detail.innerHTML = '<span></span><strong></strong>';
-        detail.querySelector('span').textContent = label;
-        detail.querySelector('strong').textContent = value;
-        body.append(detail);
-      }
-      button.addEventListener('click', () => selectNode(node.id));
-      button.querySelectorAll('.node-port').forEach((port) => connections.bindConnectionPort(port, node));
-      connections.bindNodeDrag(button, node);
-      fragment.append(button);
+      fragment.append(createNodeUI(node));
     }
     elements.nodeLayer.replaceChildren(fragment);
     elements.nodeCount.textContent = `${state.nodes.length} 个实例`;
@@ -68,7 +102,7 @@ export function createWorkflowView(elements, connections, markChanged) {
         elements.inspectorTitle.textContent = node.name;
       });
     }
-    if (node.type === 'router') renderRouteOptions();
+    if (node.type === 'router') renderBranches(node);
     if (node.type === 'llm') bindTools(node);
     elements.inspectorContent.querySelector('[data-delete-node]').addEventListener('click', () => {
       deleteNode(node.id);
@@ -78,23 +112,36 @@ export function createWorkflowView(elements, connections, markChanged) {
     });
   }
 
-  function renderRouteOptions() {
+  function renderBranches(node) {
     const container = elements.inspectorContent.querySelector('[data-route-options]');
-    const targets = llmNodes();
-    if (!targets.length) {
-      const empty = document.createElement('div');
-      empty.className = 'empty-options';
-      empty.textContent = '添加 LLM 节点后，它会出现在候选分支中';
-      container.append(empty);
-      return;
-    }
-    targets.forEach((target, index) => {
+    node.branches.forEach((branch, index) => {
       const option = document.createElement('div');
       option.className = 'route-option';
-      option.innerHTML = '<span class="route-index"></span><div><strong></strong><small>可由 Router 选择</small></div>';
+      option.innerHTML = '<span class="route-index"></span><label><input data-branch-name maxlength="30"><small>控制流输出分支</small></label><button type="button" class="branch-delete" data-delete-branch title="删除分支">×</button>';
       option.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
-      option.querySelector('strong').textContent = target.name;
+      const input = option.querySelector('[data-branch-name]');
+      input.value = branch.name;
+      input.addEventListener('input', () => {
+        branch.name = input.value || `分支 ${index + 1}`;
+        markChanged();
+        renderNodes();
+      });
+      option.querySelector('[data-delete-branch]').addEventListener('click', () => {
+        if (node.branches.length <= 1) return;
+        const removed = node.branches.splice(index, 1)[0];
+        state.connections = state.connections.filter((connection) => connection.fromPortId !== removed.id);
+        markChanged();
+        renderNodes();
+        renderInspector();
+      });
       container.append(option);
+    });
+    elements.inspectorContent.querySelector('[data-add-branch]').addEventListener('click', () => {
+      const id = `branch-${Date.now()}`;
+      node.branches.push({ id, name: `分支 ${node.branches.length + 1}` });
+      markChanged();
+      renderNodes();
+      renderInspector();
     });
   }
 

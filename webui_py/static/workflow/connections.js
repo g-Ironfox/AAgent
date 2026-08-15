@@ -1,14 +1,18 @@
 import { state } from './model.js';
 
 export function createConnectionController(elements, markChanged) {
-  function portSelector(direction, type) {
-    if (direction === 'output') return type === 'content' ? '.content-output' : '.node-port.output';
-    return type === 'content' ? '.text-input' : '.node-port.input';
+  let connectionSequence = 0;
+
+  function createConnectionId() {
+    connectionSequence += 1;
+    return `connection-${Date.now()}-${connectionSequence}`;
   }
 
-  function portCenter(nodeId, direction, type) {
-    const nodeElement = elements.nodeLayer.querySelector(`[data-node-id="${nodeId}"]`);
-    const port = nodeElement?.querySelector(portSelector(direction, type));
+  function portCenter(nodeId, portId) {
+    const nodeElement = Array.from(elements.nodeLayer.querySelectorAll('[data-node-id]'))
+      .find((element) => element.dataset.nodeId === nodeId);
+    const port = Array.from(nodeElement?.querySelectorAll('[data-port-id]') || [])
+      .find((element) => element.dataset.portId === portId);
     if (!port) return null;
     const canvasRect = elements.canvas.getBoundingClientRect();
     const rect = port.getBoundingClientRect();
@@ -25,9 +29,10 @@ export function createConnectionController(elements, markChanged) {
   }
 
   function compatiblePort(port, drag) {
-    if (!port || port.dataset.portType !== drag.type || port.dataset.portDirection === drag.direction) return false;
-    if (port.dataset.nodeId === drag.fixedNodeId) return false;
-    return drag.direction === 'output' ? port.dataset.portDirection === 'input' : port.dataset.portDirection === 'output';
+    const targetDirection = drag.targetDirection || (drag.direction === 'output' ? 'input' : 'output');
+    if (!port || port.dataset.portType !== drag.type || port.dataset.portDirection !== targetDirection) return false;
+    if (port.dataset.nodeId === drag.anchorNodeId) return false;
+    return true;
   }
 
   function setCompatiblePorts(drag) {
@@ -36,23 +41,58 @@ export function createConnectionController(elements, markChanged) {
     }
   }
 
-  function finishConnectionDrag(event) {
+  function finishConnectionDrag(event, cancelled = false) {
     const drag = state.connectionDrag;
     if (!drag || event.pointerId !== drag.pointerId) return;
+    if (cancelled) {
+      if (drag.connection && !state.connections.includes(drag.connection)) state.connections.push(drag.connection);
+      for (const port of elements.nodeLayer.querySelectorAll('.node-port')) port.classList.remove('compatible');
+      if (event.currentTarget?.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      state.connectionDrag = null;
+      renderConnections();
+      return;
+    }
     const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('.node-port');
+    const connection = drag.connection || state.connections.find((item) => item.id === drag.connectionId);
     if (compatiblePort(target, drag)) {
-      if (drag.direction === 'output') {
-        state.connections = state.connections.filter((connection) => !(connection.toId === target.dataset.nodeId && connection.type === drag.type));
-        const connection = state.connections.find((item) => item.id === drag.connectionId);
-        if (connection) connection.toId = target.dataset.nodeId;
-        else state.connections.push({ id: `connection-${Date.now()}`, fromId: drag.fixedNodeId, toId: target.dataset.nodeId, type: drag.type });
+      const targetIsInput = target.dataset.portDirection === 'input';
+      const targetIsSingleOutput = target.dataset.portDirection === 'output' && target.dataset.portMultiple !== 'true';
+      state.connections = state.connections.filter((item) => {
+        const occupiesTargetInput = targetIsInput && item.toId === target.dataset.nodeId && item.toPortId === target.dataset.portId;
+        const occupiesTargetOutput = targetIsSingleOutput && item.fromId === target.dataset.nodeId && item.fromPortId === target.dataset.portId;
+        return !(item.type === drag.type && (occupiesTargetInput || occupiesTargetOutput));
+      });
+      if (drag.type === 'content' && drag.direction === 'input' && connection) {
+        connection.toId = target.dataset.nodeId;
+        connection.toPortId = target.dataset.portId;
+        state.connections.push(connection);
+      } else if (drag.type === 'control' && connection) {
+        if (drag.direction === 'output') {
+          connection.fromId = target.dataset.nodeId;
+          connection.fromPortId = target.dataset.portId;
+        } else {
+          connection.toId = target.dataset.nodeId;
+          connection.toPortId = target.dataset.portId;
+        }
+        state.connections.push(connection);
       } else {
-        const connection = state.connections.find((item) => item.id === drag.connectionId);
-        if (connection) connection.fromId = target.dataset.nodeId;
+        const from = drag.anchorDirection === 'output'
+          ? { id: drag.anchorNodeId, portId: drag.anchorPortId }
+          : { id: target.dataset.nodeId, portId: target.dataset.portId };
+        const to = drag.anchorDirection === 'output'
+          ? { id: target.dataset.nodeId, portId: target.dataset.portId }
+          : { id: drag.anchorNodeId, portId: drag.anchorPortId };
+        state.connections.push({ id: createConnectionId(), fromId: from.id, fromPortId: from.portId, toId: to.id, toPortId: to.portId, type: drag.type });
       }
+      markChanged();
+    } else if (target) {
+      if (drag.connection) state.connections.push(drag.connection);
+    } else if (drag.connectionId) {
+      state.connections = state.connections.filter((item) => item.id !== drag.connectionId);
       markChanged();
     }
     for (const port of elements.nodeLayer.querySelectorAll('.node-port')) port.classList.remove('compatible');
+    if (event.currentTarget?.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     state.connectionDrag = null;
     renderConnections();
   }
@@ -67,18 +107,47 @@ export function createConnectionController(elements, markChanged) {
       const direction = port.dataset.portDirection;
       const type = port.dataset.portType;
       const incoming = direction === 'input'
-        ? state.connections.find((connection) => connection.toId === node.id && connection.type === type)
+        ? state.connections.find((connection) => connection.toId === node.id && connection.toPortId === port.dataset.portId && connection.type === type)
         : null;
       const outgoing = direction === 'output'
-        ? state.connections.filter((connection) => connection.fromId === node.id && connection.type === type)
+        ? state.connections.filter((connection) => connection.fromId === node.id && connection.fromPortId === port.dataset.portId && connection.type === type)
         : [];
-      if (direction === 'input' && !incoming) return;
+      const connectionId = type === 'control'
+        ? incoming?.id || (outgoing.length === 1 ? outgoing[0].id : null)
+        : incoming?.id || null;
+      const connection = connectionId
+        ? incoming || outgoing.find((item) => item.id === connectionId)
+        : null;
+      if (connection) {
+        state.connections = state.connections.filter((item) => item.id !== connection.id);
+      }
+      const hasContentInputConnection = type === 'content' && direction === 'input' && connection;
+      const hasControlConnection = type === 'control' && connection;
+      const anchorNodeId = hasContentInputConnection || (hasControlConnection && direction === 'input')
+        ? connection.fromId
+        : hasControlConnection && direction === 'output'
+          ? connection.toId
+          : node.id;
+      const anchorPortId = hasContentInputConnection || (hasControlConnection && direction === 'input')
+        ? connection.fromPortId
+        : hasControlConnection && direction === 'output'
+          ? connection.toPortId
+          : (port.dataset.portId || null);
+      const anchorDirection = hasContentInputConnection || (hasControlConnection && direction === 'input') ? 'output' : direction === 'output' ? 'input' : direction;
       state.connectionDrag = {
         pointerId: event.pointerId,
         direction,
+        targetDirection: connection && type === 'content' && direction === 'input'
+          ? 'input'
+          : hasControlConnection
+            ? direction
+            : null,
         type,
-        fixedNodeId: node.id,
-        connectionId: incoming?.id || (outgoing.length === 1 ? outgoing[0].id : null),
+        anchorNodeId,
+        anchorPortId,
+        anchorDirection,
+        connectionId,
+        connection,
         pointer: { x: event.clientX, y: event.clientY },
       };
       port.setPointerCapture(event.pointerId);
@@ -91,7 +160,7 @@ export function createConnectionController(elements, markChanged) {
       renderConnections();
     });
     port.addEventListener('pointerup', finishConnectionDrag);
-    port.addEventListener('pointercancel', finishConnectionDrag);
+    port.addEventListener('pointercancel', (event) => finishConnectionDrag(event, true));
   }
 
   function bindNodeDrag(element, node) {
@@ -140,8 +209,8 @@ export function createConnectionController(elements, markChanged) {
     elements.connectionLayer.setAttribute('height', String(height));
     const fragment = document.createDocumentFragment();
     for (const connection of state.connections) {
-      const start = portCenter(connection.fromId, 'output', connection.type);
-      const end = portCenter(connection.toId, 'input', connection.type);
+      const start = portCenter(connection.fromId, connection.fromPortId);
+      const end = portCenter(connection.toId, connection.toPortId);
       if (!start || !end) continue;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('class', `connection-path${connection.type === 'content' ? ' content' : ''}`);
@@ -154,12 +223,11 @@ export function createConnectionController(elements, markChanged) {
         x: drag.pointer.x - canvasRect.left + elements.canvas.scrollLeft,
         y: drag.pointer.y - canvasRect.top + elements.canvas.scrollTop,
       };
-      const fixedDirection = drag.direction === 'output' ? 'output' : 'input';
-      const fixed = portCenter(drag.fixedNodeId, fixedDirection, drag.type);
-      if (fixed) {
+      const anchor = portCenter(drag.anchorNodeId, drag.anchorPortId);
+      if (anchor) {
         const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         preview.setAttribute('class', `connection-path preview${drag.type === 'content' ? ' content' : ''}`);
-        preview.setAttribute('d', drag.direction === 'output' ? connectionPath(fixed, canvasPoint) : connectionPath(canvasPoint, fixed));
+        preview.setAttribute('d', drag.anchorDirection === 'output' ? connectionPath(anchor, canvasPoint) : connectionPath(canvasPoint, anchor));
         fragment.append(preview);
       }
     }

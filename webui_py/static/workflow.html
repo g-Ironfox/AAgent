@@ -81,9 +81,16 @@
 
   <template id="inputInspectorTemplate">
     <section class="inspector-section">
-      <div class="section-label"><strong>输入契约</strong><span>只读</span></div>
-      <div class="port-contract"><span class="port-swatch control"></span><div><strong>control</strong><small>控制流，决定后续节点执行路径</small></div><code>flow</code></div>
-      <div class="port-contract"><span class="port-swatch content"></span><div><strong>content</strong><small>用户传入的原始文本内容</small></div><code>string</code></div>
+      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="empty-options">无输入接口</div>
+      </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>输入内容</strong><code>content</code></div>
+      </div>
     </section>
     <section class="inspector-section input-preview">
       <label for="sampleInput">输入内容预览</label>
@@ -93,19 +100,43 @@
   </template>
 
   <template id="routerInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
+      </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>分支名称</strong><code>control</code></div>
+      </div>
+    </section>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>路由提示词<textarea data-field="prompt" rows="5" maxlength="500"></textarea></label>
     </section>
     <section class="inspector-section">
-      <div class="section-label"><strong>候选分支</strong><span>多选一</span></div>
+      <div class="section-label"><strong>Switch 分支</strong><span>运行时单选</span></div>
       <div class="route-options" data-route-options></div>
-      <small class="section-help">运行时由 LLM 选择一个分支继续传递控制流。</small>
+      <button class="add-branch-button" type="button" data-add-branch>+ 添加分支</button>
+      <small class="section-help">每个分支都有独立的控制流输出端点，运行时只会沿一条分支继续。</small>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
   <template id="llmInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>上下文</strong><code>content</code></div>
+      </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
+      </div>
+    </section>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>模型<select data-field="model"><option>gpt-5</option><option>gpt-5-mini</option><option>claude-sonnet</option><option>本地模型</option></select></label>
