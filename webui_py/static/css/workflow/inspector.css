@@ -1,0 +1,27 @@
+.inspector-heading { align-items:center; }
+.inspector-type { padding:5px 7px; color:var(--muted); border:1px solid var(--line); font:8px Consolas,monospace; }
+.inspector-content { flex:1; min-height:0; overflow:auto; }
+.inspector-section { padding:15px; display:grid; gap:10px; border-bottom:1px solid var(--line); }
+.section-label { display:flex; align-items:center; justify-content:space-between; }
+.section-label strong { font-size:11px; }
+.section-label span { color:var(--muted); font-size:9px; }
+.port-contract { min-height:56px; padding:9px; display:grid; grid-template-columns:8px minmax(0,1fr) auto; align-items:center; gap:9px; border:1px solid var(--line); background:var(--surface); }
+.port-swatch { width:8px; height:28px; }
+.port-swatch.control { background:var(--green); }
+.port-swatch.content { background:var(--blue); }
+.port-contract div { display:grid; gap:3px; }
+.port-contract strong { font:10px Consolas,monospace; }
+.port-contract small,.input-preview small,.section-help { color:var(--muted); font-size:8px; line-height:1.45; }
+.port-contract code { font-size:8px; }
+.form-section label,.input-preview label { display:grid; gap:6px; color:var(--muted); font-size:9px; }
+.form-section input,.form-section textarea,.form-section select,.input-preview textarea { width:100%; padding:9px; color:var(--ink); border:1px solid var(--line); background:var(--surface); font-size:11px; resize:vertical; }
+.form-section select { height:36px; }
+.route-options,.tool-options { display:grid; gap:6px; }
+.route-option,.tool-options label { min-height:46px; padding:8px; display:flex; align-items:center; gap:9px; border:1px solid var(--line); background:var(--surface); }
+.route-option { justify-content:space-between; }
+.route-option div,.tool-options label span { display:grid; gap:3px; }
+.route-option strong,.tool-options strong { font-size:10px; }
+.route-option small,.tool-options small { color:var(--muted); font-size:8px; }
+.route-index { width:20px; height:20px; display:grid; place-items:center; color:#7a580f; background:var(--amber-soft); font:8px Consolas,monospace; }
+.empty-options { padding:13px; color:var(--muted); border:1px dashed var(--line); font-size:9px; text-align:center; }
+.delete-node-button { width:calc(100% - 30px); height:36px; margin:15px; color:var(--red); border:1px solid #dfb8b3; background:#fff7f6; font-size:10px; }

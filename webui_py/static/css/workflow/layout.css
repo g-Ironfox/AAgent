@@ -1,0 +1,41 @@
+.workflow-page { overflow:auto; }
+.workflow-state { min-width:94px; display:grid; gap:3px; }
+.workflow-state span { color:var(--muted); font-size:9px; }
+.workflow-state strong { font-size:12px; }
+.workflow-state strong.saved { color:var(--green); }
+.toolbar-button { height:38px; padding:0 13px; border:1px solid var(--line); font-size:11px; }
+.toolbar-button.secondary { color:var(--ink); background:var(--surface); }
+.toolbar-button.primary { color:#fff; border-color:var(--green); background:var(--green); }
+.toolbar-button:hover { border-color:var(--ink); }
+.workflow-main { width:min(1540px,calc(100% - 32px)); padding:12px 0; }
+.workflow-shell { flex:1; min-height:650px; display:grid; grid-template-columns:238px minmax(520px,1fr) 300px; border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); overflow:hidden; }
+.node-library,.node-inspector,.workflow-canvas-panel { min-width:0; min-height:0; }
+.node-library,.node-inspector { display:flex; flex-direction:column; background:#fafbf9; }
+.node-library { border-right:1px solid var(--line); }
+.node-inspector { border-left:1px solid var(--line); }
+.panel-heading { min-height:88px; padding:17px; display:flex; align-items:flex-end; justify-content:space-between; border-bottom:1px solid var(--line); background:var(--surface); }
+.panel-heading p,.canvas-toolbar p { margin:0 0 5px; color:var(--muted); font:9px Consolas,monospace; }
+.panel-heading h1,.panel-heading h2 { margin:0; font:700 21px Georgia,"Microsoft YaHei",serif; }
+.library-content { padding:10px; display:grid; align-content:start; gap:8px; }
+.library-item { width:100%; min-height:68px; padding:10px; display:grid; grid-template-columns:38px minmax(0,1fr) auto; align-items:center; gap:10px; color:var(--ink); border:1px solid var(--line); border-left:3px solid #aab5af; background:var(--surface); text-align:left; }
+button.library-item:hover { border-color:var(--green); border-left-color:var(--green); background:var(--green-soft); }
+.library-item.fixed { border-left-color:var(--ink); background:#f2f4f1; }
+.library-item div { min-width:0; display:grid; gap:4px; }
+.library-item strong { font-size:12px; }
+.library-item small { color:var(--muted); font-size:9px; line-height:1.35; }
+.node-symbol { width:34px; height:34px; display:grid; place-items:center; color:#fff; font:700 10px Consolas,monospace; }
+.input-symbol { background:var(--ink); }
+.router-symbol { background:var(--amber); }
+.llm-symbol { background:var(--blue); }
+.add-symbol { color:var(--green); font-size:20px; }
+.fixed-tag { padding:3px 5px; color:var(--muted); border:1px solid var(--line); font-size:8px; }
+.library-footer { margin-top:auto; min-height:42px; padding:0 13px; display:flex; align-items:center; justify-content:space-between; color:var(--muted); border-top:1px solid var(--line); font:9px Consolas,monospace; }
+.workflow-canvas-panel { display:flex; flex-direction:column; background:#eef1ed; }
+.canvas-toolbar { height:64px; padding:0 17px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:var(--surface); }
+.canvas-toolbar strong { font-size:13px; }
+.canvas-meta { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:9px; }
+.draft-badge { padding:5px 7px; color:#8a641b; border:1px solid #e5cb91; background:var(--amber-soft); }
+
+@media (max-width:1180px) { .workflow-shell { grid-template-columns:210px minmax(480px,1fr) 270px; } .workflow-state { display:none; } }
+@media (max-width:900px) { .workflow-main { overflow:auto; } .workflow-shell { min-width:800px; grid-template-columns:190px minmax(420px,1fr) 240px; } .page-nav a { padding:0 8px; } }
+@media (max-width:560px) { .workflow-main { width:calc(100% - 16px); } .toolbar-button { padding:0 8px; } }

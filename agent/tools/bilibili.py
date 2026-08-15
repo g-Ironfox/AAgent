@@ -132,7 +132,7 @@ def download_bvid(bvid):
 def asr(filename):
     with open(filename, "rb") as f:
         files = {"file": ("audio.wav", f, "audio/wav")}
-        data = {"model": env("MODEL_ID","")}
+        data = {"model": env("ASR_MODEL_ID","Qwen3-asr-1.7b-fp16")}
         
         response = requests.post(
             f"{env('ASR_URL','').rstrip('/')}/v1/audio/transcriptions",

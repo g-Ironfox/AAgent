@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent Workflow</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/workflow.css">
+</head>
+<body class="workflow-page">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件流">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>WORKFLOW</small></span>
+    </a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a>
+        <a href="/subagents.html">子 Agent</a>
+        <a class="active" href="/workflow.html" aria-current="page">Workflow</a>
+        <a href="/terminal.html">终端</a>
+        <a href="/document.html">文档</a>
+        <a href="/setting.html">设置</a>
+      </nav>
+      <div class="workflow-state" aria-live="polite"><span>编辑状态</span><strong id="workflowState">本地草稿</strong></div>
+      <button id="resetButton" class="toolbar-button secondary" type="button">重置</button>
+      <button id="saveButton" class="toolbar-button primary" type="button">保存草稿</button>
+    </div>
+  </header>
+
+  <main class="workflow-main">
+    <section class="workflow-shell" aria-labelledby="workflowTitle">
+      <aside class="node-library" aria-label="节点库">
+        <header class="panel-heading">
+          <p>COMPONENTS</p>
+          <h1 id="workflowTitle">节点</h1>
+        </header>
+        <div class="library-content">
+          <article class="library-item fixed">
+            <span class="node-symbol input-symbol" aria-hidden="true">IN</span>
+            <div><strong>Input</strong><small>每个流程固定存在</small></div>
+            <span class="fixed-tag">固定</span>
+          </article>
+          <button class="library-item" type="button" data-add-node="router">
+            <span class="node-symbol router-symbol" aria-hidden="true">R</span>
+            <div><strong>Router</strong><small>由 LLM 从分支中选择一个</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="llm">
+            <span class="node-symbol llm-symbol" aria-hidden="true">L</span>
+            <div><strong>LLM</strong><small>执行模型并挂载工具</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+        </div>
+        <footer class="library-footer"><span>3 种节点</span><span id="nodeCount">3 个实例</span></footer>
+      </aside>
+
+      <section class="workflow-canvas-panel" aria-label="Workflow 画布">
+        <header class="canvas-toolbar">
+          <div><p>LOCAL DRAFT</p><strong>Agent 主控制流</strong></div>
+          <div class="canvas-meta"><span id="connectionCount">2 条连接</span><span class="draft-badge">未接入后端</span></div>
+        </header>
+        <div id="workflowCanvas" class="workflow-canvas">
+          <div class="canvas-grid" aria-hidden="true"></div>
+          <svg id="connectionLayer" class="connection-layer" aria-hidden="true"></svg>
+          <div id="nodeLayer" class="node-layer"></div>
+          <div class="canvas-legend" aria-hidden="true"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span></div>
+        </div>
+      </section>
+
+      <aside class="node-inspector" aria-label="节点配置">
+        <header class="panel-heading inspector-heading">
+          <div><p>INSPECTOR</p><h2 id="inspectorTitle">Input</h2></div>
+          <span id="inspectorType" class="inspector-type">INPUT</span>
+        </header>
+        <div id="inspectorContent" class="inspector-content"></div>
+      </aside>
+    </section>
+  </main>
+
+  <template id="inputInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>输入契约</strong><span>只读</span></div>
+      <div class="port-contract"><span class="port-swatch control"></span><div><strong>control</strong><small>控制流，决定后续节点执行路径</small></div><code>flow</code></div>
+      <div class="port-contract"><span class="port-swatch content"></span><div><strong>content</strong><small>用户传入的原始文本内容</small></div><code>string</code></div>
+    </section>
+    <section class="inspector-section input-preview">
+      <label for="sampleInput">输入内容预览</label>
+      <textarea id="sampleInput" rows="5" placeholder="例如：帮我分析这段日志并给出修复建议"></textarea>
+      <small>仅用于页面演示，不会发送给 Agent。</small>
+    </section>
+  </template>
+
+  <template id="routerInspectorTemplate">
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>路由提示词<textarea data-field="prompt" rows="5" maxlength="500"></textarea></label>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>候选分支</strong><span>多选一</span></div>
+      <div class="route-options" data-route-options></div>
+      <small class="section-help">运行时由 LLM 选择一个分支继续传递控制流。</small>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="llmInspectorTemplate">
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>模型<select data-field="model"><option>gpt-5</option><option>gpt-5-mini</option><option>claude-sonnet</option><option>本地模型</option></select></label>
+      <label>系统指令<textarea data-field="prompt" rows="5" maxlength="500"></textarea></label>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>挂载 Tools</strong><span data-tool-count>0 个</span></div>
+      <div class="tool-options">
+        <label><input type="checkbox" value="web_search" data-tool><span><strong>Web Search</strong><small>搜索公开信息</small></span></label>
+        <label><input type="checkbox" value="documents" data-tool><span><strong>Documents</strong><small>读取文档中心</small></span></label>
+        <label><input type="checkbox" value="terminal" data-tool><span><strong>Terminal</strong><small>执行本地命令</small></span></label>
+      </div>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <script type="module" src="/workflow.js"></script>
+</body>
+</html>

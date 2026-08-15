@@ -19,7 +19,7 @@ from queue_client import (
     set_settings,
     get_settings
 )
-from llm import chat_with_deepseek,chat_with_llama_cpp
+from llm import chat_with_deepseek,openai_llm_api
 from tools.tool import execute_tool
 from tools.documents import system_documents_prompt
 
@@ -166,6 +166,7 @@ def handle_task(e: dict):
         if task_content:
             messages.append({"role":"user","content":task_content})
 
+        # content,reasoning,tool_calls=openai_llm_api(messages,"Qwen3.8-27B-Q4_K_M-Uncensored","http://192.168.1.104:8200/v1","",extra={"thinking_budget_tokens":256,"max_completion_tokens":512+256})
         content,reasoning,tool_calls=chat_with_deepseek(messages)
         e={'event_type':"response",
         "payload":{
