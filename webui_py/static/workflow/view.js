@@ -3,6 +3,7 @@ import { createWorkflowId, deleteNode, nodeById, state } from './model.js';
 export function createWorkflowView(elements, connections, markChanged) {
   const portRowHeight = 28;
   const portTopInset = 8;
+  let modelConfigs = [];
 
   function nodePorts(node) {
     if (node.type === 'input') {
@@ -95,16 +96,9 @@ export function createWorkflowView(elements, connections, markChanged) {
     elements.inspectorType.textContent = node.type.toUpperCase();
     const template = document.querySelector(`#${node.type}InspectorTemplate`);
     elements.inspectorContent.replaceChildren(template.content.cloneNode(true));
-    if (node.type === 'input') {
-      const sampleInput = elements.inspectorContent.querySelector('[data-sample-input]');
-      sampleInput.value = node.sampleInput || '';
-      sampleInput.addEventListener('input', () => {
-        node.sampleInput = sampleInput.value;
-        markChanged();
-      });
-      return;
-    }
+    if (node.type === 'input') return;
 
+    if (node.type === 'llm') renderModelOptions(node);
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
       field.value = node[field.dataset.field] || '';
       field.addEventListener('input', () => {
@@ -122,6 +116,34 @@ export function createWorkflowView(elements, connections, markChanged) {
       renderNodes();
       renderInspector();
     });
+  }
+
+  function renderModelOptions(node) {
+    const select = elements.inspectorContent.querySelector('[data-field="model"]');
+    const legacyMatches = modelConfigs.filter((model) => model.model === node.model || model.name === node.model);
+    if (!modelConfigs.some((model) => model.id === node.model) && legacyMatches.length === 1) {
+      node.model = legacyMatches[0].id;
+      markChanged();
+    }
+    if (!node.model && modelConfigs.length) {
+      node.model = modelConfigs[0].id;
+      markChanged();
+    }
+
+    const options = modelConfigs.map((model) => {
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = model.name;
+      return option;
+    });
+    if (!modelConfigs.some((model) => model.id === node.model)) {
+      const unavailable = document.createElement('option');
+      unavailable.value = node.model || '';
+      unavailable.textContent = node.model ? `当前不可用 (${node.model})` : '没有可用的模型配置';
+      options.unshift(unavailable);
+    }
+    select.replaceChildren(...options);
+    select.disabled = modelConfigs.length === 0;
   }
 
   function renderBranches(node) {
@@ -215,5 +237,10 @@ export function createWorkflowView(elements, connections, markChanged) {
     }));
   }
 
-  return { renderInspector, renderNodes };
+  function setModels(models) {
+    modelConfigs = models.filter((model) => model.enabled === true);
+    if (nodeById(state.selectedId)?.type === 'llm') renderInspector();
+  }
+
+  return { renderInspector, renderNodes, setModels };
 }

@@ -5,6 +5,7 @@ import traceback
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+from workflow_parser import _read_workflow,parse_workflow
 
 import tools.qq
 import tools.bilibili
@@ -58,17 +59,17 @@ def handle_task(e: dict):
                 print("收到任务:", e['payload'])
         
                 e={
-                    "event_type":"active",
+                    "event_type":"workflow",
                     "payload":{
-                        "user_id":user_id,
-                        "group_id":group_id,
+                        "content":raw_message
                     }
                 }
                 publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
     def terminal(e):
         e={
-            "event_type":"active",
+            "event_type":"workflow",
             "payload":{
+                "content":e.get("payload",{}).get("message","")
             }
         }
         publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
@@ -238,6 +239,81 @@ def handle_task(e: dict):
         }
         publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
 
+    def workflow(e):
+        workflow_map = parse_workflow(_read_workflow("main"))
+        start = -1
+        for i in range(len(workflow_map)):
+            if workflow_map[i]["id"]=="input":
+                start = i
+        
+        if start == -1:
+            return 
+
+        content = e['payload'].get("content")
+
+        for i in range(len(workflow_map[start]['data_outputs']['content-out'])):
+            target_id,target_port = workflow_map[start]['data_outputs']['content-out'][i]
+            workflow_map[target_id]['data_inputs'][target_port].append(content)
+
+        e = {
+            "event_type":f"workflow_{workflow_map[workflow_map[start]['control_successors'][0]]['type']}",
+            "payload":{
+                "workflow_map":workflow_map,
+                "current_id":workflow_map[start]['control_successors'][0],
+            }
+        }
+        publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+
+    def workflow_llm(e):
+        current_id=e['payload']['current_id']
+        workflow_map=e['payload']['workflow_map']
+
+        prompt = workflow_map[current_id]['prompt']
+        content = workflow_map[current_id]['data_inputs']['content-in'][-1] if len(workflow_map[current_id]['data_inputs']['content-in']) >2 else None
+        print(prompt,content)
+
+        messages = [
+            {"role":"system","content":prompt},
+            {"role":"user","content":content}
+        ]
+        content,reasoning,tool_calls=chat_with_deepseek(messages,tools=[])
+
+        for i in range(len(workflow_map[current_id]['data_outputs']['output'])):
+            target_id,target_port = workflow_map[current_id]['data_outputs']['output'][i]
+            workflow_map[target_id]['data_inputs'][target_port].append(content)
+
+        control_successors_id=workflow_map[current_id]['control_successors'][0] if workflow_map[current_id]['control_successors'] else None
+        if control_successors_id:
+            e = {
+                "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
+                "payload":{
+                    "workflow_map":workflow_map,
+                    "current_id":control_successors_id,
+                }
+            }
+            publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+
+    def workflow_router(e):
+        current_id=e['payload']['current_id']
+        workflow_map=e['payload']['workflow_map']
+
+
+        key = workflow_map[current_id]['data_inputs']['content-in'][-1] if len(workflow_map[current_id]['data_inputs']['content-in'])>2 else None
+        cases = {i['name']:i['successor'] for i in workflow_map[current_id]['branches']}
+        if key not in cases:
+            return
+
+        control_successors_id=cases.get(key)
+        if control_successors_id:
+            e = {
+                "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
+                "payload":{
+                    "workflow_map":workflow_map,
+                    "current_id":control_successors_id,
+                }
+            }
+            publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+
     handle_map = {
         "qq": qq,
         "terminal": terminal,
@@ -247,7 +323,10 @@ def handle_task(e: dict):
         "active": active,
         "response": response,
         "rpc_review":rpc_review,
-        "rpc_apply":rpc_apply
+        "rpc_apply":rpc_apply,
+        "workflow":workflow,
+        "workflow_llm":workflow_llm,
+        "workflow_router":workflow_router,
     }
 
     record_history(e)

@@ -27,6 +27,7 @@
       <div class="workflow-state" aria-live="polite"><span>编辑状态</span><strong id="workflowState">本地草稿</strong></div>
       <button id="resetButton" class="toolbar-button secondary" type="button">重置</button>
       <button id="saveButton" class="toolbar-button primary" type="button">保存草稿</button>
+      <button id="uploadButton" class="toolbar-button primary" type="button">上传</button>
     </div>
   </header>
 
@@ -60,7 +61,7 @@
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
           <div><p>LOCAL DRAFT</p><strong>Agent 主控制流</strong></div>
-          <div class="canvas-meta"><span id="connectionCount">3 条连接</span><span class="draft-badge">未接入后端</span></div>
+          <div class="canvas-meta"><span id="connectionCount">3 条连接</span><span class="draft-badge">后端配置</span></div>
         </header>
         <div id="workflowCanvas" class="workflow-canvas">
           <div class="canvas-grid" aria-hidden="true"></div>
@@ -91,11 +92,6 @@
         <div class="contract-group-title">输出接口</div>
         <div class="port-contract"><span class="port-swatch content"></span><strong>输入内容</strong><code>content</code></div>
       </div>
-    </section>
-    <section class="inspector-section input-preview">
-      <label for="sampleInput">输入内容预览</label>
-      <textarea id="sampleInput" data-sample-input rows="5" maxlength="2000" placeholder="例如：帮我分析这段日志并给出修复建议"></textarea>
-      <small>仅用于页面演示，不会发送给 Agent。</small>
     </section>
   </template>
 
@@ -139,7 +135,7 @@
     </section>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>模型<select data-field="model"><option>gpt-5</option><option>gpt-5-mini</option><option>claude-sonnet</option><option>本地模型</option></select></label>
+      <label>模型<select data-field="model"><option>加载模型配置中</option></select></label>
       <label>系统指令<textarea data-field="prompt" rows="5" maxlength="500"></textarea></label>
       <label class="checkbox-field"><input type="checkbox" data-think><span><strong>Think</strong><small>启用推理过程输出</small></span></label>
     </section>

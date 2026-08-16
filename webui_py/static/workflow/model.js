@@ -6,7 +6,7 @@ let idSequence = 0;
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
   { id: 'router-1', type: 'router', name: '任务路由', branches: [{ id: 'branch-1', name: '分支 1' }, { id: 'branch-2', name: '分支 2' }], x: 310, y: 238 },
-  { id: 'llm-1', type: 'llm', name: '主 LLM', model: 'gpt-5', prompt: '完成用户请求，并返回清晰的结果。', tools: ['documents'], think: false, x: 568, y: 238 },
+  { id: 'llm-1', type: 'llm', name: '主 LLM', model: '', prompt: '完成用户请求，并返回清晰的结果。', tools: ['documents'], think: false, x: 568, y: 238 },
 ];
 
 const initialConnections = [
@@ -49,7 +49,7 @@ export function addNode(type) {
   const position = nextNodePosition();
   const node = type === 'router'
     ? { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position }
-    : { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: 'gpt-5', prompt: '处理输入并返回结果。', tools: [], think: false, ...position };
+    : { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', tools: [], think: false, ...position };
   state.nodes.push(node);
   state.selectedId = node.id;
 }
@@ -62,7 +62,11 @@ export function deleteNode(id) {
 }
 
 export function saveDraft() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, nodes: state.nodes, connections: state.connections }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(workflowSnapshot()));
+}
+
+export function workflowSnapshot() {
+  return structuredClone({ version: 1, nodes: state.nodes, connections: state.connections });
 }
 
 export function resetDraft() {
@@ -89,7 +93,6 @@ export function loadDraft() {
         x: Number.isFinite(node.x) ? Math.max(12, node.x) : 52,
         y: Number.isFinite(node.y) ? Math.max(12, node.y) : 72,
       };
-      if (node.type === 'input') normalized.sampleInput = typeof node.sampleInput === 'string' ? node.sampleInput.slice(0, 2000) : '';
       if (node.type === 'router') {
         const branchIds = new Set();
         normalized.branches = (Array.isArray(node.branches) ? node.branches : []).flatMap((branch) => {

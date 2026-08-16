@@ -1,4 +1,5 @@
-import { addNode, loadDraft, resetDraft, saveDraft } from './workflow/model.js';
+import { fetchModels, uploadWorkflow } from './api.js';
+import { addNode, loadDraft, resetDraft, saveDraft, workflowSnapshot } from './workflow/model.js';
 import { createConnectionController } from './workflow/connections.js';
 import { createWorkflowView } from './workflow/view.js';
 
@@ -13,6 +14,7 @@ const elements = {
   connectionCount: document.querySelector('#connectionCount'),
   workflowState: document.querySelector('#workflowState'),
   saveButton: document.querySelector('#saveButton'),
+  uploadButton: document.querySelector('#uploadButton'),
   resetButton: document.querySelector('#resetButton'),
 };
 let hasUnsavedChanges = false;
@@ -33,6 +35,10 @@ const connections = createConnectionController(elements, markChanged);
 const view = createWorkflowView(elements, connections, markChanged);
 connections.bindCanvasPan();
 
+fetchModels()
+  .then((response) => view.setModels(response.items))
+  .catch((error) => console.warn('模型配置读取失败', error));
+
 for (const button of document.querySelectorAll('[data-add-node]')) {
   button.addEventListener('click', () => {
     addNode(button.dataset.addNode);
@@ -45,6 +51,22 @@ for (const button of document.querySelectorAll('[data-add-node]')) {
 elements.saveButton.addEventListener('click', () => {
   saveDraft();
   markSaved('已存浏览器');
+});
+
+elements.uploadButton.addEventListener('click', async () => {
+  elements.uploadButton.disabled = true;
+  elements.uploadButton.textContent = '上传中';
+  try {
+    saveDraft();
+    await uploadWorkflow('main', { name: 'Agent 主控制流', ...workflowSnapshot() });
+    markSaved('已上传');
+  } catch (error) {
+    elements.workflowState.textContent = error.message || '上传失败';
+    elements.workflowState.classList.remove('saved');
+  } finally {
+    elements.uploadButton.disabled = false;
+    elements.uploadButton.textContent = '上传';
+  }
 });
 
 elements.resetButton.addEventListener('click', () => {

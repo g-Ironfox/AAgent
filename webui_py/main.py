@@ -18,6 +18,8 @@ from pymongo import MongoClient, DESCENDING
 from pymongo.collection import Collection
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
+from documents import create_documents_router
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("aagent.webui")
 
@@ -26,10 +28,11 @@ MAX_TERMINAL_BODY_BYTES = 16 * 1024
 MAX_SYSTEM_PROMPT_CHARS = 100_000
 MAX_SETTINGS_BODY_BYTES = 512 * 1024
 MAX_EVENT_BODY_BYTES = 256 * 1024
-MAX_DOCUMENT_TITLE_CHARS = 200
-MAX_DOCUMENT_CONTENT_CHARS = 1_000_000
 MAX_DOCUMENT_BODY_BYTES = 1024 * 1024
 MAX_SUBAGENT_DOCUMENTS = 100
+MAX_WORKFLOW_BODY_BYTES = 512 * 1024
+MAX_WORKFLOW_NODES = 200
+MAX_WORKFLOW_CONNECTIONS = 1000
 
 
 def env(name: str, fallback: str) -> str:
@@ -54,6 +57,7 @@ MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
 MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
 MONGO_MODEL_COLLECTION = env("MONGO_MODEL_COLLECTION", "models")
+MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
 
 
 class SubagentSpec(BaseModel):
@@ -144,19 +148,6 @@ class UpdateEventRequest(BaseModel):
     fingerprint: str | None = None
 
 
-class DocumentRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    title: str = Field(min_length=1, max_length=MAX_DOCUMENT_TITLE_CHARS)
-    content: str = Field(default="", max_length=MAX_DOCUMENT_CONTENT_CHARS)
-
-
-class DocumentPinRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    pinned: bool
-
-
 class ModelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -169,17 +160,28 @@ class ModelRequest(BaseModel):
 
 
 model_configs: Collection = mongo_client[MONGO_DATABASE][MONGO_MODEL_COLLECTION]
+workflows: Collection = mongo_client[MONGO_DATABASE][MONGO_WORKFLOW_COLLECTION]
+
+
+class WorkflowRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    version: int = Field(ge=1)
+    nodes: list[dict[str, Any]] = Field(min_length=1, max_length=MAX_WORKFLOW_NODES)
+    connections: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_WORKFLOW_CONNECTIONS)
 
 
 app = FastAPI(title="AAgent WebUI")
 
 
 @app.on_event("startup")
-def create_model_indexes():
+def create_config_indexes():
     try:
         model_configs.create_index("name", unique=True, name="unique_model_name")
+        workflows.create_index("key", unique=True, name="unique_workflow_key")
     except PyMongoError as error:
-        logger.error("failed to create unique model name index: %s", error)
+        logger.error("failed to create configuration indexes: %s", error)
 
 
 @app.middleware("http")
@@ -216,6 +218,8 @@ async def terminal_body_guard(request: Request, call_next):
         body_limit = (MAX_DOCUMENT_BODY_BYTES, "文档请求体不能超过 1 MB")
     if request.method == "PUT" and request.url.path.startswith("/api/models/"):
         body_limit = (MAX_TERMINAL_BODY_BYTES, "模型配置请求体不能超过 16 KB")
+    if request.method == "PUT" and request.url.path.startswith("/api/workflows/"):
+        body_limit = (MAX_WORKFLOW_BODY_BYTES, "Workflow 请求体不能超过 512 KB")
     if body_limit:
         content_length = request.headers.get("content-length")
         if content_length:
@@ -241,19 +245,6 @@ def document_id(value: str) -> ObjectId | JSONResponse:
         return JSONResponse(status_code=400, content={"error": "文档 ID 无效"})
 
 
-def document_response(document: dict[str, Any], include_content: bool = True) -> dict[str, Any]:
-    response = {
-        "id": str(document["_id"]),
-        "title": document.get("title", ""),
-        "pinned": bool(document.get("pinned", False)),
-        "created_at": document.get("created_at"),
-        "updated_at": document.get("updated_at"),
-    }
-    if include_content:
-        response["content"] = document.get("content", "")
-    return response
-
-
 def model_response(document: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": str(document["_id"]),
@@ -266,6 +257,42 @@ def model_response(document: dict[str, Any]) -> dict[str, Any]:
         "created_at": document.get("created_at"),
         "updated_at": document.get("updated_at"),
     }
+
+
+def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(document["_id"]),
+        "key": document.get("key", ""),
+        "name": document.get("name", ""),
+        "version": document.get("version", 1),
+        "nodes": document.get("nodes", []),
+        "connections": document.get("connections", []),
+        "created_at": document.get("created_at"),
+        "updated_at": document.get("updated_at"),
+    }
+
+
+def control_flow_has_cycle(node_ids: set[str], connections: list[dict[str, Any]]) -> bool:
+    adjacency: dict[str, list[str]] = {node_id: [] for node_id in node_ids}
+    indegree = dict.fromkeys(node_ids, 0)
+    for connection in connections:
+        if connection.get("type") != "control":
+            continue
+        source = connection.get("fromId")
+        target = connection.get("toId")
+        adjacency[source].append(target)
+        indegree[target] += 1
+
+    ready = [node_id for node_id, degree in indegree.items() if degree == 0]
+    visited = 0
+    while ready:
+        node_id = ready.pop()
+        visited += 1
+        for target in adjacency[node_id]:
+            indegree[target] -= 1
+            if indegree[target] == 0:
+                ready.append(target)
+    return visited != len(node_ids)
 
 
 def event_fingerprint(event: dict[str, Any]) -> str:
@@ -773,98 +800,6 @@ def submit_terminal(payload: TerminalRequest):
     return {"event": event, "queue": QUEUE_NAME}
 
 
-@app.get("/api/documents")
-def list_documents():
-    try:
-        items = documents.find({}, {"title": 1, "pinned": 1, "created_at": 1, "updated_at": 1}).sort("updated_at", DESCENDING)
-        return {"items": [document_response(item, include_content=False) for item in items]}
-    except PyMongoError:
-        return JSONResponse(status_code=503, content={"error": "文档列表暂时不可用"})
-
-
-@app.post("/api/documents", status_code=201)
-def create_document(payload: DocumentRequest):
-    title = payload.title.strip()
-    if not title:
-        return JSONResponse(status_code=400, content={"error": "文档标题不能为空"})
-    now = datetime.now(timezone.utc)
-    document = {"title": title, "content": payload.content, "pinned": False, "created_at": now, "updated_at": now}
-    try:
-        result = documents.insert_one(document)
-    except PyMongoError:
-        return JSONResponse(status_code=503, content={"error": "暂时无法创建文档"})
-    document["_id"] = result.inserted_id
-    return document_response(document)
-
-
-@app.get("/api/documents/{document_id_value}")
-def get_document(document_id_value: str):
-    object_id = document_id(document_id_value)
-    if isinstance(object_id, JSONResponse):
-        return object_id
-    try:
-        document = documents.find_one({"_id": object_id})
-    except PyMongoError:
-        return JSONResponse(status_code=503, content={"error": "文档暂时不可用"})
-    if document is None:
-        return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
-    return document_response(document)
-
-
-@app.put("/api/documents/{document_id_value}")
-def update_document(document_id_value: str, payload: DocumentRequest):
-    object_id = document_id(document_id_value)
-    if isinstance(object_id, JSONResponse):
-        return object_id
-    title = payload.title.strip()
-    if not title:
-        return JSONResponse(status_code=400, content={"error": "文档标题不能为空"})
-    updated_at = datetime.now(timezone.utc)
-    try:
-        document = documents.find_one_and_update(
-            {"_id": object_id},
-            {"$set": {"title": title, "content": payload.content, "updated_at": updated_at}},
-            return_document=True,
-        )
-    except PyMongoError:
-        return JSONResponse(status_code=503, content={"error": "暂时无法保存文档"})
-    if document is None:
-        return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
-    return document_response(document)
-
-
-@app.patch("/api/documents/{document_id_value}/pin")
-def update_document_pin(document_id_value: str, payload: DocumentPinRequest):
-    object_id = document_id(document_id_value)
-    if isinstance(object_id, JSONResponse):
-        return object_id
-    try:
-        document = documents.find_one_and_update(
-            {"_id": object_id},
-            {"$set": {"pinned": payload.pinned}},
-            return_document=True,
-        )
-    except PyMongoError:
-        return JSONResponse(status_code=503, content={"error": "暂时无法更新文档钉住状态"})
-    if document is None:
-        return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
-    return document_response(document)
-
-
-@app.delete("/api/documents/{document_id_value}")
-def delete_document(document_id_value: str):
-    object_id = document_id(document_id_value)
-    if isinstance(object_id, JSONResponse):
-        return object_id
-    try:
-        result = documents.delete_one({"_id": object_id})
-    except PyMongoError:
-        return JSONResponse(status_code=503, content={"error": "暂时无法删除文档"})
-    if result.deleted_count == 0:
-        return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
-    return {"deleted": True, "id": document_id_value}
-
-
 @app.get("/api/models")
 def list_models():
     try:
@@ -940,6 +875,58 @@ def delete_model(model_id_value: str):
         return JSONResponse(status_code=404, content={"error": "模型配置不存在或已被删除"})
     return {"deleted": True, "id": model_id_value}
 
+
+@app.put("/api/workflows/{workflow_key}")
+def upsert_workflow(workflow_key: str, payload: WorkflowRequest):
+    key = workflow_key.strip()
+    if not key or len(key) > 120 or not all(character.isalnum() or character in {"-", "_"} for character in key):
+        return JSONResponse(status_code=400, content={"error": "Workflow key 只能包含字母、数字、连字符和下划线"})
+    if not payload.name.strip():
+        return JSONResponse(status_code=400, content={"error": "Workflow 名称不能为空"})
+
+    node_ids = [node.get("id") for node in payload.nodes]
+    if any(not isinstance(node_id, str) or not node_id for node_id in node_ids):
+        return JSONResponse(status_code=400, content={"error": "每个节点都必须包含有效的 id"})
+    if len(node_ids) != len(set(node_ids)):
+        return JSONResponse(status_code=400, content={"error": "Workflow 中存在重复的节点 id"})
+    node_id_set = set(node_ids)
+    for connection in payload.connections:
+        if connection.get("fromId") not in node_id_set or connection.get("toId") not in node_id_set:
+            return JSONResponse(status_code=400, content={"error": "连接引用了不存在的节点"})
+    if control_flow_has_cycle(node_id_set, payload.connections):
+        return JSONResponse(status_code=400, content={"error": "控制流不能存在环"})
+
+    llm_nodes = [node for node in payload.nodes if node.get("type") == "llm"]
+    try:
+        model_ids = [ObjectId(node.get("model", "")) for node in llm_nodes]
+    except (InvalidId, TypeError):
+        return JSONResponse(status_code=400, content={"error": "LLM 节点必须选择有效的模型配置"})
+    try:
+        available_model_ids = {
+            item["_id"] for item in model_configs.find({"_id": {"$in": model_ids}, "enabled": True}, {"_id": 1})
+        }
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法校验模型配置"})
+    if any(model_id not in available_model_ids for model_id in model_ids):
+        return JSONResponse(status_code=400, content={"error": "LLM 节点引用了不存在或已停用的模型配置"})
+
+    now = datetime.now(timezone.utc)
+    values = payload.model_dump()
+    values["name"] = values["name"].strip()
+    values["updated_at"] = now
+    try:
+        document = workflows.find_one_and_update(
+            {"key": key},
+            {"$set": values, "$setOnInsert": {"key": key, "created_at": now}},
+            upsert=True,
+            return_document=True,
+        )
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法保存 Workflow"})
+    return workflow_response(document)
+
+
+app.include_router(create_documents_router(documents))
 
 static_directory = Path(__file__).parent / "static"
 

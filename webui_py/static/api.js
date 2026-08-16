@@ -144,3 +144,11 @@ export function updateModel(modelId, model) {
 export function deleteModel(modelId) {
   return request(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
 }
+
+export function uploadWorkflow(workflowKey, workflow) {
+  return request(`/api/workflows/${encodeURIComponent(workflowKey)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(workflow),
+  });
+}
