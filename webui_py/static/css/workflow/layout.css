@@ -38,4 +38,4 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 
 @media (max-width:1180px) { .workflow-shell { grid-template-columns:210px minmax(480px,1fr) 270px; } .workflow-state { display:none; } }
 @media (max-width:900px) { .workflow-main { overflow:auto; } .workflow-shell { min-width:800px; grid-template-columns:190px minmax(420px,1fr) 240px; } .page-nav a { padding:0 8px; } }
-@media (max-width:560px) { .workflow-main { width:calc(100% - 16px); } .toolbar-button { padding:0 8px; } }
+@media (max-width:560px) { .workflow-page .brand { display:none; } .workflow-page .page-nav { right:8px; left:8px; overflow-x:auto; transform:none; } .workflow-page .page-nav a { flex:none; } .workflow-main { width:calc(100% - 16px); } .toolbar-button { padding:0 8px; } }

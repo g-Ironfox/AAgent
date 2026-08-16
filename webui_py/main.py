@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo import MongoClient, DESCENDING
 from pymongo.collection import Collection
-from pymongo.errors import PyMongoError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("aagent.webui")
@@ -53,6 +53,7 @@ MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
 MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
+MONGO_MODEL_COLLECTION = env("MONGO_MODEL_COLLECTION", "models")
 
 
 class SubagentSpec(BaseModel):
@@ -156,7 +157,29 @@ class DocumentPinRequest(BaseModel):
     pinned: bool
 
 
+class ModelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    provider: str = Field(min_length=1, max_length=120)
+    model: str = Field(min_length=1, max_length=200)
+    base_url: str = Field(min_length=1, max_length=500)
+    api_key: str = Field(default="", max_length=1000)
+    enabled: bool = True
+
+
+model_configs: Collection = mongo_client[MONGO_DATABASE][MONGO_MODEL_COLLECTION]
+
+
 app = FastAPI(title="AAgent WebUI")
+
+
+@app.on_event("startup")
+def create_model_indexes():
+    try:
+        model_configs.create_index("name", unique=True, name="unique_model_name")
+    except PyMongoError as error:
+        logger.error("failed to create unique model name index: %s", error)
 
 
 @app.middleware("http")
@@ -184,12 +207,15 @@ async def terminal_body_guard(request: Request, call_next):
         ("POST", "/api/terminal"): (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
         ("POST", "/api/settings/system-prompt"): (MAX_SETTINGS_BODY_BYTES, "请求体不能超过 512 KB"),
         ("PUT", "/api/events"): (MAX_EVENT_BODY_BYTES, "请求体不能超过 256 KB"),
+        ("POST", "/api/models"): (MAX_TERMINAL_BODY_BYTES, "模型配置请求体不能超过 16 KB"),
     }
     body_limit = body_limits.get((request.method, request.url.path))
     if request.method in {"POST", "PUT"} and (
         request.url.path == "/api/documents" or request.url.path.startswith("/api/documents/")
     ):
         body_limit = (MAX_DOCUMENT_BODY_BYTES, "文档请求体不能超过 1 MB")
+    if request.method == "PUT" and request.url.path.startswith("/api/models/"):
+        body_limit = (MAX_TERMINAL_BODY_BYTES, "模型配置请求体不能超过 16 KB")
     if body_limit:
         content_length = request.headers.get("content-length")
         if content_length:
@@ -226,6 +252,20 @@ def document_response(document: dict[str, Any], include_content: bool = True) ->
     if include_content:
         response["content"] = document.get("content", "")
     return response
+
+
+def model_response(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(document["_id"]),
+        "name": document.get("name", ""),
+        "provider": document.get("provider", ""),
+        "model": document.get("model", ""),
+        "base_url": document.get("base_url", ""),
+        "api_key": document.get("api_key", ""),
+        "enabled": bool(document.get("enabled", True)),
+        "created_at": document.get("created_at"),
+        "updated_at": document.get("updated_at"),
+    }
 
 
 def event_fingerprint(event: dict[str, Any]) -> str:
@@ -823,6 +863,82 @@ def delete_document(document_id_value: str):
     if result.deleted_count == 0:
         return JSONResponse(status_code=404, content={"error": "文档不存在或已被删除"})
     return {"deleted": True, "id": document_id_value}
+
+
+@app.get("/api/models")
+def list_models():
+    try:
+        items = model_configs.find({}).sort("updated_at", DESCENDING)
+        return {"items": [model_response(item) for item in items]}
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "模型配置暂时不可用"})
+
+
+@app.post("/api/models", status_code=201)
+def create_model(payload: ModelRequest):
+    values = payload.model_dump()
+    values["name"] = values["name"].strip()
+    values["provider"] = values["provider"].strip()
+    values["model"] = values["model"].strip()
+    values["base_url"] = values["base_url"].strip().rstrip("/")
+    if not all(values[field] for field in ("name", "provider", "model", "base_url")):
+        return JSONResponse(status_code=400, content={"error": "模型名称、厂商、模型标识和 Base URL 不能为空"})
+    now = datetime.now(timezone.utc)
+    values.update({"created_at": now, "updated_at": now})
+    try:
+        if model_configs.find_one({"name": values["name"]}, {"_id": 1}):
+            return JSONResponse(status_code=409, content={"error": "模型名称已存在"})
+        result = model_configs.insert_one(values)
+    except DuplicateKeyError:
+        return JSONResponse(status_code=409, content={"error": "模型名称已存在"})
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法创建模型配置"})
+    values["_id"] = result.inserted_id
+    return model_response(values)
+
+
+@app.put("/api/models/{model_id_value}")
+def update_model(model_id_value: str, payload: ModelRequest):
+    object_id = document_id(model_id_value)
+    if isinstance(object_id, JSONResponse):
+        return object_id
+    values = payload.model_dump()
+    values["name"] = values["name"].strip()
+    values["provider"] = values["provider"].strip()
+    values["model"] = values["model"].strip()
+    values["base_url"] = values["base_url"].strip().rstrip("/")
+    if not all(values[field] for field in ("name", "provider", "model", "base_url")):
+        return JSONResponse(status_code=400, content={"error": "模型名称、厂商、模型标识和 Base URL 不能为空"})
+    values["updated_at"] = datetime.now(timezone.utc)
+    try:
+        if model_configs.find_one({"name": values["name"], "_id": {"$ne": object_id}}, {"_id": 1}):
+            return JSONResponse(status_code=409, content={"error": "模型名称已存在"})
+        document = model_configs.find_one_and_update(
+            {"_id": object_id},
+            {"$set": values},
+            return_document=True,
+        )
+    except DuplicateKeyError:
+        return JSONResponse(status_code=409, content={"error": "模型名称已存在"})
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法保存模型配置"})
+    if document is None:
+        return JSONResponse(status_code=404, content={"error": "模型配置不存在或已被删除"})
+    return model_response(document)
+
+
+@app.delete("/api/models/{model_id_value}")
+def delete_model(model_id_value: str):
+    object_id = document_id(model_id_value)
+    if isinstance(object_id, JSONResponse):
+        return object_id
+    try:
+        result = model_configs.delete_one({"_id": object_id})
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"error": "暂时无法删除模型配置"})
+    if result.deleted_count == 0:
+        return JSONResponse(status_code=404, content={"error": "模型配置不存在或已被删除"})
+    return {"deleted": True, "id": model_id_value}
 
 
 static_directory = Path(__file__).parent / "static"

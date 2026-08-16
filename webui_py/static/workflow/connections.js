@@ -19,13 +19,15 @@ export function createConnectionController(elements, markChanged) {
     return {
       x: rect.left + rect.width / 2 - canvasRect.left + elements.canvas.scrollLeft,
       y: rect.top + rect.height / 2 - canvasRect.top + elements.canvas.scrollTop,
+      direction: port.dataset.portDirection,
     };
   }
 
   function connectionPath(start, end) {
-    const direction = end.x >= start.x ? 1 : -1;
     const curve = Math.max(42, Math.abs(end.x - start.x) * 0.45);
-    return `M ${start.x} ${start.y} C ${start.x + curve * direction} ${start.y}, ${end.x - curve * direction} ${end.y}, ${end.x} ${end.y}`;
+    const startDirection = start.direction === 'input' ? -1 : 1;
+    const endDirection = end.direction === 'output' ? 1 : -1;
+    return `M ${start.x} ${start.y} C ${start.x + curve * startDirection} ${start.y}, ${end.x + curve * endDirection} ${end.y}, ${end.x} ${end.y}`;
   }
 
   function compatiblePort(port, drag) {
@@ -133,7 +135,11 @@ export function createConnectionController(elements, markChanged) {
         : hasControlConnection && direction === 'output'
           ? connection.toPortId
           : (port.dataset.portId || null);
-      const anchorDirection = hasContentInputConnection || (hasControlConnection && direction === 'input') ? 'output' : direction === 'output' ? 'input' : direction;
+      const anchorDirection = hasContentInputConnection || (hasControlConnection && direction === 'input')
+        ? 'output'
+        : hasControlConnection && direction === 'output'
+          ? 'input'
+          : direction;
       state.connectionDrag = {
         pointerId: event.pointerId,
         direction,
@@ -190,7 +196,6 @@ export function createConnectionController(elements, markChanged) {
 
     function finishDrag(event) {
       if (!drag || event.pointerId !== drag.pointerId) return;
-      if (drag.moved) markChanged();
       element.classList.remove('dragging');
       if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
       drag = null;
@@ -198,6 +203,39 @@ export function createConnectionController(elements, markChanged) {
 
     element.addEventListener('pointerup', finishDrag);
     element.addEventListener('pointercancel', finishDrag);
+  }
+
+  function bindCanvasPan() {
+    let pan = null;
+
+    elements.canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || event.target.closest('.flow-node')) return;
+      pan = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        scrollLeft: elements.canvas.scrollLeft,
+        scrollTop: elements.canvas.scrollTop,
+      };
+      elements.canvas.setPointerCapture(event.pointerId);
+      elements.canvas.classList.add('panning');
+    });
+
+    elements.canvas.addEventListener('pointermove', (event) => {
+      if (!pan || event.pointerId !== pan.pointerId) return;
+      elements.canvas.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
+      elements.canvas.scrollTop = pan.scrollTop - (event.clientY - pan.startY);
+    });
+
+    function finishPan(event) {
+      if (!pan || event.pointerId !== pan.pointerId) return;
+      elements.canvas.classList.remove('panning');
+      if (elements.canvas.hasPointerCapture(event.pointerId)) elements.canvas.releasePointerCapture(event.pointerId);
+      pan = null;
+    }
+
+    elements.canvas.addEventListener('pointerup', finishPan);
+    elements.canvas.addEventListener('pointercancel', finishPan);
   }
 
   function renderConnections() {
@@ -222,6 +260,7 @@ export function createConnectionController(elements, markChanged) {
       const canvasPoint = {
         x: drag.pointer.x - canvasRect.left + elements.canvas.scrollLeft,
         y: drag.pointer.y - canvasRect.top + elements.canvas.scrollTop,
+        direction: drag.anchorDirection === 'output' ? 'input' : 'output',
       };
       const anchor = portCenter(drag.anchorNodeId, drag.anchorPortId);
       if (anchor) {
@@ -235,5 +274,5 @@ export function createConnectionController(elements, markChanged) {
     elements.connectionCount.textContent = `${state.connections.length} 条连接`;
   }
 
-  return { bindConnectionPort, bindNodeDrag, renderConnections };
+  return { bindCanvasPan, bindConnectionPort, bindNodeDrag, renderConnections };
 }

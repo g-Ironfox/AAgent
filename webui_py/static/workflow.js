@@ -15,19 +15,23 @@ const elements = {
   saveButton: document.querySelector('#saveButton'),
   resetButton: document.querySelector('#resetButton'),
 };
+let hasUnsavedChanges = false;
 
 function markChanged() {
+  hasUnsavedChanges = true;
   elements.workflowState.textContent = '未保存';
   elements.workflowState.classList.remove('saved');
 }
 
 function markSaved(message) {
+  hasUnsavedChanges = false;
   elements.workflowState.textContent = message;
   elements.workflowState.classList.add('saved');
 }
 
 const connections = createConnectionController(elements, markChanged);
 const view = createWorkflowView(elements, connections, markChanged);
+connections.bindCanvasPan();
 
 for (const button of document.querySelectorAll('[data-add-node]')) {
   button.addEventListener('click', () => {
@@ -44,11 +48,28 @@ elements.saveButton.addEventListener('click', () => {
 });
 
 elements.resetButton.addEventListener('click', () => {
+  if (!window.confirm('重置会删除已保存的本地草稿，确定继续吗？')) return;
   resetDraft();
   markChanged();
   view.renderNodes();
   view.renderInspector();
 });
+
+window.addEventListener('beforeunload', (event) => {
+  if (!hasUnsavedChanges) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+
+for (const link of document.querySelectorAll('.page-nav a, .brand')) {
+  link.addEventListener('click', (event) => {
+    if (!hasUnsavedChanges || window.confirm('当前 Workflow 有未保存修改，确定离开吗？')) {
+      hasUnsavedChanges = false;
+      return;
+    }
+    event.preventDefault();
+  });
+}
 
 window.addEventListener('resize', connections.renderConnections);
 

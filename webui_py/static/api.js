@@ -120,3 +120,27 @@ export function submitMaxContextCount(maxContextCount) {
     body: JSON.stringify({ max_context_count: maxContextCount }),
   });
 }
+
+export function fetchModels() {
+  return request('/api/models');
+}
+
+export function createModel(model) {
+  return request('/api/models', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(model),
+  });
+}
+
+export function updateModel(modelId, model) {
+  return request(`/api/models/${encodeURIComponent(modelId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(model),
+  });
+}
+
+export function deleteModel(modelId) {
+  return request(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+}

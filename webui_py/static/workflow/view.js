@@ -1,4 +1,4 @@
-import { deleteNode, nodeById, state } from './model.js';
+import { createWorkflowId, deleteNode, nodeById, state } from './model.js';
 
 export function createWorkflowView(elements, connections, markChanged) {
   const portRowHeight = 28;
@@ -14,14 +14,18 @@ export function createWorkflowView(elements, connections, markChanged) {
     if (node.type === 'router') {
       return [
         { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+        { id: 'content-in', direction: 'input', type: 'content', label: '输入', title: '输入内容', multiple: false },
         ...node.branches.map((branch) => ({ id: branch.id, direction: 'output', type: 'control', label: branch.name, title: branch.name, multiple: false })),
       ];
     }
-    return [
+    const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       { id: 'content-in', direction: 'input', type: 'content', label: '上下文', title: '上下文', multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },
     ];
+    if (node.think === true) ports.push({ id: 'reasoning', direction: 'output', type: 'content', label: '思考', title: '推理过程', multiple: true });
+    return ports;
   }
 
   function createNodeUI(node) {
@@ -91,7 +95,15 @@ export function createWorkflowView(elements, connections, markChanged) {
     elements.inspectorType.textContent = node.type.toUpperCase();
     const template = document.querySelector(`#${node.type}InspectorTemplate`);
     elements.inspectorContent.replaceChildren(template.content.cloneNode(true));
-    if (node.type === 'input') return;
+    if (node.type === 'input') {
+      const sampleInput = elements.inspectorContent.querySelector('[data-sample-input]');
+      sampleInput.value = node.sampleInput || '';
+      sampleInput.addEventListener('input', () => {
+        node.sampleInput = sampleInput.value;
+        markChanged();
+      });
+      return;
+    }
 
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
       field.value = node[field.dataset.field] || '';
@@ -103,7 +115,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       });
     }
     if (node.type === 'router') renderBranches(node);
-    if (node.type === 'llm') bindTools(node);
+    if (node.type === 'llm') bindLlm(node);
     elements.inspectorContent.querySelector('[data-delete-node]').addEventListener('click', () => {
       deleteNode(node.id);
       markChanged();
@@ -114,7 +126,14 @@ export function createWorkflowView(elements, connections, markChanged) {
 
   function renderBranches(node) {
     const container = elements.inspectorContent.querySelector('[data-route-options]');
+    const contract = elements.inspectorContent.querySelector('[data-router-output-contracts]');
     node.branches.forEach((branch, index) => {
+      const portContract = document.createElement('div');
+      portContract.className = 'port-contract';
+      portContract.innerHTML = '<span class="port-swatch control"></span><strong></strong><code>control</code>';
+      portContract.querySelector('strong').textContent = branch.name;
+      contract.append(portContract);
+
       const option = document.createElement('div');
       option.className = 'route-option';
       option.innerHTML = '<span class="route-index"></span><label><input data-branch-name maxlength="30"><small>控制流输出分支</small></label><button type="button" class="branch-delete" data-delete-branch title="删除分支">×</button>';
@@ -123,13 +142,14 @@ export function createWorkflowView(elements, connections, markChanged) {
       input.value = branch.name;
       input.addEventListener('input', () => {
         branch.name = input.value || `分支 ${index + 1}`;
+        portContract.querySelector('strong').textContent = branch.name;
         markChanged();
         renderNodes();
       });
       option.querySelector('[data-delete-branch]').addEventListener('click', () => {
         if (node.branches.length <= 1) return;
         const removed = node.branches.splice(index, 1)[0];
-        state.connections = state.connections.filter((connection) => connection.fromPortId !== removed.id);
+        state.connections = state.connections.filter((connection) => !(connection.fromId === node.id && connection.fromPortId === removed.id));
         markChanged();
         renderNodes();
         renderInspector();
@@ -137,7 +157,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       container.append(option);
     });
     elements.inspectorContent.querySelector('[data-add-branch]').addEventListener('click', () => {
-      const id = `branch-${Date.now()}`;
+      const id = createWorkflowId('branch');
       node.branches.push({ id, name: `分支 ${node.branches.length + 1}` });
       markChanged();
       renderNodes();
@@ -159,6 +179,40 @@ export function createWorkflowView(elements, connections, markChanged) {
       });
     }
     syncCount();
+  }
+
+  function bindLlm(node) {
+    bindTools(node);
+    renderLlmOutputContracts(node);
+    const think = elements.inspectorContent.querySelector('[data-think]');
+    think.checked = node.think === true;
+    think.addEventListener('change', () => {
+      node.think = think.checked;
+      if (!node.think) {
+        state.connections = state.connections.filter((connection) => !(connection.fromId === node.id && connection.fromPortId === 'reasoning'));
+      }
+      markChanged();
+      renderNodes();
+      renderInspector();
+    });
+  }
+
+  function renderLlmOutputContracts(node) {
+    const contract = elements.inspectorContent.querySelector('[data-llm-output-contracts]');
+    const outputs = [
+      { label: '下一步', type: 'control' },
+      { label: '输出', type: 'content' },
+    ];
+    if (node.think === true) outputs.push({ label: '思考', type: 'content' });
+    contract.replaceChildren(...outputs.map((output) => {
+      const portContract = document.createElement('div');
+      portContract.className = 'port-contract';
+      portContract.innerHTML = '<span class="port-swatch"></span><strong></strong><code></code>';
+      portContract.querySelector('.port-swatch').classList.add(output.type);
+      portContract.querySelector('strong').textContent = output.label;
+      portContract.querySelector('code').textContent = output.type;
+      return portContract;
+    }));
   }
 
   return { renderInspector, renderNodes };

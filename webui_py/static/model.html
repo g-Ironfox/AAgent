@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 模型</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/model.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件流">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>MODEL REGISTRY</small></span>
+    </a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a><a href="/subagents.html">子 Agent</a><a href="/workflow.html">Workflow</a><a href="/terminal.html">终端</a><a href="/document.html">文档</a><a href="/setting.html">设置</a><a class="active" href="/model.html" aria-current="page">模型</a>
+      </nav>
+      <div class="setting-state"><span>配置数量</span><strong id="modelState">读取中</strong></div>
+    </div>
+  </header>
+
+  <main class="model-main">
+    <section class="model-workspace" aria-labelledby="modelTitle">
+      <header class="model-heading">
+        <div><p>RUNTIME · PROVIDERS</p><h1 id="modelTitle">Model Registry</h1></div>
+        <button id="newModelButton" class="secondary-button" type="button">新建模型</button>
+      </header>
+      <div class="model-grid">
+        <form id="modelForm" class="model-form">
+          <div class="form-heading"><strong id="formTitle">新建模型</strong><span id="formStatus" role="status"></span></div>
+          <input id="modelId" type="hidden">
+          <label>名称<input id="modelName" maxlength="120" required placeholder="例如：主力 DeepSeek"></label>
+          <label>厂商<input id="modelProvider" maxlength="120" required placeholder="例如：DeepSeek"></label>
+          <label>模型标识<input id="modelModel" maxlength="200" required placeholder="例如：deepseek-chat"></label>
+          <label>Base URL<input id="modelBaseUrl" maxlength="500" type="url" required placeholder="https://api.example.com/v1"></label>
+          <label>API Key<input id="modelApiKey" maxlength="1000" type="password" autocomplete="new-password" placeholder="sk-..."></label>
+          <label class="toggle-label"><input id="modelEnabled" type="checkbox" checked><span>启用此模型</span></label>
+          <footer><span id="saveStatus" role="status"></span><button class="save-button" type="submit">保存配置</button></footer>
+        </form>
+        <section class="model-list" aria-labelledby="listTitle"><div class="form-heading"><strong id="listTitle">已保存模型</strong><span id="listCount"></span></div><div id="modelItems" class="model-items"></div></section>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/model.js"></script>
+</body>
+</html>
