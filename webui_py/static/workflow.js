@@ -1,4 +1,4 @@
-import { fetchModels, uploadWorkflow } from './api.js';
+import { fetchModels, fetchTools, uploadWorkflow } from './api.js';
 import { addNode, loadDraft, resetDraft, saveDraft, workflowSnapshot } from './workflow/model.js';
 import { createConnectionController } from './workflow/connections.js';
 import { createWorkflowView } from './workflow/view.js';
@@ -38,6 +38,10 @@ connections.bindCanvasPan();
 fetchModels()
   .then((response) => view.setModels(response.items))
   .catch((error) => console.warn('模型配置读取失败', error));
+
+fetchTools()
+  .then((response) => view.setTools(response.items))
+  .catch((error) => console.warn('Tool 注册表读取失败', error));
 
 for (const button of document.querySelectorAll('[data-add-node]')) {
   button.addEventListener('click', () => {

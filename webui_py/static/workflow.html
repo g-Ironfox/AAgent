@@ -54,8 +54,18 @@
             <div><strong>LLM</strong><small>执行模型并挂载工具</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="tool">
+            <span class="node-symbol tool-symbol" aria-hidden="true">T</span>
+            <div><strong>Tool</strong><small>直接调用一个已注册工具</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="tool_calls">
+            <span class="node-symbol tool_calls-symbol" aria-hidden="true">TC</span>
+            <div><strong>Tool Calls</strong><small>执行 LLM 输出的 OpenAI 格式 JSON</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
         </div>
-        <footer class="library-footer"><span>3 种节点</span><span id="nodeCount">3 个实例</span></footer>
+        <footer class="library-footer"><span>5 种节点</span><span id="nodeCount">3 个实例</span></footer>
       </aside>
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
@@ -138,14 +148,52 @@
       <label>模型<select data-field="model"><option>加载模型配置中</option></select></label>
       <label>系统指令<textarea data-field="prompt" rows="5" maxlength="500"></textarea></label>
       <label class="checkbox-field"><input type="checkbox" data-think><span><strong>Think</strong><small>启用推理过程输出</small></span></label>
+      <label class="checkbox-field"><input type="checkbox" data-tool-calls><span><strong>Tool Calls</strong><small>启用 OpenAI 格式的工具调用输出</small></span></label>
     </section>
-    <section class="inspector-section">
+    <section class="inspector-section" data-llm-tools>
       <div class="section-label"><strong>挂载 Tools</strong><span data-tool-count>0 个</span></div>
-      <div class="tool-options">
-        <label><input type="checkbox" value="web_search" data-tool><span><strong>Web Search</strong><small>搜索公开信息</small></span></label>
-        <label><input type="checkbox" value="documents" data-tool><span><strong>Documents</strong><small>读取文档中心</small></span></label>
-        <label><input type="checkbox" value="terminal" data-tool><span><strong>Terminal</strong><small>执行本地命令</small></span></label>
+      <div class="tool-options"><div class="empty-options">加载 Tool 注册表中</div></div>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="toolInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
+        <div data-tool-input-contracts><div class="empty-options">选择 Tool 后显示参数</div></div>
       </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>执行结果</strong><code>content</code></div>
+      </div>
+    </section>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Tool<select data-field="tool"><option>加载 Tool 注册表中</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="tool_callsInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>Tool Calls JSON</strong><code>content</code></div>
+      </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>执行结果</strong><code>content</code></div>
+      </div>
+    </section>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

@@ -159,7 +159,16 @@ def _data_ports(
         outputs: dict[str, list[list[Any]]] = {"output": []}
         if node.get("think") is True:
             outputs["reasoning"] = []
+        if node.get("tool_calls") is True:
+            outputs["tool_calls"] = []
         return {"content-in": None}, outputs
+    if node_type == "tool":
+        parameters = node.get("parameters", [])
+        if not isinstance(parameters, list) or any(not isinstance(parameter, str) or not parameter for parameter in parameters):
+            raise WorkflowParseError("tool node parameters must be a list of non-empty strings")
+        return {parameter: None for parameter in parameters}, {"output": []}
+    if node_type == "tool_calls":
+        return {"tool_calls": None}, {"output": []}
     return {}, {}
 
 

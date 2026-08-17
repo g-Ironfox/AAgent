@@ -4,6 +4,7 @@ export function createWorkflowView(elements, connections, markChanged) {
   const portRowHeight = 28;
   const portTopInset = 8;
   let modelConfigs = [];
+  let toolSchemas = [];
 
   function nodePorts(node) {
     if (node.type === 'input') {
@@ -19,6 +20,30 @@ export function createWorkflowView(elements, connections, markChanged) {
         ...node.branches.map((branch) => ({ id: branch.id, direction: 'output', type: 'control', label: branch.name, title: branch.name, multiple: false })),
       ];
     }
+    if (node.type === 'tool') {
+      const parameterPorts = (node.parameters || []).map((parameter) => ({
+        id: parameter,
+        direction: 'input',
+        type: 'content',
+        label: parameter,
+        title: `工具参数: ${parameter}`,
+        multiple: false,
+      }));
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+        ...parameterPorts,
+        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+        { id: 'output', direction: 'output', type: 'content', label: '结果', title: '工具执行结果', multiple: true },
+      ];
+    }
+    if (node.type === 'tool_calls') {
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+        { id: 'tool_calls', direction: 'input', type: 'content', label: 'Tool Calls JSON', title: 'OpenAI 格式的 tool_calls JSON', multiple: false },
+        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+        { id: 'output', direction: 'output', type: 'content', label: '结果', title: 'Tool Calls 执行结果', multiple: true },
+      ];
+    }
     const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       { id: 'content-in', direction: 'input', type: 'content', label: '上下文', title: '上下文', multiple: false },
@@ -26,6 +51,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },
     ];
     if (node.think === true) ports.push({ id: 'reasoning', direction: 'output', type: 'content', label: '思考', title: '推理过程', multiple: true });
+    if (node.tool_calls === true) ports.push({ id: 'tool_calls', direction: 'output', type: 'content', label: 'Tool Calls', title: 'OpenAI 格式的 tool_calls JSON', multiple: true });
     return ports;
   }
 
@@ -35,7 +61,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const bodyRows = Math.max(inputs.length, outputs.length);
-    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : 'L';
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'tool' ? 'T' : node.type === 'tool_calls' ? 'TC' : 'L';
 
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;
@@ -99,6 +125,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     if (node.type === 'input') return;
 
     if (node.type === 'llm') renderModelOptions(node);
+    if (node.type === 'tool') renderToolSelect(node);
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
       field.value = node[field.dataset.field] || '';
       field.addEventListener('input', () => {
@@ -187,14 +214,102 @@ export function createWorkflowView(elements, connections, markChanged) {
     });
   }
 
+  function renderToolSelect(node) {
+    const select = elements.inspectorContent.querySelector('[data-field="tool"]');
+    const selectedSchema = toolSchemas.find((tool) => tool.name === node.tool);
+    if (selectedSchema) {
+      node.parameters = Object.keys(selectedSchema.parameters?.properties || {});
+    }
+    if (!node.tool && toolSchemas.length) {
+      node.tool = toolSchemas[0].name;
+      node.parameters = Object.keys(toolSchemas[0].parameters?.properties || {});
+      markChanged();
+    }
+    const options = toolSchemas.map((tool) => {
+      const option = document.createElement('option');
+      option.value = tool.name;
+      option.textContent = tool.name;
+      option.title = tool.description || '';
+      return option;
+    });
+    if (!toolSchemas.some((tool) => tool.name === node.tool)) {
+      const unavailable = document.createElement('option');
+      unavailable.value = node.tool || '';
+      unavailable.textContent = node.tool ? `当前未注册 (${node.tool})` : '没有已注册的 Tool';
+      options.unshift(unavailable);
+    }
+    select.replaceChildren(...options);
+    select.disabled = toolSchemas.length === 0;
+    renderToolInputContracts(node);
+    select.addEventListener('change', () => {
+      const schema = toolSchemas.find((tool) => tool.name === select.value);
+      node.tool = select.value;
+      node.parameters = Object.keys(schema?.parameters?.properties || {});
+      state.connections = state.connections.filter((connection) => {
+        if (connection.toId === node.id) return false;
+        if (connection.fromId === node.id) return ['control-out', 'output'].includes(connection.fromPortId);
+        return true;
+      });
+      markChanged();
+      renderNodes();
+      renderInspector();
+    });
+  }
+
+  function renderToolInputContracts(node) {
+    const container = elements.inspectorContent.querySelector('[data-tool-input-contracts]');
+    const parameters = node.parameters || [];
+    if (!parameters.length) {
+      container.replaceChildren(Object.assign(document.createElement('div'), {
+        className: 'empty-options',
+        textContent: '该 Tool 没有参数',
+      }));
+      return;
+    }
+    container.replaceChildren(...parameters.map((parameter) => {
+      const contract = document.createElement('div');
+      contract.className = 'port-contract';
+      contract.innerHTML = '<span class="port-swatch content"></span><strong></strong><code>content</code>';
+      contract.querySelector('strong').textContent = parameter;
+      return contract;
+    }));
+  }
+
   function bindTools(node) {
     const count = elements.inspectorContent.querySelector('[data-tool-count]');
+    const container = elements.inspectorContent.querySelector('.tool-options');
+    const availableNames = new Set(toolSchemas.map((tool) => tool.name));
+    const unavailableTools = node.tools.filter((toolName) => !availableNames.has(toolName));
+    const options = toolSchemas.map((tool) => {
+      const label = document.createElement('label');
+      label.innerHTML = '<input type="checkbox" data-tool><span><strong></strong><small></small></span>';
+      const input = label.querySelector('input');
+      input.value = tool.name;
+      label.querySelector('strong').textContent = tool.name;
+      label.querySelector('small').textContent = tool.description || '无描述';
+      return label;
+    });
+    for (const toolName of unavailableTools) {
+      const label = document.createElement('label');
+      label.innerHTML = '<input type="checkbox" data-tool disabled><span><strong></strong><small>当前未注册</small></span>';
+      label.querySelector('input').value = toolName;
+      label.querySelector('input').checked = true;
+      label.querySelector('strong').textContent = toolName;
+      options.push(label);
+    }
+    if (!options.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-options';
+      empty.textContent = '没有已注册的 Tool';
+      options.push(empty);
+    }
+    container.replaceChildren(...options);
     const inputs = elements.inspectorContent.querySelectorAll('[data-tool]');
     function syncCount() { count.textContent = `${node.tools.length} 个`; }
     for (const input of inputs) {
       input.checked = node.tools.includes(input.value);
       input.addEventListener('change', () => {
-        node.tools = Array.from(inputs).filter((item) => item.checked).map((item) => item.value);
+        node.tools = [...unavailableTools, ...Array.from(inputs).filter((item) => item.checked && !item.disabled).map((item) => item.value)];
         syncCount();
         markChanged();
         renderNodes();
@@ -204,14 +319,28 @@ export function createWorkflowView(elements, connections, markChanged) {
   }
 
   function bindLlm(node) {
-    bindTools(node);
     renderLlmOutputContracts(node);
+    const toolsSection = elements.inspectorContent.querySelector('[data-llm-tools]');
     const think = elements.inspectorContent.querySelector('[data-think]');
+    const toolCalls = elements.inspectorContent.querySelector('[data-tool-calls]');
+    if (node.tool_calls === true) bindTools(node);
+    else toolsSection.remove();
     think.checked = node.think === true;
+    toolCalls.checked = node.tool_calls === true;
     think.addEventListener('change', () => {
       node.think = think.checked;
       if (!node.think) {
         state.connections = state.connections.filter((connection) => !(connection.fromId === node.id && connection.fromPortId === 'reasoning'));
+      }
+      markChanged();
+      renderNodes();
+      renderInspector();
+    });
+    toolCalls.addEventListener('change', () => {
+      node.tool_calls = toolCalls.checked;
+      if (!node.tool_calls) {
+        node.tools = [];
+        state.connections = state.connections.filter((connection) => !(connection.fromId === node.id && connection.fromPortId === 'tool_calls'));
       }
       markChanged();
       renderNodes();
@@ -226,6 +355,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       { label: '输出', type: 'content' },
     ];
     if (node.think === true) outputs.push({ label: '思考', type: 'content' });
+    if (node.tool_calls === true) outputs.push({ label: 'Tool Calls', type: 'content' });
     contract.replaceChildren(...outputs.map((output) => {
       const portContract = document.createElement('div');
       portContract.className = 'port-contract';
@@ -242,5 +372,10 @@ export function createWorkflowView(elements, connections, markChanged) {
     if (nodeById(state.selectedId)?.type === 'llm') renderInspector();
   }
 
-  return { renderInspector, renderNodes, setModels };
+  function setTools(tools) {
+    toolSchemas = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
+    if (['llm', 'tool'].includes(nodeById(state.selectedId)?.type)) renderInspector();
+  }
+
+  return { renderInspector, renderNodes, setModels, setTools };
 }

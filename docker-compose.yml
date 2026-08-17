@@ -11,6 +11,8 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
     networks:
       - rainbow_net
 
@@ -74,6 +76,7 @@ services:
       MAIN_AGENT_QUEUE_NAME: ${MAIN_AGENT_QUEUE_NAME:-main_agent_queue}
       AGENT_WORKER_STATUS_KEY: ${AGENT_WORKER_STATUS_KEY:-aagent:worker:status}
       AGENT_SETTINGS_KEY: ${AGENT_SETTINGS_KEY:-aagent:settings}
+      AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       QQ_AGENT_QUEUE_NAME: ${QQ_AGENT_QUEUE_NAME:-subagent:qq:tasks}
       QQ_AGENT_HISTORY_COLLECTION: ${QQ_AGENT_HISTORY_COLLECTION:-subagent_qq_history}
       QQ_AGENT_WORKER_STATUS_KEY: ${QQ_AGENT_WORKER_STATUS_KEY:-subagent:qq:worker:status}

@@ -314,6 +314,30 @@ def handle_task(e: dict):
             }
             publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
 
+    def workflow_tool(e):
+        current_id=e['payload']['current_id']
+        workflow_map=e['payload']['workflow_map']
+        node=workflow_map[current_id]
+        args = {}
+        for parameter in node.get('parameters', []):
+            values = node['data_inputs'].get(parameter)
+            if isinstance(values, list) and len(values) > 2:
+                args[parameter] = values[-1]
+
+        result=execute_tool(node['id'],node['tool'],args)
+        for target_id,target_port in node['data_outputs']['output']:
+            workflow_map[target_id]['data_inputs'][target_port].append(result)
+
+        control_successors_id=node['control_successors'][0] if node['control_successors'] else None
+        if control_successors_id is not None:
+            publish_to_queue(MAIN_AGENT_QUEUE_NAME,{
+                "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
+                "payload":{
+                    "workflow_map":workflow_map,
+                    "current_id":control_successors_id,
+                }
+            })
+
     handle_map = {
         "qq": qq,
         "terminal": terminal,
@@ -327,6 +351,7 @@ def handle_task(e: dict):
         "workflow":workflow,
         "workflow_llm":workflow_llm,
         "workflow_router":workflow_router,
+        "workflow_tool":workflow_tool,
     }
 
     record_history(e)

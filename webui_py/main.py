@@ -51,6 +51,7 @@ REDIS_DB = int(env("REDIS_DB", "0"))
 QUEUE_NAME = env("MAIN_AGENT_QUEUE_NAME", "main_agent_queue")
 WORKER_STATUS_KEY = env("AGENT_WORKER_STATUS_KEY", "aagent:worker:status")
 SETTINGS_KEY = env("AGENT_SETTINGS_KEY", "aagent:settings")
+TOOLS_KEY = env("AGENT_TOOLS_KEY", "aagent:tools")
 MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
@@ -809,6 +810,33 @@ def list_models():
         return JSONResponse(status_code=503, content={"error": "模型配置暂时不可用"})
 
 
+@app.get("/api/tools")
+def list_tools():
+    try:
+        schemas = redis_client.hgetall(TOOLS_KEY)
+    except redis.RedisError:
+        return JSONResponse(status_code=503, content={"error": "Tool 注册表暂时不可用"})
+
+    items = []
+    for tool_name, raw_schema in schemas.items():
+        try:
+            schema = json.loads(raw_schema)
+        except (TypeError, ValueError):
+            logger.warning("ignored invalid tool schema name=%s", tool_name)
+            continue
+        function_schema = schema.get("function", {}) if isinstance(schema, dict) else {}
+        if function_schema.get("name") != tool_name:
+            logger.warning("ignored mismatched tool schema name=%s", tool_name)
+            continue
+        items.append({
+            "name": tool_name,
+            "description": function_schema.get("description", ""),
+            "parameters": function_schema.get("parameters", {}),
+        })
+    items.sort(key=lambda item: item["name"])
+    return {"items": items}
+
+
 @app.post("/api/models", status_code=201)
 def create_model(payload: ModelRequest):
     values = payload.model_dump()
@@ -896,6 +924,31 @@ def upsert_workflow(workflow_key: str, payload: WorkflowRequest):
     if control_flow_has_cycle(node_id_set, payload.connections):
         return JSONResponse(status_code=400, content={"error": "控制流不能存在环"})
 
+    valid_node_types = {"input", "router", "llm", "tool"}
+    if any(node.get("type") not in valid_node_types for node in payload.nodes):
+        return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})
+
+    tool_nodes = [node for node in payload.nodes if node.get("type") == "tool"]
+    if tool_nodes:
+        try:
+            registered_tool_names = set(redis_client.hkeys(TOOLS_KEY))
+        except redis.RedisError:
+            return JSONResponse(status_code=503, content={"error": "暂时无法校验 Tool 注册表"})
+        if any(node.get("tool") not in registered_tool_names for node in tool_nodes):
+            return JSONResponse(status_code=400, content={"error": "Tool 节点引用了未注册的工具"})
+        try:
+            schemas = redis_client.hmget(TOOLS_KEY, [node.get("tool") for node in tool_nodes])
+            tool_properties = {
+                node.get("tool"): set(json.loads(raw).get("function", {}).get("parameters", {}).get("properties", {}))
+                for node, raw in zip(tool_nodes, schemas)
+                if raw
+            }
+        except (redis.RedisError, TypeError, ValueError):
+            return JSONResponse(status_code=503, content={"error": "暂时无法读取 Tool 参数定义"})
+        for node in tool_nodes:
+            parameters = node.get("parameters", [])
+            if not isinstance(parameters, list) or set(parameters) != tool_properties.get(node.get("tool"), set()):
+                return JSONResponse(status_code=400, content={"error": "Tool 节点参数端口与工具定义不一致"})
     llm_nodes = [node for node in payload.nodes if node.get("type") == "llm"]
     try:
         model_ids = [ObjectId(node.get("model", "")) for node in llm_nodes]

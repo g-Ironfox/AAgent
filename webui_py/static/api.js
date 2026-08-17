@@ -125,6 +125,10 @@ export function fetchModels() {
   return request('/api/models');
 }
 
+export function fetchTools() {
+  return request('/api/tools');
+}
+
 export function createModel(model) {
   return request('/api/models', {
     method: 'POST',

@@ -169,6 +169,17 @@ data input has multiple sources
 
 这里的两层列表是有意义的：外层表示一个输出的多个目标，内层表示单个目标端点。它不代表输入端口可以有多个来源。
 
+### Tool Calls 节点
+
+`tool_calls` 节点用于接收 LLM 输出的 OpenAI 格式 `tool_calls` JSON。它没有 Tool 选择、参数列表或其他配置，固定提供以下数据端口：
+
+- `tool_calls`：单个 content 输入，运行时应读取 LLM 输出的 JSON。
+- `output`：content 输出，用于传递 Tool Calls 执行结果。
+
+此外，它和普通线性节点一样提供 `control-in` 与 `control-out` 控制端口。
+
+LLM 节点可通过 `tool_calls` 布尔开关启用同名 content 输出端口。关闭开关时该端口不会进入解析结果，WebUI 会删除该端口已有的连接、清空已挂载工具，并隐藏工具挂载区域。
+
 ## 6. 转换流程
 
 ```mermaid

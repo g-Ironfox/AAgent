@@ -5,6 +5,8 @@ from itertools import cycle
 
 import requests
 
+from queue_client import redis_register_tool, redis_reset_tools
+
 DEEPSEEK_BASE_URL = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
 DEEPSEEK_API_KEY = os.environ["DEEPSEEK_API_KEY"]
 
@@ -28,6 +30,7 @@ TAVILY_API_KEY_CYCLE = cycle(TAVILY_API_KEYS)
 
 registered_tools = []
 tool_handlers = {}
+redis_reset_tools()
 
 
 def tool(description, parameters=None, name=None):
@@ -36,15 +39,17 @@ def tool(description, parameters=None, name=None):
         if tool_name in tool_handlers:
             raise ValueError(f"工具已注册: {tool_name}")
 
-        registered_tools.append({
+        schema = {
             "type": "function",
             "function": {
                 "name": tool_name,
                 "description": description,
                 "parameters": parameters or {"type": "object", "properties": {}}
             }
-        })
+        }
+        registered_tools.append(schema)
         tool_handlers[tool_name] = function
+        redis_register_tool(tool_name, schema)
         return function
 
     return register

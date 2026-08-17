@@ -23,6 +23,10 @@ AGENT_SYSTEM_PROMPT_KEY = os.getenv(
     "AGENT_SYSTEM_PROMPT_KEY",
     "aagent:settings:system_prompt",
 )
+AGENT_TOOLS_KEY = os.getenv(
+    "AGENT_TOOLS_KEY",
+    "aagent:tools",
+)
 
 
 def get_connection():
@@ -66,6 +70,20 @@ def get_settings() -> dict:
 def set_settings(settings: dict) -> bool:
     client = get_connection()
     client.set(AGENT_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False))
+    return True
+
+def redis_reset_tools() -> bool:
+    client = get_connection()
+    client.delete(AGENT_TOOLS_KEY)
+    return True
+
+def redis_register_tool(tool_name: str, schema: dict) -> bool:
+    client = get_connection()
+    client.hset(
+        AGENT_TOOLS_KEY,
+        tool_name,
+        json.dumps(schema, ensure_ascii=False),
+    )
     return True
 
 def pop_from_queue(queue_name: str, timeout: int = 5):
