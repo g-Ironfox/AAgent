@@ -42,7 +42,9 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
 
         node_indexes[node_id] = index
         parsed_node = {
-            key: value for key, value in node.items() if key not in {"x", "y"}
+            key: value
+            for key, value in node.items()
+            if key not in {"x", "y", "dataInputPorts"}
         }
         if node.get("type") == "router":
             branches = node.get("branches")
@@ -51,7 +53,8 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
             parsed_node["branches"] = [
                 {**branch, "successor": None} for branch in branches
             ]
-        data_inputs, data_outputs = _data_ports(node)
+        declared_inputs = _declared_data_inputs(node, index)
+        data_inputs, data_outputs = _data_ports(node, declared_inputs)
         linked_nodes.append(
             {
                 **parsed_node,
@@ -147,29 +150,51 @@ def _append_unique(items: list[int], value: int) -> None:
         items.append(value)
 
 
+def _declared_data_inputs(
+    node: dict[str, Any], index: int
+) -> dict[str, list[Any] | None]:
+    declared_inputs = node.get("dataInputPorts", [])
+    if not isinstance(declared_inputs, list) or any(
+        not isinstance(port_id, str) or not port_id
+        for port_id in declared_inputs
+    ):
+        raise WorkflowParseError(
+            f"nodes[{index}].dataInputPorts must be a list of non-empty strings"
+        )
+    if len(declared_inputs) != len(set(declared_inputs)):
+        raise WorkflowParseError(
+            f"nodes[{index}].dataInputPorts contains duplicate ports"
+        )
+    return {port_id: None for port_id in declared_inputs}
+
+
 def _data_ports(
-    node: dict[str, Any],
+    node: dict[str, Any], data_inputs: dict[str, list[Any] | None]
 ) -> tuple[dict[str, list[Any] | None], dict[str, list[list[Any]]]]:
     node_type = node.get("type")
     if node_type == "input":
-        return {}, {"content-out": []}
+        return data_inputs, {"content-out": []}
     if node_type == "router":
-        return {"content-in": None}, {}
+        data_inputs.setdefault("content-in", None)
+        return data_inputs, {}
     if node_type == "llm":
         outputs: dict[str, list[list[Any]]] = {"output": []}
         if node.get("think") is True:
             outputs["reasoning"] = []
         if node.get("tool_calls") is True:
             outputs["tool_calls"] = []
-        return {"content-in": None}, outputs
+        return data_inputs, outputs
     if node_type == "tool":
         parameters = node.get("parameters", [])
         if not isinstance(parameters, list) or any(not isinstance(parameter, str) or not parameter for parameter in parameters):
             raise WorkflowParseError("tool node parameters must be a list of non-empty strings")
-        return {parameter: None for parameter in parameters}, {"output": []}
+        for parameter in parameters:
+            data_inputs.setdefault(parameter, None)
+        return data_inputs, {"output": []}
     if node_type == "tool_calls":
-        return {"tool_calls": None}, {"output": []}
-    return {}, {}
+        data_inputs.setdefault("tool_calls", None)
+        return data_inputs, {"output": []}
+    return data_inputs, {}
 
 
 def _append_output_endpoint(

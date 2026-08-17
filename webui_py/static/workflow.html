@@ -139,12 +139,18 @@
       <div class="contract-group">
         <div class="contract-group-title">输入接口</div>
         <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch content"></span><strong>上下文</strong><code>content</code></div>
+        <div data-llm-input-contracts></div>
       </div>
       <div class="contract-group">
         <div class="contract-group-title">输出接口</div>
         <div data-llm-output-contracts></div>
       </div>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>上下文输入</strong><span>按顺序合并</span></div>
+      <div class="route-options" data-llm-input-options></div>
+      <button class="add-branch-button" type="button" data-add-llm-input>+ 添加上下文</button>
+      <small class="section-help">端口从 content-in-0 开始顺序生成，每个端口接收一个独立来源。</small>
     </section>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>

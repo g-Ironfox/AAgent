@@ -5,14 +5,14 @@ let idSequence = 0;
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
   { id: 'router-1', type: 'router', name: '任务路由', branches: [{ id: 'branch-1', name: '分支 1' }, { id: 'branch-2', name: '分支 2' }], x: 310, y: 238 },
-  { id: 'llm-1', type: 'llm', name: '主 LLM', model: '', prompt: '完成用户请求，并返回清晰的结果。', tools: [], think: false, tool_calls: false, x: 568, y: 238 },
+  { id: 'llm-1', type: 'llm', name: '主 LLM', model: '', prompt: '完成用户请求，并返回清晰的结果。', dataInputPorts: ['content-in-0'], tools: [], think: false, tool_calls: false, x: 568, y: 238 },
 ];
 
 const initialConnections = [
   { id: 'control-input-router-1', fromId: 'input', fromPortId: 'control-out', toId: 'router-1', toPortId: 'control-in', type: 'control' },
   { id: 'content-input-router-1', fromId: 'input', fromPortId: 'content-out', toId: 'router-1', toPortId: 'content-in', type: 'content' },
   { id: 'control-router-1-llm-1', fromId: 'router-1', fromPortId: 'branch-1', toId: 'llm-1', toPortId: 'control-in', type: 'control' },
-  { id: 'content-input-llm-1', fromId: 'input', fromPortId: 'content-out', toId: 'llm-1', toPortId: 'content-in', type: 'content' },
+  { id: 'content-input-llm-1', fromId: 'input', fromPortId: 'content-out', toId: 'llm-1', toPortId: 'content-in-0', type: 'content' },
 ];
 
 export const state = {
@@ -49,7 +49,7 @@ export function addNode(type) {
   const node = type === 'router'
     ? { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position }
     : type === 'llm'
-      ? { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', tools: [], think: false, tool_calls: false, ...position }
+      ? { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', dataInputPorts: ['content-in-0'], tools: [], think: false, tool_calls: false, ...position }
       : type === 'tool'
         ? { id: createWorkflowId('tool'), type, name: `Tool ${number}`, tool: '', parameters: [], ...position }
         : { id: createWorkflowId('tool_calls'), type, name: `Tool Calls ${number}`, ...position };
@@ -107,6 +107,16 @@ export function loadSnapshot(saved) {
       if (node.type === 'llm') {
         normalized.model = typeof node.model === 'string' ? node.model : 'gpt-5';
         normalized.prompt = typeof node.prompt === 'string' ? node.prompt.slice(0, 500) : '';
+        const legacyCount = Number.isInteger(node.contextCount)
+          ? node.contextCount
+          : Array.isArray(node.inputs) ? node.inputs.length : 1;
+        const declaredCount = Array.isArray(node.dataInputPorts)
+          ? node.dataInputPorts.filter((portId) => typeof portId === 'string' && /^content-in-\d+$/.test(portId)).length
+          : legacyCount;
+        normalized.dataInputPorts = Array.from(
+          { length: Math.min(20, Math.max(1, declaredCount)) },
+          (_, index) => `content-in-${index}`,
+        );
         normalized.think = node.think === true;
         normalized.tool_calls = node.tool_calls === true;
         normalized.tools = normalized.tool_calls && Array.isArray(node.tools)
@@ -138,7 +148,8 @@ export function loadSnapshot(saved) {
           || (from.type === 'llm' && from.tool_calls === true && connection.fromPortId === 'tool_calls');
       const validToPort = connection.type === 'control'
         ? to.type !== 'input' && connection.toPortId === 'control-in'
-        : (['llm', 'router'].includes(to.type) && connection.toPortId === 'content-in')
+        : (to.type === 'llm' && to.dataInputPorts.includes(connection.toPortId))
+          || (to.type === 'router' && connection.toPortId === 'content-in')
           || (to.type === 'tool' && to.parameters.includes(connection.toPortId))
           || (to.type === 'tool_calls' && connection.toPortId === 'tool_calls');
       return validFromPort && validToPort;

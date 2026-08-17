@@ -239,6 +239,21 @@ def handle_task(e: dict):
         }
         publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
 
+    def read_workflow_input(node, port_id):
+        values = node.get('data_inputs', {}).get(port_id)
+        if not isinstance(values, list) or len(values) <= 2:
+            return False, None
+        return True, values[-1]
+
+    def propagate_workflow_output(workflow_map, node, port_id, value):
+        for target_id, target_port in node.get('data_outputs', {}).get(port_id, []):
+            target_values = workflow_map[target_id].get('data_inputs', {}).get(target_port)
+            if not isinstance(target_values, list) or len(target_values) < 2:
+                raise ValueError(
+                    f"workflow target input is not connected: node {target_id}, port {target_port}"
+                )
+            target_values.append(value)
+
     def workflow(e):
         workflow_map = parse_workflow(_read_workflow("main"))
         start = -1
@@ -251,9 +266,9 @@ def handle_task(e: dict):
 
         content = e['payload'].get("content")
 
-        for i in range(len(workflow_map[start]['data_outputs']['content-out'])):
-            target_id,target_port = workflow_map[start]['data_outputs']['content-out'][i]
-            workflow_map[target_id]['data_inputs'][target_port].append(content)
+        propagate_workflow_output(
+            workflow_map, workflow_map[start], 'content-out', content
+        )
 
         e = {
             "event_type":f"workflow_{workflow_map[workflow_map[start]['control_successors'][0]]['type']}",
@@ -268,8 +283,34 @@ def handle_task(e: dict):
         current_id=e['payload']['current_id']
         workflow_map=e['payload']['workflow_map']
 
-        prompt = workflow_map[current_id]['prompt']
-        content = workflow_map[current_id]['data_inputs']['content-in'][-1] if len(workflow_map[current_id]['data_inputs']['content-in']) >2 else None
+        node = workflow_map[current_id]
+        prompt = node['prompt']
+        def context_order(port_id):
+            return int(port_id.removeprefix('content-in-'))
+
+        contexts = []
+        input_ports = sorted(
+            (
+                port_id
+                for port_id in node['data_inputs']
+                if port_id.startswith('content-in-')
+                and port_id.removeprefix('content-in-').isdigit()
+            ),
+            key=context_order,
+        )
+        for port_id in input_ports:
+            has_value, value = read_workflow_input(node, port_id)
+            if has_value:
+                contexts.append((port_id, value))
+        if len(contexts) == 1:
+            content = contexts[0][1]
+        elif contexts:
+            content = '\n\n'.join(
+                f"[{name}]\n{value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)}"
+                for name, value in contexts
+            )
+        else:
+            content = None
         print(prompt,content)
 
         messages = [
@@ -278,12 +319,10 @@ def handle_task(e: dict):
         ]
         content,reasoning,tool_calls=chat_with_deepseek(messages,tools=[])
 
-        for i in range(len(workflow_map[current_id]['data_outputs']['output'])):
-            target_id,target_port = workflow_map[current_id]['data_outputs']['output'][i]
-            workflow_map[target_id]['data_inputs'][target_port].append(content)
+        propagate_workflow_output(workflow_map, node, 'output', content)
 
         control_successors_id=workflow_map[current_id]['control_successors'][0] if workflow_map[current_id]['control_successors'] else None
-        if control_successors_id:
+        if control_successors_id is not None:
             e = {
                 "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
                 "payload":{
@@ -298,13 +337,16 @@ def handle_task(e: dict):
         workflow_map=e['payload']['workflow_map']
 
 
-        key = workflow_map[current_id]['data_inputs']['content-in'][-1] if len(workflow_map[current_id]['data_inputs']['content-in'])>2 else None
-        cases = {i['name']:i['successor'] for i in workflow_map[current_id]['branches']}
+        node = workflow_map[current_id]
+        has_key, key = read_workflow_input(node, 'content-in')
+        if not has_key:
+            return
+        cases = {i['name']:i['successor'] for i in node['branches']}
         if key not in cases:
             return
 
         control_successors_id=cases.get(key)
-        if control_successors_id:
+        if control_successors_id is not None:
             e = {
                 "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
                 "payload":{
@@ -320,13 +362,12 @@ def handle_task(e: dict):
         node=workflow_map[current_id]
         args = {}
         for parameter in node.get('parameters', []):
-            values = node['data_inputs'].get(parameter)
-            if isinstance(values, list) and len(values) > 2:
-                args[parameter] = values[-1]
+            has_value, value = read_workflow_input(node, parameter)
+            if has_value:
+                args[parameter] = value
 
         result=execute_tool(node['id'],node['tool'],args)
-        for target_id,target_port in node['data_outputs']['output']:
-            workflow_map[target_id]['data_inputs'][target_port].append(result)
+        propagate_workflow_output(workflow_map, node, 'output', result)
 
         control_successors_id=node['control_successors'][0] if node['control_successors'] else None
         if control_successors_id is not None:

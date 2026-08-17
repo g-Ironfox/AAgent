@@ -1,6 +1,6 @@
 # Workflow 解析器
 
-本文描述 `agent/workflow_parser.py` 当前 demo 的实际行为。
+本文声明 `agent/workflow_parser.py` 的输入、解析结果和运行时数据约定。解析结果格式是 Worker 与其他 Workflow 执行器共同依赖的接口契约。
 
 解析器的职责是把 WebUI 保存的 Workflow 图结构转换成运行时更容易遍历的节点列表。它不负责执行 LLM、调度任务或修改 MongoDB 数据。
 
@@ -74,7 +74,9 @@ result[1] -> router-1
 result[2] -> llm-1
 ```
 
-每个列表元素是一个节点字典。原节点的业务字段会保留，但 `x` 和 `y` 会被移除，并增加链路字段：
+每个列表元素是一个节点字典。原节点的业务字段会保留，但编辑期字段 `x`、`y` 和 `dataInputPorts` 不会进入解析结果。`dataInputPorts` 会被编译成运行时的 `data_inputs`。
+
+解析器为每个节点增加 `control_predecessors`、`control_successors`、`data_inputs` 和 `data_outputs`。Router 的每个 `branches` 元素还会增加 `successor`：
 
 ```json
 {
@@ -128,33 +130,83 @@ Router 的分支拥有自己的后继：
 
 Router 一次运行只选择一个分支，不表示并行执行。未连接分支的 `successor` 为 `null`。同一 branch 连接多个后继会报错，避免静默覆盖。
 
-## 5. 数据流规则
+## 5. 数据流格式契约
 
-数据流表示节点之间传递的内容。端点统一使用：
+数据端点统一使用二元素列表：
 
 ```text
-[节点下标, 端点 ID]
+[节点下标, 端口 ID]
 ```
 
-### 数据输入：单来源
+### 5.1 输入端口声明
 
-一个输入端口只有一个来源，因此 `data_inputs` 的值就是一个端点，不再额外包一层列表：
+节点通过 `dataInputPorts` 声明动态数据输入端口：
 
 ```json
-"data_inputs": {
-  "content-in": [0, "content-out"]
+{
+  "id": "llm-1",
+  "type": "llm",
+  "dataInputPorts": ["content-in-0", "content-in-1"]
 }
 ```
 
-含义是当前节点的 `content-in` 来自第 `0` 个节点的 `content-out`。
+Parser 将该字段编译为 `data_inputs`，然后从解析结果中删除 `dataInputPorts`：
 
-同一个输入端口存在多个数据来源时，解析器报错：
+```json
+"data_inputs": {
+  "content-in-0": null,
+  "content-in-1": null
+}
+```
+
+`data_inputs` 必须保留所有已声明端口，包括未连线端口。`null` 表示“端口存在，但没有来源”，不能解释为端口不存在。
+
+固定输入端口也进入同一个 `data_inputs` 字典。固定端口和 `dataInputPorts` 重名时合并为一个键：
+
+| 节点类型 | 固定或动态 `data_inputs` | `data_outputs` |
+| --- | --- | --- |
+| `input` | 通常为空 | `content-out` |
+| `router` | 固定 `content-in`，加通用声明端口 | 无 |
+| `llm` | 由 `dataInputPorts` 声明 | 固定 `output`；按配置增加 `reasoning`、`tool_calls` |
+| `tool` | Tool 的 `parameters`，加通用声明端口 | `output` |
+| `tool_calls` | 固定 `tool_calls`，加通用声明端口 | `output` |
+
+### 5.2 输入端口状态
+
+一个输入端口最多有一个来源。Parser 输出及 Worker 运行期间，输入端口存在三种结构状态：
+
+```text
+未连接:           null
+已连接，尚无值:   [source_node_index, source_port_id]
+已收到运行时值:   [source_node_index, source_port_id, runtime_value]
+```
+
+例如：
+
+```json
+"data_inputs": {
+  "content-in-0": [0, "content-out"],
+  "content-in-1": null
+}
+```
+
+表示 `content-in-0` 来自节点 `0` 的 `content-out`，而 `content-in-1` 已声明但未连线。同一个输入端口存在多个来源时，Parser 报错：
 
 ```text
 data input has multiple sources
 ```
 
-### 数据输出：允许扇出
+Worker 沿 `data_outputs` 传播数据时，把运行时值追加到目标输入端点列表。读取方使用最后一个元素作为最新值，但必须先检查结构：
+
+```python
+values = node["data_inputs"].get(port_id)
+if isinstance(values, list) and len(values) > 2:
+    value = values[-1]
+```
+
+不能使用 `if value` 判断数据是否到达，因为 `0`、`false`、空字符串和运行时 `null` 都是有效值。未连接端口为 `null`；已收到运行时 `null` 的端口是三元素列表，最后一个元素为 `null`，两者结构不同。
+
+### 5.3 输出端口扇出
 
 一个输出端口可以连接多个下游输入端口，因此 `data_outputs` 的值是端点列表：
 
@@ -162,31 +214,40 @@ data input has multiple sources
 "data_outputs": {
   "content-out": [
     [1, "content-in"],
-    [2, "content-in"]
+    [2, "content-in-0"]
   ]
 }
 ```
 
-这里的两层列表是有意义的：外层表示一个输出的多个目标，内层表示单个目标端点。它不代表输入端口可以有多个来源。
+外层列表表示一个输出的多个目标，内层列表表示单个目标端点。它不表示输入端口可以有多个来源。
 
-### Tool Calls 节点
+### 5.4 LLM 动态上下文
 
-`tool_calls` 节点用于接收 LLM 输出的 OpenAI 格式 `tool_calls` JSON。它没有 Tool 选择、参数列表或其他配置，固定提供以下数据端口：
+LLM 上下文输入从 `0` 开始连续编号：
 
-- `tool_calls`：单个 content 输入，运行时应读取 LLM 输出的 JSON。
-- `output`：content 输出，用于传递 Tool Calls 执行结果。
+```text
+content-in-0
+content-in-1
+content-in-2
+...
+```
 
-此外，它和普通线性节点一样提供 `control-in` 与 `control-out` 控制端口。
+前端决定端口数量，并把完整列表写入 `dataInputPorts`。Parser 只执行通用端口编译和连线解析，不根据 LLM 类型或 `content-in-*` 前缀临时创建端口。content 连接的目标端口必须已经存在于 `data_inputs`。
 
-LLM 节点可通过 `tool_calls` 布尔开关启用同名 content 输出端口。关闭开关时该端口不会进入解析结果，WebUI 会删除该端口已有的连接、清空已挂载工具，并隐藏工具挂载区域。
+Worker 只读取符合 `content-in-<数字>` 格式的端口，并按数字后缀升序处理。只有一个上下文到达时保持原值；多个上下文到达时按端口顺序合并。LLM 不接受无数字后缀的 `content-in` 端口。
+
+### 5.5 Tool Calls 节点
+
+`tool_calls` 节点固定声明 `tool_calls` 输入和 `output` 输出。LLM 可通过 `tool_calls` 布尔开关启用同名输出端口。关闭开关时该输出不会进入解析结果。
 
 ## 6. 转换流程
 
 ```mermaid
 flowchart LR
     A[MongoDB workflows 文档] --> B[按 nodes 顺序建立 id 到下标的映射]
-    B --> C[复制节点并删除 x/y]
-    C --> D[遍历 connections]
+    B --> C[复制节点并删除编辑期字段]
+    C --> C1[把 dataInputPorts 编译为 data_inputs]
+    C1 --> D[遍历 connections]
     D --> E[control: 写入前驱/后继下标]
     D --> F[Router branch: 写入 successor]
     D --> G[content: 写入输入单端点和输出端点列表]
@@ -204,10 +265,13 @@ flowchart LR
 - `nodes` 和 `connections` 必须是列表。
 - 节点必须有非空字符串 `id`，且不能重复。
 - Router 必须有 `branches` 列表。
+- `dataInputPorts` 必须是非空字符串组成的列表，端口 ID 不能重复。
 - 连接两端的节点必须存在。
 - 连接类型只能是 `control` 或 `content`。
 - 连接端点 ID 必须是非空字符串。
 - Router 分支必须存在，且一个分支不能有多个控制后继。
+- content 连接的来源端口必须存在于来源节点的 `data_outputs`。
+- content 连接的目标端口必须存在于目标节点的 `data_inputs`。
 - 一个数据输入端口不能有多个来源。
 
 当前还没有完整的端口方向和端口类型校验。也就是说，解析器暂时相信 WebUI 已经保证 `fromPortId` 是输出端口、`toPortId` 是输入端口。后续增加节点类型时，应把端口定义集中化后再补充这部分校验。
@@ -219,8 +283,65 @@ flowchart LR
 - 不执行节点。
 - 不选择 Router 分支。
 - 不检查控制流是否存在环。
-- 不判断必需数据是否已经准备好。
+- 不判断必需数据是否已经准备好；未连线输入保留为 `null`。
 - 不把 `selectedId`、连接拖拽状态或视口状态带入结果。
 - 不修改 MongoDB。
 
-运行时执行器应把本解析结果作为输入，沿 `control_successors` 或 Router 的 `branches[].successor` 调度节点，再通过 `data_inputs` 读取上游输出。
+运行时执行器应把本解析结果作为可变运行图，沿 `control_successors` 或 Router 的 `branches[].successor` 调度节点，通过 `data_outputs` 定位目标，并把运行时值追加到目标 `data_inputs` 端点列表。
+
+## 9. 完整解析结果示例
+
+下面的结果包含 Input、Router 和双输入 LLM，展示控制流、数据流、未连接端口以及动态端口编译后的统一格式：
+
+```json
+[
+  {
+    "id": "input",
+    "type": "input",
+    "name": "Input",
+    "control_predecessors": [],
+    "control_successors": [1],
+    "data_inputs": {},
+    "data_outputs": {
+      "content-out": [
+        [1, "content-in"],
+        [2, "content-in-0"]
+      ]
+    }
+  },
+  {
+    "id": "router-1",
+    "type": "router",
+    "name": "任务路由",
+    "branches": [
+      {"id": "branch-1", "name": "执行", "successor": 2},
+      {"id": "branch-2", "name": "结束", "successor": null}
+    ],
+    "control_predecessors": [0],
+    "control_successors": [2],
+    "data_inputs": {
+      "content-in": [0, "content-out"]
+    },
+    "data_outputs": {}
+  },
+  {
+    "id": "llm-1",
+    "type": "llm",
+    "name": "主 LLM",
+    "prompt": "完成用户请求",
+    "think": false,
+    "tool_calls": false,
+    "control_predecessors": [1],
+    "control_successors": [],
+    "data_inputs": {
+      "content-in-0": [0, "content-out"],
+      "content-in-1": null
+    },
+    "data_outputs": {
+      "output": []
+    }
+  }
+]
+```
+
+该示例中的 `content-in-1` 虽未连线仍然存在。这是格式保证，不允许执行器通过删除未连线键来压缩解析结果。

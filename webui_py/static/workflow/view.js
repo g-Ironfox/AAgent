@@ -44,9 +44,17 @@ export function createWorkflowView(elements, connections, markChanged) {
         { id: 'output', direction: 'output', type: 'content', label: '结果', title: 'Tool Calls 执行结果', multiple: true },
       ];
     }
+    const inputPorts = (node.dataInputPorts || ['content-in-0']).map((portId, index) => ({
+      id: portId,
+      direction: 'input',
+      type: 'content',
+      label: `上下文 ${index}`,
+      title: `上下文 ${index}`,
+      multiple: false,
+    }));
     const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-      { id: 'content-in', direction: 'input', type: 'content', label: '上下文', title: '上下文', multiple: false },
+      ...inputPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },
     ];
@@ -319,6 +327,7 @@ export function createWorkflowView(elements, connections, markChanged) {
   }
 
   function bindLlm(node) {
+    renderLlmInputs(node);
     renderLlmOutputContracts(node);
     const toolsSection = elements.inspectorContent.querySelector('[data-llm-tools]');
     const think = elements.inspectorContent.querySelector('[data-think]');
@@ -342,6 +351,41 @@ export function createWorkflowView(elements, connections, markChanged) {
         node.tools = [];
         state.connections = state.connections.filter((connection) => !(connection.fromId === node.id && connection.fromPortId === 'tool_calls'));
       }
+      markChanged();
+      renderNodes();
+      renderInspector();
+    });
+  }
+
+  function renderLlmInputs(node) {
+    const options = elements.inspectorContent.querySelector('[data-llm-input-options]');
+    const contracts = elements.inspectorContent.querySelector('[data-llm-input-contracts]');
+    node.dataInputPorts.forEach((portId, index) => {
+      const contract = document.createElement('div');
+      contract.className = 'port-contract';
+      contract.innerHTML = '<span class="port-swatch content"></span><strong></strong><code>content</code>';
+      contract.querySelector('strong').textContent = `上下文 ${index}`;
+      contracts.append(contract);
+
+      const option = document.createElement('div');
+      option.className = 'route-option';
+      option.innerHTML = '<span class="route-index"></span><label><strong></strong><small></small></label><button type="button" class="branch-delete" data-delete-input title="删除最后一个输入">×</button>';
+      option.querySelector('.route-index').textContent = String(index).padStart(2, '0');
+      option.querySelector('strong').textContent = `上下文 ${index}`;
+      option.querySelector('small').textContent = portId;
+      option.querySelector('[data-delete-input]').addEventListener('click', () => {
+        if (node.dataInputPorts.length <= 1 || index !== node.dataInputPorts.length - 1) return;
+        state.connections = state.connections.filter((connection) => !(connection.toId === node.id && connection.toPortId === portId));
+        node.dataInputPorts.pop();
+        markChanged();
+        renderNodes();
+        renderInspector();
+      });
+      options.append(option);
+    });
+    elements.inspectorContent.querySelector('[data-add-llm-input]').addEventListener('click', () => {
+      if (node.dataInputPorts.length >= 20) return;
+      node.dataInputPorts.push(`content-in-${node.dataInputPorts.length}`);
       markChanged();
       renderNodes();
       renderInspector();
