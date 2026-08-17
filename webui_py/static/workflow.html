@@ -57,6 +57,11 @@
             <div><strong>LLM</strong><small>执行模型并挂载工具</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="construct_message">
+            <span class="node-symbol construct_message-symbol" aria-hidden="true">M</span>
+            <div><strong>构造 Message</strong><small>为 content 指定消息角色</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="tool">
             <span class="node-symbol tool-symbol" aria-hidden="true">T</span>
             <div><strong>Tool</strong><small>直接调用一个已注册工具</small></div>
@@ -68,19 +73,19 @@
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
         </div>
-        <footer class="library-footer"><span>5 种节点</span><span id="nodeCount">3 个实例</span></footer>
+        <footer class="library-footer"><span>6 种节点</span><span id="nodeCount">4 个实例</span></footer>
       </aside>
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
           <div><p>LOCAL DRAFT</p><strong>Agent 主控制流</strong></div>
-          <div class="canvas-meta"><span id="connectionCount">3 条连接</span><span class="draft-badge">后端配置</span></div>
+          <div class="canvas-meta"><span id="connectionCount">5 条连接</span><span class="draft-badge">后端配置</span></div>
         </header>
         <div id="workflowCanvas" class="workflow-canvas">
           <div class="canvas-grid" aria-hidden="true"></div>
           <svg id="connectionLayer" class="connection-layer" aria-hidden="true"></svg>
           <div id="nodeLayer" class="node-layer"></div>
-          <div class="canvas-legend" aria-hidden="true"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span></div>
+          <div class="canvas-legend" aria-hidden="true"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span></div>
         </div>
       </section>
 
@@ -147,10 +152,10 @@
       </div>
     </section>
     <section class="inspector-section">
-      <div class="section-label"><strong>上下文输入</strong><span>按顺序合并</span></div>
+      <div class="section-label"><strong>Message 输入</strong><span>按顺序发送</span></div>
       <div class="route-options" data-llm-input-options></div>
-      <button class="add-branch-button" type="button" data-add-llm-input>+ 添加上下文</button>
-      <small class="section-help">端口从 content-in-0 开始顺序生成，每个端口接收一个独立来源。</small>
+      <button class="add-branch-button" type="button" data-add-llm-input>+ 添加 Message</button>
+      <small class="section-help">端口从 message-in-0 开始顺序生成，每个端口接收一条构造后的 Message。</small>
     </section>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
@@ -162,6 +167,27 @@
     <section class="inspector-section" data-llm-tools>
       <div class="section-label"><strong>挂载 Tools</strong><span data-tool-count>0 个</span></div>
       <div class="tool-options"><div class="empty-options">加载 Tool 注册表中</div></div>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="construct_messageInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>Content</strong><code>content</code></div>
+      </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch message"></span><strong>Message</strong><code>message</code></div>
+      </div>
+    </section>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Role<select data-field="role"><option value="user">user</option><option value="system">system</option><option value="assistant">assistant</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

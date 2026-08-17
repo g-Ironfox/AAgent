@@ -285,38 +285,27 @@ def handle_task(e: dict):
 
         node = workflow_map[current_id]
         prompt = node['prompt']
-        def context_order(port_id):
-            return int(port_id.removeprefix('content-in-'))
+        def message_order(port_id):
+            return int(port_id.removeprefix('message-in-'))
 
-        contexts = []
+        messages = []
         input_ports = sorted(
             (
                 port_id
                 for port_id in node['data_inputs']
-                if port_id.startswith('content-in-')
-                and port_id.removeprefix('content-in-').isdigit()
+                if port_id.startswith('message-in-')
+                and port_id.removeprefix('message-in-').isdigit()
             ),
-            key=context_order,
+            key=message_order,
         )
         for port_id in input_ports:
             has_value, value = read_workflow_input(node, port_id)
             if has_value:
-                contexts.append((port_id, value))
-        if len(contexts) == 1:
-            content = contexts[0][1]
-        elif contexts:
-            content = '\n\n'.join(
-                f"[{name}]\n{value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)}"
-                for name, value in contexts
-            )
-        else:
-            content = None
-        print(prompt,content)
+                messages.append(value)
+        if prompt:
+            messages.insert(0, {"role":"system", "content":prompt})
+        print(messages)
 
-        messages = [
-            {"role":"system","content":prompt},
-            {"role":"user","content":content}
-        ]
         content,reasoning,tool_calls=chat_with_deepseek(messages,tools=[])
 
         propagate_workflow_output(workflow_map, node, 'output', content)
@@ -331,6 +320,27 @@ def handle_task(e: dict):
                 }
             }
             publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+
+    def workflow_construct_message(e):
+        current_id=e['payload']['current_id']
+        workflow_map=e['payload']['workflow_map']
+        node=workflow_map[current_id]
+        has_content, content = read_workflow_input(node, 'content-in')
+        if not has_content:
+            return
+
+        message = {"role":node.get("role", "user"), "content":content}
+        propagate_workflow_output(workflow_map, node, 'message-out', message)
+
+        control_successors_id=node['control_successors'][0] if node['control_successors'] else None
+        if control_successors_id is not None:
+            publish_to_queue(MAIN_AGENT_QUEUE_NAME,{
+                "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
+                "payload":{
+                    "workflow_map":workflow_map,
+                    "current_id":control_successors_id,
+                }
+            })
 
     def workflow_router(e):
         current_id=e['payload']['current_id']
@@ -391,6 +401,7 @@ def handle_task(e: dict):
         "rpc_apply":rpc_apply,
         "workflow":workflow,
         "workflow_llm":workflow_llm,
+        "workflow_construct_message":workflow_construct_message,
         "workflow_router":workflow_router,
         "workflow_tool":workflow_tool,
     }

@@ -64,7 +64,7 @@ export function createConnectionController(elements, markChanged) {
         const occupiesTargetOutput = targetIsSingleOutput && item.fromId === target.dataset.nodeId && item.fromPortId === target.dataset.portId;
         return !(item.type === drag.type && (occupiesTargetInput || occupiesTargetOutput));
       });
-      if (drag.type === 'content' && drag.direction === 'input' && connection) {
+      if (drag.type !== 'control' && drag.direction === 'input' && connection) {
         connection.toId = target.dataset.nodeId;
         connection.toPortId = target.dataset.portId;
         state.connections.push(connection);
@@ -123,19 +123,19 @@ export function createConnectionController(elements, markChanged) {
       if (connection) {
         state.connections = state.connections.filter((item) => item.id !== connection.id);
       }
-      const hasContentInputConnection = type === 'content' && direction === 'input' && connection;
+      const hasDataInputConnection = type !== 'control' && direction === 'input' && connection;
       const hasControlConnection = type === 'control' && connection;
-      const anchorNodeId = hasContentInputConnection || (hasControlConnection && direction === 'input')
+      const anchorNodeId = hasDataInputConnection || (hasControlConnection && direction === 'input')
         ? connection.fromId
         : hasControlConnection && direction === 'output'
           ? connection.toId
           : node.id;
-      const anchorPortId = hasContentInputConnection || (hasControlConnection && direction === 'input')
+      const anchorPortId = hasDataInputConnection || (hasControlConnection && direction === 'input')
         ? connection.fromPortId
         : hasControlConnection && direction === 'output'
           ? connection.toPortId
           : (port.dataset.portId || null);
-      const anchorDirection = hasContentInputConnection || (hasControlConnection && direction === 'input')
+      const anchorDirection = hasDataInputConnection || (hasControlConnection && direction === 'input')
         ? 'output'
         : hasControlConnection && direction === 'output'
           ? 'input'
@@ -143,7 +143,7 @@ export function createConnectionController(elements, markChanged) {
       state.connectionDrag = {
         pointerId: event.pointerId,
         direction,
-        targetDirection: connection && type === 'content' && direction === 'input'
+        targetDirection: connection && type !== 'control' && direction === 'input'
           ? 'input'
           : hasControlConnection
             ? direction
@@ -251,7 +251,7 @@ export function createConnectionController(elements, markChanged) {
       const end = portCenter(connection.toId, connection.toPortId);
       if (!start || !end) continue;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('class', `connection-path${connection.type === 'content' ? ' content' : ''}`);
+      path.setAttribute('class', `connection-path ${connection.type}`);
       path.setAttribute('d', connectionPath(start, end));
       fragment.append(path);
     }
@@ -265,7 +265,7 @@ export function createConnectionController(elements, markChanged) {
       const anchor = portCenter(drag.anchorNodeId, drag.anchorPortId);
       if (anchor) {
         const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        preview.setAttribute('class', `connection-path preview${drag.type === 'content' ? ' content' : ''}`);
+        preview.setAttribute('class', `connection-path preview ${drag.type}`);
         preview.setAttribute('d', drag.anchorDirection === 'output' ? connectionPath(anchor, canvasPoint) : connectionPath(canvasPoint, anchor));
         fragment.append(preview);
       }

@@ -105,7 +105,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
                         f"router branch has multiple successors: {from_port}"
                     )
                 branch["successor"] = to_index
-        elif connection_type == "content":
+        elif connection_type in {"content", "message"}:
             from_port = _port_id(connection, index, "fromPortId")
             to_port = _port_id(connection, index, "toPortId")
             data_outputs = linked_nodes[from_index]["data_outputs"]
@@ -130,7 +130,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
             data_inputs[to_port] = [from_index, from_port]
         else:
             raise WorkflowParseError(
-                f"connections[{index}].type must be 'control' or 'content'"
+                f"connections[{index}].type must be 'control', 'content', or 'message'"
             )
 
     return linked_nodes
@@ -184,6 +184,9 @@ def _data_ports(
         if node.get("tool_calls") is True:
             outputs["tool_calls"] = []
         return data_inputs, outputs
+    if node_type == "construct_message":
+        data_inputs.setdefault("content-in", None)
+        return data_inputs, {"message-out": []}
     if node_type == "tool":
         parameters = node.get("parameters", [])
         if not isinstance(parameters, list) or any(not isinstance(parameter, str) or not parameter for parameter in parameters):

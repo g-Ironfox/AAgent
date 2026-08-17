@@ -11,6 +11,7 @@
 .port-swatch { width:6px; height:24px; }
 .port-swatch.control { background:var(--green); }
 .port-swatch.content { background:var(--blue); }
+.port-swatch.message { background:#b75b18; }
 .port-contract strong { font-size:10px; }
 .port-contract small,.section-help { color:var(--muted); font-size:8px; line-height:1.45; }
 .port-contract code { font-size:8px; }
