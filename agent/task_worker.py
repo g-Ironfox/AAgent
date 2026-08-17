@@ -21,7 +21,7 @@ from queue_client import (
     get_settings
 )
 from llm import chat_with_deepseek,openai_llm_api
-from tools.tool import execute_tool
+from tools.tool import execute_tool, registered_tools
 from tools.documents import system_documents_prompt
 
 
@@ -306,9 +306,19 @@ def handle_task(e: dict):
             messages.insert(0, {"role":"system", "content":prompt})
         print(messages)
 
-        content,reasoning,tool_calls=chat_with_deepseek(messages,tools=[])
+        configured_tools = set(node.get("tools", []))
+        tools = [
+            schema
+            for schema in registered_tools
+            if schema["function"]["name"] in configured_tools
+        ]
+        content,reasoning,tool_calls=chat_with_deepseek(messages,tools=tools)
 
         propagate_workflow_output(workflow_map, node, 'output', content)
+        if "reasoning" in node.get("data_outputs", {}):
+            propagate_workflow_output(workflow_map, node, 'reasoning', reasoning)
+        if "tool_calls" in node.get("data_outputs", {}):
+            propagate_workflow_output(workflow_map, node, 'tool_calls', tool_calls)
 
         control_successors_id=workflow_map[current_id]['control_successors'][0] if workflow_map[current_id]['control_successors'] else None
         if control_successors_id is not None:
@@ -366,6 +376,127 @@ def handle_task(e: dict):
             }
             publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
 
+    def workflow_tool_calls(e):
+        current_id=e['payload']['current_id']
+        workflow_map=e['payload']['workflow_map']
+        node=workflow_map[current_id]
+        has_tool_calls, tool_calls = read_workflow_input(node, 'tool_calls')
+        if not has_tool_calls:
+            return
+        if not isinstance(tool_calls, list):
+            raise ValueError("workflow tool_calls input must be a list")
+
+        successor_id = node['control_successors'][0] if node['control_successors'] else None
+        if not tool_calls:
+            if successor_id is not None:
+                publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
+                    "event_type": f"workflow_{workflow_map[successor_id]['type']}",
+                    "payload": {
+                        "workflow_map": workflow_map,
+                        "current_id": successor_id,
+                    },
+                })
+            return
+
+        previous_id = current_id
+        first_generated_id = len(workflow_map)
+        node['control_successors'] = [first_generated_id]
+        for tool_call_index, tool_call in enumerate(tool_calls):
+            if not isinstance(tool_call, dict):
+                raise ValueError("workflow tool_calls items must be objects")
+            function = tool_call.get('function')
+            if not isinstance(function, dict):
+                raise ValueError("workflow tool_call function must be an object")
+            tool_name = function.get('name')
+            if not isinstance(tool_name, str) or not tool_name:
+                raise ValueError("workflow tool_call function.name must be a string")
+
+            call_id = tool_call.get('id') or f"{current_id}-call-{tool_call_index}"
+            arguments_text = function.get('arguments', '{}')
+            try:
+                arguments = json.loads(arguments_text)
+            except (json.JSONDecodeError, TypeError) as error:
+                raise ValueError("workflow tool_call arguments must be valid JSON") from error
+            if not isinstance(arguments, dict):
+                raise ValueError("workflow tool_call arguments must be a JSON object")
+
+            generated_id = first_generated_id + tool_call_index
+            is_last_tool_call = tool_call_index == len(tool_calls) - 1
+            if is_last_tool_call:
+                control_successors = [successor_id] if successor_id is not None else []
+            else:
+                control_successors = [generated_id + 1]
+            workflow_map.append({
+                "id": f"{node['id']}:{call_id}",
+                "type": "tool_call_execute",
+                "tool": tool_name,
+                "args": arguments,
+                "tool_call_id": call_id,
+                "runtime_results": [],
+                "control_predecessors": [previous_id],
+                "control_successors": control_successors,
+                "data_inputs": {},
+                "data_outputs": {
+                    "output": node.get('data_outputs', {}).get('output', [])
+                    if is_last_tool_call
+                    else []
+                },
+            })
+            previous_id = generated_id
+
+        if successor_id is not None:
+            workflow_map[successor_id]['control_predecessors'] = [previous_id]
+
+        publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
+            "event_type": "workflow_tool_call_execute",
+            "payload": {
+                "workflow_map": workflow_map,
+                "current_id": first_generated_id,
+            },
+        })
+
+    def workflow_tool_call_execute(e):
+        current_id=e['payload']['current_id']
+        workflow_map=e['payload']['workflow_map']
+        node=workflow_map[current_id]
+
+        try:
+            result = execute_tool(node['id'], node['tool'], node['args'])
+            success = True
+        except Exception as error:
+            result = f"Error:{str(error)}"
+            success = False
+
+        runtime_results = node.get('runtime_results', [])
+        runtime_results.append({
+            "id": node['tool_call_id'],
+            "tool": node['tool'],
+            "args": node['args'],
+            "result": result,
+            "success": success,
+        })
+
+        control_successors_id = (
+            node['control_successors'][0] if node['control_successors'] else None
+        )
+        if (
+            control_successors_id is not None
+            and workflow_map[control_successors_id]['type'] == 'tool_call_execute'
+        ):
+            workflow_map[control_successors_id]['runtime_results'] = runtime_results
+        else:
+            output = json.dumps(runtime_results, ensure_ascii=False)
+            propagate_workflow_output(workflow_map, node, 'output', output)
+
+        if control_successors_id is not None:
+            publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
+                "event_type": f"workflow_{workflow_map[control_successors_id]['type']}",
+                "payload": {
+                    "workflow_map": workflow_map,
+                    "current_id": control_successors_id,
+                },
+            })
+
     def workflow_tool(e):
         current_id=e['payload']['current_id']
         workflow_map=e['payload']['workflow_map']
@@ -403,6 +534,8 @@ def handle_task(e: dict):
         "workflow_llm":workflow_llm,
         "workflow_construct_message":workflow_construct_message,
         "workflow_router":workflow_router,
+        "workflow_tool_calls":workflow_tool_calls,
+        "workflow_tool_call_execute":workflow_tool_call_execute,
         "workflow_tool":workflow_tool,
     }
 
