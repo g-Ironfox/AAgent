@@ -924,7 +924,7 @@ def upsert_workflow(workflow_key: str, payload: WorkflowRequest):
     if control_flow_has_cycle(node_id_set, payload.connections):
         return JSONResponse(status_code=400, content={"error": "控制流不能存在环"})
 
-    valid_node_types = {"input", "router", "llm", "tool"}
+    valid_node_types = {"input", "router", "llm", "tool", "tool_calls"}
     if any(node.get("type") not in valid_node_types for node in payload.nodes):
         return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})
 

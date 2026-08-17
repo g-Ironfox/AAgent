@@ -1,5 +1,5 @@
 import { fetchModels, fetchTools, uploadWorkflow } from './api.js';
-import { addNode, loadDraft, resetDraft, saveDraft, workflowSnapshot } from './workflow/model.js';
+import { addNode, loadDraft, loadSnapshot, resetDraft, saveDraft, workflowSnapshot } from './workflow/model.js';
 import { createConnectionController } from './workflow/connections.js';
 import { createWorkflowView } from './workflow/view.js';
 
@@ -16,6 +16,9 @@ const elements = {
   saveButton: document.querySelector('#saveButton'),
   uploadButton: document.querySelector('#uploadButton'),
   resetButton: document.querySelector('#resetButton'),
+  importButton: document.querySelector('#importButton'),
+  importFileInput: document.querySelector('#importFileInput'),
+  exportButton: document.querySelector('#exportButton'),
 };
 let hasUnsavedChanges = false;
 
@@ -79,6 +82,38 @@ elements.resetButton.addEventListener('click', () => {
   markChanged();
   view.renderNodes();
   view.renderInspector();
+});
+
+elements.importButton.addEventListener('click', () => {
+  if (hasUnsavedChanges && !window.confirm('导入会覆盖当前未保存的 Workflow，确定继续吗？')) return;
+  elements.importFileInput.click();
+});
+
+elements.importFileInput.addEventListener('change', async () => {
+  const [file] = elements.importFileInput.files;
+  elements.importFileInput.value = '';
+  if (!file) return;
+  try {
+    const snapshot = JSON.parse(await file.text());
+    if (!loadSnapshot(snapshot)) throw new Error('文件不是有效的 Workflow JSON');
+    markChanged();
+    view.renderNodes();
+    view.renderInspector();
+    elements.workflowState.textContent = '已导入，未保存';
+  } catch (error) {
+    elements.workflowState.textContent = error.message || '导入失败';
+    elements.workflowState.classList.remove('saved');
+  }
+});
+
+elements.exportButton.addEventListener('click', () => {
+  const blob = new Blob([`${JSON.stringify(workflowSnapshot(), null, 2)}\n`], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `aagent-workflow-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
 });
 
 window.addEventListener('beforeunload', (event) => {

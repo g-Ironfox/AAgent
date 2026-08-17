@@ -80,9 +80,8 @@ export function resetDraft() {
   state.connectionDrag = null;
 }
 
-export function loadDraft() {
+export function loadSnapshot(saved) {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     const savedNodes = Array.isArray(saved) ? saved : saved?.nodes;
     if (!Array.isArray(savedNodes)) return false;
     const ids = new Set();
@@ -147,6 +146,15 @@ export function loadDraft() {
     state.selectedId = 'input';
     state.connectionDrag = null;
     return true;
+  } catch (error) {
+    console.warn('Workflow 草稿读取失败', error);
+    return false;
+  }
+}
+
+export function loadDraft() {
+  try {
+    return loadSnapshot(JSON.parse(localStorage.getItem(STORAGE_KEY)));
   } catch (error) {
     console.warn('Workflow 草稿读取失败', error);
     return false;
