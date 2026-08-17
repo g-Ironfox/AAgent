@@ -445,7 +445,11 @@ def handle_task(e: dict):
             previous_id = generated_id
 
         if successor_id is not None:
-            workflow_map[successor_id]['control_predecessors'] = [previous_id]
+            predecessors = workflow_map[successor_id]['control_predecessors']
+            if current_id in predecessors:
+                predecessors[predecessors.index(current_id)] = previous_id
+            else:
+                predecessors.append(previous_id)
 
         publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
             "event_type": "workflow_tool_call_execute",
