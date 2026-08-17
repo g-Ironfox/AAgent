@@ -132,10 +132,10 @@ def download_bvid(bvid):
 def asr(filename):
     with open(filename, "rb") as f:
         files = {"file": ("audio.wav", f, "audio/wav")}
-        data = {"model": env("ASR_MODEL_ID","Qwen3-asr-1.7b-fp16")}
+        data = {"model": "Qwen3-asr-1.7b-fp16"}
         
         response = requests.post(
-            f"{env('ASR_URL','').rstrip('/')}/v1/audio/transcriptions",
+            f"http://192.168.1.104:8200/v1/audio/transcriptions",
             files=files,
             data=data,
             timeout=(10, 120)  # 给长音频留足处理时间

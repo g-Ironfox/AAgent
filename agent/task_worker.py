@@ -324,6 +324,7 @@ def handle_task(e: dict):
         if control_successors_id is not None:
             e = {
                 "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
+                "render":f"前一次llm输出:{content}",
                 "payload":{
                     "workflow_map":workflow_map,
                     "current_id":control_successors_id,

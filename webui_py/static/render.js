@@ -37,6 +37,10 @@ export function eventType(item) {
 }
 
 export function eventPreview(item) {
+  const render = item.event?.render;
+  if (typeof render === 'string' && render.trim()) {
+    return render;
+  }
   const payload = item.event?.payload;
   if (item.event?.event_type === 'active') {
     return '请求 LLM 处理';
