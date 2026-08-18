@@ -436,6 +436,39 @@ def handle_task(e: dict):
 
         publish_workflow_control_output(workflow_map, node)
 
+    def workflow_tool_call(e):
+        current_id = e['payload']['current_id']
+        workflow_map = e['payload']['workflow_map']
+        node = workflow_map[current_id]
+        has_tool_call, tool_call = read_workflow_input(node, 'tool_call')
+        if not has_tool_call:
+            return
+        if not isinstance(tool_call, dict):
+            raise ValueError(f"tool_call input must be an object: node {node.get('id')}")
+
+        tool_call_id = tool_call.get('id')
+        function = tool_call.get('function')
+        if not isinstance(tool_call_id, str) or not isinstance(function, dict):
+            raise ValueError(f"tool_call input must use OpenAI tool call format: node {node.get('id')}")
+        tool_name = function.get('name')
+        arguments = function.get('arguments')
+        if not isinstance(tool_name, str) or not isinstance(arguments, str):
+            raise ValueError(f"tool_call function must contain name and raw arguments: node {node.get('id')}")
+
+        try:
+            args = json.loads(arguments)
+            if not isinstance(args, dict):
+                raise ValueError("tool arguments must be a JSON object")
+            result = execute_tool(tool_call_id, tool_name, args)
+        except (json.JSONDecodeError, TypeError, ValueError) as error:
+            result = f"Error: 工具参数 JSON 解析失败: {error}"
+        except Exception as error:
+            result = f"Error: {error}"
+
+        propagate_workflow_output(workflow_map, node, 'tool_call_id', tool_call_id)
+        propagate_workflow_output(workflow_map, node, 'result', result)
+        publish_workflow_control_output(workflow_map, node)
+
     handle_map = {
         "qq": qq,
         "terminal": terminal,
@@ -454,6 +487,7 @@ def handle_task(e: dict):
         "workflow_foreach":workflow_foreach,
         "workflow_router":workflow_router,
         "workflow_tool":workflow_tool,
+        "workflow_tool_call":workflow_tool_call,
     }
 
     record_history(e)

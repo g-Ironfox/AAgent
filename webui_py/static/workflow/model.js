@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'aagent.workflow.draft.v1';
-const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool']);
+const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool', 'tool_call']);
 let idSequence = 0;
 
 const initialNodes = [
@@ -51,7 +51,7 @@ function nextNodePosition() {
 }
 
 export function addNode(type) {
-  if (!['router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool'].includes(type)) return;
+  if (!['router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool', 'tool_call'].includes(type)) return;
   const number = state.nodes.filter((node) => node.type === type).length + 1;
   const position = nextNodePosition();
   const node = type === 'router'
@@ -66,6 +66,8 @@ export function addNode(type) {
       ? { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position }
     : type === 'llm'
       ? { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, ...position }
+      : type === 'tool_call'
+        ? { id: createWorkflowId('tool-call'), type, name: `Tool Call ${number}`, ...position }
       : type === 'tool'
         ? { id: createWorkflowId('tool'), type, name: `Tool ${number}`, tool: '', parameters: [], ...position }
         : null;
@@ -183,13 +185,14 @@ export function loadSnapshot(saved) {
       const validFromPort = connection.type === 'control'
         ? (from.type === 'foreach'
           ? ['control-out', 'loop-out'].includes(connection.fromPortId)
-          : from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool'
+          : from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool' && from.type !== 'tool_call'
           ? from.branches.some((branch) => branch.id === connection.fromPortId)
           : connection.fromPortId === 'control-out')
         : (from.type === 'input' && connection.type === 'content' && connection.fromPortId === 'content-out')
           || (from.type === 'construct_message' && connection.type === 'message' && connection.fromPortId === 'message-out')
           || (from.type === 'construct_content' && connection.type === 'content' && connection.fromPortId === 'content-out')
           || (['llm', 'tool'].includes(from.type) && connection.type === 'content' && connection.fromPortId === 'output')
+          || (from.type === 'tool_call' && connection.type === 'content' && ['tool_call_id', 'result'].includes(connection.fromPortId))
           || (from.type === 'llm' && connection.type === 'content' && from.think === true && connection.fromPortId === 'reasoning')
           || (from.type === 'llm' && connection.type === 'list-content' && from.tool_calls === true && connection.fromPortId === 'tool_calls')
           || (from.type === 'construct_list' && connection.type === `list-${from.item_type}` && connection.fromPortId === 'list-out')
@@ -203,6 +206,7 @@ export function loadSnapshot(saved) {
           || (to.type === 'construct_content' && connection.type === 'content' && to.dataInputPorts.includes(connection.toPortId))
           || (to.type === 'router' && connection.type === 'content' && connection.toPortId === 'content-in')
           || (to.type === 'tool' && connection.type === 'content' && to.parameters.includes(connection.toPortId))
+          || (to.type === 'tool_call' && connection.type === 'content' && connection.toPortId === 'tool_call')
           || (to.type === 'construct_list' && connection.type === to.item_type && to.dataInputPorts.includes(connection.toPortId))
           || (to.type === 'foreach' && connection.type === `list-${to.item_type}` && connection.toPortId === 'list-in');
       return validFromPort && validToPort;

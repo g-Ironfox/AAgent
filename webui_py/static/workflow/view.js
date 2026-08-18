@@ -81,6 +81,15 @@ export function createWorkflowView(elements, connections, markChanged) {
         { id: 'output', direction: 'output', type: 'content', label: '结果', title: '工具执行结果', multiple: true },
       ];
     }
+    if (node.type === 'tool_call') {
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+        { id: 'tool_call', direction: 'input', type: 'content', label: 'Tool Call', title: 'OpenAI 格式的 tool_call JSON', multiple: false },
+        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+        { id: 'tool_call_id', direction: 'output', type: 'content', label: 'Call ID', title: 'Tool call ID', multiple: true },
+        { id: 'result', direction: 'output', type: 'content', label: '结果', title: '工具执行结果', multiple: true },
+      ];
+    }
     const inputPorts = (node.dataInputPorts || ['message-in-0']).map((portId, index) => ({
       id: portId,
       direction: 'input',
@@ -106,7 +115,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const bodyRows = Math.max(inputs.length, outputs.length);
-    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'foreach' ? 'FE' : node.type === 'tool' ? 'T' : 'L';
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'foreach' ? 'FE' : node.type === 'tool_call' ? 'TC' : node.type === 'tool' ? 'T' : 'L';
 
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;

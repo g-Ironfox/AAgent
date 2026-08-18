@@ -82,8 +82,13 @@
             <div><strong>Tool</strong><small>直接调用一个已注册工具</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="tool_call">
+            <span class="node-symbol tool_call-symbol" aria-hidden="true">TC</span>
+            <div><strong>Tool Call</strong><small>执行 OpenAI 格式的工具调用</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
         </div>
-        <footer class="library-footer"><span>8 种节点</span><span id="nodeCount">4 个实例</span></footer>
+        <footer class="library-footer"><span>9 种节点</span><span id="nodeCount">4 个实例</span></footer>
       </aside>
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
@@ -276,6 +281,25 @@
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Tool<select data-field="tool"><option>加载 Tool 注册表中</option></select></label>
     </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="tool_callInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>接口契约</strong><span>OpenAI Tool Call</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>Tool Call</strong><code>content</code></div>
+      </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>Tool Call ID</strong><code>content</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>结果</strong><code>content</code></div>
+      </div>
+    </section>
+    <section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 

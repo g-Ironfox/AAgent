@@ -341,6 +341,9 @@ def _data_ports(
         for parameter in parameters:
             data_inputs.setdefault(parameter, None)
         return data_inputs, {"output": []}
+    if node_type == "tool_call":
+        data_inputs.setdefault("tool_call", None)
+        return data_inputs, {"tool_call_id": [], "result": []}
     raise WorkflowParseError(f"unsupported node type: {node_type}")
 
 

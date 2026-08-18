@@ -18,7 +18,7 @@
 .flow-node.construct_message { border-top-color:#b75b18; }
 .flow-node.construct_content { border-top-color:#2f6f8f; }
 .flow-node.llm { border-top-color:var(--blue); }
-.flow-node.tool { border-top-color:var(--green); }
+.flow-node.tool,.flow-node.tool_call { border-top-color:var(--green); }
 .flow-node.construct_list { border-top-color:#176f73; }
 .flow-node.foreach { border-top-color:#9a5a24; }
 .flow-node-head { height:45px; padding:0 11px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); }

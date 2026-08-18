@@ -899,7 +899,7 @@ def upsert_workflow(workflow_key: str, payload: WorkflowRequest):
         if connection.get("fromId") not in node_id_set or connection.get("toId") not in node_id_set:
             return JSONResponse(status_code=400, content={"error": "连接引用了不存在的节点"})
 
-    valid_node_types = {"input", "router", "construct_message", "construct_content", "construct_list", "foreach", "llm", "tool"}
+    valid_node_types = {"input", "router", "construct_message", "construct_content", "construct_list", "foreach", "llm", "tool", "tool_call"}
     if any(node.get("type") not in valid_node_types for node in payload.nodes):
         return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})
 
