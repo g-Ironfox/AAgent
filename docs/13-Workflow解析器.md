@@ -130,6 +130,49 @@ Router 的分支拥有自己的后继：
 
 Router 一次运行只选择一个分支，不表示并行执行。未连接分支的 `successor` 为 `null`。同一 branch 连接多个后继会报错，避免静默覆盖。
 
+### foreach 节点
+
+`foreach` 是一个带数据状态的控制流节点，固定控制端口如下：
+
+| 方向 | 端口 | 作用 |
+| --- | --- | --- |
+| 输入 | `control-in`（触发） | 普通进入 foreach |
+| 输入 | `loop-in`（循环体结束） | 循环体完成后的再次进入 |
+| 输出 | `control-out`（下一步） | 列表为空时离开循环 |
+| 输出 | `loop-out`（循环体开始） | 列表仍有元素时进入循环体 |
+
+解析器会保留端口名称，并将控制连接编译为统一的端点结构：
+
+```json
+{
+  "type": "foreach",
+  "control_inputs": {
+    "control-in": [[1, "control-out"]],
+    "loop-in": [[3, "control-out"]]
+  },
+  "control_outputs": {
+    "control-out": [4, "control-in"],
+    "loop-out": [2, "control-in"]
+  },
+  "data_inputs": {
+    "list-in": [0, "list-out"]
+  },
+  "data_outputs": {
+    "item-out": [[5, "content-in"]]
+  }
+}
+```
+
+这里有一个刻意保持的解耦约定：`control-in` 和 `loop-in` 是两个可读的 UI 端口，但不是两套不同的执行算法。运行时不需要判断本次事件从哪个输入端口进入；两者都执行同一段逻辑。因此，循环体结束边既可以连接到 `loop-in`，也可以连接到 `control-in`，两种接法的行为完全等价。解析器和保存层都必须允许这两种指向 foreach 的控制边，不能把“回边”绑定到某个特定输入端口。
+
+`list-in` 接收 `list-content` 或 `list-message`，其元素类型由节点的 `item_type` 决定；`item-out` 输出对应的单个元素。执行器直接在运行时列表上执行 `pop(0)`：
+
+1. 列表非空时取出一个元素，从 `item-out` 输出，并沿 `loop-out` 进入循环体。
+2. 循环体完成后沿任一 foreach 输入端口再次触发同一节点。
+3. 列表为空时不再输出当前项，而沿 `control-out` 进入下一步。
+
+该设计不需要 `entry_port`、循环栈、循环帧或额外的 `render` 状态。列表本身就是循环进度，解析结果只负责提供稳定的端口和连接契约；执行状态由 Worker 在可变的 `data_inputs["list-in"]` 端点中维护。
+
 ## 5. 数据流格式契约
 
 数据端点统一使用二元素列表：
@@ -254,10 +297,12 @@ flowchart LR
     D --> F[Router branch: 写入 successor]
     D --> G[content: 写入输入单端点和输出端点列表]
     D --> G1[construct_content: 校验内容项与输入端口]
+    D --> G2[foreach: 校验列表元素类型和六个固定端口]
     E --> H[返回节点 list]
     F --> H
     G --> H
     G1 --> H
+    G2 --> H
 ```
 
 ## 7. 构造列表节点

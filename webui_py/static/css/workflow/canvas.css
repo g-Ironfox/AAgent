@@ -20,6 +20,7 @@
 .flow-node.llm { border-top-color:var(--blue); }
 .flow-node.tool { border-top-color:var(--green); }
 .flow-node.construct_list { border-top-color:#176f73; }
+.flow-node.foreach { border-top-color:#9a5a24; }
 .flow-node-head { height:45px; padding:0 11px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); }
 .flow-node-head .node-symbol { width:29px; height:29px; flex:none; font-size:10px; }
 .flow-node-head > span:last-child { min-width:0; display:grid; gap:1px; }

@@ -254,6 +254,25 @@ def handle_task(e: dict):
                 )
             target_values.append(value)
 
+    def publish_workflow_node(workflow_map, endpoint):
+        if endpoint is None:
+            return
+        target_id, target_port = endpoint
+        event = {
+            "event_type": f"workflow_{workflow_map[target_id]['type']}",
+            "payload": {
+                "workflow_map": workflow_map,
+                "current_id": target_id,
+            },
+        }
+        publish_to_queue(MAIN_AGENT_QUEUE_NAME, event)
+
+    def publish_workflow_control_output(workflow_map, node, port_id='control-out'):
+        publish_workflow_node(
+            workflow_map,
+            node.get('control_outputs', {}).get(port_id),
+        )
+
     def workflow(e):
         workflow_map = parse_workflow(_read_workflow("main"))
         start = -1
@@ -270,14 +289,10 @@ def handle_task(e: dict):
             workflow_map, workflow_map[start], 'content-out', content
         )
 
-        e = {
-            "event_type":f"workflow_{workflow_map[workflow_map[start]['control_successors'][0]]['type']}",
-            "payload":{
-                "workflow_map":workflow_map,
-                "current_id":workflow_map[start]['control_successors'][0],
-            }
-        }
-        publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+        publish_workflow_node(
+            workflow_map,
+            workflow_map[start].get('control_outputs', {}).get('control-out'),
+        )
 
     def workflow_llm(e):
         current_id=e['payload']['current_id']
@@ -320,17 +335,7 @@ def handle_task(e: dict):
         if "tool_calls" in node.get("data_outputs", {}):
             propagate_workflow_output(workflow_map, node, 'tool_calls', tool_calls)
 
-        control_successors_id=workflow_map[current_id]['control_successors'][0] if workflow_map[current_id]['control_successors'] else None
-        if control_successors_id is not None:
-            e = {
-                "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
-                "render":f"前一次llm输出:{content}",
-                "payload":{
-                    "workflow_map":workflow_map,
-                    "current_id":control_successors_id,
-                }
-            }
-            publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+        publish_workflow_control_output(workflow_map, node)
 
     def workflow_construct_message(e):
         current_id=e['payload']['current_id']
@@ -343,15 +348,7 @@ def handle_task(e: dict):
         message = {"role":node.get("role", "user"), "content":content}
         propagate_workflow_output(workflow_map, node, 'message-out', message)
 
-        control_successors_id=node['control_successors'][0] if node['control_successors'] else None
-        if control_successors_id is not None:
-            publish_to_queue(MAIN_AGENT_QUEUE_NAME,{
-                "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
-                "payload":{
-                    "workflow_map":workflow_map,
-                    "current_id":control_successors_id,
-                }
-            })
+        publish_workflow_control_output(workflow_map, node)
 
     def workflow_construct_content(e):
         current_id = e['payload']['current_id']
@@ -367,15 +364,7 @@ def handle_task(e: dict):
                 parts.append(value if isinstance(value, str) else str(value))
 
         propagate_workflow_output(workflow_map, node, 'content-out', ''.join(parts))
-        control_successors_id = node['control_successors'][0] if node['control_successors'] else None
-        if control_successors_id is not None:
-            publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
-                "event_type": f"workflow_{workflow_map[control_successors_id]['type']}",
-                "payload": {
-                    "workflow_map": workflow_map,
-                    "current_id": control_successors_id,
-                }
-            })
+        publish_workflow_control_output(workflow_map, node)
 
     def workflow_construct_list(e):
         current_id = e['payload']['current_id']
@@ -389,15 +378,28 @@ def handle_task(e: dict):
 
         propagate_workflow_output(workflow_map, node, 'list-out', init_values)
 
-        control_successors_id = node['control_successors'][0] if node['control_successors'] else None
-        if control_successors_id is not None:
-            publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
-                "event_type": f"workflow_{workflow_map[control_successors_id]['type']}",
-                "payload": {
-                    "workflow_map": workflow_map,
-                    "current_id": control_successors_id,
-                }
-            })
+        publish_workflow_control_output(workflow_map, node)
+
+    def workflow_foreach(e):
+        current_id = e['payload']['current_id']
+        workflow_map = e['payload']['workflow_map']
+        node = workflow_map[current_id]
+        has_items, items = read_workflow_input(node, 'list-in')
+        if not has_items:
+            return
+        if not isinstance(items, list):
+            raise ValueError(f"foreach input must be a list: node {node.get('id')}")
+        if not items:
+            publish_workflow_control_output(workflow_map, node)
+            return
+
+        propagate_workflow_output(
+            workflow_map, node, 'item-out', items.pop(0)
+        )
+        publish_workflow_node(
+            workflow_map,
+            node.get('control_outputs', {}).get('loop-out'),
+        )
 
     def workflow_router(e):
         current_id=e['payload']['current_id']
@@ -414,14 +416,10 @@ def handle_task(e: dict):
 
         control_successors_id=cases.get(key)
         if control_successors_id is not None:
-            e = {
-                "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
-                "payload":{
-                    "workflow_map":workflow_map,
-                    "current_id":control_successors_id,
-                }
-            }
-            publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+            publish_workflow_node(
+                workflow_map,
+                [control_successors_id, 'control-in'],
+            )
 
     def workflow_tool(e):
         current_id=e['payload']['current_id']
@@ -436,15 +434,7 @@ def handle_task(e: dict):
         result=execute_tool(node['id'],node['tool'],args)
         propagate_workflow_output(workflow_map, node, 'output', result)
 
-        control_successors_id=node['control_successors'][0] if node['control_successors'] else None
-        if control_successors_id is not None:
-            publish_to_queue(MAIN_AGENT_QUEUE_NAME,{
-                "event_type":f"workflow_{workflow_map[control_successors_id]['type']}",
-                "payload":{
-                    "workflow_map":workflow_map,
-                    "current_id":control_successors_id,
-                }
-            })
+        publish_workflow_control_output(workflow_map, node)
 
     handle_map = {
         "qq": qq,
@@ -461,6 +451,7 @@ def handle_task(e: dict):
         "workflow_construct_message":workflow_construct_message,
         "workflow_construct_content":workflow_construct_content,
         "workflow_construct_list":workflow_construct_list,
+        "workflow_foreach":workflow_foreach,
         "workflow_router":workflow_router,
         "workflow_tool":workflow_tool,
     }

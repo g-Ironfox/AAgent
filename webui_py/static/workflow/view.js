@@ -55,6 +55,16 @@ export function createWorkflowView(elements, connections, markChanged) {
         { id: 'list-out', direction: 'output', type: `list-${node.item_type}`, label: '列表', title: `list-${node.item_type}`, multiple: true },
       ];
     }
+    if (node.type === 'foreach') {
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发遍历', multiple: false },
+        { id: 'loop-in', direction: 'input', type: 'control', label: '循环体结束', title: '循环体完成后返回', multiple: false },
+        { id: 'list-in', direction: 'input', type: `list-${node.item_type}`, label: '列表', title: `list-${node.item_type}`, multiple: false },
+        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '列表遍历完成后继续', multiple: false },
+        { id: 'loop-out', direction: 'output', type: 'control', label: '循环体开始', title: '执行当前项的循环体', multiple: false },
+        { id: 'item-out', direction: 'output', type: node.item_type, label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
+      ];
+    }
     if (node.type === 'tool') {
       const parameterPorts = (node.parameters || []).map((parameter) => ({
         id: parameter,
@@ -96,7 +106,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const bodyRows = Math.max(inputs.length, outputs.length);
-    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'tool' ? 'T' : 'L';
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'foreach' ? 'FE' : node.type === 'tool' ? 'T' : 'L';
 
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;
@@ -178,6 +188,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     }
     if (node.type === 'router') renderBranches(node);
     if (node.type === 'construct_list') bindConstructList(node);
+    if (node.type === 'foreach') bindForeach(node);
     if (node.type === 'construct_content') bindConstructContent(node);
     if (node.type === 'llm') bindLlm(node);
     elements.inspectorContent.querySelector('[data-delete-node]').addEventListener('click', () => {
@@ -286,6 +297,26 @@ export function createWorkflowView(elements, connections, markChanged) {
       node.initial_value_count = Math.min(20, Math.max(0, Number.parseInt(countField.value, 10) || 0));
       node.dataInputPorts = Array.from({ length: node.initial_value_count }, (_, index) => `${node.item_type}-in-${index}`);
       state.connections = state.connections.filter((connection) => !(connection.toId === node.id && !node.dataInputPorts.includes(connection.toPortId)));
+      markChanged();
+      renderNodes();
+      renderInspector();
+    });
+  }
+
+  function bindForeach(node) {
+    const typeField = elements.inspectorContent.querySelector('[data-field="item_type"]');
+    const listType = `list-${node.item_type}`;
+    elements.inspectorContent.querySelector('[data-foreach-list-type]').textContent = listType;
+    elements.inspectorContent.querySelector('[data-foreach-list-swatch]').classList.add(listType);
+    elements.inspectorContent.querySelector('[data-foreach-item-type]').textContent = node.item_type;
+    elements.inspectorContent.querySelector('[data-foreach-item-swatch]').classList.add(node.item_type);
+    typeField.value = node.item_type;
+    typeField.addEventListener('change', () => {
+      node.item_type = typeField.value;
+      state.connections = state.connections.filter((connection) => (
+        connection.type === 'control'
+        || (connection.fromId !== node.id && connection.toId !== node.id)
+      ));
       markChanged();
       renderNodes();
       renderInspector();

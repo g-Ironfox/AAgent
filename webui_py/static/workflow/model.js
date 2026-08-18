@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'aagent.workflow.draft.v1';
-const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_content', 'construct_list', 'llm', 'tool']);
+const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool']);
 let idSequence = 0;
 
 const initialNodes = [
@@ -51,7 +51,7 @@ function nextNodePosition() {
 }
 
 export function addNode(type) {
-  if (!['router', 'construct_message', 'construct_content', 'construct_list', 'llm', 'tool'].includes(type)) return;
+  if (!['router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool'].includes(type)) return;
   const number = state.nodes.filter((node) => node.type === type).length + 1;
   const position = nextNodePosition();
   const node = type === 'router'
@@ -62,6 +62,8 @@ export function addNode(type) {
       ? { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position }
     : type === 'construct_list'
       ? { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position }
+    : type === 'foreach'
+      ? { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position }
     : type === 'llm'
       ? { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, ...position }
       : type === 'tool'
@@ -160,6 +162,9 @@ export function loadSnapshot(saved) {
           (_, index) => `${normalized.item_type}-in-${index}`,
         );
       }
+      if (node.type === 'foreach') {
+        normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
+      }
       if (node.type === 'tool') {
         normalized.tool = typeof node.tool === 'string' ? node.tool : '';
         normalized.parameters = Array.isArray(node.parameters)
@@ -176,7 +181,9 @@ export function loadSnapshot(saved) {
       const to = state.nodes.find((node) => node.id === connection.toId);
       if (!from || !to || typeof connection.fromPortId !== 'string' || typeof connection.toPortId !== 'string') return false;
       const validFromPort = connection.type === 'control'
-        ? (from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool'
+        ? (from.type === 'foreach'
+          ? ['control-out', 'loop-out'].includes(connection.fromPortId)
+          : from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool'
           ? from.branches.some((branch) => branch.id === connection.fromPortId)
           : connection.fromPortId === 'control-out')
         : (from.type === 'input' && connection.type === 'content' && connection.fromPortId === 'content-out')
@@ -185,15 +192,19 @@ export function loadSnapshot(saved) {
           || (['llm', 'tool'].includes(from.type) && connection.type === 'content' && connection.fromPortId === 'output')
           || (from.type === 'llm' && connection.type === 'content' && from.think === true && connection.fromPortId === 'reasoning')
           || (from.type === 'llm' && connection.type === 'list-content' && from.tool_calls === true && connection.fromPortId === 'tool_calls')
-          || (from.type === 'construct_list' && connection.type === `list-${from.item_type}` && connection.fromPortId === 'list-out');
+          || (from.type === 'construct_list' && connection.type === `list-${from.item_type}` && connection.fromPortId === 'list-out')
+          || (from.type === 'foreach' && connection.type === from.item_type && connection.fromPortId === 'item-out');
       const validToPort = connection.type === 'control'
-        ? to.type !== 'input' && connection.toPortId === 'control-in'
+        ? to.type !== 'input' && (to.type === 'foreach'
+          ? ['control-in', 'loop-in'].includes(connection.toPortId)
+          : connection.toPortId === 'control-in')
         : (to.type === 'llm' && connection.type === 'message' && to.dataInputPorts.includes(connection.toPortId))
           || (to.type === 'construct_message' && connection.type === 'content' && connection.toPortId === 'content-in')
           || (to.type === 'construct_content' && connection.type === 'content' && to.dataInputPorts.includes(connection.toPortId))
           || (to.type === 'router' && connection.type === 'content' && connection.toPortId === 'content-in')
           || (to.type === 'tool' && connection.type === 'content' && to.parameters.includes(connection.toPortId))
-          || (to.type === 'construct_list' && connection.type === to.item_type && to.dataInputPorts.includes(connection.toPortId));
+          || (to.type === 'construct_list' && connection.type === to.item_type && to.dataInputPorts.includes(connection.toPortId))
+          || (to.type === 'foreach' && connection.type === `list-${to.item_type}` && connection.toPortId === 'list-in');
       return validFromPort && validToPort;
     });
     state.selectedId = 'input';

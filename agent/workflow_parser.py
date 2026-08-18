@@ -60,6 +60,8 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
                 **parsed_node,
                 "control_predecessors": [],
                 "control_successors": [],
+                "control_inputs": {},
+                "control_outputs": {},
                 "data_inputs": data_inputs,
                 "data_outputs": data_outputs,
             }
@@ -84,10 +86,16 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
         to_index = node_indexes[to_id]
         connection_type = connection.get("type")
         if connection_type == "control":
+            from_port = _port_id(connection, index, "fromPortId")
+            to_port = _port_id(connection, index, "toPortId")
+            _validate_control_ports(nodes[from_index], from_port, nodes[to_index], to_port, index)
             _append_unique(linked_nodes[from_index]["control_successors"], to_index)
             _append_unique(linked_nodes[to_index]["control_predecessors"], from_index)
+            _set_control_output(linked_nodes[from_index], from_port, to_index, to_port)
+            linked_nodes[to_index]["control_inputs"].setdefault(to_port, []).append(
+                [from_index, from_port]
+            )
             if linked_nodes[from_index].get("type") == "router":
-                from_port = _port_id(connection, index, "fromPortId")
                 branch = next(
                     (
                         branch
@@ -121,6 +129,18 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
                 if connection_type != f"list-{item_type}":
                     raise WorkflowParseError(
                         f"construct_list output requires list-{item_type} data: connection {index}"
+                    )
+            if target_node.get("type") == "foreach":
+                item_type = target_node.get("item_type")
+                if connection_type != f"list-{item_type}" or to_port != "list-in":
+                    raise WorkflowParseError(
+                        f"foreach input requires list-{item_type} data: connection {index}"
+                    )
+            if source_node.get("type") == "foreach":
+                item_type = source_node.get("item_type")
+                if connection_type != item_type or from_port != "item-out":
+                    raise WorkflowParseError(
+                        f"foreach output requires {item_type} data: connection {index}"
                     )
             if source_node.get("type") == "llm" and from_port == "tool_calls":
                 if connection_type != "list-content":
@@ -167,6 +187,51 @@ def _port_id(connection: dict[str, Any], index: int, field: str) -> str:
 def _append_unique(items: list[int], value: int) -> None:
     if value not in items:
         items.append(value)
+
+
+def _validate_control_ports(
+    source_node: dict[str, Any],
+    from_port: str,
+    target_node: dict[str, Any],
+    to_port: str,
+    connection_index: int,
+) -> None:
+    source_type = source_node.get("type")
+    if source_type == "router":
+        valid_outputs = {
+            branch.get("id")
+            for branch in source_node.get("branches", [])
+            if isinstance(branch, dict)
+        }
+    elif source_type == "foreach":
+        valid_outputs = {"control-out", "loop-out"}
+    else:
+        valid_outputs = {"control-out"}
+
+    valid_inputs = (
+        {"control-in", "loop-in"}
+        if target_node.get("type") == "foreach"
+        else {"control-in"}
+    )
+    if from_port not in valid_outputs:
+        raise WorkflowParseError(
+            f"connections[{connection_index}].fromPortId is invalid for {source_type}: {from_port}"
+        )
+    if to_port not in valid_inputs:
+        raise WorkflowParseError(
+            f"connections[{connection_index}].toPortId is invalid for {target_node.get('type')}: {to_port}"
+        )
+
+
+def _set_control_output(
+    node: dict[str, Any], from_port: str, target_index: int, target_port: str
+) -> None:
+    outputs = node["control_outputs"]
+    if from_port in outputs:
+        raise WorkflowParseError(
+            f"control output has multiple successors: node {node.get('id')}, port {from_port}"
+        )
+    outputs[from_port] = [target_index, target_port]
 
 
 def _declared_data_inputs(
@@ -261,6 +326,14 @@ def _data_ports(
                 "construct_list node dataInputPorts must match item_type and initial_value_count"
             )
         return data_inputs, {"list-out": []}
+    if node_type == "foreach":
+        item_type = node.get("item_type")
+        if item_type not in {"content", "message"}:
+            raise WorkflowParseError(
+                "foreach node item_type must be 'content' or 'message'"
+            )
+        data_inputs.setdefault("list-in", None)
+        return data_inputs, {"item-out": []}
     if node_type == "tool":
         parameters = node.get("parameters", [])
         if not isinstance(parameters, list) or any(not isinstance(parameter, str) or not parameter for parameter in parameters):
