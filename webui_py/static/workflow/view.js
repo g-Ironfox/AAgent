@@ -29,21 +29,14 @@ export function createWorkflowView(elements, connections, markChanged) {
       ];
     }
     if (node.type === 'construct_content') {
-      return [
-        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-        { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '构造后的 Content', multiple: true },
-      ];
-    }
-    if (node.type === 'content_append') {
       const inputPorts = (node.dataInputPorts || []).map((portId, index) => ({
-        id: portId, direction: 'input', type: 'content', label: `追加 ${index + 1}`, title: '追加内容输入', multiple: false,
+        id: portId, direction: 'input', type: 'content', label: `内容 ${index}`, title: '构造内容输入', multiple: false,
       }));
       return [
         { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
         ...inputPorts,
         { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-        { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '追加后的 Content', multiple: true },
+        { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '构造后的 Content', multiple: true },
       ];
     }
     if (node.type === 'construct_list') {
@@ -111,7 +104,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const bodyRows = Math.max(inputs.length, outputs.length);
-    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'content_append' ? '+' : node.type === 'construct_list' ? 'L' : node.type === 'tool' ? 'T' : node.type === 'tool_calls' ? 'TC' : 'L';
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'tool' ? 'T' : node.type === 'tool_calls' ? 'TC' : 'L';
 
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;
@@ -155,6 +148,12 @@ export function createWorkflowView(elements, connections, markChanged) {
       fragment.append(createNodeUI(node));
     }
     elements.nodeLayer.replaceChildren(fragment);
+    const maxX = Math.max(1800, ...state.nodes.map((node) => node.x + 210));
+    const maxY = Math.max(1200, ...state.nodes.map((node) => node.y + 150));
+    elements.nodeLayer.style.width = `${maxX}px`;
+    elements.nodeLayer.style.height = `${maxY}px`;
+    elements.connectionLayer.style.width = `${maxX}px`;
+    elements.connectionLayer.style.height = `${maxY}px`;
     elements.nodeCount.textContent = `${state.nodes.length} 个实例`;
     requestAnimationFrame(connections.renderConnections);
   }
@@ -187,7 +186,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     }
     if (node.type === 'router') renderBranches(node);
     if (node.type === 'construct_list') bindConstructList(node);
-    if (node.type === 'content_append') bindContentAppend(node);
+    if (node.type === 'construct_content') bindConstructContent(node);
     if (node.type === 'llm') bindLlm(node);
     elements.inspectorContent.querySelector('[data-delete-node]').addEventListener('click', () => {
       deleteNode(node.id);
@@ -197,7 +196,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     });
   }
 
-  function bindContentAppend(node) {
+  function bindConstructContent(node) {
     const container = elements.inspectorContent.querySelector('[data-append-items]');
     const contracts = elements.inspectorContent.querySelector('[data-append-input-contracts]');
     const syncPorts = () => {
@@ -218,13 +217,13 @@ export function createWorkflowView(elements, connections, markChanged) {
         const contract = document.createElement('div');
         contract.className = 'port-contract';
         contract.innerHTML = '<span class="port-swatch content"></span><strong></strong><code>content</code>';
-        contract.querySelector('strong').textContent = `追加 ${index + 1}`;
+        contract.querySelector('strong').textContent = `内容 ${index}`;
         return contract;
       }));
       container.replaceChildren(...node.append_items.map((item, index) => {
         const row = document.createElement('div');
         row.className = 'append-item';
-        row.innerHTML = '<div class="append-item-head"><span class="route-index"></span><select aria-label="追加内容来源"><option value="port">Port 输入</option><option value="fixed">固定内容</option></select><button type="button" class="branch-delete" title="删除追加项">×</button></div><div class="append-item-body"><code data-append-port></code><textarea rows="3" maxlength="100000" aria-label="固定追加内容"></textarea><small></small></div>';
+        row.innerHTML = '<div class="append-item-head"><span class="route-index"></span><select aria-label="内容项来源"><option value="port">Port 输入</option><option value="fixed">固定内容</option></select><button type="button" class="branch-delete" title="删除内容项">×</button></div><div class="append-item-body"><code data-append-port></code><textarea rows="3" maxlength="100000" aria-label="固定内容"></textarea><small></small></div>';
         row.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
         const select = row.querySelector('select');
         const portName = row.querySelector('[data-append-port]');
@@ -234,7 +233,7 @@ export function createWorkflowView(elements, connections, markChanged) {
         portName.hidden = item.type !== 'port';
         input.value = item.type === 'fixed' ? item.value : '';
         input.hidden = item.type !== 'fixed';
-        input.placeholder = '输入要追加的固定内容';
+        input.placeholder = '输入固定内容';
         input.addEventListener('input', () => {
           if (item.type === 'fixed') item.value = input.value;
           markChanged(); renderNodes();

@@ -64,12 +64,7 @@
           </button>
           <button class="library-item" type="button" data-add-node="construct_content">
             <span class="node-symbol construct_content-symbol" aria-hidden="true">C</span>
-            <div><strong>构造 Content</strong><small>用初始值输出固定内容</small></div>
-            <span class="add-symbol" aria-hidden="true">+</span>
-          </button>
-          <button class="library-item" type="button" data-add-node="content_append">
-            <span class="node-symbol content_append-symbol" aria-hidden="true">+</span>
-            <div><strong>Content 追加</strong><small>按顺序追加输入或固定内容</small></div>
+            <div><strong>构造 Content</strong><small>按顺序组合输入或固定内容</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="construct_list">
@@ -207,26 +202,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="construct_contentInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch content"></span><strong>Content</strong><code>content</code></div>
-      </div>
-    </section>
-    <section class="inspector-section form-section">
-      <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>初始值<textarea data-field="initial_value" rows="8" maxlength="100000"></textarea></label>
-    </section>
-    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
-  </template>
-
   <template id="construct_listInspectorTemplate">
     <section class="inspector-section">
       <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
@@ -249,14 +224,14 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="content_appendInspectorTemplate">
+  <template id="construct_contentInspectorTemplate">
     <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>按追加顺序执行</span></div>
+      <div class="section-label"><strong>接口契约</strong><span>按内容项顺序执行</span></div>
       <div class="contract-group"><div class="contract-group-title">输入接口</div><div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div><div data-append-input-contracts></div></div>
-      <div class="contract-group"><div class="contract-group-title">输出接口</div><div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div><div class="port-contract"><span class="port-swatch content"></span><strong>追加后的 Content</strong><code>content</code></div></div>
+      <div class="contract-group"><div class="contract-group-title">输出接口</div><div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div><div class="port-contract"><span class="port-swatch content"></span><strong>构造后的 Content</strong><code>content</code></div></div>
     </section>
     <section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section>
-    <section class="inspector-section"><div class="section-label"><strong>追加项</strong><span>可添加多个</span></div><div data-append-items></div><button class="add-branch-button" type="button" data-add-append>+ 添加追加项</button></section>
+    <section class="inspector-section"><div class="section-label"><strong>内容项</strong><span>可添加多个</span></div><div data-append-items></div><button class="add-branch-button" type="button" data-add-append>+ 添加内容项</button></section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 

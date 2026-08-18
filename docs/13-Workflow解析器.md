@@ -168,6 +168,9 @@ Parser 将该字段编译为 `data_inputs`，然后从解析结果中删除 `dat
 | `input` | 通常为空 | `content-out` |
 | `router` | 固定 `content-in`，加通用声明端口 | 无 |
 | `llm` | 由 `dataInputPorts` 声明 | 固定 `output`；按配置增加 `reasoning`、`tool_calls` |
+| `construct_message` | 固定 `content-in`，加通用声明端口 | `message-out` |
+| `construct_content` | 由 `append_items` 中 `type: "port"` 的项目生成 | `content-out` |
+| `construct_list` | 由 `item_type` 和 `initial_value_count` 生成 | `list-out` |
 | `tool` | Tool 的 `parameters`，加通用声明端口 | `output` |
 | `tool_calls` | 固定 `tool_calls`，加通用声明端口 | `output` |
 
@@ -251,9 +254,11 @@ flowchart LR
     D --> E[control: 写入前驱/后继下标]
     D --> F[Router branch: 写入 successor]
     D --> G[content: 写入输入单端点和输出端点列表]
+    D --> G1[construct_content: 校验内容项与输入端口]
     E --> H[返回节点 list]
     F --> H
     G --> H
+    G1 --> H
 ```
 
 ## 7. 构造列表节点
@@ -275,16 +280,59 @@ flowchart LR
 
 ## 8. 构造 Content 节点
 
-`construct_content` 只接收控制流触发，不接收数据输入；节点被触发时，将配置的 `initial_value` 原样从 `content-out` 输出，然后沿 `control-out` 继续执行。节点配置示例：
+`construct_content` 在控制流触发后，按照 `append_items` 的数组顺序组合内容，并从 `content-out` 输出一个新的 `content` 值。内容项可以来自数据端口，也可以是节点参数中的固定字符串。一个节点至少需要一个内容项，内容项数量没有额外的固定上限。
+
+节点配置示例：
 
 ```json
 {
+  "id": "append-1",
   "type": "construct_content",
-  "initial_value": "固定的工作流内容"
+  "name": "补充上下文",
+  "append_items": [
+    {"type": "port", "port_id": "append-in-0"},
+    {"type": "fixed", "value": "\n\n请继续处理："},
+    {"type": "port", "port_id": "append-in-1"}
+  ],
+  "dataInputPorts": ["append-in-0", "append-in-1"]
 }
 ```
 
-`initial_value` 必须是字符串。它适合在流程中产生固定提示词、路由值或工具参数；输出连接类型为 `content`。
+字段规则：
+
+- `append_items` 必须是非空列表。
+- `type: "port"` 表示通过数据连接接收 `content`。该项目必须提供非空字符串 `port_id`。
+- `type: "fixed"` 表示追加参数中的固定内容。`value` 默认为空字符串，并且必须是字符串。
+- `dataInputPorts` 必须恰好包含所有 `port` 项的 `port_id`，不能包含固定项对应的端口，也不能重复。
+- 内容项的顺序由 `append_items` 决定，不由端口 ID 或节点坐标决定。
+- `construct_content` 的输入连接类型必须是 `content`，目标端口必须是 `dataInputPorts` 中声明的端口。
+- 输出端口固定为 `content-out`，输出连接类型为 `content`。
+
+解析后的节点示例：
+
+```json
+{
+  "id": "append-1",
+  "type": "construct_content",
+  "name": "补充上下文",
+  "append_items": [
+    {"type": "port", "port_id": "append-in-0"},
+    {"type": "fixed", "value": "\n\n请继续处理："},
+    {"type": "port", "port_id": "append-in-1"}
+  ],
+  "control_predecessors": [1],
+  "control_successors": [3],
+  "data_inputs": {
+    "append-in-0": [0, "content-out"],
+    "append-in-1": null
+  },
+  "data_outputs": {
+    "content-out": []
+  }
+}
+```
+
+解析器只负责把 Port 项编译为 `data_inputs`，不执行字符串拼接。运行时节点被触发时，执行器按 `append_items` 遍历：固定项直接加入结果；Port 项有运行时值时加入结果；没有值的 Port 项跳过。最终结果使用字符串拼接后通过 `content-out` 传播，再沿 `control_successors` 继续执行。
 
 ## 9. 当前校验
 
@@ -298,6 +346,8 @@ flowchart LR
  - 连接类型支持 `control`、`content`、`message`、`list-content` 和 `list-message`。
  - `construct_list` 的元素类型、数量和动态输入端口必须一致。
  - `construct_list` 的输入连接必须使用元素类型，输出连接必须使用对应的 `list-*` 类型。
+- `construct_content` 必须包含至少一个合法内容项；Port 项的 `port_id` 必须唯一，固定项的 `value` 必须是字符串。
+- `construct_content` 的 `dataInputPorts` 必须恰好匹配所有 Port 项的端口 ID。
 - 连接端点 ID 必须是非空字符串。
 - Router 分支必须存在，且一个分支不能有多个控制后继。
 - content 连接的来源端口必须存在于来源节点的 `data_outputs`。
@@ -306,7 +356,7 @@ flowchart LR
 
 当前还没有完整的端口方向和端口类型校验。也就是说，解析器暂时相信 WebUI 已经保证 `fromPortId` 是输出端口、`toPortId` 是输入端口。后续增加节点类型时，应把端口定义集中化后再补充这部分校验。
 
-## 9. 当前边界
+## 10. 当前边界
 
 这是解析 demo，不是 Workflow 运行器：
 
@@ -319,7 +369,7 @@ flowchart LR
 
 运行时执行器应把本解析结果作为可变运行图，沿 `control_successors` 或 Router 的 `branches[].successor` 调度节点，通过 `data_outputs` 定位目标，并把运行时值追加到目标 `data_inputs` 端点列表。
 
-## 10. 完整解析结果示例
+## 11. 完整解析结果示例
 
 下面的结果包含 Input、Router 和双输入 LLM，展示控制流、数据流、未连接端口以及动态端口编译后的统一格式：
 

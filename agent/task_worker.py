@@ -357,25 +357,6 @@ def handle_task(e: dict):
         current_id = e['payload']['current_id']
         workflow_map = e['payload']['workflow_map']
         node = workflow_map[current_id]
-
-        propagate_workflow_output(
-            workflow_map, node, 'content-out', node.get('initial_value', '')
-        )
-
-        control_successors_id = node['control_successors'][0] if node['control_successors'] else None
-        if control_successors_id is not None:
-            publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
-                "event_type": f"workflow_{workflow_map[control_successors_id]['type']}",
-                "payload": {
-                    "workflow_map": workflow_map,
-                    "current_id": control_successors_id,
-                }
-            })
-
-    def workflow_content_append(e):
-        current_id = e['payload']['current_id']
-        workflow_map = e['payload']['workflow_map']
-        node = workflow_map[current_id]
         parts = []
         for item in node.get('append_items', []):
             if item.get('type') == 'fixed':
@@ -604,7 +585,6 @@ def handle_task(e: dict):
         "workflow_llm":workflow_llm,
         "workflow_construct_message":workflow_construct_message,
         "workflow_construct_content":workflow_construct_content,
-        "workflow_content_append":workflow_content_append,
         "workflow_construct_list":workflow_construct_list,
         "workflow_router":workflow_router,
         "workflow_tool_calls":workflow_tool_calls,
