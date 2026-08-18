@@ -273,34 +273,6 @@ def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def control_flow_has_cycle(
-    node_types: dict[str, Any], connections: list[dict[str, Any]]
-) -> bool:
-    node_ids = set(node_types)
-    adjacency: dict[str, list[str]] = {node_id: [] for node_id in node_ids}
-    indegree = dict.fromkeys(node_ids, 0)
-    for connection in connections:
-        if connection.get("type") != "control":
-            continue
-        source = connection.get("fromId")
-        target = connection.get("toId")
-        if node_types.get(target) == "foreach":
-            continue
-        adjacency[source].append(target)
-        indegree[target] += 1
-
-    ready = [node_id for node_id, degree in indegree.items() if degree == 0]
-    visited = 0
-    while ready:
-        node_id = ready.pop()
-        visited += 1
-        for target in adjacency[node_id]:
-            indegree[target] -= 1
-            if indegree[target] == 0:
-                ready.append(target)
-    return visited != len(node_ids)
-
-
 def event_fingerprint(event: dict[str, Any]) -> str:
     encoded = json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     value = 1469598103934665603
@@ -923,12 +895,9 @@ def upsert_workflow(workflow_key: str, payload: WorkflowRequest):
     if len(node_ids) != len(set(node_ids)):
         return JSONResponse(status_code=400, content={"error": "Workflow 中存在重复的节点 id"})
     node_id_set = set(node_ids)
-    node_types = {node["id"]: node.get("type") for node in payload.nodes}
     for connection in payload.connections:
         if connection.get("fromId") not in node_id_set or connection.get("toId") not in node_id_set:
             return JSONResponse(status_code=400, content={"error": "连接引用了不存在的节点"})
-    if control_flow_has_cycle(node_types, payload.connections):
-        return JSONResponse(status_code=400, content={"error": "控制流不能存在环"})
 
     valid_node_types = {"input", "router", "construct_message", "construct_content", "construct_list", "foreach", "llm", "tool"}
     if any(node.get("type") not in valid_node_types for node in payload.nodes):
