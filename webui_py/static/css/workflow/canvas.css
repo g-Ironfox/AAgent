@@ -16,6 +16,7 @@
 .flow-node.dragging { z-index:3; cursor:grabbing; box-shadow:0 14px 28px rgba(28,42,36,.16); }
 .flow-node.router { border-top-color:var(--amber); }
 .flow-node.construct_message { border-top-color:#b75b18; }
+.flow-node.construct_content { border-top-color:#6d597a; }
 .flow-node.llm { border-top-color:var(--blue); }
 .flow-node.tool { border-top-color:var(--green); }
 .flow-node.tool_calls { border-top-color:#c6535d; }

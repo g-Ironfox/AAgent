@@ -201,6 +201,17 @@ def _data_ports(
     if node_type == "construct_message":
         data_inputs.setdefault("content-in", None)
         return data_inputs, {"message-out": []}
+    if node_type == "construct_content":
+        if data_inputs:
+            raise WorkflowParseError(
+                "construct_content node must not declare data input ports"
+            )
+        initial_value = node.get("initial_value", "")
+        if not isinstance(initial_value, str):
+            raise WorkflowParseError(
+                "construct_content node initial_value must be a string"
+            )
+        return data_inputs, {"content-out": []}
     if node_type == "construct_list":
         item_type = node.get("item_type")
         if item_type not in {"content", "message"}:

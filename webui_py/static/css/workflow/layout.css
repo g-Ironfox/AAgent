@@ -16,7 +16,7 @@
 .panel-heading { min-height:88px; padding:17px; display:flex; align-items:flex-end; justify-content:space-between; border-bottom:1px solid var(--line); background:var(--surface); }
 .panel-heading p,.canvas-toolbar p { margin:0 0 5px; color:var(--muted); font:9px Consolas,monospace; }
 .panel-heading h1,.panel-heading h2 { margin:0; font:700 21px Georgia,"Microsoft YaHei",serif; }
-.library-content { padding:10px; display:grid; align-content:start; gap:8px; }
+.library-content { flex:1; min-height:0; padding:10px; display:grid; align-content:start; gap:8px; overflow-y:auto; }
 .library-item { width:100%; min-height:68px; padding:10px; display:grid; grid-template-columns:38px minmax(0,1fr) auto; align-items:center; gap:10px; color:var(--ink); border:1px solid var(--line); border-left:3px solid #aab5af; background:var(--surface); text-align:left; }
 button.library-item:hover { border-color:var(--green); border-left-color:var(--green); background:var(--green-soft); }
 .library-item.fixed { border-left-color:var(--ink); background:#f2f4f1; }
@@ -28,6 +28,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .router-symbol { background:var(--amber); }
 .llm-symbol { background:var(--blue); }
 .construct_message-symbol { background:#b75b18; }
+.construct_content-symbol { background:#6d597a; }
 .construct_list-symbol { background:#176f73; }
 .tool-symbol { background:var(--green); }
 .tool_calls-symbol { background:#c6535d; }

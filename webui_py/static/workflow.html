@@ -62,6 +62,11 @@
             <div><strong>构造 Message</strong><small>为 content 指定消息角色</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="construct_content">
+            <span class="node-symbol construct_content-symbol" aria-hidden="true">C</span>
+            <div><strong>构造 Content</strong><small>用初始值输出固定内容</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="construct_list">
             <span class="node-symbol construct_list-symbol" aria-hidden="true">L</span>
             <div><strong>构造列表</strong><small>把同类型输入聚合为列表</small></div>
@@ -193,6 +198,26 @@
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Role<select data-field="role"><option value="user">user</option><option value="system">system</option><option value="assistant">assistant</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="construct_contentInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
+      </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch content"></span><strong>Content</strong><code>content</code></div>
+      </div>
+    </section>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>初始值<textarea data-field="initial_value" rows="8" maxlength="100000"></textarea></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

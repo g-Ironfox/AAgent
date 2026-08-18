@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'aagent.workflow.draft.v1';
-const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_list', 'llm', 'tool', 'tool_calls']);
+const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_content', 'construct_list', 'llm', 'tool', 'tool_calls']);
 let idSequence = 0;
 
 const initialNodes = [
@@ -46,13 +46,15 @@ function nextNodePosition() {
 }
 
 export function addNode(type) {
-  if (!['router', 'construct_message', 'construct_list', 'llm', 'tool', 'tool_calls'].includes(type)) return;
+  if (!['router', 'construct_message', 'construct_content', 'construct_list', 'llm', 'tool', 'tool_calls'].includes(type)) return;
   const number = state.nodes.filter((node) => node.type === type).length + 1;
   const position = nextNodePosition();
   const node = type === 'router'
     ? { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position }
     : type === 'construct_message'
       ? { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role: 'user', ...position }
+    : type === 'construct_content'
+      ? { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, initial_value: '', ...position }
     : type === 'construct_list'
       ? { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position }
     : type === 'llm'
@@ -133,6 +135,9 @@ export function loadSnapshot(saved) {
       if (node.type === 'construct_message') {
         normalized.role = ['user', 'system', 'assistant'].includes(node.role) ? node.role : 'user';
       }
+      if (node.type === 'construct_content') {
+        normalized.initial_value = typeof node.initial_value === 'string' ? node.initial_value.slice(0, 100000) : '';
+      }
       if (node.type === 'construct_list') {
         normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
         normalized.initial_value_count = Number.isInteger(node.initial_value_count)
@@ -159,11 +164,12 @@ export function loadSnapshot(saved) {
       const to = state.nodes.find((node) => node.id === connection.toId);
       if (!from || !to || typeof connection.fromPortId !== 'string' || typeof connection.toPortId !== 'string') return false;
       const validFromPort = connection.type === 'control'
-        ? (from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool' && from.type !== 'tool_calls'
+        ? (from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool' && from.type !== 'tool_calls'
           ? from.branches.some((branch) => branch.id === connection.fromPortId)
           : connection.fromPortId === 'control-out')
         : (from.type === 'input' && connection.type === 'content' && connection.fromPortId === 'content-out')
           || (from.type === 'construct_message' && connection.type === 'message' && connection.fromPortId === 'message-out')
+          || (from.type === 'construct_content' && connection.type === 'content' && connection.fromPortId === 'content-out')
           || (['llm', 'tool', 'tool_calls'].includes(from.type) && connection.type === 'content' && connection.fromPortId === 'output')
           || (from.type === 'llm' && connection.type === 'content' && from.think === true && connection.fromPortId === 'reasoning')
           || (from.type === 'llm' && connection.type === 'content' && from.tool_calls === true && connection.fromPortId === 'tool_calls')

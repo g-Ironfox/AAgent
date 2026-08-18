@@ -273,7 +273,20 @@ flowchart LR
 
 节点下标来自 MongoDB 文档中 `nodes` 的原始顺序，解析器不会按照节点 ID 或坐标重新排序。因此连接关系转换后不依赖字符串 ID。
 
-## 8. 当前校验
+## 8. 构造 Content 节点
+
+`construct_content` 只接收控制流触发，不接收数据输入；节点被触发时，将配置的 `initial_value` 原样从 `content-out` 输出，然后沿 `control-out` 继续执行。节点配置示例：
+
+```json
+{
+  "type": "construct_content",
+  "initial_value": "固定的工作流内容"
+}
+```
+
+`initial_value` 必须是字符串。它适合在流程中产生固定提示词、路由值或工具参数；输出连接类型为 `content`。
+
+## 9. 当前校验
 
 当前实现会检查：
 
