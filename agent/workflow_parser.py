@@ -212,6 +212,38 @@ def _data_ports(
                 "construct_content node initial_value must be a string"
             )
         return data_inputs, {"content-out": []}
+    if node_type == "content_append":
+        append_items = node.get("append_items", [])
+        if not isinstance(append_items, list) or not append_items:
+            raise WorkflowParseError(
+                "content_append node append_items must be a non-empty list"
+            )
+        expected_inputs = set()
+        for index, item in enumerate(append_items):
+            if not isinstance(item, dict) or item.get("type") not in {"port", "fixed"}:
+                raise WorkflowParseError(
+                    f"content_append node append_items[{index}] must be a port or fixed item"
+                )
+            if item["type"] == "port":
+                port_id = item.get("port_id")
+                if not isinstance(port_id, str) or not port_id:
+                    raise WorkflowParseError(
+                        f"content_append node append_items[{index}].port_id must be a non-empty string"
+                    )
+                expected_inputs.add(port_id)
+            elif not isinstance(item.get("value", ""), str):
+                raise WorkflowParseError(
+                    f"content_append node append_items[{index}].value must be a string"
+                )
+        if set(data_inputs) != expected_inputs:
+            raise WorkflowParseError(
+                "content_append node dataInputPorts must match port append_items"
+            )
+        if len(expected_inputs) != sum(item["type"] == "port" for item in append_items):
+            raise WorkflowParseError(
+                "content_append node port append_items must have unique port_id values"
+            )
+        return data_inputs, {"content-out": []}
     if node_type == "construct_list":
         item_type = node.get("item_type")
         if item_type not in {"content", "message"}:

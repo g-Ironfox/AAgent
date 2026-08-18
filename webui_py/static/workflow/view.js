@@ -35,6 +35,17 @@ export function createWorkflowView(elements, connections, markChanged) {
         { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '构造后的 Content', multiple: true },
       ];
     }
+    if (node.type === 'content_append') {
+      const inputPorts = (node.dataInputPorts || []).map((portId, index) => ({
+        id: portId, direction: 'input', type: 'content', label: `追加 ${index + 1}`, title: '追加内容输入', multiple: false,
+      }));
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+        ...inputPorts,
+        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+        { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '追加后的 Content', multiple: true },
+      ];
+    }
     if (node.type === 'construct_list') {
       const itemPorts = (node.dataInputPorts || []).map((portId, index) => ({
         id: portId,
@@ -100,7 +111,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const bodyRows = Math.max(inputs.length, outputs.length);
-    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'tool' ? 'T' : node.type === 'tool_calls' ? 'TC' : 'L';
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'content_append' ? '+' : node.type === 'construct_list' ? 'L' : node.type === 'tool' ? 'T' : node.type === 'tool_calls' ? 'TC' : 'L';
 
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;
@@ -176,12 +187,80 @@ export function createWorkflowView(elements, connections, markChanged) {
     }
     if (node.type === 'router') renderBranches(node);
     if (node.type === 'construct_list') bindConstructList(node);
+    if (node.type === 'content_append') bindContentAppend(node);
     if (node.type === 'llm') bindLlm(node);
     elements.inspectorContent.querySelector('[data-delete-node]').addEventListener('click', () => {
       deleteNode(node.id);
       markChanged();
       renderNodes();
       renderInspector();
+    });
+  }
+
+  function bindContentAppend(node) {
+    const container = elements.inspectorContent.querySelector('[data-append-items]');
+    const contracts = elements.inspectorContent.querySelector('[data-append-input-contracts]');
+    const syncPorts = () => {
+      const usedPorts = new Set();
+      let portIndex = 0;
+      node.append_items.forEach((item) => {
+        if (item.type !== 'port') return;
+        while (usedPorts.has(item.port_id) || !item.port_id) {
+          item.port_id = `append-in-${portIndex++}`;
+        }
+        usedPorts.add(item.port_id);
+      });
+      node.dataInputPorts = node.append_items.filter((item) => item.type === 'port').map((item) => item.port_id);
+    };
+    const render = () => {
+      syncPorts();
+      contracts.replaceChildren(...node.dataInputPorts.map((portId, index) => {
+        const contract = document.createElement('div');
+        contract.className = 'port-contract';
+        contract.innerHTML = '<span class="port-swatch content"></span><strong></strong><code>content</code>';
+        contract.querySelector('strong').textContent = `追加 ${index + 1}`;
+        return contract;
+      }));
+      container.replaceChildren(...node.append_items.map((item, index) => {
+        const row = document.createElement('div');
+        row.className = 'append-item';
+        row.innerHTML = '<div class="append-item-head"><span class="route-index"></span><select aria-label="追加内容来源"><option value="port">Port 输入</option><option value="fixed">固定内容</option></select><button type="button" class="branch-delete" title="删除追加项">×</button></div><div class="append-item-body"><code data-append-port></code><textarea rows="3" maxlength="100000" aria-label="固定追加内容"></textarea><small></small></div>';
+        row.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
+        const select = row.querySelector('select');
+        const portName = row.querySelector('[data-append-port]');
+        const input = row.querySelector('textarea');
+        select.value = item.type;
+        portName.textContent = item.type === 'port' ? item.port_id : '';
+        portName.hidden = item.type !== 'port';
+        input.value = item.type === 'fixed' ? item.value : '';
+        input.hidden = item.type !== 'fixed';
+        input.placeholder = '输入要追加的固定内容';
+        input.addEventListener('input', () => {
+          if (item.type === 'fixed') item.value = input.value;
+          markChanged(); renderNodes();
+        });
+        select.addEventListener('change', () => {
+          item.type = select.value;
+          if (item.type === 'port') item.port_id = '';
+          else item.value = '';
+          syncPorts();
+          const validPorts = new Set(node.dataInputPorts);
+          state.connections = state.connections.filter((connection) => connection.toId !== node.id || validPorts.has(connection.toPortId));
+          markChanged(); renderNodes(); render();
+        });
+        row.querySelector('small').textContent = item.type === 'port' ? '连接 content 到此输入端口' : '内容会在此顺序位置拼接';
+        row.querySelector('button').addEventListener('click', () => {
+          if (node.append_items.length <= 1) return;
+          node.append_items.splice(index, 1); node.dataInputPorts = node.append_items.filter((entry) => entry.type === 'port').map((entry) => entry.port_id);
+          state.connections = state.connections.filter((connection) => connection.toId !== node.id || node.dataInputPorts.includes(connection.toPortId));
+          markChanged(); renderNodes(); render();
+        });
+        return row;
+      }));
+    };
+    render();
+    elements.inspectorContent.querySelector('[data-add-append]').addEventListener('click', () => {
+      node.append_items.push({ type: 'fixed', value: '' }); markChanged(); render(); renderNodes();
     });
   }
 

@@ -17,6 +17,7 @@
 .flow-node.router { border-top-color:var(--amber); }
 .flow-node.construct_message { border-top-color:#b75b18; }
 .flow-node.construct_content { border-top-color:#6d597a; }
+.flow-node.content_append { border-top-color:#2f6f8f; }
 .flow-node.llm { border-top-color:var(--blue); }
 .flow-node.tool { border-top-color:var(--green); }
 .flow-node.tool_calls { border-top-color:#c6535d; }

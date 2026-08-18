@@ -5,7 +5,7 @@
 .section-label { display:flex; align-items:center; justify-content:space-between; }
 .section-label strong { font-size:11px; }
 .section-label span { color:var(--muted); font-size:9px; }
-.contract-group,[data-router-output-contracts],[data-llm-output-contracts],[data-list-input-contracts] { display:grid; gap:6px; }
+.contract-group,[data-router-output-contracts],[data-llm-output-contracts],[data-list-input-contracts],[data-append-input-contracts],[data-append-items] { display:grid; gap:6px; }
 .contract-group-title { color:var(--muted); font-size:9px; }
 .port-contract { min-height:36px; padding:6px 9px; display:grid; grid-template-columns:6px minmax(0,1fr) auto; align-items:center; gap:9px; border:1px solid var(--line); background:var(--surface); }
 .port-swatch { width:6px; height:24px; }
@@ -35,5 +35,14 @@
 .route-option strong,.tool-options strong { font-size:10px; }
 .route-option small,.tool-options small { color:var(--muted); font-size:8px; }
 .route-index { width:20px; height:20px; display:grid; place-items:center; color:#7a580f; background:var(--amber-soft); font:8px Consolas,monospace; }
+.append-item { overflow:hidden; border:1px solid var(--line); background:var(--surface); }
+.append-item-head { min-height:38px; padding:7px 8px; display:grid; grid-template-columns:20px minmax(0,1fr) 22px; align-items:center; gap:8px; border-bottom:1px solid var(--line); }
+.append-item-head select { width:100%; min-width:0; height:26px; padding:0 25px 0 7px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:9px; }
+.append-item-body { min-width:0; padding:9px; display:grid; gap:6px; }
+.append-item-body code { min-width:0; padding:7px 8px; overflow:hidden; color:var(--blue); border:1px solid #b9cedd; background:#f3f8fb; font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
+.append-item-body textarea { box-sizing:border-box; width:100%; min-height:62px; max-height:180px; padding:8px; color:var(--ink); border:1px solid var(--line); background:#fff; font:10px/1.45 Consolas,"Microsoft YaHei",sans-serif; resize:vertical; }
+.append-item-body textarea:focus,.append-item-head select:focus { outline:1px solid var(--green); border-color:var(--green); }
+.append-item-body small { color:var(--muted); font-size:8px; line-height:1.4; }
+.append-item [hidden] { display:none; }
 .empty-options { padding:13px; color:var(--muted); border:1px dashed var(--line); font-size:9px; text-align:center; }
 .delete-node-button { width:calc(100% - 30px); height:36px; margin:15px; color:var(--red); border:1px solid #dfb8b3; background:#fff7f6; font-size:10px; }
