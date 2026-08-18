@@ -167,12 +167,11 @@ Parser 将该字段编译为 `data_inputs`，然后从解析结果中删除 `dat
 | --- | --- | --- |
 | `input` | 通常为空 | `content-out` |
 | `router` | 固定 `content-in`，加通用声明端口 | 无 |
-| `llm` | 由 `dataInputPorts` 声明 | 固定 `output`；按配置增加 `reasoning`、`tool_calls` |
+| `llm` | 由 `dataInputPorts` 声明 | 固定 `output`；按配置增加 `reasoning`、`tool_calls`（`list-content`） |
 | `construct_message` | 固定 `content-in`，加通用声明端口 | `message-out` |
 | `construct_content` | 由 `append_items` 中 `type: "port"` 的项目生成 | `content-out` |
 | `construct_list` | 由 `item_type` 和 `initial_value_count` 生成 | `list-out` |
 | `tool` | Tool 的 `parameters`，加通用声明端口 | `output` |
-| `tool_calls` | 固定 `tool_calls`，加通用声明端口 | `output` |
 
 ### 5.2 输入端口状态
 
@@ -239,9 +238,9 @@ content-in-2
 
 Worker 只读取符合 `content-in-<数字>` 格式的端口，并按数字后缀升序处理。只有一个上下文到达时保持原值；多个上下文到达时按端口顺序合并。LLM 不接受无数字后缀的 `content-in` 端口。
 
-### 5.5 Tool Calls 节点
+### 5.5 LLM 工具调用输出
 
-`tool_calls` 节点固定声明 `tool_calls` 输入和 `output` 输出。LLM 可通过 `tool_calls` 布尔开关启用同名输出端口。关闭开关时该输出不会进入解析结果。
+Workflow 不再提供独立的 `tool_calls` 节点。LLM 仍可通过 `tool_calls` 布尔开关启用同名 `list-content` 输出端口；该端口表示模型返回的 OpenAI 格式工具调用数组，具体的工具编排由新的实现负责。关闭开关时该输出不会进入解析结果。
 
 ## 6. 转换流程
 

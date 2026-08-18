@@ -122,6 +122,11 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
                     raise WorkflowParseError(
                         f"construct_list output requires list-{item_type} data: connection {index}"
                     )
+            if source_node.get("type") == "llm" and from_port == "tool_calls":
+                if connection_type != "list-content":
+                    raise WorkflowParseError(
+                        f"llm tool_calls output requires list-content data: connection {index}"
+                    )
             data_outputs = linked_nodes[from_index]["data_outputs"]
             if from_port not in data_outputs:
                 raise WorkflowParseError(
@@ -262,9 +267,6 @@ def _data_ports(
             raise WorkflowParseError("tool node parameters must be a list of non-empty strings")
         for parameter in parameters:
             data_inputs.setdefault(parameter, None)
-        return data_inputs, {"output": []}
-    if node_type == "tool_calls":
-        data_inputs.setdefault("tool_calls", None)
         return data_inputs, {"output": []}
     raise WorkflowParseError(f"unsupported node type: {node_type}")
 

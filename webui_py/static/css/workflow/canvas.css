@@ -6,7 +6,7 @@
 .connection-path { fill:none; stroke:#8b9991; stroke-width:2; }
 .connection-path.content { stroke:var(--blue); stroke-dasharray:5 5; }
 .connection-path.message { stroke:#b75b18; stroke-dasharray:2 4; }
-.connection-path.list-content { stroke:#176f73; stroke-dasharray:7 3; }
+.connection-path.list-content { stroke:var(--workflow-list-content); stroke-dasharray:7 3; }
 .connection-path.list-message { stroke:#7a3e88; stroke-dasharray:7 3; }
 .connection-path.preview { stroke-width:2.5; opacity:.7; }
 .node-layer { position:relative; z-index:2; min-width:1800px; width:max(100%,1800px); height:1200px; }
@@ -19,7 +19,6 @@
 .flow-node.construct_content { border-top-color:#2f6f8f; }
 .flow-node.llm { border-top-color:var(--blue); }
 .flow-node.tool { border-top-color:var(--green); }
-.flow-node.tool_calls { border-top-color:#c6535d; }
 .flow-node.construct_list { border-top-color:#176f73; }
 .flow-node-head { height:45px; padding:0 11px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); }
 .flow-node-head .node-symbol { width:29px; height:29px; flex:none; font-size:10px; }
@@ -38,7 +37,7 @@
 .node-port[data-port-type="control"] { background:var(--green); }
 .node-port[data-port-type="content"] { background:var(--blue); }
 .node-port[data-port-type="message"] { background:#b75b18; }
-.node-port[data-port-type="list-content"] { background:#176f73; }
+.node-port[data-port-type="list-content"] { background:var(--workflow-list-content); }
 .node-port[data-port-type="list-message"] { background:#7a3e88; }
 .canvas-legend { position:sticky; z-index:4; left:14px; bottom:14px; width:max-content; padding:7px 9px; display:flex; gap:12px; color:var(--muted); border:1px solid var(--line); background:rgba(255,255,255,.92); font:8px Consolas,monospace; }
 .canvas-legend span { display:flex; align-items:center; gap:5px; }
@@ -46,5 +45,5 @@
 .control-dot { background:var(--green); }
 .content-dot { background:var(--blue); }
 .message-dot { background:#b75b18; }
-.list-content-dot { background:#176f73; }
+.list-content-dot { background:var(--workflow-list-content); }
 .list-message-dot { background:#7a3e88; }

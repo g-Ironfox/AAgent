@@ -31,7 +31,6 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .construct_content-symbol { background:#2f6f8f; }
 .construct_list-symbol { background:#176f73; }
 .tool-symbol { background:var(--green); }
-.tool_calls-symbol { background:#c6535d; }
 .add-symbol { color:var(--green); font-size:20px; }
 .fixed-tag { padding:3px 5px; color:var(--muted); border:1px solid var(--line); font-size:8px; }
 .library-footer { margin-top:auto; min-height:42px; padding:0 13px; display:flex; align-items:center; justify-content:space-between; color:var(--muted); border-top:1px solid var(--line); font:9px Consolas,monospace; }

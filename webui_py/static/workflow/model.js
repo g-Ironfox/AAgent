@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'aagent.workflow.draft.v1';
-const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_content', 'construct_list', 'llm', 'tool', 'tool_calls']);
+const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_content', 'construct_list', 'llm', 'tool']);
 let idSequence = 0;
 
 const initialNodes = [
@@ -51,7 +51,7 @@ function nextNodePosition() {
 }
 
 export function addNode(type) {
-  if (!['router', 'construct_message', 'construct_content', 'construct_list', 'llm', 'tool', 'tool_calls'].includes(type)) return;
+  if (!['router', 'construct_message', 'construct_content', 'construct_list', 'llm', 'tool'].includes(type)) return;
   const number = state.nodes.filter((node) => node.type === type).length + 1;
   const position = nextNodePosition();
   const node = type === 'router'
@@ -66,7 +66,7 @@ export function addNode(type) {
       ? { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, ...position }
       : type === 'tool'
         ? { id: createWorkflowId('tool'), type, name: `Tool ${number}`, tool: '', parameters: [], ...position }
-        : { id: createWorkflowId('tool_calls'), type, name: `Tool Calls ${number}`, ...position };
+        : null;
   state.nodes.push(node);
   state.selectedId = node.id;
 }
@@ -176,15 +176,15 @@ export function loadSnapshot(saved) {
       const to = state.nodes.find((node) => node.id === connection.toId);
       if (!from || !to || typeof connection.fromPortId !== 'string' || typeof connection.toPortId !== 'string') return false;
       const validFromPort = connection.type === 'control'
-        ? (from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool' && from.type !== 'tool_calls'
+        ? (from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool'
           ? from.branches.some((branch) => branch.id === connection.fromPortId)
           : connection.fromPortId === 'control-out')
         : (from.type === 'input' && connection.type === 'content' && connection.fromPortId === 'content-out')
           || (from.type === 'construct_message' && connection.type === 'message' && connection.fromPortId === 'message-out')
           || (from.type === 'construct_content' && connection.type === 'content' && connection.fromPortId === 'content-out')
-          || (['llm', 'tool', 'tool_calls'].includes(from.type) && connection.type === 'content' && connection.fromPortId === 'output')
+          || (['llm', 'tool'].includes(from.type) && connection.type === 'content' && connection.fromPortId === 'output')
           || (from.type === 'llm' && connection.type === 'content' && from.think === true && connection.fromPortId === 'reasoning')
-          || (from.type === 'llm' && connection.type === 'content' && from.tool_calls === true && connection.fromPortId === 'tool_calls')
+          || (from.type === 'llm' && connection.type === 'list-content' && from.tool_calls === true && connection.fromPortId === 'tool_calls')
           || (from.type === 'construct_list' && connection.type === `list-${from.item_type}` && connection.fromPortId === 'list-out');
       const validToPort = connection.type === 'control'
         ? to.type !== 'input' && connection.toPortId === 'control-in'
@@ -193,7 +193,6 @@ export function loadSnapshot(saved) {
           || (to.type === 'construct_content' && connection.type === 'content' && to.dataInputPorts.includes(connection.toPortId))
           || (to.type === 'router' && connection.type === 'content' && connection.toPortId === 'content-in')
           || (to.type === 'tool' && connection.type === 'content' && to.parameters.includes(connection.toPortId))
-          || (to.type === 'tool_calls' && connection.type === 'content' && connection.toPortId === 'tool_calls')
           || (to.type === 'construct_list' && connection.type === to.item_type && to.dataInputPorts.includes(connection.toPortId));
       return validFromPort && validToPort;
     });
