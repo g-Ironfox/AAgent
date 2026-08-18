@@ -353,6 +353,28 @@ def handle_task(e: dict):
                 }
             })
 
+    def workflow_construct_list(e):
+        current_id = e['payload']['current_id']
+        workflow_map = e['payload']['workflow_map']
+        node = workflow_map[current_id]
+        init_values = []
+        for port_id in node.get('data_inputs', {}):
+            has_value, value = read_workflow_input(node, port_id)
+            if has_value:
+                init_values.append(value)
+
+        propagate_workflow_output(workflow_map, node, 'list-out', init_values)
+
+        control_successors_id = node['control_successors'][0] if node['control_successors'] else None
+        if control_successors_id is not None:
+            publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
+                "event_type": f"workflow_{workflow_map[control_successors_id]['type']}",
+                "payload": {
+                    "workflow_map": workflow_map,
+                    "current_id": control_successors_id,
+                }
+            })
+
     def workflow_router(e):
         current_id=e['payload']['current_id']
         workflow_map=e['payload']['workflow_map']
@@ -538,6 +560,7 @@ def handle_task(e: dict):
         "workflow":workflow,
         "workflow_llm":workflow_llm,
         "workflow_construct_message":workflow_construct_message,
+        "workflow_construct_list":workflow_construct_list,
         "workflow_router":workflow_router,
         "workflow_tool_calls":workflow_tool_calls,
         "workflow_tool_call_execute":workflow_tool_call_execute,

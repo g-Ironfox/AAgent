@@ -3,6 +3,10 @@
 过渡中,有点混乱,超级缝合怪,集各家平台之大成,强调弹性、自定义、易于调试   
 就目前的大换血而言,这套架构的可扩展性非常强    
 
+TODO:
+- workflow 解析json
+- workflow 列表组件
+
 ## 快速启动
 0. QQ需配置NapNeko/NapCatQQ!
 1. 安装 Docker Desktop 与 Docker Compose;

@@ -5,13 +5,15 @@
 .section-label { display:flex; align-items:center; justify-content:space-between; }
 .section-label strong { font-size:11px; }
 .section-label span { color:var(--muted); font-size:9px; }
-.contract-group,[data-router-output-contracts],[data-llm-output-contracts] { display:grid; gap:6px; }
+.contract-group,[data-router-output-contracts],[data-llm-output-contracts],[data-list-input-contracts] { display:grid; gap:6px; }
 .contract-group-title { color:var(--muted); font-size:9px; }
 .port-contract { min-height:36px; padding:6px 9px; display:grid; grid-template-columns:6px minmax(0,1fr) auto; align-items:center; gap:9px; border:1px solid var(--line); background:var(--surface); }
 .port-swatch { width:6px; height:24px; }
 .port-swatch.control { background:var(--green); }
 .port-swatch.content { background:var(--blue); }
 .port-swatch.message { background:#b75b18; }
+.port-swatch.list-content { background:#176f73; }
+.port-swatch.list-message { background:#7a3e88; }
 .port-contract strong { font-size:10px; }
 .port-contract small,.section-help { color:var(--muted); font-size:8px; line-height:1.45; }
 .port-contract code { font-size:8px; }

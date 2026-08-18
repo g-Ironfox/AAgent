@@ -105,9 +105,23 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
                         f"router branch has multiple successors: {from_port}"
                     )
                 branch["successor"] = to_index
-        elif connection_type in {"content", "message"}:
+        elif connection_type in {"content", "message", "list-content", "list-message"}:
             from_port = _port_id(connection, index, "fromPortId")
             to_port = _port_id(connection, index, "toPortId")
+            target_node = nodes[to_index]
+            source_node = nodes[from_index]
+            if target_node.get("type") == "construct_list":
+                item_type = target_node.get("item_type")
+                if connection_type != item_type:
+                    raise WorkflowParseError(
+                        f"construct_list input requires {item_type} data: connection {index}"
+                    )
+            if source_node.get("type") == "construct_list":
+                item_type = source_node.get("item_type")
+                if connection_type != f"list-{item_type}":
+                    raise WorkflowParseError(
+                        f"construct_list output requires list-{item_type} data: connection {index}"
+                    )
             data_outputs = linked_nodes[from_index]["data_outputs"]
             if from_port not in data_outputs:
                 raise WorkflowParseError(
@@ -130,7 +144,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
             data_inputs[to_port] = [from_index, from_port]
         else:
             raise WorkflowParseError(
-                f"connections[{index}].type must be 'control', 'content', or 'message'"
+                f"connections[{index}].type must be a supported control or data type"
             )
 
     return linked_nodes
@@ -187,6 +201,29 @@ def _data_ports(
     if node_type == "construct_message":
         data_inputs.setdefault("content-in", None)
         return data_inputs, {"message-out": []}
+    if node_type == "construct_list":
+        item_type = node.get("item_type")
+        if item_type not in {"content", "message"}:
+            raise WorkflowParseError(
+                "construct_list node item_type must be 'content' or 'message'"
+            )
+        initial_value_count = node.get("initial_value_count")
+        if (
+            not isinstance(initial_value_count, int)
+            or isinstance(initial_value_count, bool)
+            or not 0 <= initial_value_count <= 20
+        ):
+            raise WorkflowParseError(
+                "construct_list node initial_value_count must be an integer from 0 to 20"
+            )
+        expected_inputs = {
+            f"{item_type}-in-{index}" for index in range(initial_value_count)
+        }
+        if set(data_inputs) != expected_inputs:
+            raise WorkflowParseError(
+                "construct_list node dataInputPorts must match item_type and initial_value_count"
+            )
+        return data_inputs, {"list-out": []}
     if node_type == "tool":
         parameters = node.get("parameters", [])
         if not isinstance(parameters, list) or any(not isinstance(parameter, str) or not parameter for parameter in parameters):

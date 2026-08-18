@@ -256,9 +256,24 @@ flowchart LR
     G --> H
 ```
 
+## 7. 构造列表节点
+
+`construct_list` 不改变控制流，只把 `initial_value_count` 个同类型数据输入按端口顺序聚合为一个列表。节点配置示例：
+
+```json
+{
+  "type": "construct_list",
+  "item_type": "message",
+  "initial_value_count": 2,
+  "dataInputPorts": ["message-in-0", "message-in-1"]
+}
+```
+
+`item_type` 只能是 `content` 或 `message`，数量允许为 `0` 到 `20`。输入连接使用元素类型 `content` 或 `message`；输出端口固定为 `list-out`，连接类型分别为 `list-content` 或 `list-message`。运行时输出始终是列表，未连接的初始值端口会使节点等待；数量为 `0` 时输出空列表。
+
 节点下标来自 MongoDB 文档中 `nodes` 的原始顺序，解析器不会按照节点 ID 或坐标重新排序。因此连接关系转换后不依赖字符串 ID。
 
-## 7. 当前校验
+## 8. 当前校验
 
 当前实现会检查：
 
@@ -267,7 +282,9 @@ flowchart LR
 - Router 必须有 `branches` 列表。
 - `dataInputPorts` 必须是非空字符串组成的列表，端口 ID 不能重复。
 - 连接两端的节点必须存在。
-- 连接类型只能是 `control` 或 `content`。
+ - 连接类型支持 `control`、`content`、`message`、`list-content` 和 `list-message`。
+ - `construct_list` 的元素类型、数量和动态输入端口必须一致。
+ - `construct_list` 的输入连接必须使用元素类型，输出连接必须使用对应的 `list-*` 类型。
 - 连接端点 ID 必须是非空字符串。
 - Router 分支必须存在，且一个分支不能有多个控制后继。
 - content 连接的来源端口必须存在于来源节点的 `data_outputs`。
@@ -276,7 +293,7 @@ flowchart LR
 
 当前还没有完整的端口方向和端口类型校验。也就是说，解析器暂时相信 WebUI 已经保证 `fromPortId` 是输出端口、`toPortId` 是输入端口。后续增加节点类型时，应把端口定义集中化后再补充这部分校验。
 
-## 8. 当前边界
+## 9. 当前边界
 
 这是解析 demo，不是 Workflow 运行器：
 
@@ -289,7 +306,7 @@ flowchart LR
 
 运行时执行器应把本解析结果作为可变运行图，沿 `control_successors` 或 Router 的 `branches[].successor` 调度节点，通过 `data_outputs` 定位目标，并把运行时值追加到目标 `data_inputs` 端点列表。
 
-## 9. 完整解析结果示例
+## 10. 完整解析结果示例
 
 下面的结果包含 Input、Router 和双输入 LLM，展示控制流、数据流、未连接端口以及动态端口编译后的统一格式：
 

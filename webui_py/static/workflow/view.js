@@ -28,6 +28,22 @@ export function createWorkflowView(elements, connections, markChanged) {
         { id: 'message-out', direction: 'output', type: 'message', label: 'Message', title: '构造后的 Message', multiple: true },
       ];
     }
+    if (node.type === 'construct_list') {
+      const itemPorts = (node.dataInputPorts || []).map((portId, index) => ({
+        id: portId,
+        direction: 'input',
+        type: node.item_type,
+        label: `${node.item_type} ${index}`,
+        title: `列表初始值 ${index}`,
+        multiple: false,
+      }));
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+        ...itemPorts,
+        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+        { id: 'list-out', direction: 'output', type: `list-${node.item_type}`, label: '列表', title: `list-${node.item_type}`, multiple: true },
+      ];
+    }
     if (node.type === 'tool') {
       const parameterPorts = (node.parameters || []).map((parameter) => ({
         id: parameter,
@@ -77,7 +93,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const bodyRows = Math.max(inputs.length, outputs.length);
-    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'tool' ? 'T' : node.type === 'tool_calls' ? 'TC' : 'L';
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_list' ? 'L' : node.type === 'tool' ? 'T' : node.type === 'tool_calls' ? 'TC' : 'L';
 
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;
@@ -152,9 +168,47 @@ export function createWorkflowView(elements, connections, markChanged) {
       });
     }
     if (node.type === 'router') renderBranches(node);
+    if (node.type === 'construct_list') bindConstructList(node);
     if (node.type === 'llm') bindLlm(node);
     elements.inspectorContent.querySelector('[data-delete-node]').addEventListener('click', () => {
       deleteNode(node.id);
+      markChanged();
+      renderNodes();
+      renderInspector();
+    });
+  }
+
+  function bindConstructList(node) {
+    const contracts = elements.inspectorContent.querySelector('[data-list-input-contracts]');
+    const outputType = elements.inspectorContent.querySelector('[data-list-output-type]');
+    const outputSwatch = elements.inspectorContent.querySelector('[data-list-output-swatch]');
+    outputType.textContent = `list-${node.item_type}`;
+    outputSwatch.classList.add(`list-${node.item_type}`);
+    contracts.replaceChildren(...node.dataInputPorts.map((portId, index) => {
+      const contract = document.createElement('div');
+      contract.className = 'port-contract';
+      contract.innerHTML = '<span class="port-swatch"></span><strong></strong><code></code>';
+      contract.querySelector('.port-swatch').classList.add(node.item_type);
+      contract.querySelector('strong').textContent = `${node.item_type} ${index}`;
+      contract.querySelector('code').textContent = node.item_type;
+      return contract;
+    }));
+    const typeField = elements.inspectorContent.querySelector('[data-field="item_type"]');
+    const countField = elements.inspectorContent.querySelector('[data-field="initial_value_count"]');
+    typeField.value = node.item_type;
+    countField.value = node.initial_value_count;
+    typeField.addEventListener('change', () => {
+      node.item_type = typeField.value;
+      node.dataInputPorts = node.dataInputPorts.map((_, index) => `${node.item_type}-in-${index}`);
+      state.connections = state.connections.filter((connection) => connection.fromId !== node.id && connection.toId !== node.id);
+      markChanged();
+      renderNodes();
+      renderInspector();
+    });
+    countField.addEventListener('change', () => {
+      node.initial_value_count = Math.min(20, Math.max(0, Number.parseInt(countField.value, 10) || 0));
+      node.dataInputPorts = Array.from({ length: node.initial_value_count }, (_, index) => `${node.item_type}-in-${index}`);
+      state.connections = state.connections.filter((connection) => !(connection.toId === node.id && !node.dataInputPorts.includes(connection.toPortId)));
       markChanged();
       renderNodes();
       renderInspector();

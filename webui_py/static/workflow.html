@@ -62,6 +62,11 @@
             <div><strong>构造 Message</strong><small>为 content 指定消息角色</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="construct_list">
+            <span class="node-symbol construct_list-symbol" aria-hidden="true">L</span>
+            <div><strong>构造列表</strong><small>把同类型输入聚合为列表</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="tool">
             <span class="node-symbol tool-symbol" aria-hidden="true">T</span>
             <div><strong>Tool</strong><small>直接调用一个已注册工具</small></div>
@@ -73,7 +78,7 @@
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
         </div>
-        <footer class="library-footer"><span>6 种节点</span><span id="nodeCount">4 个实例</span></footer>
+        <footer class="library-footer"><span>7 种节点</span><span id="nodeCount">4 个实例</span></footer>
       </aside>
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
@@ -85,7 +90,7 @@
           <div class="canvas-grid" aria-hidden="true"></div>
           <svg id="connectionLayer" class="connection-layer" aria-hidden="true"></svg>
           <div id="nodeLayer" class="node-layer"></div>
-          <div class="canvas-legend" aria-hidden="true"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span></div>
+          <div class="canvas-legend" aria-hidden="true"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span></div>
         </div>
       </section>
 
@@ -188,6 +193,28 @@
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Role<select data-field="role"><option value="user">user</option><option value="system">system</option><option value="assistant">assistant</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="construct_listInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="contract-group">
+        <div class="contract-group-title">输入接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
+        <div class="list-input-contracts" data-list-input-contracts></div>
+      </div>
+      <div class="contract-group">
+        <div class="contract-group-title">输出接口</div>
+        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
+        <div class="port-contract"><span class="port-swatch" data-list-output-swatch></span><strong>列表</strong><code data-list-output-type></code></div>
+      </div>
+    </section>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option></select></label>
+      <label>初始值数量<input data-field="initial_value_count" type="number" min="0" max="20" step="1"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
