@@ -329,11 +329,13 @@ def handle_task(e: dict):
         ]
         content,reasoning,tool_calls=chat_with_deepseek(messages,tools=tools)
 
+        jsonfied_tool_calls=[json.dumps(i) for i in tool_calls]
+
         propagate_workflow_output(workflow_map, node, 'output', content)
         if "reasoning" in node.get("data_outputs", {}):
             propagate_workflow_output(workflow_map, node, 'reasoning', reasoning)
         if "tool_calls" in node.get("data_outputs", {}):
-            propagate_workflow_output(workflow_map, node, 'tool_calls', tool_calls)
+            propagate_workflow_output(workflow_map, node, 'tool_calls', jsonfied_tool_calls)
 
         publish_workflow_control_output(workflow_map, node)
 

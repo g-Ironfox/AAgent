@@ -256,14 +256,22 @@ export function createWorkflowView(elements, connections, markChanged) {
           else item.value = '';
           syncPorts();
           const validPorts = new Set(node.dataInputPorts);
-          state.connections = state.connections.filter((connection) => connection.toId !== node.id || validPorts.has(connection.toPortId));
+          state.connections = state.connections.filter((connection) => (
+            connection.toId !== node.id
+            || connection.type !== 'content'
+            || validPorts.has(connection.toPortId)
+          ));
           markChanged(); renderNodes(); render();
         });
         row.querySelector('small').textContent = item.type === 'port' ? '连接 content 到此输入端口' : '内容会在此顺序位置拼接';
         row.querySelector('button').addEventListener('click', () => {
           if (node.append_items.length <= 1) return;
           node.append_items.splice(index, 1); node.dataInputPorts = node.append_items.filter((entry) => entry.type === 'port').map((entry) => entry.port_id);
-          state.connections = state.connections.filter((connection) => connection.toId !== node.id || node.dataInputPorts.includes(connection.toPortId));
+          state.connections = state.connections.filter((connection) => (
+            connection.toId !== node.id
+            || connection.type !== 'content'
+            || node.dataInputPorts.includes(connection.toPortId)
+          ));
           markChanged(); renderNodes(); render();
         });
         return row;
