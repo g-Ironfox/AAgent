@@ -1,14 +1,14 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from bson import ObjectId
-from bson.errors import InvalidId
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo import DESCENDING
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
+
+from common import parse_object_id
 
 MAX_DOCUMENT_TITLE_CHARS = 200
 MAX_DOCUMENT_CONTENT_CHARS = 1_000_000
@@ -25,13 +25,6 @@ class DocumentPinRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pinned: bool
-
-
-def document_id(value: str) -> ObjectId | JSONResponse:
-    try:
-        return ObjectId(value)
-    except InvalidId:
-        return JSONResponse(status_code=400, content={"error": "文档 ID 无效"})
 
 
 def document_response(document: dict[str, Any], include_content: bool = True) -> dict[str, Any]:
@@ -76,7 +69,7 @@ def create_documents_router(documents: Collection) -> APIRouter:
 
     @router.get("/{document_id_value}")
     def get_document(document_id_value: str):
-        object_id = document_id(document_id_value)
+        object_id = parse_object_id(document_id_value, "文档 ID 无效")
         if isinstance(object_id, JSONResponse):
             return object_id
         try:
@@ -89,7 +82,7 @@ def create_documents_router(documents: Collection) -> APIRouter:
 
     @router.put("/{document_id_value}")
     def update_document(document_id_value: str, payload: DocumentRequest):
-        object_id = document_id(document_id_value)
+        object_id = parse_object_id(document_id_value, "文档 ID 无效")
         if isinstance(object_id, JSONResponse):
             return object_id
         title = payload.title.strip()
@@ -110,7 +103,7 @@ def create_documents_router(documents: Collection) -> APIRouter:
 
     @router.patch("/{document_id_value}/pin")
     def update_document_pin(document_id_value: str, payload: DocumentPinRequest):
-        object_id = document_id(document_id_value)
+        object_id = parse_object_id(document_id_value, "文档 ID 无效")
         if isinstance(object_id, JSONResponse):
             return object_id
         try:
@@ -127,7 +120,7 @@ def create_documents_router(documents: Collection) -> APIRouter:
 
     @router.delete("/{document_id_value}")
     def delete_document(document_id_value: str):
-        object_id = document_id(document_id_value)
+        object_id = parse_object_id(document_id_value, "文档 ID 无效")
         if isinstance(object_id, JSONResponse):
             return object_id
         try:
