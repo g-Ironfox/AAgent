@@ -188,7 +188,7 @@ export function loadSnapshot(saved) {
           : from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool' && from.type !== 'tool_call'
           ? from.branches.some((branch) => branch.id === connection.fromPortId)
           : connection.fromPortId === 'control-out')
-        : (from.type === 'input' && connection.type === 'content' && connection.fromPortId === 'content-out')
+        : (from.type === 'input' && connection.type === 'content' && ['content-out', 'source'].includes(connection.fromPortId))
           || (from.type === 'construct_message' && connection.type === 'message' && connection.fromPortId === 'message-out')
           || (from.type === 'construct_content' && connection.type === 'content' && connection.fromPortId === 'content-out')
           || (['llm', 'tool'].includes(from.type) && connection.type === 'content' && connection.fromPortId === 'output')

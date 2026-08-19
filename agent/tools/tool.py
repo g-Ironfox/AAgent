@@ -2,10 +2,9 @@ import json
 import os
 from itertools import cycle
 
-
 import requests
 
-from queue_client import redis_register_tool, redis_reset_tools
+from queue_client import redis_register_tool, redis_reset_tools,publish_to_queue,MAIN_AGENT_QUEUE_NAME
 
 DEEPSEEK_BASE_URL = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
 DEEPSEEK_API_KEY = os.environ["DEEPSEEK_API_KEY"]
@@ -114,6 +113,25 @@ def tavily_search(keyword):
             print(f"Tavily 请求失败，切换下一个 Key: {e}")
 
     return []
+
+@tool(
+    "输出到终端",
+    {
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "要输出到终端的内容"}
+        },
+        "required": ["content"]
+    }
+)
+def output_to_terminal(content):
+    e={
+        "event_type":"response",
+        "payload":{
+            "message":content
+        }
+    }
+    publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
 
 def bocha_search(keyword):
     url = f"{BOCHA_BASE_URL.rstrip('/')}/v1/web-search"

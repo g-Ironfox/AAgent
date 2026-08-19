@@ -257,7 +257,7 @@ def _data_ports(
 ) -> tuple[dict[str, list[Any] | None], dict[str, list[list[Any]]]]:
     node_type = node.get("type")
     if node_type == "input":
-        return data_inputs, {"content-out": []}
+        return data_inputs, {"content-out": [], "source": []}
     if node_type == "router":
         data_inputs.setdefault("content-in", None)
         return data_inputs, {}

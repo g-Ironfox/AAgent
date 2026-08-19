@@ -11,6 +11,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       return [
         { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
         { id: 'content-out', direction: 'output', type: 'content', label: '输入内容', title: '输入内容', multiple: true },
+        { id: 'source', direction: 'output', type: 'content', label: '来源', title: '事件来源', multiple: true },
       ];
     }
     if (node.type === 'router') {
@@ -305,7 +306,10 @@ export function createWorkflowView(elements, connections, markChanged) {
     typeField.addEventListener('change', () => {
       node.item_type = typeField.value;
       node.dataInputPorts = node.dataInputPorts.map((_, index) => `${node.item_type}-in-${index}`);
-      state.connections = state.connections.filter((connection) => connection.fromId !== node.id && connection.toId !== node.id);
+      state.connections = state.connections.filter((connection) => (
+        connection.type === 'control'
+        || (connection.fromId !== node.id && connection.toId !== node.id)
+      ));
       markChanged();
       renderNodes();
       renderInspector();
@@ -441,7 +445,9 @@ export function createWorkflowView(elements, connections, markChanged) {
       node.tool = select.value;
       node.parameters = Object.keys(schema?.parameters?.properties || {});
       state.connections = state.connections.filter((connection) => {
-        if (connection.toId === node.id) return false;
+        if (connection.toId === node.id) {
+          return connection.type === 'control' || node.parameters.includes(connection.toPortId);
+        }
         if (connection.fromId === node.id) return ['control-out', 'output'].includes(connection.fromPortId);
         return true;
       });

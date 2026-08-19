@@ -69,7 +69,8 @@ def handle_task(e: dict):
         e={
             "event_type":"workflow",
             "payload":{
-                "content":e.get("payload",{}).get("message","")
+                "content":e.get("payload",{}).get("message",""),
+                "source":"terminal",
             }
         }
         publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
@@ -190,34 +191,7 @@ def handle_task(e: dict):
     def tool_return(e):
         pass
     def response(e):
-        tool_calls=e["payload"].get("tool_calls")
-        
-        if tool_calls:
-            events=[]
-            for i in tool_calls:
-                try:
-                    args=json.loads(i["function"]["arguments"])
-                except (json.JSONDecodeError, TypeError):
-                    events.append({
-                        "event_type":"tool_return",
-                        "payload":{
-                            "id":i['id'],
-                            "tool":i['function']['name'],
-                            "args":i["function"]["arguments"],
-                            "result":"Error: 工具参数 JSON 解析失败",
-                            "success": False,
-                        }
-                    })
-                    continue
-                e={
-                    "event_type":"tool_excute",
-                    "payload":{'id':i['id'],
-                        'tool':i['function']['name'],
-                        "args":args
-                    }
-                }
-                events.append(e)
-            insert_to_queue(MAIN_AGENT_QUEUE_NAME,*events[::-1])
+        pass
 
     def rpc_review(e):
         pass
@@ -284,9 +258,13 @@ def handle_task(e: dict):
             return 
 
         content = e['payload'].get("content")
+        source = e['payload'].get("source")
 
         propagate_workflow_output(
             workflow_map, workflow_map[start], 'content-out', content
+        )
+        propagate_workflow_output(
+            workflow_map, workflow_map[start], 'source', source
         )
 
         publish_workflow_node(
@@ -445,8 +423,11 @@ def handle_task(e: dict):
         has_tool_call, tool_call = read_workflow_input(node, 'tool_call')
         if not has_tool_call:
             return
+        if not isinstance(tool_call, str):
+            raise ValueError(f"tool_call input must be an string: node {node.get('id')}")
+        tool_call = json.loads(tool_call)
         if not isinstance(tool_call, dict):
-            raise ValueError(f"tool_call input must be an object: node {node.get('id')}")
+            raise ValueError(f"tool_call input must be jsunfy: node {node.get('id')}")
 
         tool_call_id = tool_call.get('id')
         function = tool_call.get('function')
