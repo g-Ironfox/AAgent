@@ -14,6 +14,12 @@ export function createWorkflowView(elements, connections, markChanged) {
         { id: 'source', direction: 'output', type: 'content', label: '来源', title: '事件来源', multiple: true },
       ];
     }
+    if (node.type === 'output') {
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+        { id: 'content-in', direction: 'input', type: 'content', label: '输出内容', title: '发布到主代理终端', multiple: false },
+      ];
+    }
     if (node.type === 'router') {
       return [
         { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
@@ -116,7 +122,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const bodyRows = Math.max(inputs.length, outputs.length);
-    const symbol = node.type === 'input' ? 'IN' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'foreach' ? 'FE' : node.type === 'tool_call' ? 'TC' : node.type === 'tool' ? 'T' : 'L';
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'output' ? 'OUT' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'foreach' ? 'FE' : node.type === 'tool_call' ? 'TC' : node.type === 'tool' ? 'T' : 'L';
 
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;

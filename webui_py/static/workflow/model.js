@@ -1,12 +1,13 @@
 const STORAGE_KEY = 'aagent.workflow.draft.v1';
-const NODE_TYPES = new Set(['input', 'router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool', 'tool_call']);
+const NODE_TYPES = new Set(['input', 'output', 'router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool', 'tool_call']);
 let idSequence = 0;
 
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
-  { id: 'router-1', type: 'router', name: '任务路由', branches: [{ id: 'branch-1', name: '分支 1' }, { id: 'branch-2', name: '分支 2' }], x: 310, y: 238 },
+  { id: 'router-1', type: 'router', name: '任务路由', branches: [{ id: 'branch-1', name: '分支 1' }], x: 310, y: 238 },
   { id: 'construct-message-1', type: 'construct_message', name: '构造 Message', role: 'user', x: 568, y: 238 },
   { id: 'llm-1', type: 'llm', name: '主 LLM', model: '', prompt: '完成用户请求，并返回清晰的结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, x: 826, y: 238 },
+  { id: 'output', type: 'output', name: 'Output', x: 1084, y: 238 },
 ];
 
 const initialConnections = [
@@ -16,6 +17,8 @@ const initialConnections = [
   { id: 'content-input-construct-message-1', fromId: 'input', fromPortId: 'content-out', toId: 'construct-message-1', toPortId: 'content-in', type: 'content' },
   { id: 'control-construct-message-1-llm-1', fromId: 'construct-message-1', fromPortId: 'control-out', toId: 'llm-1', toPortId: 'control-in', type: 'control' },
   { id: 'message-construct-message-1-llm-1', fromId: 'construct-message-1', fromPortId: 'message-out', toId: 'llm-1', toPortId: 'message-in-0', type: 'message' },
+  { id: 'control-llm-1-output', fromId: 'llm-1', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
+  { id: 'content-llm-1-output', fromId: 'llm-1', fromPortId: 'output', toId: 'output', toPortId: 'content-in', type: 'content' },
 ];
 
 export const state = {
@@ -51,11 +54,13 @@ function nextNodePosition() {
 }
 
 export function addNode(type) {
-  if (!['router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool', 'tool_call'].includes(type)) return;
+  if (!['output', 'router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool', 'tool_call'].includes(type)) return;
   const number = state.nodes.filter((node) => node.type === type).length + 1;
   const position = nextNodePosition();
   const node = type === 'router'
     ? { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position }
+    : type === 'output'
+      ? { id: createWorkflowId('output'), type, name: `Output ${number}`, ...position }
     : type === 'construct_message'
       ? { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role: 'user', ...position }
     : type === 'construct_content'
@@ -176,6 +181,9 @@ export function loadSnapshot(saved) {
       return [normalized];
     });
     if (!normalizedNodes.some((node) => node.id === 'input' && node.type === 'input')) return false;
+    if (!normalizedNodes.some((node) => node.type === 'output')) {
+      normalizedNodes.push({ id: createWorkflowId('output'), type: 'output', name: 'Output', ...nextNodePosition() });
+    }
     state.nodes = normalizedNodes;
     state.connections = (Array.isArray(saved?.connections) ? saved.connections : initialConnections).filter((connection) => {
       if (!connection || typeof connection.id !== 'string' || !['control', 'content', 'message', 'list-content', 'list-message'].includes(connection.type)) return false;
@@ -208,7 +216,8 @@ export function loadSnapshot(saved) {
           || (to.type === 'tool' && connection.type === 'content' && to.parameters.includes(connection.toPortId))
           || (to.type === 'tool_call' && connection.type === 'content' && connection.toPortId === 'tool_call')
           || (to.type === 'construct_list' && connection.type === to.item_type && to.dataInputPorts.includes(connection.toPortId))
-          || (to.type === 'foreach' && connection.type === `list-${to.item_type}` && connection.toPortId === 'list-in');
+          || (to.type === 'foreach' && connection.type === `list-${to.item_type}` && connection.toPortId === 'list-in')
+          || (to.type === 'output' && connection.type === 'content' && connection.toPortId === 'content-in');
       return validFromPort && validToPort;
     });
     state.selectedId = 'input';

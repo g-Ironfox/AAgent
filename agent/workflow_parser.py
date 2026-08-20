@@ -31,6 +31,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
 
     node_indexes: dict[str, int] = {}
     linked_nodes: list[dict[str, Any]] = []
+    output_count = 0
     for index, node in enumerate(nodes):
         if not isinstance(node, dict):
             raise WorkflowParseError(f"nodes[{index}] must be an object")
@@ -41,6 +42,8 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
             raise WorkflowParseError(f"duplicate node id: {node_id}")
 
         node_indexes[node_id] = index
+        if node.get("type") == "output":
+            output_count += 1
         parsed_node = {
             key: value
             for key, value in node.items()
@@ -66,6 +69,9 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
                 "data_outputs": data_outputs,
             }
         )
+
+    if output_count == 0:
+        raise WorkflowParseError("workflow must contain at least one output node")
 
     for index, connection in enumerate(connections):
         if not isinstance(connection, dict):
@@ -172,6 +178,19 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
                 f"connections[{index}].type must be a supported control or data type"
             )
 
+    for node in linked_nodes:
+        required_inputs, required_outputs = _required_control_ports(node)
+        missing_inputs = required_inputs - set(node["control_inputs"])
+        missing_outputs = required_outputs - set(node["control_outputs"])
+        if missing_inputs or missing_outputs:
+            missing = [
+                *(f"input:{port_id}" for port_id in sorted(missing_inputs)),
+                *(f"output:{port_id}" for port_id in sorted(missing_outputs)),
+            ]
+            raise WorkflowParseError(
+                f"control ports must be connected: node {node.get('id')}, ports {', '.join(missing)}"
+            )
+
     return linked_nodes
 
 
@@ -187,6 +206,23 @@ def _port_id(connection: dict[str, Any], index: int, field: str) -> str:
 def _append_unique(items: list[int], value: int) -> None:
     if value not in items:
         items.append(value)
+
+
+def _required_control_ports(node: dict[str, Any]) -> tuple[set[str], set[str]]:
+    node_type = node.get("type")
+    if node_type == "input":
+        return set(), {"control-out"}
+    if node_type == "output":
+        return {"control-in"}, set()
+    if node_type == "router":
+        return {"control-in"}, {
+            branch["id"]
+            for branch in node.get("branches", [])
+            if isinstance(branch, dict) and isinstance(branch.get("id"), str)
+        }
+    if node_type == "foreach":
+        return {"control-in", "loop-in"}, {"control-out", "loop-out"}
+    return {"control-in"}, {"control-out"}
 
 
 def _validate_control_ports(
@@ -205,14 +241,18 @@ def _validate_control_ports(
         }
     elif source_type == "foreach":
         valid_outputs = {"control-out", "loop-out"}
+    elif source_type == "output":
+        valid_outputs = set()
     else:
         valid_outputs = {"control-out"}
 
-    valid_inputs = (
-        {"control-in", "loop-in"}
-        if target_node.get("type") == "foreach"
-        else {"control-in"}
-    )
+    target_type = target_node.get("type")
+    if target_type == "input":
+        valid_inputs = set()
+    elif target_type == "foreach":
+        valid_inputs = {"control-in", "loop-in"}
+    else:
+        valid_inputs = {"control-in"}
     if from_port not in valid_outputs:
         raise WorkflowParseError(
             f"connections[{connection_index}].fromPortId is invalid for {source_type}: {from_port}"
@@ -258,6 +298,9 @@ def _data_ports(
     node_type = node.get("type")
     if node_type == "input":
         return data_inputs, {"content-out": [], "source": []}
+    if node_type == "output":
+        data_inputs.setdefault("content-in", None)
+        return data_inputs, {}
     if node_type == "router":
         data_inputs.setdefault("content-in", None)
         return data_inputs, {}

@@ -25,6 +25,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .library-item small { color:var(--muted); font-size:9px; line-height:1.35; }
 .node-symbol { width:34px; height:34px; display:grid; place-items:center; color:#fff; font:700 10px Consolas,monospace; }
 .input-symbol { background:var(--ink); }
+.output-symbol { background:#7a3e88; }
 .router-symbol { background:var(--amber); }
 .llm-symbol { background:var(--blue); }
 .construct_message-symbol { background:#b75b18; }

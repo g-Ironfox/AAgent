@@ -346,6 +346,18 @@ def handle_task(e: dict):
         propagate_workflow_output(workflow_map, node, 'content-out', ''.join(parts))
         publish_workflow_control_output(workflow_map, node)
 
+    def workflow_output(e):
+        current_id = e['payload']['current_id']
+        workflow_map = e['payload']['workflow_map']
+        node = workflow_map[current_id]
+        has_content, content = read_workflow_input(node, 'content-in')
+        if not has_content:
+            return
+        publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
+            "event_type": "response",
+            "payload": {"content": content},
+        })
+
     def workflow_construct_list(e):
         current_id = e['payload']['current_id']
         workflow_map = e['payload']['workflow_map']
@@ -466,6 +478,7 @@ def handle_task(e: dict):
         "workflow_llm":workflow_llm,
         "workflow_construct_message":workflow_construct_message,
         "workflow_construct_content":workflow_construct_content,
+        "workflow_output":workflow_output,
         "workflow_construct_list":workflow_construct_list,
         "workflow_foreach":workflow_foreach,
         "workflow_router":workflow_router,

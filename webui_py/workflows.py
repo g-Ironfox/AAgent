@@ -95,11 +95,13 @@ def create_workflows_router(
                 return JSONResponse(status_code=400, content={"error": "连接引用了不存在的节点"})
 
         valid_node_types = {
-            "input", "router", "construct_message", "construct_content", "construct_list",
+            "input", "output", "router", "construct_message", "construct_content", "construct_list",
             "foreach", "llm", "tool", "tool_call",
         }
         if any(node.get("type") not in valid_node_types for node in payload.nodes):
             return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})
+        if not any(node.get("type") == "output" for node in payload.nodes):
+            return JSONResponse(status_code=400, content={"error": "Workflow 必须至少包含一个 Output 节点"})
 
         tool_nodes = [node for node in payload.nodes if node.get("type") == "tool"]
         if tool_nodes:
