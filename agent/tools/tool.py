@@ -128,7 +128,7 @@ def output_to_terminal(content):
     e={
         "event_type":"response",
         "payload":{
-            "message":content
+            "content":content
         }
     }
     publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)

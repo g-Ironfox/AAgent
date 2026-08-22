@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 from workflow_parser import _read_workflow,parse_workflow
+from workflow_validator import validate_workflow
 
 import tools.qq
 import tools.bilibili
@@ -61,7 +62,8 @@ def handle_task(e: dict):
                 e={
                     "event_type":"workflow",
                     "payload":{
-                        "content":raw_message
+                        "content":raw_message,
+                        "source":"qq",
                     }
                 }
                 publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
@@ -248,7 +250,9 @@ def handle_task(e: dict):
         )
 
     def workflow(e):
-        workflow_map = parse_workflow(_read_workflow("main"))
+        workflow_document = _read_workflow("main")
+        validate_workflow(workflow_document)
+        workflow_map = parse_workflow(workflow_document)
         start = -1
         for i in range(len(workflow_map)):
             if workflow_map[i]["id"]=="input":

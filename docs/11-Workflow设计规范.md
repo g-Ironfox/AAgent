@@ -303,6 +303,12 @@ Input 是 Workflow 的固定入口节点。
     direction: 'output',
     type: 'content',
     label: '输入内容'
+  },
+  {
+    id: 'source',
+    direction: 'output',
+    type: 'content',
+    label: '来源'
   }
 ]
 ```

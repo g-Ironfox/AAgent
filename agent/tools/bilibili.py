@@ -1,4 +1,4 @@
-import os,hashlib
+import os,hashlib,base64
 from pathlib import Path
 from tools.tool import tool
 
@@ -145,6 +145,55 @@ def asr(filename):
     text = response.json().get("text", "")
     return text.replace("language Chinese<asr_text>","").replace("language None<asr_text>","")
 
+def qwen3asr(filename):
+    API_KEY = os.getenv("DASHSCOPE_API_KEY", "your-api-key-here")
+
+    url = "https://llm-ixv881gb6xp6wlu9.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+
+    with open(filename, "rb") as audio_file:
+        audio_bytes = audio_file.read()
+        base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+
+    # 构造 Data URL（根据实际音频格式调整 MIME 类型）
+    # WAV 格式: data:audio/wav;base64,{base64_audio}
+    # MP3 格式: data:audio/mpeg;base64,{base64_audio}
+    data_url = f"data:audio/wav;base64,{base64_audio}"
+
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+        "X-DashScope-SSE": "disable"
+    }
+
+    payload = {
+        "model": "qwen-audio-3.0-asr-flash",
+        "input": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": data_url
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "parameters": {
+            "format": "wav",
+            "sample_rate": "16000"
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=payload,timeout=(10,240))
+    response.raise_for_status()
+    return response.json()["text"]
+
+
+
 @tool(
     "获取b站视频音频转写文本",
     {
@@ -156,7 +205,7 @@ def asr(filename):
     }
 )
 def gain_content_from_bvid(bvid):
-    return asr(download_bvid(bvid))
+    return qwen3asr(download_bvid(bvid))
 
 
 @tool(
