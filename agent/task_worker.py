@@ -261,15 +261,20 @@ def handle_task(e: dict):
         if start == -1:
             return 
 
-        content = e['payload'].get("content")
-        source = e['payload'].get("source")
-
-        propagate_workflow_output(
-            workflow_map, workflow_map[start], 'content-out', content
-        )
-        propagate_workflow_output(
-            workflow_map, workflow_map[start], 'source', source
-        )
+        input_node = workflow_map[start]
+        workflow_ports = input_node.get('workflowPorts', [])
+        if 'workflowPorts' in input_node:
+            for port in workflow_ports:
+                propagate_workflow_output(
+                    workflow_map, input_node, port['id'], e['payload'].get(port['name'])
+                )
+        else:
+            propagate_workflow_output(
+                workflow_map, input_node, 'content-out', e['payload'].get("content")
+            )
+            propagate_workflow_output(
+                workflow_map, input_node, 'source', e['payload'].get("source")
+            )
 
         publish_workflow_node(
             workflow_map,
@@ -354,9 +359,20 @@ def handle_task(e: dict):
         current_id = e['payload']['current_id']
         workflow_map = e['payload']['workflow_map']
         node = workflow_map[current_id]
-        has_content, content = read_workflow_input(node, 'content-in')
-        if not has_content:
-            return
+        workflow_ports = node.get('workflowPorts', [])
+        if 'workflowPorts' in node:
+            output = {}
+            for port in workflow_ports:
+                has_value, value = read_workflow_input(node, port['id'])
+                if has_value:
+                    output[port['name']] = value
+            if not output:
+                return
+            content = output.get('content', output)
+        else:
+            has_content, content = read_workflow_input(node, 'content-in')
+            if not has_content:
+                return
         publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
             "event_type": "response",
             "payload": {"content": content},

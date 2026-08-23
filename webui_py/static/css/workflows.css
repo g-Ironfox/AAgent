@@ -1,0 +1,90 @@
+.workflow-management-main { padding:18px 0; }
+.workflow-management-state { min-width:112px; padding-left:14px; display:flex; flex-direction:column; gap:4px; border-left:2px solid var(--green); }
+.workflow-management-state span { color:var(--muted); font-size:9px; }
+.workflow-management-state strong { font-size:12px; }
+.workflow-management-workspace { flex:1; min-height:0; display:grid; grid-template-columns:minmax(250px,330px) minmax(0,1fr); border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
+.workflow-management-sidebar { min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr); border-right:1px solid var(--line); background:#fafbf9; }
+.workflow-management-heading,.configuration-heading { min-height:82px; padding:15px 20px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line); }
+.workflow-management-heading { background:linear-gradient(90deg,#edf5f0 0,#fff 100%); }
+.workflow-management-heading p,.configuration-title p { margin:0 0 5px; color:var(--green); font:700 9px Consolas,monospace; }
+.workflow-management-heading h1,.configuration-title h2 { margin:0; font:700 23px Georgia,"Microsoft YaHei",serif; letter-spacing:0; }
+.workflow-library-actions,.configuration-actions { display:flex; align-items:center; gap:7px; }
+.refresh-button { height:32px; padding:0 11px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:10px; }
+.refresh-button:hover { color:var(--green); border-color:var(--green); }
+.refresh-button:disabled,.create-workflow-button:disabled { cursor:wait; opacity:.5; }
+.create-workflow-button { width:32px; height:32px; padding:0; color:#fff; border:1px solid var(--ink); background:var(--ink); font-size:23px; line-height:1; }
+.create-workflow-button:hover { border-color:var(--green); background:var(--green); }
+.workflow-management-list { min-height:0; overflow:auto; }
+.workflow-management-item { width:100%; min-height:78px; padding:12px 16px; display:grid; gap:5px; text-align:left; color:var(--ink); border:0; border-bottom:1px solid #e7ebe7; background:transparent; }
+.workflow-management-item:hover { background:#f0f5f1; }
+.workflow-management-item.active { background:var(--green-soft); box-shadow:inset 3px 0 var(--green); }
+.workflow-management-item strong { font-size:12px; overflow-wrap:anywhere; }
+.workflow-management-item code { width:max-content; max-width:100%; padding:1px 4px; overflow:hidden; color:var(--green); font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
+.workflow-management-item small,.workflow-list-empty { color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+.workflow-list-empty { margin:20px 16px; }
+.workflow-configuration { min-width:0; min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr); }
+.configuration-heading { background:#fff; }
+.configuration-title { min-width:0; }
+.configuration-title h2 { overflow-wrap:anywhere; }
+.configuration-title span { display:block; margin-top:5px; color:var(--muted); font:10px Consolas,monospace; overflow-wrap:anywhere; }
+.edit-workflow-link { min-height:34px; padding:0 15px; display:flex; align-items:center; flex:0 0 auto; color:#fff; border:1px solid var(--ink); background:var(--ink); text-decoration:none; font-size:11px; }
+.edit-workflow-link:hover { border-color:var(--green); background:var(--green); }
+.rename-workflow-button,.delete-workflow-button { height:34px; padding:0 12px; background:#fff; font-size:10px; }
+.rename-workflow-button { color:var(--ink); border:1px solid var(--line); }
+.rename-workflow-button:hover { border-color:var(--ink); }
+.delete-workflow-button { color:var(--red); border:1px solid #dfb8b4; }
+.delete-workflow-button:hover { color:#fff; border-color:var(--red); background:var(--red); }
+.rename-workflow-button:disabled,.delete-workflow-button:disabled { cursor:wait; opacity:.5; }
+.configuration-content { position:relative; min-height:0; padding:24px; overflow:auto; background-color:#fafbf9; background-image:linear-gradient(rgba(23,32,29,.035) 1px,transparent 1px); background-size:100% 28px; }
+.configuration-empty { position:absolute; inset:0; display:grid; place-content:center; color:var(--muted); }
+.configuration-empty[hidden] { display:none; }
+.configuration-empty strong { font:700 19px Georgia,"Microsoft YaHei",serif; letter-spacing:0; }
+.workflow-metadata { width:min(980px,100%); border:1px solid var(--line); background:rgba(255,255,255,.96); }
+.workflow-metadata[hidden] { display:none; }
+.metadata-heading { min-height:66px; padding:12px 15px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line); }
+.metadata-heading p { margin:0 0 4px; color:var(--green); font:700 9px Consolas,monospace; }
+.metadata-heading h3 { margin:0; font:700 17px Georgia,"Microsoft YaHei",serif; letter-spacing:0; }
+.metadata-save-state { display:flex; align-items:center; gap:10px; }
+.metadata-save-state span { color:var(--muted); font-size:10px; }
+.metadata-save-state button { height:34px; padding:0 14px; color:#fff; border:1px solid var(--green); background:var(--green); font-size:10px; }
+.metadata-save-state button:disabled { cursor:wait; opacity:.5; }
+.metadata-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.metadata-port-section + .metadata-port-section { border-left:1px solid var(--line); }
+.metadata-port-section > header { min-height:54px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fafbf9; }
+.metadata-port-section > header div { display:flex; align-items:center; gap:9px; }
+.metadata-port-section h4 { margin:0; font:700 13px Consolas,monospace; }
+.metadata-port-mark { min-width:30px; padding:3px 5px; color:#fff; text-align:center; font:700 8px Consolas,monospace; }
+.metadata-port-mark.input { background:#277da1; }
+.metadata-port-mark.output { background:#d26938; }
+.metadata-port-section > header button { width:30px; height:30px; padding:0; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:20px; line-height:1; }
+.metadata-port-section > header button:hover { color:#fff; border-color:var(--green); background:var(--green); }
+.metadata-port-list { min-height:74px; }
+.metadata-port-empty { margin:0; padding:26px 14px; color:var(--muted); text-align:center; font-size:10px; }
+.metadata-port-row { padding:12px 14px; display:grid; gap:9px; border-bottom:1px solid #e7ebe7; }
+.metadata-port-row:last-child { border-bottom:0; }
+.metadata-port-primary { display:grid; grid-template-columns:minmax(90px,1fr) minmax(112px,.8fr) 28px; align-items:end; gap:7px; }
+.metadata-port-row label { display:grid; gap:5px; color:var(--muted); font-size:9px; }
+.metadata-port-row input[type="text"],.metadata-port-row input:not([type]),.metadata-port-row select { width:100%; height:32px; min-width:0; padding:0 8px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:10px; }
+.metadata-remove-port { width:28px; height:32px; padding:0; color:var(--red); border:1px solid #dfb8b4; background:#fff; font-size:17px; }
+.metadata-remove-port:hover { color:#fff; border-color:var(--red); background:var(--red); }
+.metadata-description input { width:100%; height:32px; padding:0 8px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:10px; }
+.workflow-dialog { width:min(440px,calc(100% - 28px)); padding:0; color:var(--ink); border:1px solid var(--line); border-radius:4px; background:var(--surface); box-shadow:0 22px 60px rgba(23,32,29,.2); }
+.workflow-dialog::backdrop { background:rgba(23,32,29,.42); }
+.workflow-dialog form { display:grid; }
+.workflow-dialog header { min-height:76px; padding:15px 18px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fafbf9; }
+.workflow-dialog header p { margin:0 0 4px; color:var(--green); font:700 9px Consolas,monospace; }
+.workflow-dialog header h2 { margin:0; font:700 20px Georgia,"Microsoft YaHei",serif; letter-spacing:0; }
+.dialog-close { width:32px; height:32px; padding:0; color:var(--muted); border:0; background:transparent; font-size:22px; }
+.dialog-close:hover { color:var(--ink); background:#edf0ed; }
+.dialog-fields { padding:20px 18px; display:grid; gap:16px; }
+.dialog-fields label { display:grid; gap:7px; color:var(--muted); font-size:10px; }
+.dialog-fields input { width:100%; height:38px; padding:0 10px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:12px; }
+.dialog-fields label small,.dialog-key { margin:0; color:var(--muted); font:9px Consolas,"Microsoft YaHei",monospace; }
+.dialog-error { min-height:14px; margin:0; color:var(--red); font-size:10px; }
+.workflow-dialog footer { min-height:62px; padding:12px 18px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--line); }
+.dialog-cancel,.dialog-submit { height:34px; padding:0 15px; font-size:11px; }
+.dialog-cancel { color:var(--ink); border:1px solid var(--line); background:#fff; }
+.dialog-submit { color:#fff; border:1px solid var(--green); background:var(--green); }
+.dialog-submit:disabled { cursor:wait; opacity:.55; }
+@media (max-width:1100px) { .workflow-management-workspace { grid-template-columns:270px minmax(0,1fr); } .metadata-columns { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section { border-top:1px solid var(--line); border-left:0; } }
+@media (max-width:700px) { .workflow-management-main { width:100%; padding:0; } .workflow-management-state { min-width:0; padding-left:10px; } .workflow-management-state span { display:none; } .workflow-management-workspace { grid-template-columns:1fr; overflow:auto; border-width:0; } .workflow-management-sidebar { min-height:240px; max-height:310px; border-right:0; border-bottom:1px solid var(--line); } .workflow-management-heading,.configuration-heading { min-height:70px; padding:11px 14px; } .workflow-management-heading h1,.configuration-title h2 { font-size:20px; } .configuration-heading { align-items:flex-start; flex-direction:column; } .configuration-actions { width:100%; flex-wrap:wrap; } .configuration-content { min-height:320px; padding:16px 14px; } .edit-workflow-link { padding:0 10px; } .metadata-heading { align-items:flex-start; flex-direction:column; } .metadata-save-state { width:100%; justify-content:space-between; } .metadata-port-primary { grid-template-columns:minmax(0,1fr) minmax(110px,.8fr) 28px; } }

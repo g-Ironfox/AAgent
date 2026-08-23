@@ -4,8 +4,7 @@
 就目前的大换血而言,这套架构的可扩展性非常强    
 
 TODO:
-- workflow 解析json
-- workflow 列表组件
+- bug workflow初始元数据input与output应为空,对应的初始工作流的input与output control-flow以外也应无port
 
 ## 快速启动
 0. QQ需配置NapNeko/NapCatQQ!

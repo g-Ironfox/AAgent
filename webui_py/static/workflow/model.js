@@ -87,16 +87,20 @@ export function deleteNode(id) {
   state.selectedId = state.nodes[0].id;
 }
 
-export function saveDraft() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(workflowSnapshot()));
+function draftStorageKey(workflowKey) {
+  return workflowKey ? `${STORAGE_KEY}.${workflowKey}` : STORAGE_KEY;
+}
+
+export function saveDraft(workflowKey = '') {
+  localStorage.setItem(draftStorageKey(workflowKey), JSON.stringify(workflowSnapshot()));
 }
 
 export function workflowSnapshot() {
   return structuredClone({ version: 1, nodes: state.nodes, connections: state.connections });
 }
 
-export function resetDraft() {
-  localStorage.removeItem(STORAGE_KEY);
+export function resetDraft(workflowKey = '') {
+  localStorage.removeItem(draftStorageKey(workflowKey));
   state.nodes = structuredClone(initialNodes);
   state.connections = structuredClone(initialConnections);
   state.selectedId = 'input';
@@ -118,6 +122,20 @@ export function loadSnapshot(saved) {
         x: Number.isFinite(node.x) ? Math.max(12, node.x) : 52,
         y: Number.isFinite(node.y) ? Math.max(12, node.y) : 72,
       };
+      if ((node.type === 'input' || node.type === 'output') && Object.hasOwn(node, 'workflowPorts')) {
+        const portIds = new Set();
+        normalized.workflowPorts = (Array.isArray(node.workflowPorts) ? node.workflowPorts : []).flatMap((port) => {
+          if (!port || typeof port.id !== 'string' || !port.id.startsWith('workflow:') || portIds.has(port.id)) return [];
+          if (!['content', 'message', 'list-content', 'list-message'].includes(port.type)) return [];
+          portIds.add(port.id);
+          return [{
+            id: port.id,
+            name: typeof port.name === 'string' ? port.name.slice(0, 80) : port.id.slice(9),
+            type: port.type,
+            description: typeof port.description === 'string' ? port.description.slice(0, 300) : '',
+          }];
+        });
+      }
       if (node.type === 'router') {
         const branchIds = new Set();
         normalized.branches = (Array.isArray(node.branches) ? node.branches : []).flatMap((branch) => {
@@ -196,7 +214,10 @@ export function loadSnapshot(saved) {
           : from.type !== 'input' && from.type !== 'construct_message' && from.type !== 'construct_content' && from.type !== 'construct_list' && from.type !== 'llm' && from.type !== 'tool' && from.type !== 'tool_call'
           ? from.branches.some((branch) => branch.id === connection.fromPortId)
           : connection.fromPortId === 'control-out')
-        : (from.type === 'input' && connection.type === 'content' && ['content-out', 'source'].includes(connection.fromPortId))
+        : (from.type === 'input' && (
+          (connection.type === 'content' && ['content-out', 'source'].includes(connection.fromPortId))
+          || (from.workflowPorts || []).some((port) => port.id === connection.fromPortId && port.type === connection.type)
+        ))
           || (from.type === 'construct_message' && connection.type === 'message' && connection.fromPortId === 'message-out')
           || (from.type === 'construct_content' && connection.type === 'content' && connection.fromPortId === 'content-out')
           || (['llm', 'tool'].includes(from.type) && connection.type === 'content' && connection.fromPortId === 'output')
@@ -217,7 +238,10 @@ export function loadSnapshot(saved) {
           || (to.type === 'tool_call' && connection.type === 'content' && connection.toPortId === 'tool_call')
           || (to.type === 'construct_list' && connection.type === to.item_type && to.dataInputPorts.includes(connection.toPortId))
           || (to.type === 'foreach' && connection.type === `list-${to.item_type}` && connection.toPortId === 'list-in')
-          || (to.type === 'output' && connection.type === 'content' && connection.toPortId === 'content-in');
+          || (to.type === 'output' && (
+            (connection.type === 'content' && connection.toPortId === 'content-in')
+            || (to.workflowPorts || []).some((port) => port.id === connection.toPortId && port.type === connection.type)
+          ));
       return validFromPort && validToPort;
     });
     state.selectedId = 'input';
@@ -229,9 +253,9 @@ export function loadSnapshot(saved) {
   }
 }
 
-export function loadDraft() {
+export function loadDraft(workflowKey = '') {
   try {
-    return loadSnapshot(JSON.parse(localStorage.getItem(STORAGE_KEY)));
+    return loadSnapshot(JSON.parse(localStorage.getItem(draftStorageKey(workflowKey))));
   } catch (error) {
     console.warn('Workflow 草稿读取失败', error);
     return false;

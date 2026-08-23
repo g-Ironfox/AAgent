@@ -1,4 +1,4 @@
-import { fetchModels, fetchTools, uploadWorkflow } from './api.js';
+import { fetchModels, fetchTools, fetchWorkflow, fetchWorkflows, uploadWorkflow } from './api.js';
 import { addNode, loadDraft, loadSnapshot, resetDraft, saveDraft, workflowSnapshot } from './workflow/model.js';
 import { createConnectionController } from './workflow/connections.js';
 import { createWorkflowView } from './workflow/view.js';
@@ -12,6 +12,7 @@ const elements = {
   inspectorContent: document.querySelector('#inspectorContent'),
   nodeCount: document.querySelector('#nodeCount'),
   connectionCount: document.querySelector('#connectionCount'),
+  workflowSelect: document.querySelector('#workflowSelect'),
   workflowState: document.querySelector('#workflowState'),
   saveButton: document.querySelector('#saveButton'),
   uploadButton: document.querySelector('#uploadButton'),
@@ -21,6 +22,7 @@ const elements = {
   exportButton: document.querySelector('#exportButton'),
 };
 let hasUnsavedChanges = false;
+let currentWorkflow = null;
 
 function markChanged() {
   hasUnsavedChanges = true;
@@ -37,6 +39,72 @@ function markSaved(message) {
 const connections = createConnectionController(elements, markChanged);
 const view = createWorkflowView(elements, connections, markChanged);
 connections.bindCanvasPan();
+
+function renderWorkflow() {
+  view.renderNodes();
+  view.renderInspector();
+  connections.renderConnections();
+}
+
+async function selectWorkflow(workflowKey, confirmChange = true) {
+  if (!workflowKey || workflowKey === currentWorkflow?.key) return;
+  if (confirmChange && hasUnsavedChanges && !window.confirm('当前 Workflow 有未保存修改，确定切换吗？')) {
+    elements.workflowSelect.value = currentWorkflow?.key || '';
+    return;
+  }
+
+  const previousWorkflow = currentWorkflow;
+  elements.workflowSelect.disabled = true;
+  elements.workflowState.textContent = '读取中';
+  elements.workflowState.classList.remove('saved');
+  try {
+    const workflow = await fetchWorkflow(workflowKey);
+    const loadedDraft = loadDraft(workflow.key);
+    if (!loadedDraft && !loadSnapshot(workflow)) throw new Error('Workflow 数据无效');
+    currentWorkflow = workflow;
+    elements.workflowSelect.value = workflow.key;
+    window.history.replaceState(null, '', `/workflow_edit.html?key=${encodeURIComponent(workflow.key)}`);
+    markSaved(loadedDraft ? '已载入草稿' : '已载入');
+    renderWorkflow();
+  } catch (error) {
+    elements.workflowSelect.value = previousWorkflow?.key || '';
+    elements.workflowState.textContent = error.name === 'AbortError' ? '读取超时' : (error.message || '读取失败');
+    elements.workflowState.classList.remove('saved');
+  } finally {
+    elements.workflowSelect.disabled = false;
+  }
+}
+
+async function initializeWorkflowSelector() {
+  elements.workflowSelect.disabled = true;
+  try {
+    const response = await fetchWorkflows();
+    elements.workflowSelect.replaceChildren();
+    if (!response.items.length) {
+      const option = document.createElement('option');
+      option.textContent = '暂无 Workflow';
+      option.value = '';
+      elements.workflowSelect.append(option);
+      elements.workflowState.textContent = '暂无 Workflow';
+      return;
+    }
+    for (const workflow of response.items) {
+      const option = document.createElement('option');
+      option.value = workflow.key;
+      option.textContent = workflow.name ? `${workflow.name} (${workflow.key})` : workflow.key;
+      elements.workflowSelect.append(option);
+    }
+    const requestedKey = new URLSearchParams(window.location.search).get('key');
+    const initialKey = response.items.some((workflow) => workflow.key === requestedKey)
+      ? requestedKey
+      : response.items[0].key;
+    await selectWorkflow(initialKey, false);
+  } catch (error) {
+    elements.workflowState.textContent = error.name === 'AbortError' ? '列表超时' : (error.message || '列表读取失败');
+  } finally {
+    elements.workflowSelect.disabled = elements.workflowSelect.options.length === 0 || !elements.workflowSelect.value;
+  }
+}
 
 fetchModels()
   .then((response) => view.setModels(response.items))
@@ -56,7 +124,8 @@ for (const button of document.querySelectorAll('[data-add-node]')) {
 }
 
 elements.saveButton.addEventListener('click', () => {
-  saveDraft();
+  if (!currentWorkflow) return;
+  saveDraft(currentWorkflow.key);
   markSaved('已存浏览器');
 });
 
@@ -64,8 +133,14 @@ elements.uploadButton.addEventListener('click', async () => {
   elements.uploadButton.disabled = true;
   elements.uploadButton.textContent = '上传中';
   try {
-    saveDraft();
-    await uploadWorkflow('main', { name: 'Agent 主控制流', ...workflowSnapshot() });
+    if (!currentWorkflow) throw new Error('请先选择 Workflow');
+    saveDraft(currentWorkflow.key);
+    const uploaded = await uploadWorkflow(currentWorkflow.key, {
+      ...workflowSnapshot(),
+      name: currentWorkflow.name,
+      version: currentWorkflow.version,
+    });
+    currentWorkflow = uploaded;
     markSaved('已上传');
   } catch (error) {
     elements.workflowState.textContent = error.message || '上传失败';
@@ -78,10 +153,9 @@ elements.uploadButton.addEventListener('click', async () => {
 
 elements.resetButton.addEventListener('click', () => {
   if (!window.confirm('重置会删除已保存的本地草稿，确定继续吗？')) return;
-  resetDraft();
+  resetDraft(currentWorkflow?.key || '');
   markChanged();
-  view.renderNodes();
-  view.renderInspector();
+  renderWorkflow();
 });
 
 elements.importButton.addEventListener('click', () => {
@@ -111,7 +185,7 @@ elements.exportButton.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `aagent-workflow-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `aagent-workflow-${currentWorkflow?.key || 'draft'}-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
 });
@@ -134,6 +208,6 @@ for (const link of document.querySelectorAll('.page-nav a, .brand')) {
 
 window.addEventListener('resize', connections.renderConnections);
 
-if (loadDraft()) markSaved('已载入草稿');
-view.renderNodes();
-view.renderInspector();
+elements.workflowSelect.addEventListener('change', () => selectWorkflow(elements.workflowSelect.value));
+renderWorkflow();
+initializeWorkflowSelector();

@@ -117,6 +117,9 @@ def _validate_node(node: Any, index: int) -> None:
         raise WorkflowValidationError(f"unsupported node type: {node_type}")
     _validate_declared_data_inputs(node, index)
 
+    if node_type in {"input", "output"}:
+        _validate_workflow_ports(node, index)
+
     if node_type == "router":
         branches = node.get("branches")
         if not isinstance(branches, list) or not branches:
@@ -164,6 +167,37 @@ def _validate_declared_data_inputs(node: dict[str, Any], index: int) -> None:
         raise WorkflowValidationError(
             f"nodes[{index}].dataInputPorts contains duplicate ports"
         )
+
+
+def _validate_workflow_ports(node: dict[str, Any], index: int) -> None:
+    ports = node.get("workflowPorts", [])
+    if not isinstance(ports, list):
+        raise WorkflowValidationError(f"nodes[{index}].workflowPorts must be a list")
+    port_ids = []
+    port_names = []
+    for port_index, port in enumerate(ports):
+        if not isinstance(port, dict):
+            raise WorkflowValidationError(
+                f"nodes[{index}].workflowPorts[{port_index}] must be an object"
+            )
+        port_id = port.get("id")
+        name = port.get("name")
+        if not isinstance(port_id, str) or not port_id.startswith("workflow:"):
+            raise WorkflowValidationError(
+                f"nodes[{index}].workflowPorts[{port_index}].id must use the workflow: namespace"
+            )
+        if not isinstance(name, str) or not name or port_id != f"workflow:{name}":
+            raise WorkflowValidationError(
+                f"nodes[{index}].workflowPorts[{port_index}] id must match its name"
+            )
+        if port.get("type") not in DATA_CONNECTION_TYPES:
+            raise WorkflowValidationError(
+                f"nodes[{index}].workflowPorts[{port_index}].type is unsupported"
+            )
+        port_ids.append(port_id)
+        port_names.append(name)
+    if len(port_ids) != len(set(port_ids)) or len(port_names) != len(set(port_names)):
+        raise WorkflowValidationError(f"nodes[{index}].workflowPorts contains duplicates")
 
 
 def _validate_construct_content(node: dict[str, Any]) -> None:
@@ -271,6 +305,19 @@ def _validate_data_connection(
         raise WorkflowValidationError(
             f"unknown data input: node {target_node['id']}, port {to_port}"
         )
+
+    if source_node["type"] == "input" and source_node.get("workflowPorts"):
+        source_port = next(port for port in source_node["workflowPorts"] if port["id"] == from_port)
+        if connection_type != source_port["type"]:
+            raise WorkflowValidationError(
+                f"workflow input port {from_port} requires {source_port['type']} data: connection {connection_index}"
+            )
+    if target_node["type"] == "output" and target_node.get("workflowPorts"):
+        target_port = next(port for port in target_node["workflowPorts"] if port["id"] == to_port)
+        if connection_type != target_port["type"]:
+            raise WorkflowValidationError(
+                f"workflow output port {to_port} requires {target_port['type']} data: connection {connection_index}"
+            )
 
     source_type = source_node["type"]
     target_type = target_node["type"]

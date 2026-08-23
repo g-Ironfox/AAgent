@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent Workflow 管理</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/workflows.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件流">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>WORKFLOWS</small></span>
+    </a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a>
+        <a href="/subagents.html">子 Agent</a>
+        <a class="active" href="/workflows.html" aria-current="page">Workflow</a>
+        <a href="/workflow_edit.html">workflow编辑器</a>
+        <a href="/terminal.html">终端</a>
+        <a href="/document.html">文档</a>
+        <a href="/setting.html">设置</a>
+        <a href="/model.html">模型</a>
+      </nav>
+      <div class="workflow-management-state" aria-live="polite"><span>列表状态</span><strong id="workflowState">读取中</strong></div>
+    </div>
+  </header>
+
+  <main class="workflow-management-main">
+    <section class="workflow-management-workspace" aria-label="Workflow 管理">
+      <aside class="workflow-management-sidebar" aria-label="Workflow 列表">
+        <header class="workflow-management-heading">
+          <div><p>WORKFLOWS</p><h1>Workflow</h1></div>
+          <div class="workflow-library-actions">
+            <button id="refreshButton" class="refresh-button" type="button">刷新</button>
+            <button id="createButton" class="create-workflow-button" type="button" title="新建 Workflow" aria-label="新建 Workflow">+</button>
+          </div>
+        </header>
+        <div id="workflowList" class="workflow-management-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="workflow-configuration" aria-labelledby="configurationTitle">
+        <header class="configuration-heading">
+          <div class="configuration-title">
+            <p>CONFIGURATION</p>
+            <h2 id="configurationTitle">选择一个 Workflow</h2>
+            <span id="workflowKey"></span>
+          </div>
+          <div class="configuration-actions">
+            <button id="renameButton" class="rename-workflow-button" type="button" hidden>重命名</button>
+            <button id="deleteButton" class="delete-workflow-button" type="button" hidden>删除</button>
+            <a id="editWorkflowLink" class="edit-workflow-link" href="/workflow_edit.html" hidden>打开编辑器</a>
+          </div>
+        </header>
+        <div class="configuration-content">
+          <div id="workflowEmpty" class="configuration-empty">
+            <strong>暂无配置项</strong>
+          </div>
+          <form id="metadataForm" class="workflow-metadata" hidden>
+            <div class="metadata-heading">
+              <div><p>DATA CONTRACT</p><h3>数据端口</h3></div>
+              <div class="metadata-save-state" aria-live="polite"><span id="metadataStatus"></span><button id="metadataSubmit" type="submit">保存元数据</button></div>
+            </div>
+            <div class="metadata-columns">
+              <section class="metadata-port-section" aria-labelledby="inputPortsTitle">
+                <header><div><span class="metadata-port-mark input">IN</span><h4 id="inputPortsTitle">Input</h4></div><button id="addInputPort" type="button" title="添加 Input 字段" aria-label="添加 Input 字段">+</button></header>
+                <div id="inputPorts" class="metadata-port-list"></div>
+              </section>
+              <section class="metadata-port-section" aria-labelledby="outputPortsTitle">
+                <header><div><span class="metadata-port-mark output">OUT</span><h4 id="outputPortsTitle">Output</h4></div><button id="addOutputPort" type="button" title="添加 Output 字段" aria-label="添加 Output 字段">+</button></header>
+                <div id="outputPorts" class="metadata-port-list"></div>
+              </section>
+            </div>
+          </form>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="createDialog" class="workflow-dialog">
+    <form id="createForm">
+      <header><div><p>NEW WORKFLOW</p><h2>新建 Workflow</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
+      <div class="dialog-fields">
+        <label>名称<input id="createName" name="name" maxlength="120" required autocomplete="off" placeholder="例如：内容整理"></label>
+        <label>Key<input id="createKey" name="key" maxlength="120" required pattern="[A-Za-z0-9_-]+" autocomplete="off" placeholder="例如：content-organizer"><small>仅支持字母、数字、连字符和下划线</small></label>
+        <p id="createError" class="dialog-error" role="alert"></p>
+      </div>
+      <footer><button type="button" class="dialog-cancel" data-close-dialog>取消</button><button id="createSubmit" class="dialog-submit" type="submit">创建</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="renameDialog" class="workflow-dialog">
+    <form id="renameForm">
+      <header><div><p>RENAME</p><h2>重命名 Workflow</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
+      <div class="dialog-fields">
+        <label>名称<input id="renameName" name="name" maxlength="120" required autocomplete="off"></label>
+        <p id="renameKey" class="dialog-key"></p>
+        <p id="renameError" class="dialog-error" role="alert"></p>
+      </div>
+      <footer><button type="button" class="dialog-cancel" data-close-dialog>取消</button><button id="renameSubmit" class="dialog-submit" type="submit">保存</button></footer>
+    </form>
+  </dialog>
+
+  <template id="metadataPortTemplate">
+    <div class="metadata-port-row">
+      <div class="metadata-port-primary">
+        <label><span>字段名</span><input data-port-name maxlength="80" required autocomplete="off" placeholder="例如：query"></label>
+        <label><span>类型</span><select data-port-type><option value="content">Content</option><option value="message">Message</option><option value="list-content">List&lt;Content&gt;</option><option value="list-message">List&lt;Message&gt;</option></select></label>
+        <button class="metadata-remove-port" data-remove-port type="button" title="删除字段" aria-label="删除字段">×</button>
+      </div>
+      <label class="metadata-description"><span>说明</span><input data-port-description maxlength="300" autocomplete="off" placeholder="字段用途（可选）"></label>
+    </div>
+  </template>
+
+  <script type="module" src="/workflows.js?v=5"></script>
+</body>
+</html>

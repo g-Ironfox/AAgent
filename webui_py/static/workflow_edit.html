@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>AAgent Workflow</title>
+  <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/workflow.css">
 </head>
@@ -18,7 +18,8 @@
       <nav class="page-nav" aria-label="页面导航">
         <a href="/">事件流</a>
         <a href="/subagents.html">子 Agent</a>
-        <a class="active" href="/workflow.html" aria-current="page">Workflow</a>
+        <a href="/workflows.html">Workflow</a>
+        <a class="active" href="/workflow_edit.html" aria-current="page">workflow编辑器</a>
         <a href="/terminal.html">终端</a>
         <a href="/document.html">文档</a>
         <a href="/setting.html">设置</a>
@@ -98,7 +99,12 @@
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
-          <div><p>LOCAL DRAFT</p><strong>Agent 主控制流</strong></div>
+          <label class="workflow-selector" for="workflowSelect">
+            <span>WORKFLOW</span>
+            <select id="workflowSelect" aria-label="选择要编辑的 Workflow" disabled>
+              <option value="">读取 Workflow...</option>
+            </select>
+          </label>
           <div class="canvas-meta"><span id="connectionCount">5 条连接</span><span class="draft-badge">后端配置</span></div>
         </header>
         <div id="workflowCanvas" class="workflow-canvas">
@@ -324,6 +330,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js"></script>
+  <script type="module" src="/workflow.js?v=2"></script>
 </body>
 </html>

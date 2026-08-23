@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import redis
 from bson import ObjectId
@@ -9,11 +9,13 @@ from bson.errors import InvalidId
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
+from pymongo import DESCENDING
 from pymongo.collection import Collection
-from pymongo.errors import PyMongoError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 MAX_WORKFLOW_NODES = 200
 MAX_WORKFLOW_CONNECTIONS = 1000
+MAX_WORKFLOW_METADATA_PORTS = 50
 
 logger = logging.getLogger("aagent.webui")
 
@@ -27,6 +29,84 @@ class WorkflowRequest(BaseModel):
     connections: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_WORKFLOW_CONNECTIONS)
 
 
+class WorkflowCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=120)
+
+
+class WorkflowRenameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+
+
+class WorkflowPortMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
+    type: Literal["content", "message", "list-content", "list-message"]
+    description: str = Field(default="", max_length=300)
+
+
+class WorkflowMetadataRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input_ports: list[WorkflowPortMetadata] = Field(default_factory=list, max_length=MAX_WORKFLOW_METADATA_PORTS)
+    output_ports: list[WorkflowPortMetadata] = Field(default_factory=list, max_length=MAX_WORKFLOW_METADATA_PORTS)
+
+
+def valid_workflow_key(key: str) -> bool:
+    return bool(key) and len(key) <= 120 and all(
+        character.isalnum() or character in {"-", "_"} for character in key
+    )
+
+
+def duplicate_port_name(ports: list[WorkflowPortMetadata]) -> bool:
+    names = [port.name.strip() for port in ports]
+    return any(not name for name in names) or len(names) != len(set(names))
+
+
+def synchronize_metadata_ports(
+    nodes: list[dict[str, Any]],
+    connections: list[dict[str, Any]],
+    input_ports: list[dict[str, Any]],
+    output_ports: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    input_node_ids = {node.get("id") for node in nodes if node.get("type") == "input"}
+    output_node_ids = {node.get("id") for node in nodes if node.get("type") == "output"}
+    input_node_ports = [{**port, "id": f"workflow:{port['name']}"} for port in input_ports]
+    output_node_ports = [{**port, "id": f"workflow:{port['name']}"} for port in output_ports]
+    input_types = {port["id"]: port["type"] for port in input_node_ports}
+    output_types = {port["id"]: port["type"] for port in output_node_ports}
+    synchronized_nodes = [
+        {
+            **node,
+            **(
+                {"workflowPorts": input_node_ports}
+                if node.get("type") == "input"
+                else {"workflowPorts": output_node_ports}
+                if node.get("type") == "output"
+                else {}
+            ),
+        }
+        for node in nodes
+    ]
+    synchronized_connections = []
+    for connection in connections:
+        connection_type = connection.get("type")
+        if connection_type == "control":
+            synchronized_connections.append(connection)
+            continue
+        if connection.get("fromId") in input_node_ids and input_types.get(connection.get("fromPortId")) != connection_type:
+            continue
+        if connection.get("toId") in output_node_ids and output_types.get(connection.get("toPortId")) != connection_type:
+            continue
+        synchronized_connections.append(connection)
+    return synchronized_nodes, synchronized_connections
+
+
 def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": str(document["_id"]),
@@ -35,6 +115,8 @@ def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
         "version": document.get("version", 1),
         "nodes": document.get("nodes", []),
         "connections": document.get("connections", []),
+        "input_ports": document.get("input_ports", []),
+        "output_ports": document.get("output_ports", []),
         "created_at": document.get("created_at"),
         "updated_at": document.get("updated_at"),
     }
@@ -47,6 +129,82 @@ def create_workflows_router(
     workflows: Collection,
 ) -> APIRouter:
     router = APIRouter()
+
+    @router.get("/api/workflows")
+    def list_workflows():
+        try:
+            items = workflows.find(
+                {},
+                {"key": 1, "name": 1, "version": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "created_at": 1, "updated_at": 1},
+            ).sort("updated_at", DESCENDING)
+            return {
+                "items": [
+                    {
+                        "id": str(item["_id"]),
+                        "key": item.get("key", ""),
+                        "name": item.get("name", ""),
+                        "version": item.get("version", 1),
+                        "node_count": len(item.get("nodes", [])),
+                        "connection_count": len(item.get("connections", [])),
+                        "input_ports": item.get("input_ports", []),
+                        "output_ports": item.get("output_ports", []),
+                        "created_at": item.get("created_at"),
+                        "updated_at": item.get("updated_at"),
+                    }
+                    for item in items
+                ]
+            }
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "Workflow 列表暂时不可用"})
+
+    @router.post("/api/workflows", status_code=201)
+    def create_workflow(payload: WorkflowCreateRequest):
+        key = payload.key.strip()
+        name = payload.name.strip()
+        if not valid_workflow_key(key):
+            return JSONResponse(status_code=400, content={"error": "Workflow key 只能包含字母、数字、连字符和下划线"})
+        if not name:
+            return JSONResponse(status_code=400, content={"error": "Workflow 名称不能为空"})
+        now = datetime.now(timezone.utc)
+        document = {
+            "key": key,
+            "name": name,
+            "version": 1,
+            "nodes": [
+                {"id": "input", "type": "input", "name": "Input", "x": 120, "y": 238},
+                {"id": "output", "type": "output", "name": "Output", "x": 520, "y": 238},
+            ],
+            "connections": [
+                {
+                    "id": "control-input-output",
+                    "fromId": "input",
+                    "fromPortId": "control-out",
+                    "toId": "output",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "id": "content-input-output",
+                    "fromId": "input",
+                    "fromPortId": "content-out",
+                    "toId": "output",
+                    "toPortId": "content-in",
+                    "type": "content",
+                },
+            ],
+            "input_ports": [],
+            "output_ports": [],
+            "created_at": now,
+            "updated_at": now,
+        }
+        try:
+            result = workflows.insert_one(document)
+        except DuplicateKeyError:
+            return JSONResponse(status_code=409, content={"error": "Workflow key 已存在"})
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "暂时无法创建 Workflow"})
+        document["_id"] = result.inserted_id
+        return workflow_response(document)
 
     @router.get("/api/tools")
     def list_tools():
@@ -76,10 +234,82 @@ def create_workflows_router(
         items.sort(key=lambda item: item["name"])
         return {"items": items}
 
+    @router.get("/api/workflows/{workflow_key}")
+    def get_workflow(workflow_key: str):
+        key = workflow_key.strip()
+        if not key:
+            return JSONResponse(status_code=400, content={"error": "Workflow key 不能为空"})
+        try:
+            document = workflows.find_one({"key": key})
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "Workflow 暂时不可用"})
+        if document is None:
+            return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+        return workflow_response(document)
+
+    @router.patch("/api/workflows/{workflow_key}")
+    def rename_workflow(workflow_key: str, payload: WorkflowRenameRequest):
+        name = payload.name.strip()
+        if not name:
+            return JSONResponse(status_code=400, content={"error": "Workflow 名称不能为空"})
+        try:
+            document = workflows.find_one_and_update(
+                {"key": workflow_key},
+                {"$set": {"name": name, "updated_at": datetime.now(timezone.utc)}},
+                return_document=True,
+            )
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "暂时无法重命名 Workflow"})
+        if document is None:
+            return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+        return workflow_response(document)
+
+    @router.put("/api/workflows/{workflow_key}/metadata")
+    def update_workflow_metadata(workflow_key: str, payload: WorkflowMetadataRequest):
+        if duplicate_port_name(payload.input_ports):
+            return JSONResponse(status_code=400, content={"error": "Input 字段名不能为空或重复"})
+        if duplicate_port_name(payload.output_ports):
+            return JSONResponse(status_code=400, content={"error": "Output 字段名不能为空或重复"})
+        input_ports = [port.model_dump() | {"name": port.name.strip(), "description": port.description.strip()} for port in payload.input_ports]
+        output_ports = [port.model_dump() | {"name": port.name.strip(), "description": port.description.strip()} for port in payload.output_ports]
+        try:
+            existing = workflows.find_one({"key": workflow_key})
+            if existing is None:
+                return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+            nodes, connections = synchronize_metadata_ports(
+                existing.get("nodes", []), existing.get("connections", []), input_ports, output_ports
+            )
+            document = workflows.find_one_and_update(
+                {"key": workflow_key},
+                {"$set": {
+                    "input_ports": input_ports,
+                    "output_ports": output_ports,
+                    "nodes": nodes,
+                    "connections": connections,
+                    "updated_at": datetime.now(timezone.utc),
+                }},
+                return_document=True,
+            )
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "暂时无法保存 Workflow 元数据"})
+        if document is None:
+            return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+        return workflow_response(document)
+
+    @router.delete("/api/workflows/{workflow_key}")
+    def delete_workflow(workflow_key: str):
+        try:
+            result = workflows.delete_one({"key": workflow_key})
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "暂时无法删除 Workflow"})
+        if result.deleted_count == 0:
+            return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+        return {"deleted": True, "key": workflow_key}
+
     @router.put("/api/workflows/{workflow_key}")
     def upsert_workflow(workflow_key: str, payload: WorkflowRequest):
         key = workflow_key.strip()
-        if not key or len(key) > 120 or not all(character.isalnum() or character in {"-", "_"} for character in key):
+        if not valid_workflow_key(key):
             return JSONResponse(status_code=400, content={"error": "Workflow key 只能包含字母、数字、连字符和下划线"})
         if not payload.name.strip():
             return JSONResponse(status_code=400, content={"error": "Workflow 名称不能为空"})

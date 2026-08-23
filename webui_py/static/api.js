@@ -129,6 +129,42 @@ export function fetchTools() {
   return request('/api/tools');
 }
 
+export function fetchWorkflows() {
+  return request('/api/workflows');
+}
+
+export function fetchWorkflow(workflowKey) {
+  return request(`/api/workflows/${encodeURIComponent(workflowKey)}`);
+}
+
+export function createWorkflow(key, name) {
+  return request('/api/workflows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, name }),
+  });
+}
+
+export function renameWorkflow(workflowKey, name) {
+  return request(`/api/workflows/${encodeURIComponent(workflowKey)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function updateWorkflowMetadata(workflowKey, inputPorts, outputPorts) {
+  return request(`/api/workflows/${encodeURIComponent(workflowKey)}/metadata`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input_ports: inputPorts, output_ports: outputPorts }),
+  });
+}
+
+export function deleteWorkflow(workflowKey) {
+  return request(`/api/workflows/${encodeURIComponent(workflowKey)}`, { method: 'DELETE' });
+}
+
 export function createModel(model) {
   return request('/api/models', {
     method: 'POST',

@@ -24,9 +24,11 @@ def data_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
     node_type = node["type"]
     declared_inputs = set(node.get("dataInputPorts", []))
     if node_type == "input":
-        return declared_inputs, {"content-out", "source"}
+        workflow_ports = node.get("workflowPorts", [])
+        return declared_inputs, {port["id"] for port in workflow_ports} if "workflowPorts" in node else {"content-out", "source"}
     if node_type == "output":
-        return declared_inputs | {"content-in"}, set()
+        workflow_ports = node.get("workflowPorts", [])
+        return declared_inputs | ({port["id"] for port in workflow_ports} if "workflowPorts" in node else {"content-in"}), set()
     if node_type == "router":
         return declared_inputs | {"content-in"}, set()
     if node_type == "llm":
