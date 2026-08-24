@@ -23,11 +23,8 @@
         <a href="/terminal.html">终端</a>
         <a href="/document.html">文档</a>
         <a class="active" href="/setting.html" aria-current="page">设置</a>
+        <a href="/model.html">模型</a>
       </nav>
-      <div class="setting-state" aria-live="polite">
-        <span>配置状态</span>
-        <strong id="settingState">读取中</strong>
-      </div>
     </div>
   </header>
 
@@ -38,31 +35,9 @@
           <p>AGENT · SYSTEM</p>
           <h1 id="settingTitle">Agent Settings</h1>
         </div>
-        <button id="reloadButton" class="secondary-button reload-button" type="button" disabled>重新读取</button>
       </header>
-
-      <form id="contextCountForm" class="context-count-form">
-        <label for="maxContextCount">最大召回窗口(条)</label>
-        <input id="maxContextCount" name="maxContextCount" type="number" min="1" step="1" inputmode="numeric" required disabled>
-        <span id="contextCountStatus" class="context-count-status" role="status"></span>
-        <button id="contextCountSaveButton" class="save-button" type="submit" disabled>保存</button>
-      </form>
-
-      <form id="settingForm" class="setting-form">
-        <div class="prompt-editor-heading">
-          <strong>System Prompt</strong>
-          <span id="characterCount" class="setting-count">0 / 100000</span>
-        </div>
-        <label for="systemPrompt" class="sr-only">System prompt</label>
-        <textarea id="systemPrompt" name="systemPrompt" maxlength="100000" spellcheck="false" required disabled></textarea>
-        <footer class="setting-actions">
-          <span id="saveStatus" class="save-status" role="status"></span>
-          <button id="saveButton" class="save-button" type="submit" disabled>保存并应用</button>
-        </footer>
-      </form>
+      <p>当前没有可配置的设置项。</p>
     </section>
   </main>
-
-  <script type="module" src="/setting.js"></script>
 </body>
 </html>

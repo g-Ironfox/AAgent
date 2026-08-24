@@ -15,7 +15,6 @@ from pymongo.errors import PyMongoError
 from documents import create_documents_router
 from events import create_events_router
 from models import create_models_router
-from settings import create_settings_router
 from subagents import SubagentSpec, create_subagents_router
 from workflows import create_workflows_router
 
@@ -23,7 +22,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("aagent.webui")
 
 MAX_TERMINAL_BODY_BYTES = 16 * 1024
-MAX_SETTINGS_BODY_BYTES = 512 * 1024
 MAX_EVENT_BODY_BYTES = 256 * 1024
 MAX_DOCUMENT_BODY_BYTES = 1024 * 1024
 MAX_WORKFLOW_BODY_BYTES = 512 * 1024
@@ -44,7 +42,6 @@ REDIS_ADDRESS = redis_address()
 REDIS_DB = int(env("REDIS_DB", "0"))
 QUEUE_NAME = env("MAIN_AGENT_QUEUE_NAME", "main_agent_queue")
 WORKER_STATUS_KEY = env("AGENT_WORKER_STATUS_KEY", "aagent:worker:status")
-SETTINGS_KEY = env("AGENT_SETTINGS_KEY", "aagent:settings")
 TOOLS_KEY = env("AGENT_TOOLS_KEY", "aagent:tools")
 MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
@@ -131,7 +128,6 @@ async def request_logger(request: Request, call_next):
 async def request_body_guard(request: Request, call_next):
     body_limits = {
         ("POST", "/api/terminal"): (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
-        ("POST", "/api/settings/system-prompt"): (MAX_SETTINGS_BODY_BYTES, "请求体不能超过 512 KB"),
         ("PUT", "/api/events"): (MAX_EVENT_BODY_BYTES, "请求体不能超过 256 KB"),
         ("POST", "/api/models"): (MAX_TERMINAL_BODY_BYTES, "模型配置请求体不能超过 16 KB"),
     }
@@ -166,7 +162,6 @@ def health():
 
 
 app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
-app.include_router(create_settings_router(redis_client, SETTINGS_KEY, QUEUE_NAME))
 app.include_router(create_models_router(model_configs))
 app.include_router(create_workflows_router(redis_client, TOOLS_KEY, model_configs, workflows))
 app.include_router(create_subagents_router(redis_client, database, documents, SUBAGENTS))

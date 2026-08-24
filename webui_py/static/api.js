@@ -65,18 +65,6 @@ export function submitTerminal(message) {
   });
 }
 
-export function fetchSettings() {
-  return request('/api/settings');
-}
-
-export function submitSystemPrompt(systemPrompt) {
-  return request('/api/settings/system-prompt', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ system_prompt: systemPrompt }),
-  });
-}
-
 export function fetchDocuments() {
   return request('/api/documents');
 }
@@ -111,14 +99,6 @@ export function updateDocumentPin(documentId, pinned) {
 
 export function deleteDocument(documentId) {
   return request(`/api/documents/${encodeURIComponent(documentId)}`, { method: 'DELETE' });
-}
-
-export function submitMaxContextCount(maxContextCount) {
-  return request('/api/settings/max-context-count', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ max_context_count: maxContextCount }),
-  });
 }
 
 export function fetchModels() {

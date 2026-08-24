@@ -108,11 +108,6 @@ def handle_task(e: dict):
             }
         insert_to_queue(MAIN_AGENT_QUEUE_NAME,r_e)
 
-    def setting(e):
-        settings.update(e['payload'])
-        write_settings_file(settings)
-        set_settings(settings)
-
     def active(e):
         task_content=""
         return_queue = MAIN_AGENT_QUEUE_NAME
@@ -489,7 +484,6 @@ def handle_task(e: dict):
         "terminal": terminal,
         "tool_excute": tool_excute,
         "tool_return": tool_return,
-        "setting": setting,
         "active": active,
         "response": response,
         "rpc_review":rpc_review,
