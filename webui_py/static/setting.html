@@ -36,8 +36,13 @@
           <h1 id="settingTitle">Agent Settings</h1>
         </div>
       </header>
-      <p>当前没有可配置的设置项。</p>
+      <form id="settingsForm" class="setting-form">
+        <div class="setting-option-heading"><p>ACTIVE WORKFLOW</p><h2>Agent Workflow</h2><span>选择主 Agent 使用的 Workflow</span></div>
+        <fieldset id="workflowOptions" class="workflow-options" disabled><legend>Workflow 列表</legend><p>正在读取...</p></fieldset>
+        <footer class="setting-actions"><span id="settingsStatus" class="save-status" aria-live="polite"></span><button id="settingsSubmit" type="submit">保存设置</button></footer>
+      </form>
     </section>
   </main>
+  <script type="module" src="/setting.js?v=1"></script>
 </body>
 </html>

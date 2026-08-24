@@ -87,20 +87,20 @@ export function deleteNode(id) {
   state.selectedId = state.nodes[0].id;
 }
 
-function draftStorageKey(workflowKey) {
-  return workflowKey ? `${STORAGE_KEY}.${workflowKey}` : STORAGE_KEY;
+function draftStorageKey(workflowId) {
+  return workflowId ? `${STORAGE_KEY}.${workflowId}` : STORAGE_KEY;
 }
 
-export function saveDraft(workflowKey = '') {
-  localStorage.setItem(draftStorageKey(workflowKey), JSON.stringify(workflowSnapshot()));
+export function saveDraft(workflowId = '') {
+  localStorage.setItem(draftStorageKey(workflowId), JSON.stringify(workflowSnapshot()));
 }
 
 export function workflowSnapshot() {
   return structuredClone({ version: 1, nodes: state.nodes, connections: state.connections });
 }
 
-export function resetDraft(workflowKey = '') {
-  localStorage.removeItem(draftStorageKey(workflowKey));
+export function resetDraft(workflowId = '') {
+  localStorage.removeItem(draftStorageKey(workflowId));
   state.nodes = structuredClone(initialNodes);
   state.connections = structuredClone(initialConnections);
   state.selectedId = 'input';
@@ -252,9 +252,9 @@ export function loadSnapshot(saved) {
   }
 }
 
-export function loadDraft(workflowKey = '') {
+export function loadDraft(workflowId = '') {
   try {
-    return loadSnapshot(JSON.parse(localStorage.getItem(draftStorageKey(workflowKey))));
+    return loadSnapshot(JSON.parse(localStorage.getItem(draftStorageKey(workflowId))));
   } catch (error) {
     console.warn('Workflow 草稿读取失败', error);
     return false;

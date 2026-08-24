@@ -16,6 +16,7 @@ from documents import create_documents_router
 from events import create_events_router
 from models import create_models_router
 from subagents import SubagentSpec, create_subagents_router
+from settings import create_settings_router
 from workflows import create_workflows_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -50,6 +51,7 @@ MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
 MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
 MONGO_MODEL_COLLECTION = env("MONGO_MODEL_COLLECTION", "models")
 MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
+MONGO_SETTINGS_COLLECTION = env("MONGO_SETTINGS_COLLECTION", "settings")
 
 SUBAGENTS: dict[str, SubagentSpec] = {
     "qq": SubagentSpec(
@@ -87,6 +89,7 @@ history: Collection = database[MONGO_HISTORY_COLLECTION]
 documents: Collection = database[MONGO_DOCUMENT_COLLECTION]
 model_configs: Collection = database[MONGO_MODEL_COLLECTION]
 workflows: Collection = database[MONGO_WORKFLOW_COLLECTION]
+settings: Collection = database[MONGO_SETTINGS_COLLECTION]
 
 app = FastAPI(title="AAgent WebUI")
 
@@ -95,7 +98,9 @@ app = FastAPI(title="AAgent WebUI")
 def create_config_indexes():
     try:
         model_configs.create_index("name", unique=True, name="unique_model_name")
-        workflows.create_index("key", unique=True, name="unique_workflow_key")
+        if "unique_workflow_key" in workflows.index_information():
+            workflows.drop_index("unique_workflow_key")
+        workflows.update_many({"key": {"$exists": True}}, {"$unset": {"key": ""}})
     except PyMongoError as error:
         logger.error("failed to create configuration indexes: %s", error)
 
@@ -164,6 +169,7 @@ def health():
 app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
 app.include_router(create_models_router(model_configs))
 app.include_router(create_workflows_router(redis_client, TOOLS_KEY, model_configs, workflows))
+app.include_router(create_settings_router(settings, workflows))
 app.include_router(create_subagents_router(redis_client, database, documents, SUBAGENTS))
 app.include_router(create_documents_router(documents))
 

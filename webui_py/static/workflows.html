@@ -47,7 +47,6 @@
           <div class="configuration-title">
             <p>CONFIGURATION</p>
             <h2 id="configurationTitle">选择一个 Workflow</h2>
-            <span id="workflowKey"></span>
           </div>
           <div class="configuration-actions">
             <button id="renameButton" class="rename-workflow-button" type="button" hidden>重命名</button>
@@ -85,7 +84,6 @@
       <header><div><p>NEW WORKFLOW</p><h2>新建 Workflow</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
       <div class="dialog-fields">
         <label>名称<input id="createName" name="name" maxlength="120" required autocomplete="off" placeholder="例如：内容整理"></label>
-        <label>Key<input id="createKey" name="key" maxlength="120" required pattern="[A-Za-z0-9_-]+" autocomplete="off" placeholder="例如：content-organizer"><small>仅支持字母、数字、连字符和下划线</small></label>
         <p id="createError" class="dialog-error" role="alert"></p>
       </div>
       <footer><button type="button" class="dialog-cancel" data-close-dialog>取消</button><button id="createSubmit" class="dialog-submit" type="submit">创建</button></footer>
@@ -97,7 +95,6 @@
       <header><div><p>RENAME</p><h2>重命名 Workflow</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
       <div class="dialog-fields">
         <label>名称<input id="renameName" name="name" maxlength="120" required autocomplete="off"></label>
-        <p id="renameKey" class="dialog-key"></p>
         <p id="renameError" class="dialog-error" role="alert"></p>
       </div>
       <footer><button type="button" class="dialog-cancel" data-close-dialog>取消</button><button id="renameSubmit" class="dialog-submit" type="submit">保存</button></footer>

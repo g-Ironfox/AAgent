@@ -8,6 +8,8 @@ import os
 import sys
 from typing import Any
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from workflow_contract import data_ports_for_node
@@ -102,7 +104,7 @@ def _append_output_endpoint(
         endpoints.append(endpoint)
 
 
-def _read_workflow(workflow_key: str) -> dict[str, Any]:
+def _read_workflow(workflow_id: str) -> dict[str, Any]:
     mongo_kwargs: dict[str, Any] = {
         "host": os.getenv("MONGO_HOST", "mongodb"),
         "port": int(os.getenv("MONGO_PORT", "27017")),
@@ -118,15 +120,18 @@ def _read_workflow(workflow_key: str) -> dict[str, Any]:
     database_name = os.getenv("MONGO_DATABASE", "agent")
     collection_name = os.getenv("MONGO_WORKFLOW_COLLECTION", "workflows")
     with MongoClient(**mongo_kwargs) as client:
-        workflow = client[database_name][collection_name].find_one(
-            {"key": workflow_key}, {"_id": False}
-        )
+        try:
+            query = {"_id": ObjectId(workflow_id)}
+        except (InvalidId, TypeError):
+            raise WorkflowParseError(f"workflow id invalid: {workflow_id}")
+        workflow = client[database_name][collection_name].find_one(query, {"_id": False})
     if workflow is None:
-        raise WorkflowParseError(f"workflow not found: {workflow_key}")
+        raise WorkflowParseError(f"workflow not found: {workflow_id}")
     return workflow
 
 
 if __name__ =="__main__":
-    result = parse_workflow(_read_workflow("main"))
+    workflow_id = sys.argv[1] if len(sys.argv) > 1 else ""
+    result = parse_workflow(_read_workflow(workflow_id))
     for i in result:
         print(i)

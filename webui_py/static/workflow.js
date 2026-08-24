@@ -46,10 +46,10 @@ function renderWorkflow() {
   connections.renderConnections();
 }
 
-async function selectWorkflow(workflowKey, confirmChange = true) {
-  if (!workflowKey || workflowKey === currentWorkflow?.key) return;
+async function selectWorkflow(workflowId, confirmChange = true) {
+  if (!workflowId || workflowId === currentWorkflow?.id) return;
   if (confirmChange && hasUnsavedChanges && !window.confirm('当前 Workflow 有未保存修改，确定切换吗？')) {
-    elements.workflowSelect.value = currentWorkflow?.key || '';
+    elements.workflowSelect.value = currentWorkflow?.id || '';
     return;
   }
 
@@ -58,16 +58,16 @@ async function selectWorkflow(workflowKey, confirmChange = true) {
   elements.workflowState.textContent = '读取中';
   elements.workflowState.classList.remove('saved');
   try {
-    const workflow = await fetchWorkflow(workflowKey);
-    const loadedDraft = loadDraft(workflow.key);
+    const workflow = await fetchWorkflow(workflowId);
+    const loadedDraft = loadDraft(workflow.id);
     if (!loadedDraft && !loadSnapshot(workflow)) throw new Error('Workflow 数据无效');
     currentWorkflow = workflow;
-    elements.workflowSelect.value = workflow.key;
-    window.history.replaceState(null, '', `/workflow_edit.html?key=${encodeURIComponent(workflow.key)}`);
+    elements.workflowSelect.value = workflow.id;
+    window.history.replaceState(null, '', `/workflow_edit.html?id=${encodeURIComponent(workflow.id)}`);
     markSaved(loadedDraft ? '已载入草稿' : '已载入');
     renderWorkflow();
   } catch (error) {
-    elements.workflowSelect.value = previousWorkflow?.key || '';
+    elements.workflowSelect.value = previousWorkflow?.id || '';
     elements.workflowState.textContent = error.name === 'AbortError' ? '读取超时' : (error.message || '读取失败');
     elements.workflowState.classList.remove('saved');
   } finally {
@@ -90,15 +90,15 @@ async function initializeWorkflowSelector() {
     }
     for (const workflow of response.items) {
       const option = document.createElement('option');
-      option.value = workflow.key;
-      option.textContent = workflow.name ? `${workflow.name} (${workflow.key})` : workflow.key;
+      option.value = workflow.id;
+      option.textContent = workflow.name || workflow.id;
       elements.workflowSelect.append(option);
     }
-    const requestedKey = new URLSearchParams(window.location.search).get('key');
-    const initialKey = response.items.some((workflow) => workflow.key === requestedKey)
-      ? requestedKey
-      : response.items[0].key;
-    await selectWorkflow(initialKey, false);
+    const requestedId = new URLSearchParams(window.location.search).get('id');
+    const initialId = response.items.some((workflow) => workflow.id === requestedId)
+      ? requestedId
+      : response.items[0].id;
+    await selectWorkflow(initialId, false);
   } catch (error) {
     elements.workflowState.textContent = error.name === 'AbortError' ? '列表超时' : (error.message || '列表读取失败');
   } finally {
@@ -125,7 +125,7 @@ for (const button of document.querySelectorAll('[data-add-node]')) {
 
 elements.saveButton.addEventListener('click', () => {
   if (!currentWorkflow) return;
-  saveDraft(currentWorkflow.key);
+  saveDraft(currentWorkflow.id);
   markSaved('已存浏览器');
 });
 
@@ -134,8 +134,8 @@ elements.uploadButton.addEventListener('click', async () => {
   elements.uploadButton.textContent = '上传中';
   try {
     if (!currentWorkflow) throw new Error('请先选择 Workflow');
-    saveDraft(currentWorkflow.key);
-    const uploaded = await uploadWorkflow(currentWorkflow.key, {
+    saveDraft(currentWorkflow.id);
+    const uploaded = await uploadWorkflow(currentWorkflow.id, {
       ...workflowSnapshot(),
       name: currentWorkflow.name,
       version: currentWorkflow.version,
@@ -153,7 +153,7 @@ elements.uploadButton.addEventListener('click', async () => {
 
 elements.resetButton.addEventListener('click', () => {
   if (!window.confirm('重置会删除已保存的本地草稿，确定继续吗？')) return;
-  resetDraft(currentWorkflow?.key || '');
+  resetDraft(currentWorkflow?.id || '');
   markChanged();
   renderWorkflow();
 });
@@ -185,7 +185,7 @@ elements.exportButton.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `aagent-workflow-${currentWorkflow?.key || 'draft'}-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `aagent-workflow-${currentWorkflow?.id || 'draft'}-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
 });

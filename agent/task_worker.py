@@ -5,6 +5,9 @@ import traceback
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+from bson import ObjectId
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 from workflow_parser import _read_workflow,parse_workflow
 from workflow_validator import validate_workflow
 
@@ -29,6 +32,31 @@ from tools.documents import system_documents_prompt
 TARGET_USER_ID = os.environ["QQ_TARGET_USER_ID"]
 BOT_ID = os.environ["QQ_BOT_ID"]
 SETTINGS_PATH = Path(__file__).parent / "settings.json"
+
+
+def read_active_workflow_id() -> str:
+    mongo_kwargs = {
+        "host": os.getenv("MONGO_HOST", "mongodb"),
+        "port": int(os.getenv("MONGO_PORT", "27017")),
+        "serverSelectionTimeoutMS": 5000,
+    }
+    if os.getenv("MONGO_USER"):
+        mongo_kwargs.update(
+            username=os.environ["MONGO_USER"],
+            password=os.getenv("MONGO_PASS", ""),
+            authSource="admin",
+        )
+    try:
+        with MongoClient(**mongo_kwargs) as client:
+            setting = client[os.getenv("MONGO_DATABASE", "agent")][
+                os.getenv("MONGO_SETTINGS_COLLECTION", "settings")
+            ].find_one({"_id": "agent"}, {"workflow_id": 1})
+    except PyMongoError as error:
+        raise RuntimeError("failed to read active workflow setting") from error
+    workflow_id = setting.get("workflow_id") if setting else None
+    if not isinstance(workflow_id, ObjectId):
+        raise RuntimeError("active workflow is not configured")
+    return str(workflow_id)
 
 def read_settings_file() -> dict:
     settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
@@ -245,7 +273,7 @@ def handle_task(e: dict):
         )
 
     def workflow(e):
-        workflow_document = _read_workflow("main")
+        workflow_document = _read_workflow(read_active_workflow_id())
         validate_workflow(workflow_document)
         workflow_map = parse_workflow(workflow_document)
         start = -1

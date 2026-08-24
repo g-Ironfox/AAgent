@@ -14,6 +14,16 @@
 .context-count-form input:disabled { opacity:.65; }
 .context-count-status { margin-right:auto; color:var(--muted); font-size:10px; }
 .setting-form { min-height:0; margin:0; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
+.setting-option-heading { padding:18px 20px 12px; border-bottom:1px solid var(--line); background:#fafbf9; }
+.setting-option-heading p { margin:0 0 5px; color:var(--green); font:700 9px Consolas,monospace; }
+.setting-option-heading h2 { margin:0 0 4px; font:700 18px Georgia,"Microsoft YaHei",serif; }
+.setting-option-heading span { color:var(--muted); font-size:11px; }
+.workflow-options { min-height:0; margin:0; padding:18px 20px; overflow:auto; border:0; }
+.workflow-options legend { padding:0; color:var(--muted); font-size:10px; }
+.workflow-option { min-height:48px; margin-top:8px; padding:12px 14px; display:flex; align-items:center; gap:10px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+.workflow-option:hover { border-color:var(--green); }
+.workflow-option input { accent-color:var(--green); }
+.workflow-option span { color:var(--ink); font-size:12px; }
 .prompt-editor-heading { min-height:46px; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fafbf9; }
 .prompt-editor-heading strong { color:var(--ink); font:700 16px Georgia,"Microsoft YaHei",serif; }
 .setting-form textarea { width:100%; height:100%; min-height:280px; padding:24px; resize:none; color:var(--ink); border:0; background-color:#fafbf9; background-image:linear-gradient(rgba(23,32,29,.035) 1px,transparent 1px); background-size:100% 28px; background-attachment:local; background-origin:content-box; font:13px/28px Consolas,"Microsoft YaHei",monospace; tab-size:2; }

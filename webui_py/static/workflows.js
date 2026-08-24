@@ -1,6 +1,6 @@
 import { createWorkflow, deleteWorkflow, fetchWorkflows, renameWorkflow, updateWorkflowMetadata } from './api.js';
 
-const state = { workflows: [], selectedKey: null, loading: false, saving: false };
+const state = { workflows: [], selectedId: null, loading: false, saving: false };
 const elements = {
   state: document.querySelector('#workflowState'),
   list: document.querySelector('#workflowList'),
@@ -9,7 +9,6 @@ const elements = {
   renameButton: document.querySelector('#renameButton'),
   deleteButton: document.querySelector('#deleteButton'),
   title: document.querySelector('#configurationTitle'),
-  key: document.querySelector('#workflowKey'),
   editLink: document.querySelector('#editWorkflowLink'),
   empty: document.querySelector('#workflowEmpty'),
   metadataForm: document.querySelector('#metadataForm'),
@@ -23,19 +22,17 @@ const elements = {
   createDialog: document.querySelector('#createDialog'),
   createForm: document.querySelector('#createForm'),
   createName: document.querySelector('#createName'),
-  createKey: document.querySelector('#createKey'),
   createError: document.querySelector('#createError'),
   createSubmit: document.querySelector('#createSubmit'),
   renameDialog: document.querySelector('#renameDialog'),
   renameForm: document.querySelector('#renameForm'),
   renameName: document.querySelector('#renameName'),
-  renameKey: document.querySelector('#renameKey'),
   renameError: document.querySelector('#renameError'),
   renameSubmit: document.querySelector('#renameSubmit'),
 };
 
 function selectedWorkflow() {
-  return state.workflows.find((workflow) => workflow.key === state.selectedKey) || null;
+  return state.workflows.find((workflow) => workflow.id === state.selectedId) || null;
 }
 
 function workflowSummary(workflow) {
@@ -98,21 +95,20 @@ function renderConfiguration() {
   elements.renameButton.hidden = !workflow;
   elements.deleteButton.hidden = !workflow;
   elements.title.textContent = workflow?.name || '选择一个 Workflow';
-  elements.key.textContent = workflow?.key || '';
   if (!workflow) {
     elements.editLink.href = '/workflow_edit.html';
     elements.inputPorts.replaceChildren();
     elements.outputPorts.replaceChildren();
     return;
   }
-  elements.editLink.href = `/workflow_edit.html?key=${encodeURIComponent(workflow.key)}`;
+  elements.editLink.href = `/workflow_edit.html?id=${encodeURIComponent(workflow.id)}`;
   elements.metadataStatus.textContent = '';
   renderPortList(elements.inputPorts, workflow.input_ports || []);
   renderPortList(elements.outputPorts, workflow.output_ports || []);
 }
 
-function selectWorkflow(key) {
-  state.selectedKey = key;
+function selectWorkflow(id) {
+  state.selectedId = id;
   renderList();
   renderConfiguration();
 }
@@ -128,18 +124,18 @@ function renderList() {
   }
   for (const workflow of state.workflows) {
     const button = document.createElement('button');
-    button.className = `workflow-management-item${workflow.key === state.selectedKey ? ' active' : ''}`;
+    button.className = `workflow-management-item${workflow.id === state.selectedId ? ' active' : ''}`;
     button.type = 'button';
 
     const title = document.createElement('strong');
-    title.textContent = workflow.name || workflow.key;
-    const key = document.createElement('code');
-    key.textContent = workflow.key;
+    title.textContent = workflow.name || workflow.id;
+    const id = document.createElement('code');
+    id.textContent = workflow.id;
     const meta = document.createElement('small');
     meta.textContent = `${workflow.node_count} 节点 / ${workflow.connection_count} 连接`;
 
-    button.append(title, key, meta);
-    button.addEventListener('click', () => selectWorkflow(workflow.key));
+    button.append(title, id, meta);
+    button.addEventListener('click', () => selectWorkflow(workflow.id));
     elements.list.append(button);
   }
 }
@@ -153,13 +149,13 @@ async function loadWorkflows() {
   try {
     const response = await fetchWorkflows();
     state.workflows = response.items;
-    if (!state.workflows.some((workflow) => workflow.key === state.selectedKey)) {
-      state.selectedKey = state.workflows[0]?.key || null;
+    if (!state.workflows.some((workflow) => workflow.id === state.selectedId)) {
+      state.selectedId = state.workflows[0]?.id || null;
     }
     elements.state.textContent = `共 ${state.workflows.length} 个`;
   } catch (error) {
     state.workflows = [];
-    state.selectedKey = null;
+    state.selectedId = null;
     elements.state.textContent = error.name === 'AbortError' ? '读取超时' : '不可用';
   } finally {
     state.loading = false;
@@ -180,7 +176,6 @@ function openRenameDialog() {
   const workflow = selectedWorkflow();
   if (!workflow) return;
   elements.renameName.value = workflow.name;
-  elements.renameKey.textContent = `Key: ${workflow.key}`;
   elements.renameError.textContent = '';
   elements.renameDialog.showModal();
   elements.renameName.focus();
@@ -195,9 +190,9 @@ async function submitCreate(event) {
   elements.createError.textContent = '';
   updateControls();
   try {
-    const created = workflowSummary(await createWorkflow(elements.createKey.value.trim(), elements.createName.value.trim()));
+    const created = workflowSummary(await createWorkflow(elements.createName.value.trim()));
     state.workflows.unshift(created);
-    state.selectedKey = created.key;
+    state.selectedId = created.id;
     elements.createDialog.close();
     elements.state.textContent = `共 ${state.workflows.length} 个`;
     renderList();
@@ -220,8 +215,8 @@ async function submitRename(event) {
   elements.renameError.textContent = '';
   updateControls();
   try {
-    const renamed = workflowSummary(await renameWorkflow(workflow.key, elements.renameName.value.trim()));
-    const index = state.workflows.findIndex((item) => item.key === workflow.key);
+    const renamed = workflowSummary(await renameWorkflow(workflow.id, elements.renameName.value.trim()));
+    const index = state.workflows.findIndex((item) => item.id === workflow.id);
     state.workflows[index] = renamed;
     elements.renameDialog.close();
     renderList();
@@ -241,10 +236,10 @@ async function removeSelectedWorkflow() {
   state.saving = true;
   updateControls();
   try {
-    await deleteWorkflow(workflow.key);
-    state.workflows = state.workflows.filter((item) => item.key !== workflow.key);
-    localStorage.removeItem(`aagent.workflow.draft.v1.${workflow.key}`);
-    state.selectedKey = state.workflows[0]?.key || null;
+    await deleteWorkflow(workflow.id);
+    state.workflows = state.workflows.filter((item) => item.id !== workflow.id);
+    localStorage.removeItem(`aagent.workflow.draft.v1.${workflow.id}`);
+    state.selectedId = state.workflows[0]?.id || null;
     elements.state.textContent = `共 ${state.workflows.length} 个`;
     renderList();
     renderConfiguration();
@@ -271,8 +266,8 @@ async function submitMetadata(event) {
   elements.metadataStatus.textContent = '保存中';
   updateControls();
   try {
-    const updated = workflowSummary(await updateWorkflowMetadata(workflow.key, inputPorts, outputPorts));
-    const index = state.workflows.findIndex((item) => item.key === workflow.key);
+    const updated = workflowSummary(await updateWorkflowMetadata(workflow.id, inputPorts, outputPorts));
+    const index = state.workflows.findIndex((item) => item.id === workflow.id);
     state.workflows[index] = updated;
     elements.metadataStatus.textContent = '已保存';
   } catch (error) {

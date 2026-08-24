@@ -113,36 +113,36 @@ export function fetchWorkflows() {
   return request('/api/workflows');
 }
 
-export function fetchWorkflow(workflowKey) {
-  return request(`/api/workflows/${encodeURIComponent(workflowKey)}`);
+export function fetchWorkflow(workflowId) {
+  return request(`/api/workflows/${encodeURIComponent(workflowId)}`);
 }
 
-export function createWorkflow(key, name) {
+export function createWorkflow(name) {
   return request('/api/workflows', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key, name }),
+    body: JSON.stringify({ name }),
   });
 }
 
-export function renameWorkflow(workflowKey, name) {
-  return request(`/api/workflows/${encodeURIComponent(workflowKey)}`, {
+export function renameWorkflow(workflowId, name) {
+  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   });
 }
 
-export function updateWorkflowMetadata(workflowKey, inputPorts, outputPorts) {
-  return request(`/api/workflows/${encodeURIComponent(workflowKey)}/metadata`, {
+export function updateWorkflowMetadata(workflowId, inputPorts, outputPorts) {
+  return request(`/api/workflows/${encodeURIComponent(workflowId)}/metadata`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ input_ports: inputPorts, output_ports: outputPorts }),
   });
 }
 
-export function deleteWorkflow(workflowKey) {
-  return request(`/api/workflows/${encodeURIComponent(workflowKey)}`, { method: 'DELETE' });
+export function deleteWorkflow(workflowId) {
+  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' });
 }
 
 export function createModel(model) {
@@ -165,10 +165,22 @@ export function deleteModel(modelId) {
   return request(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
 }
 
-export function uploadWorkflow(workflowKey, workflow) {
-  return request(`/api/workflows/${encodeURIComponent(workflowKey)}`, {
+export function uploadWorkflow(workflowId, workflow) {
+  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(workflow),
+  });
+}
+
+export function fetchSettings() {
+  return request('/api/settings');
+}
+
+export function updateSettings(workflowId) {
+  return request('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workflow_id: workflowId }),
   });
 }
