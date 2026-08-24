@@ -132,7 +132,6 @@ export function loadSnapshot(saved) {
             id: port.id,
             name: typeof port.name === 'string' ? port.name.slice(0, 80) : port.id.slice(9),
             type: port.type,
-            description: typeof port.description === 'string' ? port.description.slice(0, 300) : '',
           }];
         });
       }

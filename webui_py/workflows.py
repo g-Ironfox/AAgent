@@ -47,7 +47,6 @@ class WorkflowPortMetadata(BaseModel):
 
     name: str = Field(min_length=1, max_length=80)
     type: Literal["content", "message", "list-content", "list-message"]
-    description: str = Field(default="", max_length=300)
 
 
 class WorkflowMetadataRequest(BaseModel):
@@ -270,8 +269,8 @@ def create_workflows_router(
             return JSONResponse(status_code=400, content={"error": "Input 字段名不能为空或重复"})
         if duplicate_port_name(payload.output_ports):
             return JSONResponse(status_code=400, content={"error": "Output 字段名不能为空或重复"})
-        input_ports = [port.model_dump() | {"name": port.name.strip(), "description": port.description.strip()} for port in payload.input_ports]
-        output_ports = [port.model_dump() | {"name": port.name.strip(), "description": port.description.strip()} for port in payload.output_ports]
+        input_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.input_ports]
+        output_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.output_ports]
         try:
             existing = workflows.find_one({"key": workflow_key})
             if existing is None:

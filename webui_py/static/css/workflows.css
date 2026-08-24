@@ -60,14 +60,13 @@
 .metadata-port-section > header button:hover { color:#fff; border-color:var(--green); background:var(--green); }
 .metadata-port-list { min-height:74px; }
 .metadata-port-empty { margin:0; padding:26px 14px; color:var(--muted); text-align:center; font-size:10px; }
-.metadata-port-row { padding:12px 14px; display:grid; gap:9px; border-bottom:1px solid #e7ebe7; }
+.metadata-port-row { padding:12px 14px; border-bottom:1px solid #e7ebe7; }
 .metadata-port-row:last-child { border-bottom:0; }
 .metadata-port-primary { display:grid; grid-template-columns:minmax(90px,1fr) minmax(112px,.8fr) 28px; align-items:end; gap:7px; }
 .metadata-port-row label { display:grid; gap:5px; color:var(--muted); font-size:9px; }
 .metadata-port-row input[type="text"],.metadata-port-row input:not([type]),.metadata-port-row select { width:100%; height:32px; min-width:0; padding:0 8px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:10px; }
 .metadata-remove-port { width:28px; height:32px; padding:0; color:var(--red); border:1px solid #dfb8b4; background:#fff; font-size:17px; }
 .metadata-remove-port:hover { color:#fff; border-color:var(--red); background:var(--red); }
-.metadata-description input { width:100%; height:32px; padding:0 8px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:10px; }
 .workflow-dialog { width:min(440px,calc(100% - 28px)); padding:0; color:var(--ink); border:1px solid var(--line); border-radius:4px; background:var(--surface); box-shadow:0 22px 60px rgba(23,32,29,.2); }
 .workflow-dialog::backdrop { background:rgba(23,32,29,.42); }
 .workflow-dialog form { display:grid; }

@@ -62,7 +62,6 @@ function createPortRow(port = {}) {
   const row = elements.portTemplate.content.firstElementChild.cloneNode(true);
   row.querySelector('[data-port-name]').value = port.name || '';
   row.querySelector('[data-port-type]').value = port.type || 'content';
-  row.querySelector('[data-port-description]').value = port.description || '';
   row.querySelector('[data-remove-port]').addEventListener('click', () => row.remove());
   return row;
 }
@@ -88,7 +87,6 @@ function readPortList(container) {
   return Array.from(container.querySelectorAll('.metadata-port-row'), (row) => ({
     name: row.querySelector('[data-port-name]').value.trim(),
     type: row.querySelector('[data-port-type]').value,
-    description: row.querySelector('[data-port-description]').value.trim(),
   }));
 }
 

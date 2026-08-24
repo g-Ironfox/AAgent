@@ -11,7 +11,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       return [
         { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
         ...(Object.hasOwn(node, 'workflowPorts')
-          ? node.workflowPorts.map((port) => ({ id: port.id, direction: 'output', type: port.type, label: port.name, title: port.description || port.name, multiple: true }))
+          ? node.workflowPorts.map((port) => ({ id: port.id, direction: 'output', type: port.type, label: port.name, title: port.name, multiple: true }))
           : [
               { id: 'content-out', direction: 'output', type: 'content', label: '输入内容', title: '输入内容', multiple: true },
               { id: 'source', direction: 'output', type: 'content', label: '来源', title: '事件来源', multiple: true },
@@ -22,7 +22,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       return [
         { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
         ...(Object.hasOwn(node, 'workflowPorts')
-          ? node.workflowPorts.map((port) => ({ id: port.id, direction: 'input', type: port.type, label: port.name, title: port.description || port.name, multiple: false }))
+          ? node.workflowPorts.map((port) => ({ id: port.id, direction: 'input', type: port.type, label: port.name, title: port.name, multiple: false }))
           : [{ id: 'content-in', direction: 'input', type: 'content', label: '输出内容', title: '发布到主代理终端', multiple: false }]),
       ];
     }
