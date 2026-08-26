@@ -5,6 +5,9 @@
 
 TODO:
 - bug workflow初始元数据input与output应为空,对应的初始工作流的input与output control-flow以外也应无port
+- workflow output节点没有删除按钮;而且后来新建的output节点的input也不是元数据规定的
+- workflow管理页在选择可以调用的workflow时,禁用可能存在循环依赖的。
+- workflow管理页显式依赖树
 
 ## 快速启动
 0. QQ需配置NapNeko/NapCatQQ!

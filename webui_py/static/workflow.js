@@ -1,5 +1,5 @@
 import { fetchModels, fetchTools, fetchWorkflow, fetchWorkflows, uploadWorkflow } from './api.js';
-import { addNode, loadSnapshot, workflowSnapshot } from './workflow/model.js';
+import { addNode, loadSnapshot, resetWorkflow, workflowSnapshot } from './workflow/model.js';
 import { createConnectionController } from './workflow/connections.js';
 import { createWorkflowView } from './workflow/view.js';
 
@@ -116,7 +116,8 @@ fetchTools()
 
 for (const button of document.querySelectorAll('[data-add-node]')) {
   button.addEventListener('click', () => {
-    addNode(button.dataset.addNode);
+    const nodeType = button.dataset.addNode;
+    addNode(nodeType, nodeType === 'output' ? currentWorkflow : null);
     markChanged();
     view.renderNodes();
     view.renderInspector();
@@ -155,10 +156,11 @@ elements.saveButton.addEventListener('click', async () => {
   }
 });
 
-elements.resetButton.addEventListener('click', async () => {
-  if (!currentWorkflow || !window.confirm('确定放弃未保存修改并重新载入服务器版本吗？')) return;
-  hasUnsavedChanges = false;
-  await selectWorkflow(currentWorkflow.id, false, true);
+elements.resetButton.addEventListener('click', () => {
+  if (!currentWorkflow || !window.confirm('确定放弃当前修改并恢复为初始 Workflow 吗？')) return;
+  if (!resetWorkflow(currentWorkflow)) return;
+  markChanged();
+  renderWorkflow();
 });
 
 elements.importButton.addEventListener('click', () => {

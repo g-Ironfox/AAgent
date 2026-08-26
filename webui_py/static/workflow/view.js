@@ -211,6 +211,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     if (node.type === 'llm') renderModelOptions(node);
     if (node.type === 'tool') renderToolSelect(node);
     if (node.type === 'workflow') renderWorkflowNode(node);
+    if (node.type === 'output') renderOutputNode(node);
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
       field.value = node[field.dataset.field] || '';
       field.addEventListener('input', () => {
@@ -231,6 +232,29 @@ export function createWorkflowView(elements, connections, markChanged) {
       renderNodes();
       renderInspector();
     });
+  }
+
+  function renderOutputNode(node) {
+    const container = elements.inspectorContent.querySelector('[data-output-input-contracts]');
+    const ports = Array.isArray(node.workflowPorts) ? node.workflowPorts : [];
+    if (!ports.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-options';
+      empty.textContent = '无数据输入接口';
+      container.replaceChildren(empty);
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    for (const port of ports) {
+      const contract = document.createElement('div');
+      contract.className = 'port-contract';
+      contract.innerHTML = '<span class="port-swatch"></span><strong></strong><code></code>';
+      contract.querySelector('.port-swatch').classList.add(port.type);
+      contract.querySelector('strong').textContent = port.name;
+      contract.querySelector('code').textContent = port.id;
+      fragment.append(contract);
+    }
+    container.replaceChildren(fragment);
   }
 
   function renderWorkflowNode(node) {

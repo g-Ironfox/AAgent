@@ -135,7 +135,7 @@ def asr(filename):
         data = {"model": "Qwen3-asr-1.7b-fp16"}
         
         response = requests.post(
-            f"http://192.168.1.104:8200/v1/audio/transcriptions",
+            f"https://frp-dry.com:63030/",
             files=files,
             data=data,
             timeout=(10, 120)  # 给长音频留足处理时间
@@ -205,7 +205,7 @@ def qwen3asr(filename):
     }
 )
 def gain_content_from_bvid(bvid):
-    return qwen3asr(download_bvid(bvid))
+    return asr(download_bvid(bvid))
 
 
 @tool(

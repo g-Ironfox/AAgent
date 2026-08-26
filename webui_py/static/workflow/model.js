@@ -3,21 +3,11 @@ let idSequence = 0;
 
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
-  { id: 'router-1', type: 'router', name: '任务路由', branches: [{ id: 'branch-1', name: '分支 1' }], x: 310, y: 238 },
-  { id: 'construct-message-1', type: 'construct_message', name: '构造 Message', role: 'user', x: 568, y: 238 },
-  { id: 'llm-1', type: 'llm', name: '主 LLM', model: '', prompt: '完成用户请求，并返回清晰的结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, x: 826, y: 238 },
-  { id: 'output', type: 'output', name: 'Output', x: 1084, y: 238 },
+  { id: 'output', type: 'output', name: 'Output', x: 310, y: 238 },
 ];
 
 const initialConnections = [
-  { id: 'control-input-router-1', fromId: 'input', fromPortId: 'control-out', toId: 'router-1', toPortId: 'control-in', type: 'control' },
-  { id: 'content-input-router-1', fromId: 'input', fromPortId: 'content-out', toId: 'router-1', toPortId: 'content-in', type: 'content' },
-  { id: 'control-router-1-construct-message-1', fromId: 'router-1', fromPortId: 'branch-1', toId: 'construct-message-1', toPortId: 'control-in', type: 'control' },
-  { id: 'content-input-construct-message-1', fromId: 'input', fromPortId: 'content-out', toId: 'construct-message-1', toPortId: 'content-in', type: 'content' },
-  { id: 'control-construct-message-1-llm-1', fromId: 'construct-message-1', fromPortId: 'control-out', toId: 'llm-1', toPortId: 'control-in', type: 'control' },
-  { id: 'message-construct-message-1-llm-1', fromId: 'construct-message-1', fromPortId: 'message-out', toId: 'llm-1', toPortId: 'message-in-0', type: 'message' },
-  { id: 'control-llm-1-output', fromId: 'llm-1', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
-  { id: 'content-llm-1-output', fromId: 'llm-1', fromPortId: 'output', toId: 'output', toPortId: 'content-in', type: 'content' },
+  { id: 'control-input-output', fromId: 'input', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
 ];
 
 export const state = {
@@ -100,6 +90,10 @@ export function deleteNode(id) {
 
 export function workflowSnapshot() {
   return structuredClone({ version: 1, nodes: state.nodes, connections: state.connections });
+}
+
+export function resetWorkflow(metadata = null) {
+  return loadSnapshot({ nodes: initialNodes, connections: initialConnections }, metadata);
 }
 
 function metadataPorts(ports) {
