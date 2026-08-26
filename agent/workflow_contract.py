@@ -17,6 +17,7 @@ SUPPORTED_NODE_TYPES = {
     "llm",
     "tool",
     "tool_call",
+    "workflow",
 }
 
 
@@ -48,6 +49,11 @@ def data_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
         return declared_inputs | {"list-in"}, {"item-out"}
     if node_type == "tool":
         return declared_inputs | set(node.get("parameters", [])), {"output"}
+    if node_type == "workflow":
+        return (
+            {f"workflow:{port['name']}" for port in node.get("input_ports", [])},
+            {f"workflow:{port['name']}" for port in node.get("output_ports", [])},
+        )
     return declared_inputs | {"tool_call"}, {"tool_call_id", "result"}
 
 

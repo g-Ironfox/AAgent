@@ -5,6 +5,7 @@ export function createWorkflowView(elements, connections, markChanged) {
   const portTopInset = 8;
   let modelConfigs = [];
   let toolSchemas = [];
+  let workflowNodes = [];
 
   function nodePorts(node) {
     if (node.type === 'input') {
@@ -103,6 +104,14 @@ export function createWorkflowView(elements, connections, markChanged) {
         { id: 'result', direction: 'output', type: 'content', label: '结果', title: '工具执行结果', multiple: true },
       ];
     }
+    if (node.type === 'workflow') {
+      return [
+        { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '调用 Workflow', multiple: false },
+        ...(node.input_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'input', type: port.type, label: port.name, title: port.name, multiple: false })),
+        { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: 'Workflow 完成后继续', multiple: false },
+        ...(node.output_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'output', type: port.type, label: port.name, title: port.name, multiple: true })),
+      ];
+    }
     const inputPorts = (node.dataInputPorts || ['message-in-0']).map((portId, index) => ({
       id: portId,
       direction: 'input',
@@ -128,7 +137,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const bodyRows = Math.max(inputs.length, outputs.length);
-    const symbol = node.type === 'input' ? 'IN' : node.type === 'output' ? 'OUT' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'foreach' ? 'FE' : node.type === 'tool_call' ? 'TC' : node.type === 'tool' ? 'T' : 'L';
+    const symbol = node.type === 'input' ? 'IN' : node.type === 'output' ? 'OUT' : node.type === 'router' ? 'R' : node.type === 'construct_message' ? 'M' : node.type === 'construct_content' ? 'C' : node.type === 'construct_list' ? 'L' : node.type === 'foreach' ? 'FE' : node.type === 'tool_call' ? 'TC' : node.type === 'tool' ? 'T' : node.type === 'workflow' ? 'WF' : 'L';
 
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === state.selectedId ? ' selected' : ''}`;
@@ -155,6 +164,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       portElement.dataset.portType = port.type;
       portElement.dataset.portMultiple = String(port.multiple === true);
       portElement.dataset.portLabel = port.label;
+      portElement.setAttribute('aria-label', `${port.direction === 'input' ? '输入' : '输出'} ${port.label} (${port.type})`);
       portElement.title = port.title;
       body.append(portElement);
     }
@@ -172,8 +182,9 @@ export function createWorkflowView(elements, connections, markChanged) {
       fragment.append(createNodeUI(node));
     }
     elements.nodeLayer.replaceChildren(fragment);
-    const maxX = Math.max(1800, ...state.nodes.map((node) => node.x + 210));
-    const maxY = Math.max(1200, ...state.nodes.map((node) => node.y + 150));
+    const renderedNodes = Array.from(elements.nodeLayer.querySelectorAll('.flow-node'));
+    const maxX = Math.max(1800, ...renderedNodes.map((element) => element.offsetLeft + element.offsetWidth + 20));
+    const maxY = Math.max(1200, ...renderedNodes.map((element) => element.offsetTop + element.offsetHeight + 20));
     elements.nodeLayer.style.width = `${maxX}px`;
     elements.nodeLayer.style.height = `${maxY}px`;
     elements.connectionLayer.style.width = `${maxX}px`;
@@ -199,6 +210,7 @@ export function createWorkflowView(elements, connections, markChanged) {
 
     if (node.type === 'llm') renderModelOptions(node);
     if (node.type === 'tool') renderToolSelect(node);
+    if (node.type === 'workflow') renderWorkflowNode(node);
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
       field.value = node[field.dataset.field] || '';
       field.addEventListener('input', () => {
@@ -219,6 +231,33 @@ export function createWorkflowView(elements, connections, markChanged) {
       renderNodes();
       renderInspector();
     });
+  }
+
+  function renderWorkflowNode(node) {
+    elements.inspectorContent.querySelector('[data-workflow-name]').value = node.workflow_name;
+    elements.inspectorContent.querySelector('[data-workflow-id]').value = node.workflow_id;
+    const renderContracts = (selector, ports) => {
+      const container = elements.inspectorContent.querySelector(selector);
+      if (!ports.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-options';
+        empty.textContent = '无数据接口';
+        container.replaceChildren(empty);
+        return;
+      }
+      container.replaceChildren(...ports.map((port) => {
+        const contract = document.createElement('div');
+        contract.className = 'port-contract';
+        contract.innerHTML = '<span class="port-swatch"></span><strong></strong><code></code>';
+        contract.querySelector('.port-swatch').classList.add(port.type);
+        contract.querySelector('strong').textContent = port.name;
+        contract.querySelector('code').textContent = port.type;
+        contract.title = `workflow:${port.name}`;
+        return contract;
+      }));
+    };
+    renderContracts('[data-workflow-input-contracts]', node.input_ports || []);
+    renderContracts('[data-workflow-output-contracts]', node.output_ports || []);
   }
 
   function bindConstructContent(node) {
@@ -626,5 +665,20 @@ export function createWorkflowView(elements, connections, markChanged) {
     if (['llm', 'tool'].includes(nodeById(state.selectedId)?.type)) renderInspector();
   }
 
-  return { renderInspector, renderNodes, setModels, setTools };
+  function setWorkflowNodes(references) {
+    workflowNodes = references.filter((reference) => typeof reference.workflow_id === 'string' && reference.workflow_id);
+    elements.workflowNodeLibrary.hidden = workflowNodes.length === 0;
+    elements.workflowNodeLibrary.replaceChildren(...workflowNodes.map((reference) => {
+      const button = document.createElement('button');
+      button.className = 'library-item workflow-library-item';
+      button.type = 'button';
+      button.dataset.addWorkflowNode = reference.workflow_id;
+      button.innerHTML = '<span class="node-symbol workflow-symbol" aria-hidden="true">WF</span><div><strong></strong><small></small></div><span class="add-symbol" aria-hidden="true">+</span>';
+      button.querySelector('strong').textContent = reference.name || reference.workflow_id;
+      button.querySelector('small').textContent = `${(reference.input_ports || []).length} 输入 / ${(reference.output_ports || []).length} 输出`;
+      return button;
+    }));
+  }
+
+  return { renderInspector, renderNodes, setModels, setTools, setWorkflowNodes };
 }

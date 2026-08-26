@@ -92,8 +92,9 @@
             <div><strong>Tool Call</strong><small>执行 OpenAI 格式的工具调用</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <div id="workflowNodeLibrary" class="workflow-node-library" hidden></div>
         </div>
-        <footer class="library-footer"><span>9 种节点</span><span id="nodeCount">4 个实例</span></footer>
+        <footer class="library-footer"><span>基础节点 + Workflow</span><span id="nodeCount">4 个实例</span></footer>
       </aside>
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
@@ -329,6 +330,20 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=2"></script>
+  <template id="workflowInspectorTemplate">
+    <section class="inspector-section">
+      <div class="section-label"><strong>Workflow 调用</strong><span>只读契约</span></div>
+      <div class="contract-group"><div class="contract-group-title">输入接口</div><div data-workflow-input-contracts></div></div>
+      <div class="contract-group"><div class="contract-group-title">输出接口</div><div data-workflow-output-contracts></div></div>
+    </section>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>目标 Workflow<input data-workflow-name readonly></label>
+      <label>Workflow ID<input data-workflow-id readonly></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <script type="module" src="/workflow.js?v=4"></script>
 </body>
 </html>

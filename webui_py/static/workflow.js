@@ -19,6 +19,7 @@ const elements = {
   importButton: document.querySelector('#importButton'),
   importFileInput: document.querySelector('#importFileInput'),
   exportButton: document.querySelector('#exportButton'),
+  workflowNodeLibrary: document.querySelector('#workflowNodeLibrary'),
 };
 let hasUnsavedChanges = false;
 let currentWorkflow = null;
@@ -60,6 +61,7 @@ async function selectWorkflow(workflowId, confirmChange = true, forceReload = fa
     const workflow = await fetchWorkflow(workflowId);
     if (!loadSnapshot(workflow, workflow)) throw new Error('Workflow 数据无效');
     currentWorkflow = workflow;
+    view.setWorkflowNodes(workflow.workflow_nodes || []);
     elements.workflowSelect.value = workflow.id;
     window.history.replaceState(null, '', `/workflow_edit.html?id=${encodeURIComponent(workflow.id)}`);
     markSaved('已载入');
@@ -120,6 +122,17 @@ for (const button of document.querySelectorAll('[data-add-node]')) {
     view.renderInspector();
   });
 }
+
+elements.workflowNodeLibrary.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-add-workflow-node]');
+  if (!button) return;
+  const reference = (currentWorkflow?.workflow_nodes || []).find((item) => item.workflow_id === button.dataset.addWorkflowNode);
+  if (!reference) return;
+  addNode('workflow', reference);
+  markChanged();
+  view.renderNodes();
+  view.renderInspector();
+});
 
 elements.saveButton.addEventListener('click', async () => {
   elements.saveButton.disabled = true;

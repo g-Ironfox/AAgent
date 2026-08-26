@@ -16,6 +16,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 MAX_WORKFLOW_NODES = 200
 MAX_WORKFLOW_CONNECTIONS = 1000
 MAX_WORKFLOW_METADATA_PORTS = 50
+MAX_WORKFLOW_NODE_REFERENCES = 50
 
 logger = logging.getLogger("aagent.webui")
 
@@ -48,15 +49,22 @@ class WorkflowPortMetadata(BaseModel):
     type: Literal["content", "message", "list-content", "list-message"]
 
 
+class WorkflowNodeReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_id: str = Field(min_length=1, max_length=80)
+
+
 class WorkflowMetadataRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     input_ports: list[WorkflowPortMetadata] = Field(default_factory=list, max_length=MAX_WORKFLOW_METADATA_PORTS)
     output_ports: list[WorkflowPortMetadata] = Field(default_factory=list, max_length=MAX_WORKFLOW_METADATA_PORTS)
+    workflow_nodes: list[WorkflowNodeReference] = Field(default_factory=list, max_length=MAX_WORKFLOW_NODE_REFERENCES)
 
 
 def duplicate_port_name(ports: list[WorkflowPortMetadata]) -> bool:
-    names = [port.name.strip() for port in ports]
+    names = [port.name.strip().casefold() for port in ports]
     return any(not name for name in names) or len(names) != len(set(names))
 
 
@@ -99,6 +107,54 @@ def synchronize_metadata_ports(
     return synchronized_nodes, synchronized_connections
 
 
+def synchronize_workflow_nodes(
+    nodes: list[dict[str, Any]],
+    connections: list[dict[str, Any]],
+    workflow_nodes: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    references = {reference["workflow_id"]: reference for reference in workflow_nodes}
+    removed_node_ids = {
+        node.get("id")
+        for node in nodes
+        if node.get("type") == "workflow" and node.get("workflow_id") not in references
+    }
+    synchronized_nodes = []
+    workflow_node_by_id = {}
+    for node in nodes:
+        if node.get("id") in removed_node_ids:
+            continue
+        if node.get("type") == "workflow":
+            reference = references[node["workflow_id"]]
+            node = {
+                **node,
+                "workflow_name": reference["name"],
+                "input_ports": reference["input_ports"],
+                "output_ports": reference["output_ports"],
+            }
+            workflow_node_by_id[node["id"]] = node
+        synchronized_nodes.append(node)
+
+    def valid_workflow_endpoint(node: dict[str, Any], port_id: Any, connection_type: Any, field: str) -> bool:
+        return any(
+            port_id == f"workflow:{port['name']}" and connection_type == port["type"]
+            for port in node[field]
+        )
+
+    synchronized_connections = []
+    for connection in connections:
+        if connection.get("fromId") in removed_node_ids or connection.get("toId") in removed_node_ids:
+            continue
+        if connection.get("type") != "control":
+            source = workflow_node_by_id.get(connection.get("fromId"))
+            target = workflow_node_by_id.get(connection.get("toId"))
+            if source and not valid_workflow_endpoint(source, connection.get("fromPortId"), connection.get("type"), "output_ports"):
+                continue
+            if target and not valid_workflow_endpoint(target, connection.get("toPortId"), connection.get("type"), "input_ports"):
+                continue
+        synchronized_connections.append(connection)
+    return synchronized_nodes, synchronized_connections
+
+
 def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": str(document["_id"]),
@@ -108,6 +164,7 @@ def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
         "connections": document.get("connections", []),
         "input_ports": document.get("input_ports", []),
         "output_ports": document.get("output_ports", []),
+        "workflow_nodes": document.get("workflow_nodes", []),
         "created_at": document.get("created_at"),
         "updated_at": document.get("updated_at"),
     }
@@ -126,7 +183,7 @@ def create_workflows_router(
         try:
             items = workflows.find(
                 {},
-                {"name": 1, "version": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "created_at": 1, "updated_at": 1},
+                {"name": 1, "version": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "workflow_nodes": 1, "created_at": 1, "updated_at": 1},
             ).sort("updated_at", DESCENDING)
             return {
                 "items": [
@@ -138,6 +195,7 @@ def create_workflows_router(
                         "connection_count": len(item.get("connections", [])),
                         "input_ports": item.get("input_ports", []),
                         "output_ports": item.get("output_ports", []),
+                        "workflow_nodes": item.get("workflow_nodes", []),
                         "created_at": item.get("created_at"),
                         "updated_at": item.get("updated_at"),
                     }
@@ -180,6 +238,7 @@ def create_workflows_router(
             ],
             "input_ports": [],
             "output_ports": [],
+            "workflow_nodes": [],
             "created_at": now,
             "updated_at": now,
         }
@@ -260,26 +319,53 @@ def create_workflows_router(
     @router.put("/api/workflows/{workflow_id}/metadata")
     def update_workflow_metadata(workflow_id: str, payload: WorkflowMetadataRequest):
         if duplicate_port_name(payload.input_ports):
-            return JSONResponse(status_code=400, content={"error": "Input 字段名不能为空或重复"})
+            return JSONResponse(status_code=400, content={"error": "输入 Port 名称不能为空或重名"})
         if duplicate_port_name(payload.output_ports):
-            return JSONResponse(status_code=400, content={"error": "Output 字段名不能为空或重复"})
+            return JSONResponse(status_code=400, content={"error": "输出 Port 名称不能为空或重名"})
         input_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.input_ports]
         output_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.output_ports]
         object_id = workflow_object_id(workflow_id)
         if isinstance(object_id, JSONResponse):
             return object_id
+        workflow_node_ids = [reference.workflow_id for reference in payload.workflow_nodes]
+        if len(workflow_node_ids) != len(set(workflow_node_ids)):
+            return JSONResponse(status_code=400, content={"error": "引入的 Workflow 不能重复"})
+        if workflow_id in workflow_node_ids:
+            return JSONResponse(status_code=400, content={"error": "Workflow 不能引入自身"})
+        try:
+            referenced_object_ids = [ObjectId(reference_id) for reference_id in workflow_node_ids]
+        except (InvalidId, TypeError):
+            return JSONResponse(status_code=400, content={"error": "引入的 Workflow id 无效"})
         try:
             existing = workflows.find_one({"_id": object_id})
             if existing is None:
                 return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+            referenced_workflows = list(workflows.find(
+                {"_id": {"$in": referenced_object_ids}},
+                {"name": 1, "input_ports": 1, "output_ports": 1},
+            ))
+            if len(referenced_workflows) != len(referenced_object_ids):
+                return JSONResponse(status_code=400, content={"error": "引入的 Workflow 不存在或已被删除"})
+            referenced_by_id = {str(workflow["_id"]): workflow for workflow in referenced_workflows}
+            workflow_nodes = [
+                {
+                    "workflow_id": reference_id,
+                    "name": referenced_by_id[reference_id].get("name", reference_id),
+                    "input_ports": referenced_by_id[reference_id].get("input_ports", []),
+                    "output_ports": referenced_by_id[reference_id].get("output_ports", []),
+                }
+                for reference_id in workflow_node_ids
+            ]
             nodes, connections = synchronize_metadata_ports(
                 existing.get("nodes", []), existing.get("connections", []), input_ports, output_ports
             )
+            nodes, connections = synchronize_workflow_nodes(nodes, connections, workflow_nodes)
             document = workflows.find_one_and_update(
                 {"_id": object_id},
                 {"$set": {
                     "input_ports": input_ports,
                     "output_ports": output_ports,
+                    "workflow_nodes": workflow_nodes,
                     "nodes": nodes,
                     "connections": connections,
                     "updated_at": datetime.now(timezone.utc),
@@ -325,12 +411,27 @@ def create_workflows_router(
 
         valid_node_types = {
             "input", "output", "router", "construct_message", "construct_content", "construct_list",
-            "foreach", "llm", "tool", "tool_call",
+            "foreach", "llm", "tool", "tool_call", "workflow",
         }
         if any(node.get("type") not in valid_node_types for node in payload.nodes):
             return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})
         if not any(node.get("type") == "output" for node in payload.nodes):
             return JSONResponse(status_code=400, content={"error": "Workflow 必须至少包含一个 Output 节点"})
+
+        workflow_nodes = [node for node in payload.nodes if node.get("type") == "workflow"]
+        workflow_document = workflows.find_one({"_id": object_id}, {"workflow_nodes": 1})
+        if workflow_document is None:
+            return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+        allowed_workflow_nodes = {
+            reference.get("workflow_id"): reference
+            for reference in workflow_document.get("workflow_nodes", [])
+        }
+        for node in workflow_nodes:
+            reference = allowed_workflow_nodes.get(node.get("workflow_id"))
+            if reference is None:
+                return JSONResponse(status_code=400, content={"error": "Workflow 节点未在元数据中引入"})
+            if node.get("input_ports") != reference.get("input_ports", []) or node.get("output_ports") != reference.get("output_ports", []):
+                return JSONResponse(status_code=400, content={"error": "Workflow 节点端口与元数据契约不一致"})
 
         tool_nodes = [node for node in payload.nodes if node.get("type") == "tool"]
         if tool_nodes:

@@ -273,9 +273,12 @@ def handle_task(e: dict):
         )
 
     def workflow(e):
-        workflow_document = _read_workflow(read_active_workflow_id())
+        active_workflow_id = read_active_workflow_id()
+        workflow_document = _read_workflow(active_workflow_id)
         validate_workflow(workflow_document)
         workflow_map = parse_workflow(workflow_document)
+        for node in workflow_map:
+            node['_workflow_call_stack'] = [active_workflow_id]
         start = -1
         for i in range(len(workflow_map)):
             if workflow_map[i]["id"]=="input":
@@ -383,23 +386,77 @@ def handle_task(e: dict):
         workflow_map = e['payload']['workflow_map']
         node = workflow_map[current_id]
         workflow_ports = node.get('workflowPorts', [])
+        output = {}
         if 'workflowPorts' in node:
-            output = {}
             for port in workflow_ports:
                 has_value, value = read_workflow_input(node, port['id'])
                 if has_value:
                     output[port['name']] = value
             if not output:
-                return
+                output = {}
             content = output.get('content', output)
         else:
             has_content, content = read_workflow_input(node, 'content-in')
             if not has_content:
                 return
-        publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
-            "event_type": "response",
-            "payload": {"content": content},
-        })
+            output['content'] = content
+        return_context = node.get('_workflow_return')
+        if isinstance(return_context, dict):
+            parent_map = return_context['workflow_map']
+            parent_node = parent_map[return_context['current_id']]
+            for name, value in output.items():
+                propagate_workflow_output(parent_map, parent_node, f'workflow:{name}', value)
+            publish_workflow_control_output(parent_map, parent_node)
+        else:
+            publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
+                "event_type": "response",
+                "payload": {"content": content},
+            })
+
+    def workflow_workflow(e):
+        current_id = e['payload']['current_id']
+        parent_map = e['payload']['workflow_map']
+        parent_node = parent_map[current_id]
+        workflow_id = parent_node['workflow_id']
+        call_stack = parent_node.get('_workflow_call_stack', [])
+        if workflow_id in call_stack:
+            raise ValueError(f"recursive workflow call detected: {' -> '.join([*call_stack, workflow_id])}")
+
+        workflow_document = _read_workflow(workflow_id)
+        validate_workflow(workflow_document)
+        current_input_ports = workflow_document.get('input_ports', [])
+        current_output_ports = workflow_document.get('output_ports', [])
+        if (
+            parent_node.get('input_ports', []) != current_input_ports
+            or parent_node.get('output_ports', []) != current_output_ports
+        ):
+            raise ValueError(
+                f"callable workflow contract changed; refresh the workflow node metadata: {workflow_id}"
+            )
+        child_map = parse_workflow(workflow_document)
+        child_input_id = next((index for index, node in enumerate(child_map) if node['type'] == 'input'), None)
+        child_output_ids = [index for index, node in enumerate(child_map) if node['type'] == 'output']
+        if child_input_id is None or not child_output_ids:
+            raise ValueError(f"callable workflow has an invalid boundary: {workflow_id}")
+
+        next_call_stack = [*call_stack, workflow_id]
+        for child_node in child_map:
+            child_node['_workflow_call_stack'] = next_call_stack
+        for output_id in child_output_ids:
+            child_map[output_id]['_workflow_return'] = {
+                'workflow_map': parent_map,
+                'current_id': current_id,
+            }
+
+        child_input = child_map[child_input_id]
+        for port in child_input.get('workflowPorts', []):
+            has_value, value = read_workflow_input(parent_node, f"workflow:{port['name']}")
+            if has_value:
+                propagate_workflow_output(child_map, child_input, port['id'], value)
+        publish_workflow_node(
+            child_map,
+            child_input.get('control_outputs', {}).get('control-out'),
+        )
 
     def workflow_construct_list(e):
         current_id = e['payload']['current_id']
@@ -526,6 +583,7 @@ def handle_task(e: dict):
         "workflow_router":workflow_router,
         "workflow_tool":workflow_tool,
         "workflow_tool_call":workflow_tool_call,
+        "workflow_workflow":workflow_workflow,
     }
 
     record_history(e)

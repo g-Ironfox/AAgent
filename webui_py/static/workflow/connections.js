@@ -8,11 +8,11 @@ export function createConnectionController(elements, markChanged) {
     return `connection-${Date.now()}-${connectionSequence}`;
   }
 
-  function portCenter(nodeId, portId) {
+  function portCenter(nodeId, portId, direction = null) {
     const nodeElement = Array.from(elements.nodeLayer.querySelectorAll('[data-node-id]'))
       .find((element) => element.dataset.nodeId === nodeId);
     const port = Array.from(nodeElement?.querySelectorAll('[data-port-id]') || [])
-      .find((element) => element.dataset.portId === portId);
+      .find((element) => element.dataset.portId === portId && (!direction || element.dataset.portDirection === direction));
     if (!port) return null;
     const canvasRect = elements.canvas.getBoundingClientRect();
     const rect = port.getBoundingClientRect();
@@ -247,8 +247,8 @@ export function createConnectionController(elements, markChanged) {
     elements.connectionLayer.setAttribute('height', String(height));
     const fragment = document.createDocumentFragment();
     for (const connection of state.connections) {
-      const start = portCenter(connection.fromId, connection.fromPortId);
-      const end = portCenter(connection.toId, connection.toPortId);
+      const start = portCenter(connection.fromId, connection.fromPortId, 'output');
+      const end = portCenter(connection.toId, connection.toPortId, 'input');
       if (!start || !end) continue;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('class', `connection-path ${connection.type}`);
@@ -262,7 +262,7 @@ export function createConnectionController(elements, markChanged) {
         y: drag.pointer.y - canvasRect.top + elements.canvas.scrollTop,
         direction: drag.anchorDirection === 'output' ? 'input' : 'output',
       };
-      const anchor = portCenter(drag.anchorNodeId, drag.anchorPortId);
+      const anchor = portCenter(drag.anchorNodeId, drag.anchorPortId, drag.anchorDirection);
       if (anchor) {
         const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         preview.setAttribute('class', `connection-path preview ${drag.type}`);

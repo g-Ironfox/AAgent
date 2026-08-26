@@ -33,6 +33,10 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .construct_list-symbol { background:#176f73; }
 .foreach-symbol { background:#9a5a24; }
 .tool-symbol,.tool_call-symbol { background:var(--green); }
+.workflow-node-library { padding-top:8px; display:grid; gap:8px; border-top:1px solid var(--line); }
+.workflow-node-library[hidden] { display:none; }
+.workflow-symbol { background:#785d9b; }
+.workflow-library-item { border-left-color:#785d9b; }
 .add-symbol { color:var(--green); font-size:20px; }
 .fixed-tag { padding:3px 5px; color:var(--muted); border:1px solid var(--line); font-size:8px; }
 .library-footer { margin-top:auto; min-height:42px; padding:0 13px; display:flex; align-items:center; justify-content:space-between; color:var(--muted); border-top:1px solid var(--line); font:9px Consolas,monospace; }

@@ -18,6 +18,7 @@ const elements = {
   outputPorts: document.querySelector('#outputPorts'),
   addInputPort: document.querySelector('#addInputPort'),
   addOutputPort: document.querySelector('#addOutputPort'),
+  workflowNodeOptions: document.querySelector('#workflowNodeOptions'),
   portTemplate: document.querySelector('#metadataPortTemplate'),
   createDialog: document.querySelector('#createDialog'),
   createForm: document.querySelector('#createForm'),
@@ -87,6 +88,38 @@ function readPortList(container) {
   }));
 }
 
+function renderWorkflowNodeOptions(workflow) {
+  const selectedIds = new Set((workflow.workflow_nodes || []).map((reference) => reference.workflow_id));
+  const candidates = state.workflows.filter((candidate) => candidate.id !== workflow.id);
+  if (!candidates.length) {
+    const empty = document.createElement('p');
+    empty.className = 'metadata-port-empty';
+    empty.textContent = '没有可引入的其他 Workflow';
+    elements.workflowNodeOptions.replaceChildren(empty);
+    return;
+  }
+  elements.workflowNodeOptions.replaceChildren(...candidates.map((candidate) => {
+    const label = document.createElement('label');
+    label.className = 'metadata-workflow-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = candidate.id;
+    checkbox.checked = selectedIds.has(candidate.id);
+    const description = document.createElement('span');
+    const name = document.createElement('strong');
+    name.textContent = candidate.name || candidate.id;
+    const contract = document.createElement('small');
+    contract.textContent = `${(candidate.input_ports || []).length} 输入 / ${(candidate.output_ports || []).length} 输出`;
+    description.append(name, contract);
+    label.append(checkbox, description);
+    return label;
+  }));
+}
+
+function readWorkflowNodes() {
+  return Array.from(elements.workflowNodeOptions.querySelectorAll('input:checked'), (input) => ({ workflow_id: input.value }));
+}
+
 function renderConfiguration() {
   const workflow = selectedWorkflow();
   elements.empty.hidden = Boolean(workflow);
@@ -99,12 +132,14 @@ function renderConfiguration() {
     elements.editLink.href = '/workflow_edit.html';
     elements.inputPorts.replaceChildren();
     elements.outputPorts.replaceChildren();
+    elements.workflowNodeOptions.replaceChildren();
     return;
   }
   elements.editLink.href = `/workflow_edit.html?id=${encodeURIComponent(workflow.id)}`;
   elements.metadataStatus.textContent = '';
   renderPortList(elements.inputPorts, workflow.input_ports || []);
   renderPortList(elements.outputPorts, workflow.output_ports || []);
+  renderWorkflowNodeOptions(workflow);
 }
 
 function selectWorkflow(id) {
@@ -256,16 +291,24 @@ async function submitMetadata(event) {
   if (!workflow || state.saving || !elements.metadataForm.reportValidity()) return;
   const inputPorts = readPortList(elements.inputPorts);
   const outputPorts = readPortList(elements.outputPorts);
-  const duplicateSide = [inputPorts, outputPorts].find((ports) => new Set(ports.map((port) => port.name)).size !== ports.length);
-  if (duplicateSide) {
-    elements.metadataStatus.textContent = '同一侧字段名不能重复';
+  const workflowNodes = readWorkflowNodes();
+  const hasDuplicateNames = (ports) => {
+    const names = ports.map((port) => port.name.trim().toLocaleLowerCase());
+    return new Set(names).size !== names.length;
+  };
+  if (hasDuplicateNames(inputPorts)) {
+    elements.metadataStatus.textContent = '输入 Port 名称不能重名';
+    return;
+  }
+  if (hasDuplicateNames(outputPorts)) {
+    elements.metadataStatus.textContent = '输出 Port 名称不能重名';
     return;
   }
   state.saving = true;
   elements.metadataStatus.textContent = '保存中';
   updateControls();
   try {
-    const updated = workflowSummary(await updateWorkflowMetadata(workflow.id, inputPorts, outputPorts));
+    const updated = workflowSummary(await updateWorkflowMetadata(workflow.id, inputPorts, outputPorts, workflowNodes));
     const index = state.workflows.findIndex((item) => item.id === workflow.id);
     state.workflows[index] = updated;
     elements.metadataStatus.textContent = '已保存';
