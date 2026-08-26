@@ -238,7 +238,6 @@ async function removeSelectedWorkflow() {
   try {
     await deleteWorkflow(workflow.id);
     state.workflows = state.workflows.filter((item) => item.id !== workflow.id);
-    localStorage.removeItem(`aagent.workflow.draft.v1.${workflow.id}`);
     state.selectedId = state.workflows[0]?.id || null;
     elements.state.textContent = `共 ${state.workflows.length} 个`;
     renderList();

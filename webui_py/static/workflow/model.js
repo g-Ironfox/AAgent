@@ -1,4 +1,3 @@
-const STORAGE_KEY = 'aagent.workflow.draft.v1';
 const NODE_TYPES = new Set(['input', 'output', 'router', 'construct_message', 'construct_content', 'construct_list', 'foreach', 'llm', 'tool', 'tool_call']);
 let idSequence = 0;
 
@@ -87,30 +86,23 @@ export function deleteNode(id) {
   state.selectedId = state.nodes[0].id;
 }
 
-function draftStorageKey(workflowId) {
-  return workflowId ? `${STORAGE_KEY}.${workflowId}` : STORAGE_KEY;
-}
-
-export function saveDraft(workflowId = '') {
-  localStorage.setItem(draftStorageKey(workflowId), JSON.stringify(workflowSnapshot()));
-}
-
 export function workflowSnapshot() {
   return structuredClone({ version: 1, nodes: state.nodes, connections: state.connections });
 }
 
-export function resetDraft(workflowId = '') {
-  localStorage.removeItem(draftStorageKey(workflowId));
-  state.nodes = structuredClone(initialNodes);
-  state.connections = structuredClone(initialConnections);
-  state.selectedId = 'input';
-  state.connectionDrag = null;
+function metadataPorts(ports) {
+  return (Array.isArray(ports) ? ports : []).flatMap((port) => {
+    if (!port || typeof port.name !== 'string' || !['content', 'message', 'list-content', 'list-message'].includes(port.type)) return [];
+    return [{ id: `workflow:${port.name}`, name: port.name.slice(0, 80), type: port.type }];
+  });
 }
 
-export function loadSnapshot(saved) {
+export function loadSnapshot(saved, metadata = null) {
   try {
     const savedNodes = Array.isArray(saved) ? saved : saved?.nodes;
     if (!Array.isArray(savedNodes)) return false;
+    const inputPorts = metadataPorts(metadata?.input_ports);
+    const outputPorts = metadataPorts(metadata?.output_ports);
     const ids = new Set();
     const normalizedNodes = savedNodes.flatMap((node) => {
       if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type)) return [];
@@ -122,9 +114,11 @@ export function loadSnapshot(saved) {
         x: Number.isFinite(node.x) ? Math.max(12, node.x) : 52,
         y: Number.isFinite(node.y) ? Math.max(12, node.y) : 72,
       };
-      if ((node.type === 'input' || node.type === 'output') && Object.hasOwn(node, 'workflowPorts')) {
+      if (node.type === 'input' || node.type === 'output') {
+        const metadataPortList = node.type === 'input' ? inputPorts : outputPorts;
+        const savedPortList = metadata ? metadataPortList : node.workflowPorts;
         const portIds = new Set();
-        normalized.workflowPorts = (Array.isArray(node.workflowPorts) ? node.workflowPorts : []).flatMap((port) => {
+        normalized.workflowPorts = (Array.isArray(savedPortList) ? savedPortList : []).flatMap((port) => {
           if (!port || typeof port.id !== 'string' || !port.id.startsWith('workflow:') || portIds.has(port.id)) return [];
           if (!['content', 'message', 'list-content', 'list-message'].includes(port.type)) return [];
           portIds.add(port.id);
@@ -247,16 +241,7 @@ export function loadSnapshot(saved) {
     state.connectionDrag = null;
     return true;
   } catch (error) {
-    console.warn('Workflow 草稿读取失败', error);
-    return false;
-  }
-}
-
-export function loadDraft(workflowId = '') {
-  try {
-    return loadSnapshot(JSON.parse(localStorage.getItem(draftStorageKey(workflowId))));
-  } catch (error) {
-    console.warn('Workflow 草稿读取失败', error);
+    console.warn('Workflow 数据读取失败', error);
     return false;
   }
 }
