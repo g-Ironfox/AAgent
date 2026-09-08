@@ -56,12 +56,13 @@ Workflow 文档新增两个元数据字段：
 - Input 的 `control-out` 和 Output 的 `control-in` 控制端口不受影响。
 - 字段删除、重命名或改变类型时，服务端会自动移除不再有效的数据连接。
 
-## 兼容规则
+## 严格格式
 
-- 历史 Workflow 的 Input / Output 节点没有 `workflowPorts` 属性时，继续使用旧端口：
-  - Input：`content-out`、`source`
-  - Output：`content-in`
-- 已保存过元数据的节点，即使 `workflowPorts` 是空数组，也表示该节点没有数据端口；不会回退到旧端口。
+- 顶层 `input_ports` / `output_ports` 是 Input / Output 数据端口的唯一权威定义，两个字段都必须存在且为数组。
+- Input / Output 节点的 `workflowPorts` 是由顶层 Meta 生成的标准快照，必须与对应 Meta 完全一致。
+- 边界数据端口统一使用 `{id, name, type}`，其中 `id` 固定为 `workflow:<name>`。
+- 不再接受 Input 的 `content-out`、`source` 或 Output 的 `content-in` 旧边界端口。
+- 独立编辑器导入缺少顶层 Meta 的旧文件时，会生成空边界端口并丢弃旧边界数据连接；控制连接不受影响。
 
 ## 校验与运行时
 
@@ -72,6 +73,7 @@ Workflow 校验器会检查：
 - ID 必须是 `workflow:<字段名>`。
 - 类型必须是支持的数据类型。
 - 动态 Input / Output 端口上的连接类型必须与端口类型一致。
+- 节点 `workflowPorts` 必须与顶层 Meta 生成结果完全一致。
 
 运行时行为：
 
@@ -79,7 +81,7 @@ Workflow 校验器会检查：
 - Workflow Output 节点按字段名读取已连接的输入，组合为输出对象。
 - 若 Output 存在名为 `content` 的字段，响应仍使用该字段作为 `payload.content`。
 - 若没有 `content` 字段，响应的 `payload.content` 为整个输出对象。
-- 历史 Workflow 保持原有的 `content` 与 `source` 传递方式。
+- 缺少顶层 Meta、缺少节点端口快照或使用旧边界端口的 Workflow 会被校验器拒绝。
 
 ## 涉及文件
 
@@ -95,5 +97,5 @@ Workflow 校验器会检查：
 
 - 修改后的 Python 文件通过语法检查。
 - 管理页和编辑器相关 HTML、CSS、JavaScript 未发现编辑器诊断错误。
-- 已验证动态端口、错误类型连接拒绝、历史 Workflow 兼容、显式空端口四种校验场景。
-- 解析器的独立运行验证未完成：当前本机解释器缺少 `pymongo`，导致导入解析器时被依赖阻断。
+- 已验证标准动态端口通过、错误类型和旧边界端口拒绝、Meta 与节点快照不一致拒绝、显式空端口四类场景。
+- Validator 独立运行验证已通过；完整回归测试仍需项目运行环境提供 `pymongo` 等依赖。

@@ -1,5 +1,5 @@
 import { fetchModels, fetchTools, fetchWorkflow, fetchWorkflows, uploadWorkflow } from './api.js';
-import { addNode, loadSnapshot, resetWorkflow, workflowSnapshot } from './workflow/model.js';
+import { addNode, loadDraft, loadSnapshot, resetDraft, saveDraft, workflowSnapshot } from './workflow/model.js';
 import { createConnectionController } from './workflow/connections.js';
 import { createWorkflowView } from './workflow/view.js';
 
@@ -15,11 +15,11 @@ const elements = {
   workflowSelect: document.querySelector('#workflowSelect'),
   workflowState: document.querySelector('#workflowState'),
   saveButton: document.querySelector('#saveButton'),
+  uploadButton: document.querySelector('#uploadButton'),
   resetButton: document.querySelector('#resetButton'),
   importButton: document.querySelector('#importButton'),
   importFileInput: document.querySelector('#importFileInput'),
   exportButton: document.querySelector('#exportButton'),
-  workflowNodeLibrary: document.querySelector('#workflowNodeLibrary'),
 };
 let hasUnsavedChanges = false;
 let currentWorkflow = null;
@@ -46,8 +46,8 @@ function renderWorkflow() {
   connections.renderConnections();
 }
 
-async function selectWorkflow(workflowId, confirmChange = true, forceReload = false) {
-  if (!workflowId || (!forceReload && workflowId === currentWorkflow?.id)) return;
+async function selectWorkflow(workflowId, confirmChange = true) {
+  if (!workflowId || workflowId === currentWorkflow?.id) return;
   if (confirmChange && hasUnsavedChanges && !window.confirm('当前 Workflow 有未保存修改，确定切换吗？')) {
     elements.workflowSelect.value = currentWorkflow?.id || '';
     return;
@@ -59,12 +59,12 @@ async function selectWorkflow(workflowId, confirmChange = true, forceReload = fa
   elements.workflowState.classList.remove('saved');
   try {
     const workflow = await fetchWorkflow(workflowId);
-    if (!loadSnapshot(workflow, workflow)) throw new Error('Workflow 数据无效');
+    const loadedDraft = loadDraft(workflow.id, workflow);
+    if (!loadedDraft && !loadSnapshot(workflow)) throw new Error('Workflow 数据无效');
     currentWorkflow = workflow;
-    view.setWorkflowNodes(workflow.workflow_nodes || []);
     elements.workflowSelect.value = workflow.id;
     window.history.replaceState(null, '', `/workflow_edit.html?id=${encodeURIComponent(workflow.id)}`);
-    markSaved('已载入');
+    markSaved(loadedDraft ? '已载入草稿' : '已载入');
     renderWorkflow();
   } catch (error) {
     elements.workflowSelect.value = previousWorkflow?.id || '';
@@ -116,49 +116,44 @@ fetchTools()
 
 for (const button of document.querySelectorAll('[data-add-node]')) {
   button.addEventListener('click', () => {
-    const nodeType = button.dataset.addNode;
-    addNode(nodeType, nodeType === 'output' ? currentWorkflow : null);
+    addNode(button.dataset.addNode);
     markChanged();
     view.renderNodes();
     view.renderInspector();
   });
 }
 
-elements.workflowNodeLibrary.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-add-workflow-node]');
-  if (!button) return;
-  const reference = (currentWorkflow?.workflow_nodes || []).find((item) => item.workflow_id === button.dataset.addWorkflowNode);
-  if (!reference) return;
-  addNode('workflow', reference);
-  markChanged();
-  view.renderNodes();
-  view.renderInspector();
+elements.saveButton?.addEventListener('click', () => {
+  if (!currentWorkflow) return;
+  saveDraft(currentWorkflow.id);
+  markSaved('已存浏览器');
 });
 
-elements.saveButton.addEventListener('click', async () => {
-  elements.saveButton.disabled = true;
-  elements.saveButton.textContent = '保存中';
+elements.uploadButton?.addEventListener('click', async () => {
+  elements.uploadButton.disabled = true;
+  elements.uploadButton.textContent = '上传中';
   try {
     if (!currentWorkflow) throw new Error('请先选择 Workflow');
+    saveDraft(currentWorkflow.id);
     const uploaded = await uploadWorkflow(currentWorkflow.id, {
       ...workflowSnapshot(),
       name: currentWorkflow.name,
       version: currentWorkflow.version,
     });
     currentWorkflow = uploaded;
-    markSaved('已保存');
+    markSaved('已上传');
   } catch (error) {
     elements.workflowState.textContent = error.message || '上传失败';
     elements.workflowState.classList.remove('saved');
   } finally {
-    elements.saveButton.disabled = false;
-    elements.saveButton.textContent = '保存';
+    elements.uploadButton.disabled = false;
+    elements.uploadButton.textContent = '上传';
   }
 });
 
 elements.resetButton.addEventListener('click', () => {
-  if (!currentWorkflow || !window.confirm('确定放弃当前修改并恢复为初始 Workflow 吗？')) return;
-  if (!resetWorkflow(currentWorkflow)) return;
+  if (!window.confirm('重置会删除已保存的本地草稿，确定继续吗？')) return;
+  resetDraft(currentWorkflow?.id || '', currentWorkflow);
   markChanged();
   renderWorkflow();
 });

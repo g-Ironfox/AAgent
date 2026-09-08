@@ -6,6 +6,8 @@ from workflow_validator import WorkflowValidationError, validate_workflow
 
 def callable_workflow_fixture() -> dict:
     return {
+        "input_ports": [{"name": "query", "type": "content"}],
+        "output_ports": [{"name": "result", "type": "content"}],
         "nodes": [
             {
                 "id": "input",
@@ -48,12 +50,71 @@ class CallableWorkflowNodeTest(unittest.TestCase):
         self.assertEqual(parsed[1]["data_inputs"]["workflow:query"], [0, "workflow:query"])
         self.assertEqual(parsed[1]["data_outputs"]["workflow:result"], [[2, "workflow:result"]])
         self.assertEqual(parsed[1]["workflow_id"], "507f1f77bcf86cd799439011")
+        self.assertEqual(
+            parsed[0]["workflowPorts"],
+            [{"id": "workflow:query", "name": "query", "type": "content"}],
+        )
+        self.assertEqual(
+            parsed[2]["workflowPorts"],
+            [{"id": "workflow:result", "name": "result", "type": "content"}],
+        )
 
-    def test_validator_rejects_wrong_callable_workflow_port_type(self):
+    def test_validator_filters_wrong_callable_workflow_port_type(self):
         workflow = callable_workflow_fixture()
         workflow["connections"][2]["type"] = "message"
 
-        with self.assertRaises(WorkflowValidationError):
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+        self.assertIsNone(parsed[1]["data_inputs"]["workflow:query"])
+
+    def test_parser_filters_connection_invalidated_by_metadata(self):
+        workflow = callable_workflow_fixture()
+        workflow["connections"].append({
+            "id": "stale",
+            "fromId": "input",
+            "fromPortId": "workflow:stale",
+            "toId": "call-summary",
+            "toPortId": "workflow:query",
+            "type": "content",
+        })
+
+        parsed = parse_workflow(workflow)
+
+        self.assertNotIn([1, "workflow:query"], parsed[0]["data_outputs"]["workflow:query"])
+
+    def test_validator_filters_legacy_output_content_input(self):
+        workflow = callable_workflow_fixture()
+        workflow["connections"][3]["toPortId"] = "content-in"
+
+        validate_workflow(workflow)
+        self.assertIsNone(parse_workflow(workflow)[1]["data_inputs"]["workflow:result"])
+
+    def test_validator_filters_legacy_input_content_output(self):
+        workflow = callable_workflow_fixture()
+        workflow["connections"][2]["fromPortId"] = "content-out"
+
+        validate_workflow(workflow)
+        self.assertEqual(parse_workflow(workflow)[0]["data_outputs"]["workflow:query"], [])
+
+    def test_validator_rejects_boundary_without_workflow_ports(self):
+        workflow = callable_workflow_fixture()
+        del workflow["nodes"][0]["workflowPorts"]
+
+        with self.assertRaisesRegex(WorkflowValidationError, "workflowPorts is required"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_boundary_ports_that_differ_from_metadata(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][0]["workflowPorts"] = []
+
+        with self.assertRaisesRegex(WorkflowValidationError, "must match workflow input_ports"):
+            validate_workflow(workflow)
+
+    def test_validator_requires_boundary_metadata(self):
+        workflow = callable_workflow_fixture()
+        del workflow["input_ports"]
+
+        with self.assertRaisesRegex(WorkflowValidationError, "workflow.input_ports must be a list"):
             validate_workflow(workflow)
 
     def test_validator_rejects_multiple_input_nodes(self):

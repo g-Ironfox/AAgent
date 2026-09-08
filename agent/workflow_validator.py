@@ -7,8 +7,10 @@ from typing import Any
 from workflow_contract import (
     DATA_CONNECTION_TYPES,
     SUPPORTED_NODE_TYPES,
+    boundary_ports,
     control_ports_for_node,
     data_ports_for_node,
+    filter_connections,
 )
 
 
@@ -23,10 +25,20 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         raise WorkflowValidationError("workflow.nodes must be a list")
     if not isinstance(connections, list):
         raise WorkflowValidationError("workflow.connections must be a list")
+    input_ports = _validate_boundary_metadata(workflow, "input_ports")
+    output_ports = _validate_boundary_metadata(workflow, "output_ports")
 
     node_by_id: dict[str, dict[str, Any]] = {}
     for index, node in enumerate(nodes):
         _validate_node(node, index)
+        if node["type"] in {"input", "output"}:
+            expected_ports = boundary_ports(
+                input_ports if node["type"] == "input" else output_ports
+            )
+            if node["workflowPorts"] != expected_ports:
+                raise WorkflowValidationError(
+                    f"nodes[{index}].workflowPorts must match workflow {node['type']}_ports"
+                )
         node_id = node["id"]
         if node_id in node_by_id:
             raise WorkflowValidationError(f"duplicate node id: {node_id}")
@@ -48,7 +60,8 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     }
     connected_data_inputs: set[tuple[str, str]] = set()
 
-    for index, connection in enumerate(connections):
+    valid_connections = filter_connections(connections, nodes, input_ports, output_ports)
+    for index, connection in enumerate(valid_connections):
         if not isinstance(connection, dict):
             raise WorkflowValidationError(f"connections[{index}] must be an object")
         from_id = connection.get("fromId")
@@ -85,6 +98,8 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
                 to_port,
                 connection_type,
                 index,
+                input_ports,
+                output_ports,
             )
             target_endpoint = (to_id, to_port)
             if target_endpoint in connected_data_inputs:
@@ -166,6 +181,16 @@ def _validate_node(node: Any, index: int) -> None:
         _validate_callable_workflow_ports(node, "output_ports")
 
 
+def _validate_boundary_metadata(
+    workflow: dict[str, Any], field: str
+) -> list[dict[str, Any]]:
+    ports = workflow.get(field)
+    if not isinstance(ports, list):
+        raise WorkflowValidationError(f"workflow.{field} must be a list")
+    _validate_callable_workflow_ports({field: ports}, field)
+    return ports
+
+
 def _validate_callable_workflow_ports(node: dict[str, Any], field: str) -> None:
     ports = node.get(field)
     if not isinstance(ports, list):
@@ -198,6 +223,10 @@ def _validate_declared_data_inputs(node: dict[str, Any], index: int) -> None:
 
 
 def _validate_workflow_ports(node: dict[str, Any], index: int) -> None:
+    if "workflowPorts" not in node:
+        raise WorkflowValidationError(
+            f"nodes[{index}].workflowPorts is required for {node['type']} nodes"
+        )
     ports = node.get("workflowPorts", [])
     if not isinstance(ports, list):
         raise WorkflowValidationError(f"nodes[{index}].workflowPorts must be a list")
@@ -321,9 +350,15 @@ def _validate_data_connection(
     to_port: str,
     connection_type: str,
     connection_index: int,
+    input_ports: list[dict[str, Any]],
+    output_ports: list[dict[str, Any]],
 ) -> None:
-    source_inputs, source_outputs = data_ports_for_node(source_node)
-    target_inputs, target_outputs = data_ports_for_node(target_node)
+    source_inputs, source_outputs = data_ports_for_node(
+        source_node, input_ports, output_ports
+    )
+    target_inputs, target_outputs = data_ports_for_node(
+        target_node, input_ports, output_ports
+    )
     del source_inputs, target_outputs
     if from_port not in source_outputs:
         raise WorkflowValidationError(
@@ -334,14 +369,14 @@ def _validate_data_connection(
             f"unknown data input: node {target_node['id']}, port {to_port}"
         )
 
-    if source_node["type"] == "input" and source_node.get("workflowPorts"):
-        source_port = next(port for port in source_node["workflowPorts"] if port["id"] == from_port)
+    if source_node["type"] == "input":
+        source_port = next(port for port in boundary_ports(input_ports) if port["id"] == from_port)
         if connection_type != source_port["type"]:
             raise WorkflowValidationError(
                 f"workflow input port {from_port} requires {source_port['type']} data: connection {connection_index}"
             )
-    if target_node["type"] == "output" and target_node.get("workflowPorts"):
-        target_port = next(port for port in target_node["workflowPorts"] if port["id"] == to_port)
+    if target_node["type"] == "output":
+        target_port = next(port for port in boundary_ports(output_ports) if port["id"] == to_port)
         if connection_type != target_port["type"]:
             raise WorkflowValidationError(
                 f"workflow output port {to_port} requires {target_port['type']} data: connection {connection_index}"

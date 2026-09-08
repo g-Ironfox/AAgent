@@ -127,7 +127,7 @@ Workflow 节点使用与其他节点相同的布局、默认宽度、标题字�
 
 执行器维护 `_workflow_call_stack`。若目标 Workflow 已在调用栈中，会拒绝本次调用，避免直接或间接递归。
 
-兼容旧 Output 节点：当子 Workflow 的 Output 没有声明 `workflowPorts` 时，仍将 `content-in` 映射为返回对象的 `content` 字段。
+子 Workflow 的 Input / Output 端口只由其顶层 `input_ports` / `output_ports` 生成。运行时不再兼容 `content-out`、`source`、`content-in` 等旧边界端口；缺少 Meta 或标准 `workflowPorts` 快照的子 Workflow 会在执行前校验失败。
 
 ## 主要文件
 
@@ -154,5 +154,5 @@ Workflow 节点使用与其他节点相同的布局、默认宽度、标题字�
 
 未完成：
 
-- `agent/test_workflow_node.py` 尚未实际运行，因为本次会话中项目 Python 环境配置被跳过。
+- `agent/test_workflow_node.py` 完整测试尚未实际运行；Validator 的标准端口、旧端口拒绝和 Meta 不一致拒绝已独立运行验证。
 - 未进行浏览器端交互截图或端到端嵌套调用验证。

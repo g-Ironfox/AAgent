@@ -10,31 +10,11 @@
 </head>
 <body class="workflow-page">
   <header class="topbar">
-    <a class="brand" href="/" aria-label="AAgent 事件流">
+    <a class="brand" href="/workflow_edit.html">
       <span class="brand-mark" aria-hidden="true">A</span>
-      <span class="brand-name"><strong>AAgent</strong><small>WORKFLOW</small></span>
+      <span class="brand-name"><strong>Workflow Editor</strong><small>LOCAL WORKSPACE</small></span>
     </a>
-    <div class="top-actions">
-      <nav class="page-nav" aria-label="页面导航">
-        <a href="/">事件流</a>
-        <a href="/subagents.html">子 Agent</a>
-        <a href="/workflows.html">Workflow</a>
-        <a class="active" href="/workflow_edit.html" aria-current="page">workflow编辑器</a>
-        <a href="/terminal.html">终端</a>
-        <a href="/document.html">文档</a>
-        <a href="/setting.html">设置</a>
-        <a href="/model.html">模型</a>
-      </nav>
-      <div class="workflow-state" aria-live="polite"><span>编辑状态</span><strong id="workflowState">读取中</strong></div>
-      <button id="resetButton" class="toolbar-button secondary" type="button">重置</button>
-      <input id="importFileInput" type="file" accept="application/json,.json" hidden>
-      <button id="importButton" class="toolbar-button secondary" type="button">导入</button>
-      <button id="exportButton" class="toolbar-button secondary" type="button">导出</button>
-      <button id="saveButton" class="toolbar-button primary" type="button">保存</button>
-      <button id="uploadButton" class="toolbar-button primary" type="button">上传</button>
-    </div>
   </header>
-
   <main class="workflow-main">
     <section class="workflow-shell" aria-labelledby="workflowTitle">
       <aside class="node-library" aria-label="节点库">
@@ -100,13 +80,13 @@
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
-          <label class="workflow-selector" for="workflowSelect">
-            <span>WORKFLOW</span>
-            <select id="workflowSelect" aria-label="选择要编辑的 Workflow" disabled>
-              <option value="">读取 Workflow...</option>
-            </select>
-          </label>
-          <div class="canvas-meta"><span id="connectionCount">5 条连接</span><span class="draft-badge">后端配置</span></div>
+          <div class="canvas-meta"><span id="connectionCount">1 条连接</span><span id="workflowState">未导入</span></div>
+          <div class="canvas-actions">
+            <input id="importFileInput" type="file" accept="application/json,.json" hidden>
+            <button id="metadataButton" class="toolbar-button secondary" type="button">元数据</button>
+            <button id="importButton" class="toolbar-button secondary" type="button">导入</button>
+            <button id="exportButton" class="toolbar-button primary" type="button">导出</button>
+          </div>
         </header>
         <div id="workflowCanvas" class="workflow-canvas">
           <div class="canvas-grid" aria-hidden="true"></div>
@@ -125,6 +105,44 @@
       </aside>
     </section>
   </main>
+
+  <dialog id="metadataDialog" class="metadata-dialog">
+    <form id="metadataForm" method="dialog">
+      <header>
+        <div><p>WORKFLOW METADATA</p><h2>元数据与接口</h2></div>
+        <button class="metadata-close" value="cancel" aria-label="关闭" title="关闭">×</button>
+      </header>
+      <div class="metadata-body">
+        <div class="metadata-basics">
+          <label>Workflow 名称<input id="workflowName" maxlength="120" required placeholder="未命名 Workflow"></label>
+          <label>格式版本<input id="workflowVersion" type="number" min="1" step="1" required></label>
+        </div>
+        <div class="metadata-columns">
+          <section class="metadata-port-section">
+            <header><div><span class="metadata-port-mark input">IN</span><h3>输入接口</h3></div><button type="button" data-add-metadata-port="input_ports" title="添加输入接口">+</button></header>
+            <div class="metadata-port-list" data-metadata-port-list="input_ports"></div>
+          </section>
+          <section class="metadata-port-section">
+            <header><div><span class="metadata-port-mark output">OUT</span><h3>输出接口</h3></div><button type="button" data-add-metadata-port="output_ports" title="添加输出接口">+</button></header>
+            <div class="metadata-port-list" data-metadata-port-list="output_ports"></div>
+          </section>
+        </div>
+        <section class="metadata-workflows">
+          <header><div><span class="metadata-port-mark workflow">WF</span><h3>可调用 Workflows</h3></div><small>来自数据库</small></header>
+          <div id="metadataWorkflowList" class="metadata-workflow-list"></div>
+        </section>
+      </div>
+      <footer><span id="resourceState">正在读取数据库资源</span><button id="applyMetadataButton" class="toolbar-button primary" value="default">应用</button></footer>
+    </form>
+  </dialog>
+
+  <template id="metadataPortTemplate">
+    <div class="metadata-port-row">
+      <input data-metadata-port-name maxlength="80" required placeholder="port_name" aria-label="端口名称">
+      <select data-metadata-port-type aria-label="端口类型"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select>
+      <button type="button" data-remove-metadata-port title="删除接口" aria-label="删除接口">×</button>
+    </div>
+  </template>
 
   <template id="inputInspectorTemplate">
     <section class="inspector-section">
@@ -345,6 +363,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=4"></script>
+  <script type="module" src="/workflow.js"></script>
 </body>
 </html>

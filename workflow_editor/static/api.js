@@ -6,12 +6,7 @@ async function request(path, options = {}) {
   try {
     const response = await fetch(path, { cache: 'no-store', ...options, signal: controller.signal });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const validationError = Array.isArray(body.detail)
-        ? body.detail.map((item) => `${(item.loc || []).join('.')}: ${item.msg}`).join('; ')
-        : '';
-      throw new Error(body.error || validationError || `HTTP ${response.status}`);
-    }
+    if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
     return body;
   } finally {
     window.clearTimeout(timeout);
@@ -118,74 +113,3 @@ export function fetchWorkflows() {
   return request('/api/workflows');
 }
 
-export function fetchWorkflow(workflowId) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}`);
-}
-
-export function createWorkflow(name) {
-  return request('/api/workflows', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-}
-
-export function renameWorkflow(workflowId, name) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-}
-
-export function updateWorkflowMetadata(workflowId, inputPorts, outputPorts) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}/metadata`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input_ports: inputPorts, output_ports: outputPorts }),
-  });
-}
-
-export function deleteWorkflow(workflowId) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' });
-}
-
-export function createModel(model) {
-  return request('/api/models', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(model),
-  });
-}
-
-export function updateModel(modelId, model) {
-  return request(`/api/models/${encodeURIComponent(modelId)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(model),
-  });
-}
-
-export function deleteModel(modelId) {
-  return request(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
-}
-
-export function uploadWorkflow(workflowId, workflow) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(workflow),
-  });
-}
-
-export function fetchSettings() {
-  return request('/api/settings');
-}
-
-export function updateSettings(workflowId) {
-  return request('/api/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workflow_id: workflowId }),
-  });
-}

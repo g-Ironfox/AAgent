@@ -21,11 +21,20 @@ MAX_WORKFLOW_NODE_REFERENCES = 50
 logger = logging.getLogger("aagent.webui")
 
 
+class WorkflowPortMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
+    type: Literal["content", "message", "list-content", "list-message"]
+
+
 class WorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=120)
     version: int = Field(ge=1)
+    input_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
+    output_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
     nodes: list[dict[str, Any]] = Field(min_length=1, max_length=MAX_WORKFLOW_NODES)
     connections: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_WORKFLOW_CONNECTIONS)
 
@@ -40,13 +49,6 @@ class WorkflowRenameRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=120)
-
-
-class WorkflowPortMetadata(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=80)
-    type: Literal["content", "message", "list-content", "list-message"]
 
 
 class WorkflowNodeReference(BaseModel):
@@ -104,7 +106,96 @@ def synchronize_metadata_ports(
         if connection.get("toId") in output_node_ids and output_types.get(connection.get("toPortId")) != connection_type:
             continue
         synchronized_connections.append(connection)
-    return synchronized_nodes, synchronized_connections
+    return filter_invalid_connections(synchronized_nodes, synchronized_connections, input_ports, output_ports)
+
+
+def filter_invalid_connections(
+    nodes: list[dict[str, Any]],
+    connections: list[dict[str, Any]],
+    input_ports: list[dict[str, Any]],
+    output_ports: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Drop links whose endpoints no longer exist after metadata changes."""
+    nodes_by_id = {node.get("id"): node for node in nodes}
+    input_types = {f"workflow:{port.get('name')}": port.get("type") for port in input_ports}
+    output_types = {f"workflow:{port.get('name')}": port.get("type") for port in output_ports}
+
+    def valid(connection: dict[str, Any]) -> bool:
+        source = nodes_by_id.get(connection.get("fromId"))
+        target = nodes_by_id.get(connection.get("toId"))
+        if not source or not target:
+            return False
+        from_port = connection.get("fromPortId")
+        to_port = connection.get("toPortId")
+        connection_type = connection.get("type")
+        if connection_type == "control":
+            source_outputs = {"control-out"}
+            target_inputs = {"control-in"}
+            if source.get("type") == "input":
+                source_outputs = {"control-out"}
+            elif source.get("type") == "router":
+                source_outputs = {branch.get("id") for branch in source.get("branches", [])}
+            elif source.get("type") == "foreach":
+                source_outputs = {"control-out", "loop-out"}
+            if target.get("type") == "input":
+                return False
+            if target.get("type") == "foreach":
+                target_inputs = {"control-in", "loop-in"}
+            return from_port in source_outputs and to_port in target_inputs
+        if connection_type not in {"content", "message", "list-content", "list-message"}:
+            return False
+
+        def source_type() -> str | None:
+            node_type = source.get("type")
+            if node_type == "input":
+                return input_types.get(from_port)
+            if node_type == "output":
+                return None
+            if node_type == "construct_message" and from_port == "message-out":
+                return "message"
+            if node_type == "construct_content" and from_port == "content-out":
+                return "content"
+            if node_type in {"llm", "tool"} and from_port == "output":
+                return "content"
+            if node_type == "tool_call" and from_port in {"tool_call_id", "result"}:
+                return "content"
+            if node_type == "llm" and from_port == "reasoning" and source.get("think") is True:
+                return "content"
+            if node_type == "llm" and from_port == "tool_calls" and source.get("tool_calls") is True:
+                return "list-content"
+            if node_type == "construct_list" and from_port == "list-out":
+                return f"list-{source.get('item_type')}"
+            if node_type == "foreach" and from_port == "item-out":
+                return source.get("item_type")
+            if node_type == "workflow":
+                return next((port.get("type") for port in source.get("output_ports", []) if f"workflow:{port.get('name')}" == from_port), None)
+            return None
+
+        def target_type() -> str | None:
+            node_type = target.get("type")
+            if node_type == "output":
+                return output_types.get(to_port)
+            if node_type == "llm" and to_port in target.get("dataInputPorts", []):
+                return "message"
+            if node_type == "construct_message" and to_port == "content-in":
+                return "content"
+            if node_type in {"construct_content", "router"} and to_port in target.get("dataInputPorts", ["content-in"]):
+                return "content"
+            if node_type == "tool" and to_port in target.get("parameters", []):
+                return "content"
+            if node_type == "tool_call" and to_port == "tool_call":
+                return "content"
+            if node_type == "construct_list" and to_port in target.get("dataInputPorts", []):
+                return target.get("item_type")
+            if node_type == "foreach" and to_port == "list-in":
+                return f"list-{target.get('item_type')}"
+            if node_type == "workflow":
+                return next((port.get("type") for port in target.get("input_ports", []) if f"workflow:{port.get('name')}" == to_port), None)
+            return None
+
+        return source_type() == connection_type == target_type()
+
+    return nodes, [connection for connection in connections if valid(connection)]
 
 
 def synchronize_workflow_nodes(
@@ -215,8 +306,8 @@ def create_workflows_router(
             "name": name,
             "version": 1,
             "nodes": [
-                {"id": "input", "type": "input", "name": "Input", "x": 120, "y": 238},
-                {"id": "output", "type": "output", "name": "Output", "x": 520, "y": 238},
+                {"id": "input", "type": "input", "name": "Input", "x": 120, "y": 238, "workflowPorts": []},
+                {"id": "output", "type": "output", "name": "Output", "x": 520, "y": 238, "workflowPorts": []},
             ],
             "connections": [
                 {
@@ -226,14 +317,6 @@ def create_workflows_router(
                     "toId": "output",
                     "toPortId": "control-in",
                     "type": "control",
-                },
-                {
-                    "id": "content-input-output",
-                    "fromId": "input",
-                    "fromPortId": "content-out",
-                    "toId": "output",
-                    "toPortId": "content-in",
-                    "type": "content",
                 },
             ],
             "input_ports": [],
@@ -360,6 +443,7 @@ def create_workflows_router(
                 existing.get("nodes", []), existing.get("connections", []), input_ports, output_ports
             )
             nodes, connections = synchronize_workflow_nodes(nodes, connections, workflow_nodes)
+            nodes, connections = filter_invalid_connections(nodes, connections, input_ports, output_ports)
             document = workflows.find_one_and_update(
                 {"_id": object_id},
                 {"$set": {
@@ -417,11 +501,25 @@ def create_workflows_router(
             return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})
         if not any(node.get("type") == "output" for node in payload.nodes):
             return JSONResponse(status_code=400, content={"error": "Workflow 必须至少包含一个 Output 节点"})
+        if any(
+            node.get("type") in {"input", "output"}
+            and not isinstance(node.get("workflowPorts"), list)
+            for node in payload.nodes
+        ):
+            return JSONResponse(status_code=400, content={"error": "Input 和 Output 节点必须声明 workflowPorts"})
 
         workflow_nodes = [node for node in payload.nodes if node.get("type") == "workflow"]
-        workflow_document = workflows.find_one({"_id": object_id}, {"workflow_nodes": 1})
+        workflow_document = workflows.find_one(
+            {"_id": object_id},
+            {"workflow_nodes": 1, "input_ports": 1, "output_ports": 1},
+        )
         if workflow_document is None:
             return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+        if (
+            [port.model_dump() for port in payload.input_ports] != workflow_document.get("input_ports", [])
+            or [port.model_dump() for port in payload.output_ports] != workflow_document.get("output_ports", [])
+        ):
+            return JSONResponse(status_code=400, content={"error": "Workflow 边界端口与当前元数据不一致，请刷新后重试"})
         allowed_workflow_nodes = {
             reference.get("workflow_id"): reference
             for reference in workflow_document.get("workflow_nodes", [])
@@ -470,7 +568,21 @@ def create_workflows_router(
             return JSONResponse(status_code=400, content={"error": "LLM 节点引用了不存在或已停用的模型配置"})
 
         now = datetime.now(timezone.utc)
-        values = payload.model_dump()
+        synchronized_nodes, synchronized_connections = synchronize_metadata_ports(
+            payload.nodes,
+            payload.connections,
+            workflow_document.get("input_ports", []),
+            workflow_document.get("output_ports", []),
+        )
+        synchronized_nodes, synchronized_connections = filter_invalid_connections(
+            synchronized_nodes,
+            synchronized_connections,
+            workflow_document.get("input_ports", []),
+            workflow_document.get("output_ports", []),
+        )
+        values = payload.model_dump(exclude={"input_ports", "output_ports"})
+        values["nodes"] = synchronized_nodes
+        values["connections"] = synchronized_connections
         values["name"] = values["name"].strip()
         values["updated_at"] = now
         try:

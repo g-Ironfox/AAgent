@@ -289,17 +289,9 @@ def handle_task(e: dict):
 
         input_node = workflow_map[start]
         workflow_ports = input_node.get('workflowPorts', [])
-        if 'workflowPorts' in input_node:
-            for port in workflow_ports:
-                propagate_workflow_output(
-                    workflow_map, input_node, port['id'], e['payload'].get(port['name'])
-                )
-        else:
+        for port in workflow_ports:
             propagate_workflow_output(
-                workflow_map, input_node, 'content-out', e['payload'].get("content")
-            )
-            propagate_workflow_output(
-                workflow_map, input_node, 'source', e['payload'].get("source")
+                workflow_map, input_node, port['id'], e['payload'].get(port['name'])
             )
 
         publish_workflow_node(
@@ -387,19 +379,11 @@ def handle_task(e: dict):
         node = workflow_map[current_id]
         workflow_ports = node.get('workflowPorts', [])
         output = {}
-        if 'workflowPorts' in node:
-            for port in workflow_ports:
-                has_value, value = read_workflow_input(node, port['id'])
-                if has_value:
-                    output[port['name']] = value
-            if not output:
-                output = {}
-            content = output.get('content', output)
-        else:
-            has_content, content = read_workflow_input(node, 'content-in')
-            if not has_content:
-                return
-            output['content'] = content
+        for port in workflow_ports:
+            has_value, value = read_workflow_input(node, port['id'])
+            if has_value:
+                output[port['name']] = value
+        content = output.get('content', output)
         return_context = node.get('_workflow_return')
         if isinstance(return_context, dict):
             parent_map = return_context['workflow_map']

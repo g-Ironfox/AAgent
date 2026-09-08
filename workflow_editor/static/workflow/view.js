@@ -1,4 +1,4 @@
-import { createWorkflowId, deleteNode, filterConnections, nodeById, state } from './model.js';
+import { createWorkflowId, deleteNode, nodeById, state } from './model.js';
 
 export function createWorkflowView(elements, connections, markChanged) {
   const portRowHeight = 28;
@@ -170,7 +170,6 @@ export function createWorkflowView(elements, connections, markChanged) {
   }
 
   function renderNodes() {
-    state.connections = filterConnections();
     const fragment = document.createDocumentFragment();
     for (const node of state.nodes) {
       fragment.append(createNodeUI(node));
@@ -200,13 +199,15 @@ export function createWorkflowView(elements, connections, markChanged) {
     elements.inspectorType.textContent = node.type.toUpperCase();
     const template = document.querySelector(`#${node.type}InspectorTemplate`);
     elements.inspectorContent.replaceChildren(template.content.cloneNode(true));
-    if (node.type === 'input') renderBoundaryPorts(node, '[data-input-output-contracts]', '无数据输出接口');
-    if (node.type === 'output') renderBoundaryPorts(node, '[data-output-input-contracts]', '无数据输入接口');
-    if (node.type === 'input') return;
+    if (node.type === 'input') {
+      renderBoundaryContracts(node, '[data-input-output-contracts]', '无数据输出接口');
+      return;
+    }
 
     if (node.type === 'llm') renderModelOptions(node);
     if (node.type === 'tool') renderToolSelect(node);
     if (node.type === 'workflow') renderWorkflowNode(node);
+    if (node.type === 'output') renderOutputNode(node);
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
       field.value = node[field.dataset.field] || '';
       field.addEventListener('input', () => {
@@ -221,21 +222,28 @@ export function createWorkflowView(elements, connections, markChanged) {
     if (node.type === 'foreach') bindForeach(node);
     if (node.type === 'construct_content') bindConstructContent(node);
     if (node.type === 'llm') bindLlm(node);
-    elements.inspectorContent.querySelector('[data-delete-node]').addEventListener('click', () => {
-      deleteNode(node.id);
-      markChanged();
-      renderNodes();
-      renderInspector();
-    });
+    const deleteButton = elements.inspectorContent.querySelector('[data-delete-node]');
+    if (deleteButton) {
+      deleteButton.addEventListener('click', () => {
+        deleteNode(node.id);
+        markChanged();
+        renderNodes();
+        renderInspector();
+      });
+    }
   }
 
-  function renderBoundaryPorts(node, selector, emptyLabel) {
+  function renderOutputNode(node) {
+    renderBoundaryContracts(node, '[data-output-input-contracts]', '无数据输入接口');
+  }
+
+  function renderBoundaryContracts(node, selector, emptyText) {
     const container = elements.inspectorContent.querySelector(selector);
     const ports = Array.isArray(node.workflowPorts) ? node.workflowPorts : [];
     if (!ports.length) {
       const empty = document.createElement('div');
       empty.className = 'empty-options';
-      empty.textContent = emptyLabel;
+      empty.textContent = emptyText;
       container.replaceChildren(empty);
       return;
     }

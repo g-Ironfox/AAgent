@@ -12,7 +12,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
-from workflow_contract import data_ports_for_node
+from workflow_contract import boundary_ports, data_ports_for_node, filter_connections
 
 
 class WorkflowParseError(ValueError):
@@ -26,7 +26,14 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     in the form ``[node_index, port_id]``; data outputs contain endpoint lists.
     """
     nodes = workflow["nodes"]
-    connections = workflow["connections"]
+    connections = filter_connections(
+        workflow["connections"],
+        nodes,
+        workflow["input_ports"],
+        workflow["output_ports"],
+    )
+    input_ports = workflow["input_ports"]
+    output_ports = workflow["output_ports"]
     node_indexes = {node["id"]: index for index, node in enumerate(nodes)}
     linked_nodes: list[dict[str, Any]] = []
     for node in nodes:
@@ -35,11 +42,17 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
             for key, value in node.items()
             if key not in {"x", "y", "dataInputPorts"}
         }
+        if node.get("type") == "input":
+            parsed_node["workflowPorts"] = boundary_ports(input_ports)
+        elif node.get("type") == "output":
+            parsed_node["workflowPorts"] = boundary_ports(output_ports)
         if node.get("type") == "router":
             parsed_node["branches"] = [
                 {**branch, "successor": None} for branch in node["branches"]
             ]
-        input_ports, output_ports = data_ports_for_node(node)
+        node_input_ports, node_output_ports = data_ports_for_node(
+            node, input_ports, output_ports
+        )
         linked_nodes.append(
             {
                 **parsed_node,
@@ -47,8 +60,8 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
                 "control_successors": [],
                 "control_inputs": {},
                 "control_outputs": {},
-                "data_inputs": {port_id: None for port_id in input_ports},
-                "data_outputs": {port_id: [] for port_id in output_ports},
+                "data_inputs": {port_id: None for port_id in node_input_ports},
+                "data_outputs": {port_id: [] for port_id in node_output_ports},
             }
         )
 
