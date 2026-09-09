@@ -11,7 +11,7 @@ const initialConnections = [
 ];
 
 export const state = {
-  name: '',
+  name: 'workflow',
   nodes: structuredClone(initialNodes),
   connections: structuredClone(initialConnections),
   input_ports: [],

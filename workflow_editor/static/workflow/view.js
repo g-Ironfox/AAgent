@@ -11,13 +11,13 @@ export function createWorkflowView(elements, connections, markChanged) {
     if (node.type === 'input') {
       return [
         { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-        ...(node.workflowPorts || []).map((port) => ({ id: port.id, direction: 'output', type: port.type, label: port.name, title: port.name, multiple: true })),
+        ...(node.workflowPorts || []).map((port) => ({ id: port.id, direction: 'output', type: port.type, label: port.name, title: port.name, multiple: true, contract: port.id })),
       ];
     }
     if (node.type === 'output') {
       return [
         { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-        ...(node.workflowPorts || []).map((port) => ({ id: port.id, direction: 'input', type: port.type, label: port.name, title: port.name, multiple: false })),
+        ...(node.workflowPorts || []).map((port) => ({ id: port.id, direction: 'input', type: port.type, label: port.name, title: port.name, multiple: false, contract: port.id })),
       ];
     }
     if (node.type === 'router') {
@@ -200,14 +200,14 @@ export function createWorkflowView(elements, connections, markChanged) {
     const template = document.querySelector(`#${node.type}InspectorTemplate`);
     elements.inspectorContent.replaceChildren(template.content.cloneNode(true));
     if (node.type === 'input') {
-      renderBoundaryContracts(node, '[data-input-output-contracts]', '无数据输出接口');
+      renderInterfaceContract(node);
       return;
     }
 
     if (node.type === 'llm') renderModelOptions(node);
     if (node.type === 'tool') renderToolSelect(node);
     if (node.type === 'workflow') renderWorkflowNode(node);
-    if (node.type === 'output') renderOutputNode(node);
+    renderInterfaceContract(node);
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
       field.value = node[field.dataset.field] || '';
       field.addEventListener('input', () => {
@@ -233,63 +233,44 @@ export function createWorkflowView(elements, connections, markChanged) {
     }
   }
 
-  function renderOutputNode(node) {
-    renderBoundaryContracts(node, '[data-output-input-contracts]', '无数据输入接口');
-  }
-
-  function renderBoundaryContracts(node, selector, emptyText) {
-    const container = elements.inspectorContent.querySelector(selector);
-    const ports = Array.isArray(node.workflowPorts) ? node.workflowPorts : [];
-    if (!ports.length) {
-      const empty = document.createElement('div');
-      empty.className = 'empty-options';
-      empty.textContent = emptyText;
-      container.replaceChildren(empty);
-      return;
-    }
-    const fragment = document.createDocumentFragment();
-    for (const port of ports) {
-      const contract = document.createElement('div');
-      contract.className = 'port-contract';
-      contract.innerHTML = '<span class="port-swatch"></span><strong></strong><code></code>';
-      contract.querySelector('.port-swatch').classList.add(port.type);
-      contract.querySelector('strong').textContent = port.name;
-      contract.querySelector('code').textContent = port.id;
-      fragment.append(contract);
-    }
-    container.replaceChildren(fragment);
+  function renderInterfaceContract(node) {
+    const mount = elements.inspectorContent.querySelector('[data-interface-contract]');
+    if (!mount) return;
+    const title = mount.dataset.contractTitle || '接口契约';
+    const status = mount.dataset.contractStatus || '只读';
+    const component = document.querySelector('#interfaceContractTemplate').content.firstElementChild.cloneNode(true);
+    component.querySelector('.section-label strong').textContent = title;
+    component.querySelector('[data-contract-status]').textContent = status;
+    const ports = nodePorts(node);
+    const renderPorts = (direction, selector, emptyText) => {
+      const portElements = ports.filter((port) => port.direction === direction).map((port) => {
+        const contract = document.querySelector('#portContractTemplate').content.firstElementChild.cloneNode(true);
+        contract.querySelector('.port-swatch').classList.add(port.type);
+        contract.querySelector('strong').textContent = port.label;
+        contract.querySelector('code').textContent = port.contract || port.type;
+        contract.title = port.title;
+        return contract;
+      });
+      if (!portElements.length) {
+        portElements.push(Object.assign(document.createElement('div'), {
+          className: 'empty-options',
+          textContent: emptyText,
+        }));
+      }
+      component.querySelector(selector).replaceChildren(...portElements);
+    };
+    renderPorts('input', '[data-contract-inputs]', '无输入接口');
+    renderPorts('output', '[data-contract-outputs]', '无输出接口');
+    mount.replaceChildren(component);
   }
 
   function renderWorkflowNode(node) {
     elements.inspectorContent.querySelector('[data-workflow-name]').value = node.workflow_name;
     elements.inspectorContent.querySelector('[data-workflow-id]').value = node.workflow_id;
-    const renderContracts = (selector, ports) => {
-      const container = elements.inspectorContent.querySelector(selector);
-      if (!ports.length) {
-        const empty = document.createElement('div');
-        empty.className = 'empty-options';
-        empty.textContent = '无数据接口';
-        container.replaceChildren(empty);
-        return;
-      }
-      container.replaceChildren(...ports.map((port) => {
-        const contract = document.createElement('div');
-        contract.className = 'port-contract';
-        contract.innerHTML = '<span class="port-swatch"></span><strong></strong><code></code>';
-        contract.querySelector('.port-swatch').classList.add(port.type);
-        contract.querySelector('strong').textContent = port.name;
-        contract.querySelector('code').textContent = port.type;
-        contract.title = `workflow:${port.name}`;
-        return contract;
-      }));
-    };
-    renderContracts('[data-workflow-input-contracts]', node.input_ports || []);
-    renderContracts('[data-workflow-output-contracts]', node.output_ports || []);
   }
 
   function bindConstructContent(node) {
     const container = elements.inspectorContent.querySelector('[data-append-items]');
-    const contracts = elements.inspectorContent.querySelector('[data-append-input-contracts]');
     const syncPorts = () => {
       const usedPorts = new Set();
       let portIndex = 0;
@@ -304,13 +285,7 @@ export function createWorkflowView(elements, connections, markChanged) {
     };
     const render = () => {
       syncPorts();
-      contracts.replaceChildren(...node.dataInputPorts.map((portId, index) => {
-        const contract = document.createElement('div');
-        contract.className = 'port-contract';
-        contract.innerHTML = '<span class="port-swatch content"></span><strong></strong><code>content</code>';
-        contract.querySelector('strong').textContent = `内容 ${index}`;
-        return contract;
-      }));
+      renderInterfaceContract(node);
       container.replaceChildren(...node.append_items.map((item, index) => {
         const row = document.createElement('div');
         row.className = 'append-item';
@@ -363,20 +338,6 @@ export function createWorkflowView(elements, connections, markChanged) {
   }
 
   function bindConstructList(node) {
-    const contracts = elements.inspectorContent.querySelector('[data-list-input-contracts]');
-    const outputType = elements.inspectorContent.querySelector('[data-list-output-type]');
-    const outputSwatch = elements.inspectorContent.querySelector('[data-list-output-swatch]');
-    outputType.textContent = `list-${node.item_type}`;
-    outputSwatch.classList.add(`list-${node.item_type}`);
-    contracts.replaceChildren(...node.dataInputPorts.map((portId, index) => {
-      const contract = document.createElement('div');
-      contract.className = 'port-contract';
-      contract.innerHTML = '<span class="port-swatch"></span><strong></strong><code></code>';
-      contract.querySelector('.port-swatch').classList.add(node.item_type);
-      contract.querySelector('strong').textContent = `${node.item_type} ${index}`;
-      contract.querySelector('code').textContent = node.item_type;
-      return contract;
-    }));
     const typeField = elements.inspectorContent.querySelector('[data-field="item_type"]');
     const countField = elements.inspectorContent.querySelector('[data-field="initial_value_count"]');
     typeField.value = node.item_type;
@@ -404,11 +365,6 @@ export function createWorkflowView(elements, connections, markChanged) {
 
   function bindForeach(node) {
     const typeField = elements.inspectorContent.querySelector('[data-field="item_type"]');
-    const listType = `list-${node.item_type}`;
-    elements.inspectorContent.querySelector('[data-foreach-list-type]').textContent = listType;
-    elements.inspectorContent.querySelector('[data-foreach-list-swatch]').classList.add(listType);
-    elements.inspectorContent.querySelector('[data-foreach-item-type]').textContent = node.item_type;
-    elements.inspectorContent.querySelector('[data-foreach-item-swatch]').classList.add(node.item_type);
     typeField.value = node.item_type;
     typeField.addEventListener('change', () => {
       node.item_type = typeField.value;
@@ -452,14 +408,7 @@ export function createWorkflowView(elements, connections, markChanged) {
 
   function renderBranches(node) {
     const container = elements.inspectorContent.querySelector('[data-route-options]');
-    const contract = elements.inspectorContent.querySelector('[data-router-output-contracts]');
     node.branches.forEach((branch, index) => {
-      const portContract = document.createElement('div');
-      portContract.className = 'port-contract';
-      portContract.innerHTML = '<span class="port-swatch control"></span><strong></strong><code>control</code>';
-      portContract.querySelector('strong').textContent = branch.name;
-      contract.append(portContract);
-
       const option = document.createElement('div');
       option.className = 'route-option';
       option.innerHTML = '<span class="route-index"></span><label><input data-branch-name maxlength="30"><small>控制流输出分支</small></label><button type="button" class="branch-delete" data-delete-branch title="删除分支">×</button>';
@@ -468,7 +417,7 @@ export function createWorkflowView(elements, connections, markChanged) {
       input.value = branch.name;
       input.addEventListener('input', () => {
         branch.name = input.value || `分支 ${index + 1}`;
-        portContract.querySelector('strong').textContent = branch.name;
+        renderInterfaceContract(node);
         markChanged();
         renderNodes();
       });
@@ -517,7 +466,6 @@ export function createWorkflowView(elements, connections, markChanged) {
     }
     select.replaceChildren(...options);
     select.disabled = toolSchemas.length === 0;
-    renderToolInputContracts(node);
     select.addEventListener('change', () => {
       const schema = toolSchemas.find((tool) => tool.name === select.value);
       node.tool = select.value;
@@ -533,25 +481,6 @@ export function createWorkflowView(elements, connections, markChanged) {
       renderNodes();
       renderInspector();
     });
-  }
-
-  function renderToolInputContracts(node) {
-    const container = elements.inspectorContent.querySelector('[data-tool-input-contracts]');
-    const parameters = node.parameters || [];
-    if (!parameters.length) {
-      container.replaceChildren(Object.assign(document.createElement('div'), {
-        className: 'empty-options',
-        textContent: '该 Tool 没有参数',
-      }));
-      return;
-    }
-    container.replaceChildren(...parameters.map((parameter) => {
-      const contract = document.createElement('div');
-      contract.className = 'port-contract';
-      contract.innerHTML = '<span class="port-swatch content"></span><strong></strong><code>content</code>';
-      contract.querySelector('strong').textContent = parameter;
-      return contract;
-    }));
   }
 
   function bindTools(node) {
@@ -599,7 +528,6 @@ export function createWorkflowView(elements, connections, markChanged) {
 
   function bindLlm(node) {
     renderLlmInputs(node);
-    renderLlmOutputContracts(node);
     const toolsSection = elements.inspectorContent.querySelector('[data-llm-tools]');
     const think = elements.inspectorContent.querySelector('[data-think]');
     const toolCalls = elements.inspectorContent.querySelector('[data-tool-calls]');
@@ -630,14 +558,7 @@ export function createWorkflowView(elements, connections, markChanged) {
 
   function renderLlmInputs(node) {
     const options = elements.inspectorContent.querySelector('[data-llm-input-options]');
-    const contracts = elements.inspectorContent.querySelector('[data-llm-input-contracts]');
     node.dataInputPorts.forEach((portId, index) => {
-      const contract = document.createElement('div');
-      contract.className = 'port-contract';
-      contract.innerHTML = '<span class="port-swatch message"></span><strong></strong><code>message</code>';
-      contract.querySelector('strong').textContent = `Message ${index}`;
-      contracts.append(contract);
-
       const option = document.createElement('div');
       option.className = 'route-option';
       option.innerHTML = '<span class="route-index"></span><label><strong></strong><small></small></label><button type="button" class="branch-delete" data-delete-input title="删除最后一个输入">×</button>';
@@ -661,25 +582,6 @@ export function createWorkflowView(elements, connections, markChanged) {
       renderNodes();
       renderInspector();
     });
-  }
-
-  function renderLlmOutputContracts(node) {
-    const contract = elements.inspectorContent.querySelector('[data-llm-output-contracts]');
-    const outputs = [
-      { label: '下一步', type: 'control' },
-      { label: '输出', type: 'content' },
-    ];
-    if (node.think === true) outputs.push({ label: '思考', type: 'content' });
-    if (node.tool_calls === true) outputs.push({ label: 'Tool Calls', type: 'list-content' });
-    contract.replaceChildren(...outputs.map((output) => {
-      const portContract = document.createElement('div');
-      portContract.className = 'port-contract';
-      portContract.innerHTML = '<span class="port-swatch"></span><strong></strong><code></code>';
-      portContract.querySelector('.port-swatch').classList.add(output.type);
-      portContract.querySelector('strong').textContent = output.label;
-      portContract.querySelector('code').textContent = output.type;
-      return portContract;
-    }));
   }
 
   function setModels(models) {

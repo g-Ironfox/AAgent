@@ -169,49 +169,35 @@
     </article>
   </template>
 
-  <template id="inputInspectorTemplate">
+  <template id="interfaceContractTemplate">
     <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
+      <div class="section-label"><strong>接口契约</strong><span data-contract-status>只读</span></div>
       <div class="contract-group">
         <div class="contract-group-title">输入接口</div>
-        <div class="empty-options">无输入接口</div>
+        <div class="contract-list" data-contract-inputs></div>
       </div>
       <div class="contract-group">
         <div class="contract-group-title">输出接口</div>
-        <div data-input-output-contracts></div>
+        <div class="contract-list" data-contract-outputs></div>
       </div>
     </section>
   </template>
 
+  <template id="portContractTemplate">
+    <div class="port-contract"><span class="port-swatch"></span><strong></strong><code></code></div>
+  </template>
+
+  <template id="inputInspectorTemplate">
+    <div data-interface-contract></div>
+  </template>
+
   <template id="outputInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control-in</code></div>
-        <div data-output-input-contracts></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div class="empty-options">无输出接口</div>
-      </div>
-    </section>
+    <div data-interface-contract></div>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
   <template id="routerInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch content"></span><strong>输入</strong><code>content</code></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div data-router-output-contracts></div>
-      </div>
-    </section>
+    <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
     </section>
@@ -225,18 +211,7 @@
   </template>
 
   <template id="llmInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-        <div data-llm-input-contracts></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div data-llm-output-contracts></div>
-      </div>
-    </section>
+    <div data-interface-contract></div>
     <section class="inspector-section">
       <div class="section-label"><strong>Message 输入</strong><span>按顺序发送</span></div>
       <div class="route-options" data-llm-input-options></div>
@@ -258,19 +233,7 @@
   </template>
 
   <template id="construct_messageInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch content"></span><strong>Content</strong><code>content</code></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch message"></span><strong>Message</strong><code>message</code></div>
-      </div>
-    </section>
+    <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Role<select data-field="role"><option value="user">user</option><option value="system">system</option><option value="assistant">assistant</option></select></label>
@@ -279,19 +242,7 @@
   </template>
 
   <template id="construct_listInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-        <div class="list-input-contracts" data-list-input-contracts></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch" data-list-output-swatch></span><strong>列表</strong><code data-list-output-type></code></div>
-      </div>
-    </section>
+    <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option></select></label>
@@ -301,21 +252,7 @@
   </template>
 
   <template id="foreachInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>受控循环</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>循环体结束</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch" data-foreach-list-swatch></span><strong>列表</strong><code data-foreach-list-type></code></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>循环体开始</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch" data-foreach-item-swatch></span><strong>当前项</strong><code data-foreach-item-type></code></div>
-      </div>
-    </section>
+    <div data-interface-contract data-contract-status="受控循环"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option></select></label>
@@ -324,30 +261,14 @@
   </template>
 
   <template id="construct_contentInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>按内容项顺序执行</span></div>
-      <div class="contract-group"><div class="contract-group-title">输入接口</div><div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div><div data-append-input-contracts></div></div>
-      <div class="contract-group"><div class="contract-group-title">输出接口</div><div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div><div class="port-contract"><span class="port-swatch content"></span><strong>构造后的 Content</strong><code>content</code></div></div>
-    </section>
+    <div data-interface-contract data-contract-status="按内容项顺序执行"></div>
     <section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section>
     <section class="inspector-section"><div class="section-label"><strong>内容项</strong><span>可添加多个</span></div><div data-append-items></div><button class="add-branch-button" type="button" data-add-append>+ 添加内容项</button></section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
   <template id="toolInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>只读</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-        <div data-tool-input-contracts><div class="empty-options">选择 Tool 后显示参数</div></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch content"></span><strong>执行结果</strong><code>content</code></div>
-      </div>
-    </section>
+    <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Tool<select data-field="tool"><option>加载 Tool 注册表中</option></select></label>
@@ -356,30 +277,13 @@
   </template>
 
   <template id="tool_callInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>接口契约</strong><span>OpenAI Tool Call</span></div>
-      <div class="contract-group">
-        <div class="contract-group-title">输入接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>触发</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch content"></span><strong>Tool Call</strong><code>content</code></div>
-      </div>
-      <div class="contract-group">
-        <div class="contract-group-title">输出接口</div>
-        <div class="port-contract"><span class="port-swatch control"></span><strong>下一步</strong><code>control</code></div>
-        <div class="port-contract"><span class="port-swatch content"></span><strong>Tool Call ID</strong><code>content</code></div>
-        <div class="port-contract"><span class="port-swatch content"></span><strong>结果</strong><code>content</code></div>
-      </div>
-    </section>
+    <div data-interface-contract data-contract-status="OpenAI Tool Call"></div>
     <section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
   <template id="workflowInspectorTemplate">
-    <section class="inspector-section">
-      <div class="section-label"><strong>Workflow 调用</strong><span>只读契约</span></div>
-      <div class="contract-group"><div class="contract-group-title">输入接口</div><div data-workflow-input-contracts></div></div>
-      <div class="contract-group"><div class="contract-group-title">输出接口</div><div data-workflow-output-contracts></div></div>
-    </section>
+    <div data-interface-contract data-contract-title="Workflow 调用" data-contract-status="只读契约"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>目标 Workflow<input data-workflow-name readonly></label>
