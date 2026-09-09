@@ -326,7 +326,11 @@ def create_workflows_router(
             "updated_at": now,
         }
         try:
+            if workflows.find_one({"name": name}, {"_id": 1}):
+                return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
             result = workflows.insert_one(document)
+        except DuplicateKeyError:
+            return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
         except PyMongoError:
             return JSONResponse(status_code=503, content={"error": "暂时无法创建 Workflow"})
         document["_id"] = result.inserted_id
@@ -388,11 +392,15 @@ def create_workflows_router(
         if isinstance(object_id, JSONResponse):
             return object_id
         try:
+            if workflows.find_one({"name": name, "_id": {"$ne": object_id}}, {"_id": 1}):
+                return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
             document = workflows.find_one_and_update(
                 {"_id": object_id},
                 {"$set": {"name": name, "updated_at": datetime.now(timezone.utc)}},
                 return_document=True,
             )
+        except DuplicateKeyError:
+            return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
         except PyMongoError:
             return JSONResponse(status_code=503, content={"error": "暂时无法重命名 Workflow"})
         if document is None:
@@ -586,11 +594,15 @@ def create_workflows_router(
         values["name"] = values["name"].strip()
         values["updated_at"] = now
         try:
+            if workflows.find_one({"name": values["name"], "_id": {"$ne": object_id}}, {"_id": 1}):
+                return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
             document = workflows.find_one_and_update(
                 {"_id": object_id},
                 {"$set": values, "$setOnInsert": {"created_at": now}},
                 return_document=True,
             )
+        except DuplicateKeyError:
+            return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
         except PyMongoError:
             return JSONResponse(status_code=503, content={"error": "暂时无法保存 Workflow"})
         return workflow_response(document)

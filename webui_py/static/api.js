@@ -138,11 +138,11 @@ export function renameWorkflow(workflowId, name) {
   });
 }
 
-export function updateWorkflowMetadata(workflowId, inputPorts, outputPorts) {
+export function updateWorkflowMetadata(workflowId, inputPorts, outputPorts, workflowNodes = []) {
   return request(`/api/workflows/${encodeURIComponent(workflowId)}/metadata`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input_ports: inputPorts, output_ports: outputPorts }),
+    body: JSON.stringify({ input_ports: inputPorts, output_ports: outputPorts, workflow_nodes: workflowNodes }),
   });
 }
 

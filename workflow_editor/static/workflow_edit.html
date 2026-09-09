@@ -85,8 +85,8 @@
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
           <div class="canvas-context">
-            <div class="workflow-selector"><span>WORKFLOW</span><strong id="workflowNameDisplay">未命名 Workflow</strong></div>
-            <div class="canvas-meta"><span id="connectionCount">1 条连接</span><span id="workflowState">未导入</span></div>
+            <div class="workflow-selector"><span>WORKFLOW</span><strong id="workflowNameDisplay">workflow</strong></div>
+            <div class="canvas-meta"><span id="connectionCount">1 条连接</span><span id="workflowState"></span></div>
           </div>
           <div class="canvas-actions">
             <button id="metadataButton" class="toolbar-button secondary" type="button">元数据</button>
@@ -118,7 +118,7 @@
       </header>
       <div class="metadata-body">
         <div class="metadata-basics">
-          <label>Workflow 名称<input id="workflowName" maxlength="120" required placeholder="未命名 Workflow"></label>
+          <label>Workflow 名称<input id="workflowName" maxlength="120" required value="workflow"></label>
         </div>
         <div class="metadata-columns">
           <section class="metadata-port-section">

@@ -138,7 +138,7 @@ export function resetDraft(workflowId) {
 }
 
 export function resetWorkflow(metadata = null) {
-  return loadSnapshot({ nodes: initialNodes, connections: initialConnections }, metadata);
+  return loadSnapshot({ name: 'workflow', nodes: initialNodes, connections: initialConnections }, metadata);
 }
 
 function metadataPorts(ports) {
@@ -177,7 +177,9 @@ export function loadSnapshot(saved, metadata = null) {
   try {
     const savedNodes = Array.isArray(saved) ? saved : saved?.nodes;
     if (!Array.isArray(savedNodes)) return false;
-    state.name = typeof (metadata?.name ?? saved?.name) === 'string' ? (metadata?.name ?? saved?.name).slice(0, 120) : '';
+    const workflowName = metadata?.name ?? saved?.name;
+    if (typeof workflowName !== 'string' || !workflowName.trim()) return false;
+    state.name = workflowName.trim().slice(0, 120);
     const inputPorts = metadataPorts(metadata?.input_ports ?? saved?.input_ports);
     const outputPorts = metadataPorts(metadata?.output_ports ?? saved?.output_ports);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);

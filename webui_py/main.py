@@ -101,6 +101,7 @@ def create_config_indexes():
         if "unique_workflow_key" in workflows.index_information():
             workflows.drop_index("unique_workflow_key")
         workflows.update_many({"key": {"$exists": True}}, {"$unset": {"key": ""}})
+        workflows.create_index("name", unique=True, name="unique_workflow_name")
     except PyMongoError as error:
         logger.error("failed to create configuration indexes: %s", error)
 

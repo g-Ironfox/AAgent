@@ -1,15 +1,20 @@
-import { createWorkflow, deleteWorkflow, fetchWorkflows, renameWorkflow, updateWorkflowMetadata } from './api.js';
+import { createWorkflow, deleteWorkflow, fetchWorkflows, renameWorkflow, updateWorkflowMetadata, uploadWorkflow } from './api.js';
 
-const state = { workflows: [], selectedId: null, loading: false, saving: false };
+const state = { workflows: [], selectedId: null, loading: false, saving: false, pendingUpload: null };
 const elements = {
   state: document.querySelector('#workflowState'),
   list: document.querySelector('#workflowList'),
   refreshButton: document.querySelector('#refreshButton'),
-  createButton: document.querySelector('#createButton'),
+  uploadButton: document.querySelector('#uploadButton'),
+  uploadFileInput: document.querySelector('#uploadFileInput'),
+  uploadDialog: document.querySelector('#uploadDialog'),
+  uploadForm: document.querySelector('#uploadForm'),
+  uploadName: document.querySelector('#uploadName'),
+  uploadError: document.querySelector('#uploadError'),
+  uploadSubmit: document.querySelector('#uploadSubmit'),
   renameButton: document.querySelector('#renameButton'),
   deleteButton: document.querySelector('#deleteButton'),
   title: document.querySelector('#configurationTitle'),
-  editLink: document.querySelector('#editWorkflowLink'),
   empty: document.querySelector('#workflowEmpty'),
   metadataForm: document.querySelector('#metadataForm'),
   metadataStatus: document.querySelector('#metadataStatus'),
@@ -19,11 +24,6 @@ const elements = {
   addInputPort: document.querySelector('#addInputPort'),
   addOutputPort: document.querySelector('#addOutputPort'),
   portTemplate: document.querySelector('#metadataPortTemplate'),
-  createDialog: document.querySelector('#createDialog'),
-  createForm: document.querySelector('#createForm'),
-  createName: document.querySelector('#createName'),
-  createError: document.querySelector('#createError'),
-  createSubmit: document.querySelector('#createSubmit'),
   renameDialog: document.querySelector('#renameDialog'),
   renameForm: document.querySelector('#renameForm'),
   renameName: document.querySelector('#renameName'),
@@ -47,7 +47,7 @@ function updateControls() {
   const selected = Boolean(selectedWorkflow());
   const busy = state.loading || state.saving;
   elements.refreshButton.disabled = busy;
-  elements.createButton.disabled = busy;
+  elements.uploadButton.disabled = busy;
   elements.renameButton.disabled = busy || !selected;
   elements.deleteButton.disabled = busy || !selected;
   elements.metadataSubmit.disabled = busy || !selected;
@@ -91,17 +91,14 @@ function renderConfiguration() {
   const workflow = selectedWorkflow();
   elements.empty.hidden = Boolean(workflow);
   elements.metadataForm.hidden = !workflow;
-  elements.editLink.hidden = !workflow;
   elements.renameButton.hidden = !workflow;
   elements.deleteButton.hidden = !workflow;
   elements.title.textContent = workflow?.name || '选择一个 Workflow';
   if (!workflow) {
-    elements.editLink.href = '/workflow_edit.html';
     elements.inputPorts.replaceChildren();
     elements.outputPorts.replaceChildren();
     return;
   }
-  elements.editLink.href = `/workflow_edit.html?id=${encodeURIComponent(workflow.id)}`;
   elements.metadataStatus.textContent = '';
   renderPortList(elements.inputPorts, workflow.input_ports || []);
   renderPortList(elements.outputPorts, workflow.output_ports || []);
@@ -165,13 +162,6 @@ async function loadWorkflows() {
   }
 }
 
-function openCreateDialog() {
-  elements.createForm.reset();
-  elements.createError.textContent = '';
-  elements.createDialog.showModal();
-  elements.createName.focus();
-}
-
 function openRenameDialog() {
   const workflow = selectedWorkflow();
   if (!workflow) return;
@@ -182,27 +172,99 @@ function openRenameDialog() {
   elements.renameName.select();
 }
 
-async function submitCreate(event) {
+function validateUploadName() {
+  const name = elements.uploadName.value.trim();
+  const duplicate = state.workflows.some((workflow) => workflow.name === name);
+  elements.uploadError.textContent = !name ? 'Workflow 名称不能为空' : duplicate ? 'Workflow 名称已存在，请修改' : '';
+  elements.uploadSubmit.disabled = !name || duplicate || state.saving;
+  return Boolean(name) && !duplicate;
+}
+
+function resolveWorkflowReferences(imported) {
+  const references = Array.isArray(imported.workflow_nodes) ? imported.workflow_nodes : [];
+  const resolvedIds = new Map();
+  const workflowNodes = references.map((reference) => {
+    const referenceName = reference.name || reference.workflow_name || reference.workflow_id;
+    const matches = state.workflows.filter((workflow) => workflow.id === reference.workflow_id || workflow.name === referenceName);
+    if (matches.length !== 1) {
+      throw new Error(matches.length ? `被调用 Workflow“${referenceName}”名称不唯一` : `找不到被调用 Workflow“${referenceName}”`);
+    }
+    resolvedIds.set(reference.workflow_id, matches[0]);
+    resolvedIds.set(referenceName, matches[0]);
+    return { workflow_id: matches[0].id };
+  });
+  const nodes = imported.nodes.map((node) => {
+    if (node.type !== 'workflow') return node;
+    const resolved = resolvedIds.get(node.workflow_id) || resolvedIds.get(node.workflow_name);
+    if (!resolved) throw new Error(`节点“${node.name || node.id}”引用的 Workflow 不存在`);
+    return { ...node, workflow_id: resolved.id, workflow_name: resolved.name };
+  });
+  return { workflowNodes, nodes };
+}
+
+async function chooseWorkflowFile() {
+  const [file] = elements.uploadFileInput.files;
+  elements.uploadFileInput.value = '';
+  if (!file || state.saving) return;
+  try {
+    const imported = JSON.parse(await file.text());
+    if (!imported || typeof imported !== 'object' || Array.isArray(imported)) throw new Error('文件不是有效的 Workflow JSON');
+    if (typeof imported.name !== 'string' || !imported.name.trim()) throw new Error('Workflow 名称不能为空');
+    if (!Array.isArray(imported.nodes) || !Array.isArray(imported.connections)) throw new Error('Workflow 缺少节点或连接数据');
+    state.pendingUpload = imported;
+    elements.uploadName.value = imported.name.trim();
+    validateUploadName();
+    elements.uploadDialog.showModal();
+    elements.uploadName.focus();
+    elements.uploadName.select();
+  } catch (error) {
+    state.pendingUpload = null;
+    elements.state.textContent = error.message || '读取上传文件失败';
+  }
+}
+
+async function confirmWorkflowUpload(event) {
   event.preventDefault();
-  if (state.saving || !elements.createForm.reportValidity()) return;
+  if (!state.pendingUpload || state.saving || !validateUploadName()) return;
+  const imported = state.pendingUpload;
+  const uploadName = elements.uploadName.value.trim();
+  let created = null;
   state.saving = true;
-  elements.createSubmit.disabled = true;
-  elements.createError.textContent = '';
+  elements.uploadSubmit.disabled = true;
+  elements.state.textContent = '上传中';
   updateControls();
   try {
-    const created = workflowSummary(await createWorkflow(elements.createName.value.trim()));
-    state.workflows.unshift(created);
-    state.selectedId = created.id;
-    elements.createDialog.close();
-    elements.state.textContent = `共 ${state.workflows.length} 个`;
-    renderList();
-    renderConfiguration();
+    const { workflowNodes, nodes } = resolveWorkflowReferences(imported);
+    created = await createWorkflow(uploadName);
+    await updateWorkflowMetadata(created.id, imported.input_ports || [], imported.output_ports || [], workflowNodes);
+    const uploaded = workflowSummary(await uploadWorkflow(created.id, {
+      name: uploadName,
+      version: Number.isInteger(imported.version) && imported.version >= 1 ? imported.version : 1,
+      input_ports: imported.input_ports || [],
+      output_ports: imported.output_ports || [],
+      nodes,
+      connections: imported.connections,
+    }));
+    state.workflows.unshift(uploaded);
+    state.selectedId = uploaded.id;
+    state.pendingUpload = null;
+    elements.uploadDialog.close();
+    elements.state.textContent = `已上传，共 ${state.workflows.length} 个`;
   } catch (error) {
-    elements.createError.textContent = error.name === 'AbortError' ? '创建超时，请重试' : error.message;
+    if (created) {
+      try {
+        await deleteWorkflow(created.id);
+      } catch (cleanupError) {
+        console.warn('上传失败后的 Workflow 清理失败', cleanupError);
+      }
+    }
+    elements.state.textContent = error.name === 'AbortError' ? '上传超时' : (error.message || '上传失败');
   } finally {
     state.saving = false;
-    elements.createSubmit.disabled = false;
+    validateUploadName();
     updateControls();
+    renderList();
+    renderConfiguration();
   }
 }
 
@@ -279,15 +341,24 @@ async function submitMetadata(event) {
 }
 
 elements.refreshButton.addEventListener('click', loadWorkflows);
-elements.createButton.addEventListener('click', openCreateDialog);
+elements.uploadButton.addEventListener('click', () => elements.uploadFileInput.click());
+elements.uploadFileInput.addEventListener('change', chooseWorkflowFile);
+elements.uploadName.addEventListener('input', validateUploadName);
+elements.uploadForm.addEventListener('submit', confirmWorkflowUpload);
+elements.uploadDialog.addEventListener('close', () => {
+  if (!state.saving) state.pendingUpload = null;
+});
 elements.renameButton.addEventListener('click', openRenameDialog);
 elements.deleteButton.addEventListener('click', removeSelectedWorkflow);
 elements.addInputPort.addEventListener('click', () => appendPort(elements.inputPorts));
 elements.addOutputPort.addEventListener('click', () => appendPort(elements.outputPorts));
 elements.metadataForm.addEventListener('submit', submitMetadata);
-elements.createForm.addEventListener('submit', submitCreate);
 elements.renameForm.addEventListener('submit', submitRename);
 for (const button of document.querySelectorAll('[data-close-dialog]')) {
-  button.addEventListener('click', () => button.closest('dialog').close());
+  button.addEventListener('click', () => {
+    const dialog = button.closest('dialog');
+    if (dialog === elements.uploadDialog) state.pendingUpload = null;
+    dialog.close();
+  });
 }
 loadWorkflows();

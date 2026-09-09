@@ -19,7 +19,6 @@
         <a href="/">事件流</a>
         <a href="/subagents.html">子 Agent</a>
         <a class="active" href="/workflows.html" aria-current="page">Workflow</a>
-        <a href="/workflow_edit.html">workflow编辑器</a>
         <a href="/terminal.html">终端</a>
         <a href="/document.html">文档</a>
         <a href="/setting.html">设置</a>
@@ -36,7 +35,8 @@
           <div><p>WORKFLOWS</p><h1>Workflow</h1></div>
           <div class="workflow-library-actions">
             <button id="refreshButton" class="refresh-button" type="button">刷新</button>
-            <button id="createButton" class="create-workflow-button" type="button" title="新建 Workflow" aria-label="新建 Workflow">+</button>
+            <input id="uploadFileInput" type="file" accept="application/json,.json" hidden>
+            <button id="uploadButton" class="create-workflow-button" type="button" title="上传 Workflow" aria-label="上传 Workflow">+</button>
           </div>
         </header>
         <div id="workflowList" class="workflow-management-list" aria-live="polite"></div>
@@ -51,7 +51,6 @@
           <div class="configuration-actions">
             <button id="renameButton" class="rename-workflow-button" type="button" hidden>重命名</button>
             <button id="deleteButton" class="delete-workflow-button" type="button" hidden>删除</button>
-            <a id="editWorkflowLink" class="edit-workflow-link" href="/workflow_edit.html" hidden>打开编辑器</a>
           </div>
         </header>
         <div class="configuration-content">
@@ -79,14 +78,14 @@
     </section>
   </main>
 
-  <dialog id="createDialog" class="workflow-dialog">
-    <form id="createForm">
-      <header><div><p>NEW WORKFLOW</p><h2>新建 Workflow</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
+  <dialog id="uploadDialog" class="workflow-dialog">
+    <form id="uploadForm">
+      <header><div><p>UPLOAD WORKFLOW</p><h2>确认 Workflow 名称</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
       <div class="dialog-fields">
-        <label>名称<input id="createName" name="name" maxlength="120" required autocomplete="off" placeholder="例如：内容整理"></label>
-        <p id="createError" class="dialog-error" role="alert"></p>
+        <label>名称<input id="uploadName" name="name" maxlength="120" required autocomplete="off"></label>
+        <p id="uploadError" class="dialog-error" role="alert"></p>
       </div>
-      <footer><button type="button" class="dialog-cancel" data-close-dialog>取消</button><button id="createSubmit" class="dialog-submit" type="submit">创建</button></footer>
+      <footer><button type="button" class="dialog-cancel" data-close-dialog>取消</button><button id="uploadSubmit" class="dialog-submit" type="submit">确认上传</button></footer>
     </form>
   </dialog>
 
@@ -111,6 +110,6 @@
     </div>
   </template>
 
-  <script type="module" src="/workflows.js?v=6"></script>
+  <script type="module" src="/workflows.js?v=8"></script>
 </body>
 </html>

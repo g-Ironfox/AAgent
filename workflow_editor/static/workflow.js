@@ -55,7 +55,7 @@ function workflowReferences() {
 
 loadSnapshot(workflowSnapshot());
 view.setWorkflowNodes(workflowReferences());
-elements.workflowNameDisplay.textContent = state.name || '未命名 Workflow';
+elements.workflowNameDisplay.textContent = state.name;
 
 Promise.all([fetchModels(), fetchTools()])
   .then(([models, tools]) => {
@@ -228,7 +228,7 @@ elements.metadataForm.addEventListener('submit', (event) => {
   loadSnapshot(snapshot);
   view.setWorkflowNodes(workflowReferences());
   markChanged();
-  elements.workflowNameDisplay.textContent = state.name || '未命名 Workflow';
+  elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();
   elements.metadataDialog.close();
 });
@@ -280,7 +280,7 @@ elements.importFileInput.addEventListener('change', async () => {
     if (!loadSnapshot(workflow)) throw new Error('文件不是有效的 Workflow JSON');
     view.setWorkflowNodes(workflowReferences());
     markChanged();
-    elements.workflowNameDisplay.textContent = state.name || '未命名 Workflow';
+    elements.workflowNameDisplay.textContent = state.name;
     renderWorkflow();
     elements.workflowState.textContent = '已导入';
   } catch (error) {
@@ -295,7 +295,7 @@ elements.exportButton.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  const filename = state.name.replace(/[<>:"/\\|?*]+/g, '-').replace(/\s+/g, '-') || 'workflow';
+  const filename = state.name.replace(/[<>:"/\\|?*]+/g, '-').replace(/\s+/g, '-');
   link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
