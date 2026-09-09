@@ -14,13 +14,17 @@
       <span class="brand-mark" aria-hidden="true">A</span>
       <span class="brand-name"><strong>Workflow Editor</strong><small>LOCAL WORKSPACE</small></span>
     </a>
+    <div class="top-actions">
+      <input id="importFileInput" type="file" accept="application/json,.json" hidden>
+      <button id="importButton" class="toolbar-button secondary" type="button">导入</button>
+      <button id="exportButton" class="toolbar-button primary" type="button">导出</button>
+    </div>
   </header>
   <main class="workflow-main">
     <section class="workflow-shell" aria-labelledby="workflowTitle">
       <aside class="node-library" aria-label="节点库">
         <header class="panel-heading">
-          <p>COMPONENTS</p>
-          <h1 id="workflowTitle">节点</h1>
+          <div><p>COMPONENTS</p><h1 id="workflowTitle">节点</h1></div>
         </header>
         <div class="library-content">
           <article class="library-item fixed">
@@ -80,12 +84,12 @@
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
-          <div class="canvas-meta"><span id="connectionCount">1 条连接</span><span id="workflowState">未导入</span></div>
+          <div class="canvas-context">
+            <label class="workflow-selector"><span>WORKFLOW</span><select id="workflowSelect" aria-label="选择 Workflow"></select></label>
+            <div class="canvas-meta"><span id="connectionCount">1 条连接</span><span id="workflowState">未导入</span></div>
+          </div>
           <div class="canvas-actions">
-            <input id="importFileInput" type="file" accept="application/json,.json" hidden>
             <button id="metadataButton" class="toolbar-button secondary" type="button">元数据</button>
-            <button id="importButton" class="toolbar-button secondary" type="button">导入</button>
-            <button id="exportButton" class="toolbar-button primary" type="button">导出</button>
           </div>
         </header>
         <div id="workflowCanvas" class="workflow-canvas">
@@ -113,9 +117,14 @@
         <button class="metadata-close" value="cancel" aria-label="关闭" title="关闭">×</button>
       </header>
       <div class="metadata-body">
+        <section class="metadata-workflow-manager">
+          <label><span>当前 Workflow</span><select id="metadataWorkflowSelect" aria-label="选择要编辑元数据的 Workflow"></select></label>
+          <button id="setMainWorkflowButton" class="toolbar-button secondary" type="button">设为 Main</button>
+          <button id="addWorkflowButton" class="toolbar-button secondary" type="button">新建</button>
+          <button id="deleteWorkflowButton" class="toolbar-button danger" type="button">删除</button>
+        </section>
         <div class="metadata-basics">
           <label>Workflow 名称<input id="workflowName" maxlength="120" required placeholder="未命名 Workflow"></label>
-          <label>格式版本<input id="workflowVersion" type="number" min="1" step="1" required></label>
         </div>
         <div class="metadata-columns">
           <section class="metadata-port-section">
@@ -127,10 +136,6 @@
             <div class="metadata-port-list" data-metadata-port-list="output_ports"></div>
           </section>
         </div>
-        <section class="metadata-workflows">
-          <header><div><span class="metadata-port-mark workflow">WF</span><h3>可调用 Workflows</h3></div><small>来自数据库</small></header>
-          <div id="metadataWorkflowList" class="metadata-workflow-list"></div>
-        </section>
       </div>
       <footer><span id="resourceState">正在读取数据库资源</span><button id="applyMetadataButton" class="toolbar-button primary" value="default">应用</button></footer>
     </form>

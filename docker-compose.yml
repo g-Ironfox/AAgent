@@ -117,7 +117,6 @@ services:
       MONGO_PASS: ${MONGO_PASS}
       MONGO_DATABASE: ${MONGO_DATABASE:-agent}
       MONGO_MODEL_COLLECTION: ${MONGO_MODEL_COLLECTION:-models}
-      MONGO_WORKFLOW_COLLECTION: ${MONGO_WORKFLOW_COLLECTION:-workflows}
     ports:
       - "8082:8082"
     healthcheck:

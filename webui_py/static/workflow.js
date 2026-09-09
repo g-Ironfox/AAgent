@@ -12,6 +12,7 @@ const elements = {
   inspectorContent: document.querySelector('#inspectorContent'),
   nodeCount: document.querySelector('#nodeCount'),
   connectionCount: document.querySelector('#connectionCount'),
+  workflowNodeLibrary: document.querySelector('#workflowNodeLibrary'),
   workflowSelect: document.querySelector('#workflowSelect'),
   workflowState: document.querySelector('#workflowState'),
   saveButton: document.querySelector('#saveButton'),

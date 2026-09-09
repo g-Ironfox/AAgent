@@ -45,7 +45,6 @@ if os.getenv("MONGO_USER"):
     )
 database = MongoClient(**mongo_options)[env("MONGO_DATABASE", "agent")]
 models = database[env("MONGO_MODEL_COLLECTION", "models")]
-workflows = database[env("MONGO_WORKFLOW_COLLECTION", "workflows")]
 tools_key = env("AGENT_TOOLS_KEY", "aagent:tools")
 
 
@@ -128,28 +127,6 @@ def list_tools():
         )
     items.sort(key=lambda item: item["name"])
     return {"items": items}
-
-
-@app.get("/api/workflows")
-def list_workflows():
-    try:
-        items = workflows.find(
-            {},
-            {"name": 1, "input_ports": 1, "output_ports": 1, "updated_at": 1},
-        ).sort("updated_at", DESCENDING)
-        return {
-            "items": [
-                {
-                    "workflow_id": str(item["_id"]),
-                    "name": item.get("name", ""),
-                    "input_ports": item.get("input_ports", []),
-                    "output_ports": item.get("output_ports", []),
-                }
-                for item in items
-            ]
-        }
-    except PyMongoError:
-        return JSONResponse(status_code=503, content={"error": "Workflow 列表暂时不可用"})
 
 
 static_directory = Path(__file__).parent / "static"

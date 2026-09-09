@@ -109,7 +109,3 @@ export function fetchTools() {
   return request('/api/tools');
 }
 
-export function fetchWorkflows() {
-  return request('/api/workflows');
-}
-

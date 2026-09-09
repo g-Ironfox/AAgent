@@ -12,12 +12,10 @@ const initialConnections = [
 
 export const state = {
   name: '',
-  version: 1,
   nodes: structuredClone(initialNodes),
   connections: structuredClone(initialConnections),
   input_ports: [],
   output_ports: [],
-  workflow_nodes: [],
   selectedId: 'input',
   connectionDrag: null,
 };
@@ -102,10 +100,8 @@ export function deleteNode(id) {
 export function workflowSnapshot() {
   return structuredClone({
     name: state.name,
-    version: state.version,
     input_ports: state.input_ports,
     output_ports: state.output_ports,
-    workflow_nodes: state.workflow_nodes,
     nodes: state.nodes,
     connections: state.connections,
   });
@@ -155,14 +151,10 @@ export function loadSnapshot(saved, metadata = null) {
     const savedNodes = Array.isArray(saved) ? saved : saved?.nodes;
     if (!Array.isArray(savedNodes)) return false;
     state.name = typeof (metadata?.name ?? saved?.name) === 'string' ? (metadata?.name ?? saved?.name).slice(0, 120) : '';
-    state.version = Math.max(1, Number.parseInt(metadata?.version ?? saved?.version, 10) || 1);
     const inputPorts = metadataPorts(metadata?.input_ports ?? saved?.input_ports);
     const outputPorts = metadataPorts(metadata?.output_ports ?? saved?.output_ports);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
-    state.workflow_nodes = structuredClone(Array.isArray(metadata?.workflow_nodes ?? saved?.workflow_nodes)
-      ? (metadata?.workflow_nodes ?? saved?.workflow_nodes)
-      : []);
     const ids = new Set();
     const normalizedNodes = savedNodes.flatMap((node) => {
       if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type)) return [];
