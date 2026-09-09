@@ -21,20 +21,12 @@ const elements = {
   metadataDialog: document.querySelector('#metadataDialog'),
   metadataForm: document.querySelector('#metadataForm'),
   workflowName: document.querySelector('#workflowName'),
-  workflowSelect: document.querySelector('#workflowSelect'),
-  metadataWorkflowSelect: document.querySelector('#metadataWorkflowSelect'),
-  setMainWorkflowButton: document.querySelector('#setMainWorkflowButton'),
-  addWorkflowButton: document.querySelector('#addWorkflowButton'),
-  deleteWorkflowButton: document.querySelector('#deleteWorkflowButton'),
+  workflowNameDisplay: document.querySelector('#workflowNameDisplay'),
+  callableWorkflowList: document.querySelector('#callableWorkflowList'),
+  addCallableWorkflowButton: document.querySelector('#addCallableWorkflowButton'),
   resourceState: document.querySelector('#resourceState'),
 };
 let hasUnsavedChanges = false;
-let currentKey = 'main';
-let collection = {
-  format: 'aagent-workflow-collection',
-  main: currentKey,
-  workflows: {},
-};
 
 function markChanged() {
   hasUnsavedChanges = true;
@@ -52,150 +44,18 @@ function renderWorkflow() {
   connections.renderConnections();
 }
 
-function saveCurrentWorkflow() {
-  collection.workflows[currentKey] = workflowSnapshot();
-}
-
 function workflowReferences() {
-  return Object.entries(collection.workflows)
-    .filter(([key]) => key !== currentKey)
-    .map(([key, workflow]) => ({
-      workflow_id: key,
-      name: key,
+  return state.workflow_nodes.map((workflow) => ({
+      workflow_id: workflow.workflow_id,
+      name: workflow.name,
       input_ports: workflow.input_ports || [],
       output_ports: workflow.output_ports || [],
     }));
 }
 
-function createWorkflowOptions() {
-  return Object.keys(collection.workflows).map((key) => {
-    const option = document.createElement('option');
-    option.value = key;
-    option.textContent = key === collection.main ? `${key} (Main)` : key;
-    return option;
-  });
-}
-
-function renderWorkflowSelectors() {
-  elements.workflowSelect.replaceChildren(...createWorkflowOptions());
-  elements.workflowSelect.value = currentKey;
-  elements.metadataWorkflowSelect.replaceChildren(...createWorkflowOptions());
-  elements.metadataWorkflowSelect.value = currentKey;
-  elements.setMainWorkflowButton.disabled = currentKey === collection.main;
-  elements.deleteWorkflowButton.disabled = Object.keys(collection.workflows).length === 1;
-}
-
-function selectWorkflow(key) {
-  if (key === currentKey || !collection.workflows[key]) return;
-  saveCurrentWorkflow();
-  currentKey = key;
-  loadSnapshot(collection.workflows[key], { ...collection.workflows[key], name: key });
-  view.setWorkflowNodes(workflowReferences());
-  renderWorkflowSelectors();
-  renderWorkflow();
-}
-
-function uniqueWorkflowKey(base = 'workflow') {
-  const normalized = base.trim() || 'workflow';
-  if (!collection.workflows[normalized]) return normalized;
-  let suffix = 2;
-  while (collection.workflows[`${normalized}-${suffix}`]) suffix += 1;
-  return `${normalized}-${suffix}`;
-}
-
-function addWorkflow() {
-  saveCurrentWorkflow();
-  const key = uniqueWorkflowKey('workflow');
-  const empty = {
-    name: key,
-    input_ports: [],
-    output_ports: [],
-    nodes: [
-      { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
-      { id: 'output', type: 'output', name: 'Output', x: 310, y: 238 },
-    ],
-    connections: [
-      { id: 'control-input-output', fromId: 'input', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
-    ],
-  };
-  collection.workflows[key] = empty;
-  currentKey = key;
-  loadSnapshot(empty);
-  view.setWorkflowNodes(workflowReferences());
-  markChanged();
-  renderWorkflowSelectors();
-  renderWorkflow();
-  renderMetadataDialog();
-}
-
-function deleteWorkflow(key) {
-  if (Object.keys(collection.workflows).length === 1) {
-    elements.workflowState.textContent = '集合至少保留一个 Workflow';
-    return;
-  }
-  saveCurrentWorkflow();
-  const callers = Object.entries(collection.workflows).filter(([owner, workflow]) => owner !== key && (workflow.nodes || []).some((node) => node.type === 'workflow' && node.workflow_id === key));
-  if (callers.length) {
-    elements.workflowState.textContent = `仍被 ${callers.map(([owner]) => owner).join('、')} 引用`;
-    return;
-  }
-  if (!window.confirm(`删除 Workflow “${key}”？`)) return;
-  delete collection.workflows[key];
-  if (collection.main === key) collection.main = Object.keys(collection.workflows)[0];
-  if (currentKey === key) {
-    currentKey = collection.main;
-    loadSnapshot(collection.workflows[currentKey], { ...collection.workflows[currentKey], name: currentKey });
-  }
-  view.setWorkflowNodes(workflowReferences());
-  markChanged();
-  renderWorkflowSelectors();
-  renderWorkflow();
-  renderMetadataDialog();
-}
-
-function renameCurrentWorkflow(nextKey) {
-  if (nextKey === currentKey) return true;
-  if (collection.workflows[nextKey]) {
-    elements.resourceState.textContent = 'Workflow 名称已存在';
-    return false;
-  }
-  saveCurrentWorkflow();
-  const previousKey = currentKey;
-  const renamedWorkflows = {};
-  for (const [key, workflow] of Object.entries(collection.workflows)) {
-    for (const node of workflow.nodes || []) {
-      if (node.type === 'workflow' && node.workflow_id === previousKey) {
-        node.workflow_id = nextKey;
-        node.workflow_name = nextKey;
-      }
-    }
-    renamedWorkflows[key === previousKey ? nextKey : key] = workflow;
-  }
-  collection.workflows = renamedWorkflows;
-  if (collection.main === previousKey) collection.main = nextKey;
-  currentKey = nextKey;
-  state.name = nextKey;
-  return true;
-}
-
-function syncWorkflowCallers(key) {
-  const target = collection.workflows[key];
-  if (!target) return;
-  for (const workflow of Object.values(collection.workflows)) {
-    for (const node of workflow.nodes || []) {
-      if (node.type !== 'workflow' || node.workflow_id !== key) continue;
-      node.workflow_name = key;
-      node.name = key;
-      node.input_ports = structuredClone(target.input_ports || []);
-      node.output_ports = structuredClone(target.output_ports || []);
-    }
-  }
-}
-
-collection.workflows[currentKey] = workflowSnapshot();
-loadSnapshot(collection.workflows[currentKey], { ...collection.workflows[currentKey], name: currentKey });
+loadSnapshot(workflowSnapshot());
 view.setWorkflowNodes(workflowReferences());
-renderWorkflowSelectors();
+elements.workflowNameDisplay.textContent = state.name || '未命名 Workflow';
 
 Promise.all([fetchModels(), fetchTools()])
   .then(([models, tools]) => {
@@ -228,9 +88,10 @@ function renderMetadataPortList(collection) {
 }
 
 function renderMetadataDialog() {
-  elements.workflowName.value = currentKey;
+  elements.workflowName.value = state.name;
   renderMetadataPortList('input_ports');
   renderMetadataPortList('output_ports');
+  renderCallableWorkflowList();
 }
 
 function readMetadataPorts(collection) {
@@ -240,22 +101,87 @@ function readMetadataPorts(collection) {
   }));
 }
 
+function renderCallablePortList(row, collection, ports) {
+  const list = row.querySelector(`[data-callable-port-list="${collection}"]`);
+  list.replaceChildren(...ports.map(createMetadataPortRow));
+  if (!ports.length) {
+    const empty = document.createElement('p');
+    empty.className = 'metadata-empty';
+    empty.textContent = '暂无接口';
+    list.append(empty);
+  }
+}
+
+function createCallableWorkflowRow(workflow = { name: '', input_ports: [], output_ports: [] }) {
+  const row = document.querySelector('#callableWorkflowTemplate').content.firstElementChild.cloneNode(true);
+  row.dataset.workflowId = workflow.workflow_id || '';
+  row.querySelector('[data-callable-workflow-name]').value = workflow.name || '';
+  renderCallablePortList(row, 'input_ports', workflow.input_ports || []);
+  renderCallablePortList(row, 'output_ports', workflow.output_ports || []);
+  row.querySelector('[data-remove-callable-workflow]').addEventListener('click', () => row.remove());
+  for (const button of row.querySelectorAll('[data-add-callable-port]')) {
+    button.addEventListener('click', () => {
+      const list = row.querySelector(`[data-callable-port-list="${button.dataset.addCallablePort}"]`);
+      list.querySelector('.metadata-empty')?.remove();
+      const portRow = createMetadataPortRow();
+      list.append(portRow);
+      portRow.querySelector('input').focus();
+    });
+  }
+  return row;
+}
+
+function renderCallableWorkflowList() {
+  elements.callableWorkflowList.replaceChildren(...state.workflow_nodes.map(createCallableWorkflowRow));
+  if (!state.workflow_nodes.length) {
+    const empty = document.createElement('p');
+    empty.className = 'metadata-empty';
+    empty.textContent = '暂无可调用 Workflow';
+    elements.callableWorkflowList.append(empty);
+  }
+}
+
+function readCallableWorkflows() {
+  return [...elements.callableWorkflowList.querySelectorAll('.callable-workflow-row')].map((row) => ({
+    previous_id: row.dataset.workflowId,
+    workflow_id: row.dataset.workflowId || row.querySelector('[data-callable-workflow-name]').value.trim(),
+    name: row.querySelector('[data-callable-workflow-name]').value.trim(),
+    input_ports: readPortsFromList(row.querySelector('[data-callable-port-list="input_ports"]')),
+    output_ports: readPortsFromList(row.querySelector('[data-callable-port-list="output_ports"]')),
+  }));
+}
+
+function readPortsFromList(list) {
+  return [...list.querySelectorAll('.metadata-port-row')].map((row) => ({
+    name: row.querySelector('[data-metadata-port-name]').value.trim(),
+    type: row.querySelector('[data-metadata-port-type]').value,
+  }));
+}
+
+function syncCallableWorkflowNodes(nextWorkflows) {
+  const nextByPreviousId = new Map(nextWorkflows.map((workflow) => [workflow.previous_id || workflow.workflow_id, workflow]));
+  for (const node of state.nodes) {
+    if (node.type !== 'workflow') continue;
+    const workflow = nextByPreviousId.get(node.workflow_id);
+    if (!workflow) continue;
+    node.workflow_id = workflow.workflow_id;
+    node.workflow_name = workflow.name;
+    node.name = workflow.name;
+    node.input_ports = structuredClone(workflow.input_ports);
+    node.output_ports = structuredClone(workflow.output_ports);
+  }
+}
+
 elements.metadataButton.addEventListener('click', () => {
   renderMetadataDialog();
   elements.metadataDialog.showModal();
 });
 
-elements.workflowSelect.addEventListener('change', () => selectWorkflow(elements.workflowSelect.value));
-elements.metadataWorkflowSelect.addEventListener('change', () => {
-  selectWorkflow(elements.metadataWorkflowSelect.value);
-  renderMetadataDialog();
-});
-elements.addWorkflowButton.addEventListener('click', addWorkflow);
-elements.deleteWorkflowButton.addEventListener('click', () => deleteWorkflow(currentKey));
-elements.setMainWorkflowButton.addEventListener('click', () => {
-  collection.main = currentKey;
-  markChanged();
-  renderWorkflowSelectors();
+elements.addCallableWorkflowButton.addEventListener('click', () => {
+  elements.callableWorkflowList.querySelector('.metadata-empty')?.remove();
+  const row = createCallableWorkflowRow();
+  elements.callableWorkflowList.append(row);
+  row.querySelector('input').focus();
 });
 
 for (const button of document.querySelectorAll('[data-add-metadata-port]')) {
@@ -274,25 +200,35 @@ elements.metadataForm.addEventListener('submit', (event) => {
   if (!elements.metadataForm.reportValidity()) return;
   const inputPorts = readMetadataPorts('input_ports');
   const outputPorts = readMetadataPorts('output_ports');
-  if ([inputPorts, outputPorts].some((ports) => new Set(ports.map((port) => port.name)).size !== ports.length)) {
+  const callableWorkflows = readCallableWorkflows();
+  const allPortLists = [inputPorts, outputPorts, ...callableWorkflows.flatMap((workflow) => [workflow.input_ports, workflow.output_ports])];
+  if (allPortLists.some((ports) => new Set(ports.map((port) => port.name.toLocaleLowerCase())).size !== ports.length)) {
     elements.resourceState.textContent = '同一侧接口名称不能重复';
     return;
   }
-  const nextKey = elements.workflowName.value.trim();
-  if (!renameCurrentWorkflow(nextKey)) return;
+  if (new Set(callableWorkflows.map((workflow) => workflow.name.toLocaleLowerCase())).size !== callableWorkflows.length) {
+    elements.resourceState.textContent = '可调用 Workflow 名称不能重复';
+    return;
+  }
+  const retainedIds = new Set(callableWorkflows.map((workflow) => workflow.previous_id || workflow.workflow_id));
+  const removedInUse = state.nodes.find((node) => node.type === 'workflow' && !retainedIds.has(node.workflow_id));
+  if (removedInUse) {
+    elements.resourceState.textContent = `“${removedInUse.workflow_name || removedInUse.workflow_id}”仍被画布节点调用`;
+    return;
+  }
+  syncCallableWorkflowNodes(callableWorkflows);
+  state.name = elements.workflowName.value.trim();
+  state.input_ports = inputPorts;
+  state.output_ports = outputPorts;
+  state.workflow_nodes = callableWorkflows.map(({ previous_id, ...workflow }) => ({ ...workflow, workflow_id: workflow.name }));
+  for (const node of state.nodes) {
+    if (node.type === 'workflow') node.workflow_id = node.workflow_name;
+  }
   const snapshot = workflowSnapshot();
-  const metadata = {
-    name: nextKey,
-    input_ports: inputPorts,
-    output_ports: outputPorts,
-  };
-  loadSnapshot(snapshot, metadata);
-  saveCurrentWorkflow();
-  syncWorkflowCallers(currentKey);
-  loadSnapshot(collection.workflows[currentKey], { ...collection.workflows[currentKey], name: currentKey });
+  loadSnapshot(snapshot);
   view.setWorkflowNodes(workflowReferences());
   markChanged();
-  renderWorkflowSelectors();
+  elements.workflowNameDisplay.textContent = state.name || '未命名 Workflow';
   renderWorkflow();
   elements.metadataDialog.close();
 });
@@ -328,29 +264,23 @@ elements.importFileInput.addEventListener('change', async () => {
   if (!file) return;
   try {
     const imported = JSON.parse(await file.text());
-    const importedWorkflows = imported?.workflows && typeof imported.workflows === 'object' && !Array.isArray(imported.workflows)
-      ? imported.workflows
-      : { [imported.name || 'main']: imported };
-    const keys = Object.keys(importedWorkflows);
-    if (!keys.length || keys.some((key) => !key || !Array.isArray(importedWorkflows[key]?.nodes))) {
-      throw new Error('文件不是有效的 Workflow 集合 JSON');
+    let workflow = imported;
+    if (imported?.workflows && typeof imported.workflows === 'object' && !Array.isArray(imported.workflows)) {
+      const entries = Object.entries(imported.workflows);
+      const main = typeof imported.main === 'string' && imported.workflows[imported.main] ? imported.main : entries[0]?.[0];
+      if (!main) throw new Error('Workflow 集合为空');
+      workflow = {
+        ...imported.workflows[main],
+        name: imported.workflows[main].name || main,
+        workflow_nodes: entries
+          .filter(([name]) => name !== main)
+          .map(([name, callable]) => ({ workflow_id: name, name, input_ports: callable.input_ports || [], output_ports: callable.output_ports || [] })),
+      };
     }
-    const main = typeof imported.main === 'string' && importedWorkflows[imported.main] ? imported.main : keys[0];
-    const workflows = Object.fromEntries(Object.entries(importedWorkflows).map(([key, workflow]) => {
-      const snapshot = { ...workflow };
-      delete snapshot.version;
-      return [key, snapshot];
-    }));
-    collection = {
-      format: 'aagent-workflow-collection',
-      main,
-      workflows: structuredClone(workflows),
-    };
-    currentKey = main;
-    if (!loadSnapshot(collection.workflows[currentKey], { ...collection.workflows[currentKey], name: currentKey })) throw new Error('Main Workflow 无效');
+    if (!loadSnapshot(workflow)) throw new Error('文件不是有效的 Workflow JSON');
     view.setWorkflowNodes(workflowReferences());
     markChanged();
-    renderWorkflowSelectors();
+    elements.workflowNameDisplay.textContent = state.name || '未命名 Workflow';
     renderWorkflow();
     elements.workflowState.textContent = '已导入';
   } catch (error) {
@@ -360,13 +290,13 @@ elements.importFileInput.addEventListener('change', async () => {
 });
 
 elements.exportButton.addEventListener('click', () => {
-  saveCurrentWorkflow();
-  const blob = new Blob([`${JSON.stringify(collection, null, 2)}\n`], { type: 'application/json;charset=utf-8' });
+  const snapshot = workflowSnapshot();
+  const blob = new Blob([`${JSON.stringify(snapshot, null, 2)}\n`], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  const filename = collection.main.replace(/[<>:"/\\|?*]+/g, '-').replace(/\s+/g, '-') || 'aagent-workflows';
-  link.download = `${filename}-collection-${new Date().toISOString().slice(0, 10)}.json`;
+  const filename = state.name.replace(/[<>:"/\\|?*]+/g, '-').replace(/\s+/g, '-') || 'workflow';
+  link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
 });

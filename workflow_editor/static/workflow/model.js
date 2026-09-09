@@ -16,6 +16,7 @@ export const state = {
   connections: structuredClone(initialConnections),
   input_ports: [],
   output_ports: [],
+  workflow_nodes: [],
   selectedId: 'input',
   connectionDrag: null,
 };
@@ -102,6 +103,7 @@ export function workflowSnapshot() {
     name: state.name,
     input_ports: state.input_ports,
     output_ports: state.output_ports,
+    workflow_nodes: state.workflow_nodes,
     nodes: state.nodes,
     connections: state.connections,
   });
@@ -146,6 +148,31 @@ function metadataPorts(ports) {
   });
 }
 
+function callableWorkflowMetadata(saved) {
+  const declarations = Array.isArray(saved?.workflow_nodes)
+    ? saved.workflow_nodes
+    : Array.isArray(saved?.callable_workflows)
+      ? saved.callable_workflows
+    : (Array.isArray(saved?.nodes) ? saved.nodes : []).filter((node) => node?.type === 'workflow');
+  const names = new Set();
+  return declarations.flatMap((workflow) => {
+    const name = typeof workflow?.name === 'string' && workflow.name.trim()
+      ? workflow.name.trim().slice(0, 120)
+      : typeof workflow?.workflow_name === 'string' && workflow.workflow_name.trim()
+        ? workflow.workflow_name.trim().slice(0, 120)
+        : typeof workflow?.workflow_id === 'string' ? workflow.workflow_id.trim().slice(0, 120) : '';
+    const normalizedName = name.toLocaleLowerCase();
+    if (!name || names.has(normalizedName)) return [];
+    names.add(normalizedName);
+    return [{
+      workflow_id: typeof workflow.workflow_id === 'string' && workflow.workflow_id.trim() ? workflow.workflow_id.trim().slice(0, 120) : name,
+      name,
+      input_ports: metadataPorts(workflow.input_ports).map(({ id, ...port }) => port),
+      output_ports: metadataPorts(workflow.output_ports).map(({ id, ...port }) => port),
+    }];
+  });
+}
+
 export function loadSnapshot(saved, metadata = null) {
   try {
     const savedNodes = Array.isArray(saved) ? saved : saved?.nodes;
@@ -155,6 +182,8 @@ export function loadSnapshot(saved, metadata = null) {
     const outputPorts = metadataPorts(metadata?.output_ports ?? saved?.output_ports);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
+    state.workflow_nodes = callableWorkflowMetadata(saved);
+    const callableWorkflows = new Map(state.workflow_nodes.flatMap((workflow) => [[workflow.workflow_id, workflow], [workflow.name, workflow]]));
     const ids = new Set();
     const normalizedNodes = savedNodes.flatMap((node) => {
       if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type)) return [];
@@ -242,10 +271,11 @@ export function loadSnapshot(saved, metadata = null) {
       }
       if (node.type === 'workflow') {
         if (typeof node.workflow_id !== 'string' || !node.workflow_id) return [];
-        normalized.workflow_id = node.workflow_id;
-        normalized.workflow_name = typeof node.workflow_name === 'string' ? node.workflow_name.slice(0, 120) : node.workflow_id;
-        normalized.input_ports = metadataPorts(node.input_ports).map(({ id, ...port }) => port);
-        normalized.output_ports = metadataPorts(node.output_ports).map(({ id, ...port }) => port);
+        const declaration = callableWorkflows.get(node.workflow_id);
+        normalized.workflow_id = declaration?.name || node.workflow_id;
+        normalized.workflow_name = declaration?.name || (typeof node.workflow_name === 'string' ? node.workflow_name.slice(0, 120) : node.workflow_id);
+        normalized.input_ports = structuredClone(declaration?.input_ports || metadataPorts(node.input_ports).map(({ id, ...port }) => port));
+        normalized.output_ports = structuredClone(declaration?.output_ports || metadataPorts(node.output_ports).map(({ id, ...port }) => port));
       }
       return [normalized];
     });

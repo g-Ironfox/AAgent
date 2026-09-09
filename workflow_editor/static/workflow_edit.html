@@ -85,7 +85,7 @@
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
           <div class="canvas-context">
-            <label class="workflow-selector"><span>WORKFLOW</span><select id="workflowSelect" aria-label="选择 Workflow"></select></label>
+            <div class="workflow-selector"><span>WORKFLOW</span><strong id="workflowNameDisplay">未命名 Workflow</strong></div>
             <div class="canvas-meta"><span id="connectionCount">1 条连接</span><span id="workflowState">未导入</span></div>
           </div>
           <div class="canvas-actions">
@@ -117,12 +117,6 @@
         <button class="metadata-close" value="cancel" aria-label="关闭" title="关闭">×</button>
       </header>
       <div class="metadata-body">
-        <section class="metadata-workflow-manager">
-          <label><span>当前 Workflow</span><select id="metadataWorkflowSelect" aria-label="选择要编辑元数据的 Workflow"></select></label>
-          <button id="setMainWorkflowButton" class="toolbar-button secondary" type="button">设为 Main</button>
-          <button id="addWorkflowButton" class="toolbar-button secondary" type="button">新建</button>
-          <button id="deleteWorkflowButton" class="toolbar-button danger" type="button">删除</button>
-        </section>
         <div class="metadata-basics">
           <label>Workflow 名称<input id="workflowName" maxlength="120" required placeholder="未命名 Workflow"></label>
         </div>
@@ -136,6 +130,13 @@
             <div class="metadata-port-list" data-metadata-port-list="output_ports"></div>
           </section>
         </div>
+        <section class="callable-workflow-section">
+          <header>
+            <div><span class="metadata-port-mark workflow">WF</span><h3>可调用 Workflow</h3></div>
+            <button id="addCallableWorkflowButton" type="button" title="添加可调用 Workflow" aria-label="添加可调用 Workflow">+</button>
+          </header>
+          <div id="callableWorkflowList" class="callable-workflow-list"></div>
+        </section>
       </div>
       <footer><span id="resourceState">正在读取数据库资源</span><button id="applyMetadataButton" class="toolbar-button primary" value="default">应用</button></footer>
     </form>
@@ -147,6 +148,25 @@
       <select data-metadata-port-type aria-label="端口类型"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select>
       <button type="button" data-remove-metadata-port title="删除接口" aria-label="删除接口">×</button>
     </div>
+  </template>
+
+  <template id="callableWorkflowTemplate">
+    <article class="callable-workflow-row">
+      <header>
+        <label>Workflow 名称<input data-callable-workflow-name maxlength="120" required placeholder="workflow_name"></label>
+        <button type="button" data-remove-callable-workflow title="删除可调用 Workflow" aria-label="删除可调用 Workflow">×</button>
+      </header>
+      <div class="callable-contract-columns">
+        <section>
+          <div class="callable-contract-heading"><strong>输入契约</strong><button type="button" data-add-callable-port="input_ports" title="添加输入接口">+</button></div>
+          <div class="metadata-port-list" data-callable-port-list="input_ports"></div>
+        </section>
+        <section>
+          <div class="callable-contract-heading"><strong>输出契约</strong><button type="button" data-add-callable-port="output_ports" title="添加输出接口">+</button></div>
+          <div class="metadata-port-list" data-callable-port-list="output_ports"></div>
+        </section>
+      </div>
+    </article>
   </template>
 
   <template id="inputInspectorTemplate">
