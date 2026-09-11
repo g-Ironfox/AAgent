@@ -57,22 +57,29 @@
           <div id="workflowEmpty" class="configuration-empty">
             <strong>暂无配置项</strong>
           </div>
-          <form id="metadataForm" class="workflow-metadata" hidden>
+          <section id="metadataPanel" class="workflow-metadata" hidden>
             <div class="metadata-heading">
               <div><p>DATA CONTRACT</p><h3>数据端口</h3></div>
-              <div class="metadata-save-state" aria-live="polite"><span id="metadataStatus"></span><button id="metadataSubmit" type="submit">保存元数据</button></div>
+              <span class="metadata-readonly">只读</span>
             </div>
             <div class="metadata-columns">
               <section class="metadata-port-section" aria-labelledby="inputPortsTitle">
-                <header><div><span class="metadata-port-mark input">IN</span><h4 id="inputPortsTitle">Input</h4></div><button id="addInputPort" type="button" title="添加 Input 字段" aria-label="添加 Input 字段">+</button></header>
+                <header><div><span class="metadata-port-mark input">IN</span><h4 id="inputPortsTitle">Input</h4></div></header>
                 <div id="inputPorts" class="metadata-port-list"></div>
               </section>
               <section class="metadata-port-section" aria-labelledby="outputPortsTitle">
-                <header><div><span class="metadata-port-mark output">OUT</span><h4 id="outputPortsTitle">Output</h4></div><button id="addOutputPort" type="button" title="添加 Output 字段" aria-label="添加 Output 字段">+</button></header>
+                <header><div><span class="metadata-port-mark output">OUT</span><h4 id="outputPortsTitle">Output</h4></div></header>
                 <div id="outputPorts" class="metadata-port-list"></div>
               </section>
             </div>
-          </form>
+            <section class="workflow-dependencies" aria-labelledby="workflowDependenciesTitle">
+              <header>
+                <div><p>DEPENDENCIES</p><h3 id="workflowDependenciesTitle">Workflow 依赖与契约</h3></div>
+                <span id="dependencyCount" class="dependency-count"></span>
+              </header>
+              <div id="workflowDependencies" class="workflow-dependency-list"></div>
+            </section>
+          </section>
         </div>
       </section>
     </section>
@@ -102,14 +109,11 @@
 
   <template id="metadataPortTemplate">
     <div class="metadata-port-row">
-      <div class="metadata-port-primary">
-        <label><span>字段名</span><input data-port-name maxlength="80" required autocomplete="off" placeholder="例如：query"></label>
-        <label><span>类型</span><select data-port-type><option value="content">Content</option><option value="message">Message</option><option value="list-content">List&lt;Content&gt;</option><option value="list-message">List&lt;Message&gt;</option></select></label>
-        <button class="metadata-remove-port" data-remove-port type="button" title="删除字段" aria-label="删除字段">×</button>
-      </div>
+      <strong data-port-name></strong>
+      <code data-port-type></code>
     </div>
   </template>
 
-  <script type="module" src="/workflows.js?v=8"></script>
+  <script type="module" src="/workflows.js?v=11"></script>
 </body>
 </html>

@@ -16,13 +16,11 @@ const elements = {
   deleteButton: document.querySelector('#deleteButton'),
   title: document.querySelector('#configurationTitle'),
   empty: document.querySelector('#workflowEmpty'),
-  metadataForm: document.querySelector('#metadataForm'),
-  metadataStatus: document.querySelector('#metadataStatus'),
-  metadataSubmit: document.querySelector('#metadataSubmit'),
+  metadataPanel: document.querySelector('#metadataPanel'),
   inputPorts: document.querySelector('#inputPorts'),
   outputPorts: document.querySelector('#outputPorts'),
-  addInputPort: document.querySelector('#addInputPort'),
-  addOutputPort: document.querySelector('#addOutputPort'),
+  dependencies: document.querySelector('#workflowDependencies'),
+  dependencyCount: document.querySelector('#dependencyCount'),
   portTemplate: document.querySelector('#metadataPortTemplate'),
   renameDialog: document.querySelector('#renameDialog'),
   renameForm: document.querySelector('#renameForm'),
@@ -50,16 +48,12 @@ function updateControls() {
   elements.uploadButton.disabled = busy;
   elements.renameButton.disabled = busy || !selected;
   elements.deleteButton.disabled = busy || !selected;
-  elements.metadataSubmit.disabled = busy || !selected;
-  elements.addInputPort.disabled = busy || !selected;
-  elements.addOutputPort.disabled = busy || !selected;
 }
 
-function createPortRow(port = {}) {
+function createPortRow(port) {
   const row = elements.portTemplate.content.firstElementChild.cloneNode(true);
-  row.querySelector('[data-port-name]').value = port.name || '';
-  row.querySelector('[data-port-type]').value = port.type || 'content';
-  row.querySelector('[data-remove-port]').addEventListener('click', () => row.remove());
+  row.querySelector('[data-port-name]').textContent = port.name || '未命名字段';
+  row.querySelector('[data-port-type]').textContent = port.type || 'content';
   return row;
 }
 
@@ -73,35 +67,74 @@ function renderPortList(container, ports) {
   }
 }
 
-function appendPort(container) {
-  container.querySelector('.metadata-port-empty')?.remove();
-  const row = createPortRow();
-  container.append(row);
-  row.querySelector('[data-port-name]').focus();
+function createDependencyContract(title, markerClass, ports) {
+  const section = document.createElement('section');
+  section.className = 'dependency-contract';
+  const heading = document.createElement('h5');
+  const marker = document.createElement('span');
+  marker.className = `metadata-port-mark ${markerClass}`;
+  marker.textContent = markerClass === 'input' ? 'IN' : 'OUT';
+  heading.append(marker, title);
+  const list = document.createElement('div');
+  list.className = 'dependency-contract-ports';
+  renderPortList(list, ports || []);
+  section.append(heading, list);
+  return section;
 }
 
-function readPortList(container) {
-  return Array.from(container.querySelectorAll('.metadata-port-row'), (row) => ({
-    name: row.querySelector('[data-port-name]').value.trim(),
-    type: row.querySelector('[data-port-type]').value,
-  }));
+function renderDependencies(references) {
+  elements.dependencies.replaceChildren();
+  elements.dependencyCount.textContent = `${references.length} 项`;
+  if (!references.length) {
+    const empty = document.createElement('p');
+    empty.className = 'metadata-port-empty';
+    empty.textContent = '无 Workflow 依赖';
+    elements.dependencies.append(empty);
+    return;
+  }
+  for (const reference of references) {
+    const item = document.createElement('article');
+    item.className = 'workflow-dependency-item';
+    const heading = document.createElement('header');
+    const identity = document.createElement('div');
+    identity.className = 'workflow-dependency-identity';
+    const marker = document.createElement('span');
+    marker.className = 'metadata-port-mark workflow';
+    marker.textContent = 'WF';
+    const name = document.createElement('strong');
+    name.textContent = reference.name || reference.workflow_name || reference.workflow_id;
+    const id = document.createElement('code');
+    id.textContent = reference.workflow_id;
+    identity.append(marker, name);
+    heading.append(identity, id);
+    const contracts = document.createElement('div');
+    contracts.className = 'dependency-contracts';
+    contracts.append(
+      createDependencyContract('Input', 'input', reference.input_ports),
+      createDependencyContract('Output', 'output', reference.output_ports),
+    );
+    item.append(heading, contracts);
+    elements.dependencies.append(item);
+  }
 }
 
 function renderConfiguration() {
   const workflow = selectedWorkflow();
   elements.empty.hidden = Boolean(workflow);
-  elements.metadataForm.hidden = !workflow;
+  elements.metadataPanel.hidden = !workflow;
   elements.renameButton.hidden = !workflow;
   elements.deleteButton.hidden = !workflow;
   elements.title.textContent = workflow?.name || '选择一个 Workflow';
   if (!workflow) {
     elements.inputPorts.replaceChildren();
     elements.outputPorts.replaceChildren();
+    elements.dependencies.replaceChildren();
+    elements.dependencyCount.textContent = '';
     return;
   }
-  elements.metadataStatus.textContent = '';
   renderPortList(elements.inputPorts, workflow.input_ports || []);
   renderPortList(elements.outputPorts, workflow.output_ports || []);
+  renderDependencies(workflow.workflow_nodes || []);
 }
 
 function selectWorkflow(id) {
@@ -166,18 +199,26 @@ function openRenameDialog() {
   const workflow = selectedWorkflow();
   if (!workflow) return;
   elements.renameName.value = workflow.name;
-  elements.renameError.textContent = '';
+  validateRenameName();
   elements.renameDialog.showModal();
   elements.renameName.focus();
   elements.renameName.select();
 }
 
-function validateUploadName() {
-  const name = elements.uploadName.value.trim();
-  const duplicate = state.workflows.some((workflow) => workflow.name === name);
-  elements.uploadError.textContent = !name ? 'Workflow 名称不能为空' : duplicate ? 'Workflow 名称已存在，请修改' : '';
-  elements.uploadSubmit.disabled = !name || duplicate || state.saving;
+function validateWorkflowName(input, error, submit, excludedWorkflowId = null) {
+  const name = input.value.trim();
+  const duplicate = state.workflows.some((workflow) => workflow.id !== excludedWorkflowId && workflow.name === name);
+  error.textContent = !name ? 'Workflow 名称不能为空' : duplicate ? 'Workflow 名称已存在，请修改' : '';
+  submit.disabled = !name || duplicate || state.saving;
   return Boolean(name) && !duplicate;
+}
+
+function validateUploadName() {
+  return validateWorkflowName(elements.uploadName, elements.uploadError, elements.uploadSubmit);
+}
+
+function validateRenameName() {
+  return validateWorkflowName(elements.renameName, elements.renameError, elements.renameSubmit, state.selectedId);
 }
 
 function resolveWorkflowReferences(imported) {
@@ -271,7 +312,7 @@ async function confirmWorkflowUpload(event) {
 async function submitRename(event) {
   event.preventDefault();
   const workflow = selectedWorkflow();
-  if (!workflow || state.saving || !elements.renameForm.reportValidity()) return;
+  if (!workflow || state.saving || !elements.renameForm.reportValidity() || !validateRenameName()) return;
   state.saving = true;
   elements.renameSubmit.disabled = true;
   elements.renameError.textContent = '';
@@ -313,46 +354,17 @@ async function removeSelectedWorkflow() {
   }
 }
 
-async function submitMetadata(event) {
-  event.preventDefault();
-  const workflow = selectedWorkflow();
-  if (!workflow || state.saving || !elements.metadataForm.reportValidity()) return;
-  const inputPorts = readPortList(elements.inputPorts);
-  const outputPorts = readPortList(elements.outputPorts);
-  const duplicateSide = [inputPorts, outputPorts].find((ports) => new Set(ports.map((port) => port.name)).size !== ports.length);
-  if (duplicateSide) {
-    elements.metadataStatus.textContent = '同一侧字段名不能重复';
-    return;
-  }
-  state.saving = true;
-  elements.metadataStatus.textContent = '保存中';
-  updateControls();
-  try {
-    const updated = workflowSummary(await updateWorkflowMetadata(workflow.id, inputPorts, outputPorts));
-    const index = state.workflows.findIndex((item) => item.id === workflow.id);
-    state.workflows[index] = updated;
-    elements.metadataStatus.textContent = '已保存';
-  } catch (error) {
-    elements.metadataStatus.textContent = error.name === 'AbortError' ? '保存超时' : error.message;
-  } finally {
-    state.saving = false;
-    updateControls();
-  }
-}
-
 elements.refreshButton.addEventListener('click', loadWorkflows);
 elements.uploadButton.addEventListener('click', () => elements.uploadFileInput.click());
 elements.uploadFileInput.addEventListener('change', chooseWorkflowFile);
 elements.uploadName.addEventListener('input', validateUploadName);
+elements.renameName.addEventListener('input', validateRenameName);
 elements.uploadForm.addEventListener('submit', confirmWorkflowUpload);
 elements.uploadDialog.addEventListener('close', () => {
   if (!state.saving) state.pendingUpload = null;
 });
 elements.renameButton.addEventListener('click', openRenameDialog);
 elements.deleteButton.addEventListener('click', removeSelectedWorkflow);
-elements.addInputPort.addEventListener('click', () => appendPort(elements.inputPorts));
-elements.addOutputPort.addEventListener('click', () => appendPort(elements.outputPorts));
-elements.metadataForm.addEventListener('submit', submitMetadata);
 elements.renameForm.addEventListener('submit', submitRename);
 for (const button of document.querySelectorAll('[data-close-dialog]')) {
   button.addEventListener('click', () => {
