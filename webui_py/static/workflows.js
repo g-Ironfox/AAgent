@@ -1,4 +1,4 @@
-import { createWorkflow, deleteWorkflow, fetchWorkflows, renameWorkflow, updateWorkflowMetadata, uploadWorkflow } from './api.js';
+import { createWorkflow, deleteWorkflow, fetchWorkflow, fetchWorkflows, renameWorkflow, updateWorkflowMetadata, uploadWorkflow } from './api.js';
 
 const state = { workflows: [], selectedId: null, loading: false, saving: false, pendingUpload: null };
 const elements = {
@@ -12,9 +12,11 @@ const elements = {
   uploadName: document.querySelector('#uploadName'),
   uploadError: document.querySelector('#uploadError'),
   uploadSubmit: document.querySelector('#uploadSubmit'),
+  exportButton: document.querySelector('#exportButton'),
   renameButton: document.querySelector('#renameButton'),
   deleteButton: document.querySelector('#deleteButton'),
   title: document.querySelector('#configurationTitle'),
+  description: document.querySelector('#workflowDescription'),
   empty: document.querySelector('#workflowEmpty'),
   metadataPanel: document.querySelector('#metadataPanel'),
   inputPorts: document.querySelector('#inputPorts'),
@@ -46,6 +48,7 @@ function updateControls() {
   const busy = state.loading || state.saving;
   elements.refreshButton.disabled = busy;
   elements.uploadButton.disabled = busy;
+  elements.exportButton.disabled = busy || !selected;
   elements.renameButton.disabled = busy || !selected;
   elements.deleteButton.disabled = busy || !selected;
 }
@@ -102,11 +105,9 @@ function renderDependencies(references) {
     marker.className = 'metadata-port-mark workflow';
     marker.textContent = 'WF';
     const name = document.createElement('strong');
-    name.textContent = reference.name || reference.workflow_name || reference.workflow_id;
-    const id = document.createElement('code');
-    id.textContent = reference.workflow_id;
+    name.textContent = reference.name || reference.workflow_name || '未命名 Workflow';
     identity.append(marker, name);
-    heading.append(identity, id);
+    heading.append(identity);
     const contracts = document.createElement('div');
     contracts.className = 'dependency-contracts';
     contracts.append(
@@ -122,16 +123,20 @@ function renderConfiguration() {
   const workflow = selectedWorkflow();
   elements.empty.hidden = Boolean(workflow);
   elements.metadataPanel.hidden = !workflow;
+  elements.exportButton.hidden = !workflow;
   elements.renameButton.hidden = !workflow;
   elements.deleteButton.hidden = !workflow;
   elements.title.textContent = workflow?.name || '选择一个 Workflow';
   if (!workflow) {
+    elements.description.textContent = '';
     elements.inputPorts.replaceChildren();
     elements.outputPorts.replaceChildren();
     elements.dependencies.replaceChildren();
     elements.dependencyCount.textContent = '';
     return;
   }
+  elements.description.textContent = workflow.description || '暂无描述';
+  elements.description.classList.toggle('empty', !workflow.description);
   renderPortList(elements.inputPorts, workflow.input_ports || []);
   renderPortList(elements.outputPorts, workflow.output_ports || []);
   renderDependencies(workflow.workflow_nodes || []);
@@ -158,13 +163,11 @@ function renderList() {
     button.type = 'button';
 
     const title = document.createElement('strong');
-    title.textContent = workflow.name || workflow.id;
-    const id = document.createElement('code');
-    id.textContent = workflow.id;
+  title.textContent = workflow.name || '未命名 Workflow';
     const meta = document.createElement('small');
     meta.textContent = `${workflow.node_count} 节点 / ${workflow.connection_count} 连接`;
 
-    button.append(title, id, meta);
+  button.append(title, meta);
     button.addEventListener('click', () => selectWorkflow(workflow.id));
     elements.list.append(button);
   }
@@ -280,6 +283,7 @@ async function confirmWorkflowUpload(event) {
     await updateWorkflowMetadata(created.id, imported.input_ports || [], imported.output_ports || [], workflowNodes);
     const uploaded = workflowSummary(await uploadWorkflow(created.id, {
       name: uploadName,
+      description: typeof imported.description === 'string' ? imported.description : '',
       version: Number.isInteger(imported.version) && imported.version >= 1 ? imported.version : 1,
       input_ports: imported.input_ports || [],
       output_ports: imported.output_ports || [],
@@ -333,6 +337,41 @@ async function submitRename(event) {
   }
 }
 
+async function exportSelectedWorkflow() {
+  const workflow = selectedWorkflow();
+  if (!workflow || state.saving) return;
+  state.saving = true;
+  elements.state.textContent = '导出中';
+  updateControls();
+  try {
+    const detail = await fetchWorkflow(workflow.id);
+    const exported = {
+      name: detail.name,
+      description: detail.description || '',
+      version: detail.version,
+      input_ports: detail.input_ports || [],
+      output_ports: detail.output_ports || [],
+      workflow_nodes: detail.workflow_nodes || [],
+      nodes: detail.nodes || [],
+      connections: detail.connections || [],
+    };
+    const blob = new Blob([`${JSON.stringify(exported, null, 2)}\n`], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const filename = (detail.name || 'workflow').replace(/[<>:"/\\|?*]+/g, '-').replace(/\s+/g, '-');
+    link.href = url;
+    link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    elements.state.textContent = '已导出';
+  } catch (error) {
+    elements.state.textContent = error.name === 'AbortError' ? '导出超时' : (error.message || '导出失败');
+  } finally {
+    state.saving = false;
+    updateControls();
+  }
+}
+
 async function removeSelectedWorkflow() {
   const workflow = selectedWorkflow();
   if (!workflow || state.saving || !window.confirm(`确定删除“${workflow.name}”吗？此操作无法撤销。`)) return;
@@ -364,6 +403,7 @@ elements.uploadDialog.addEventListener('close', () => {
   if (!state.saving) state.pendingUpload = null;
 });
 elements.renameButton.addEventListener('click', openRenameDialog);
+elements.exportButton.addEventListener('click', exportSelectedWorkflow);
 elements.deleteButton.addEventListener('click', removeSelectedWorkflow);
 elements.renameForm.addEventListener('submit', submitRename);
 for (const button of document.querySelectorAll('[data-close-dialog]')) {

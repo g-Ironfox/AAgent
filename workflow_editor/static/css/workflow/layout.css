@@ -63,7 +63,9 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .metadata-body { overflow-y:auto; }
 .metadata-basics { padding:16px; display:grid; grid-template-columns:minmax(0,1fr); gap:12px; border-bottom:1px solid var(--line); }
 .metadata-basics label { display:grid; gap:6px; color:var(--muted); font-size:10px; }
-.metadata-basics input { width:100%; height:36px; padding:0 9px; color:var(--ink); border:1px solid var(--line); background:#fff; }
+.metadata-basics input,.metadata-basics textarea { width:100%; padding:9px; color:var(--ink); border:1px solid var(--line); background:#fff; font:12px "Microsoft YaHei",sans-serif; }
+.metadata-basics input { height:36px; padding-block:0; }
+.metadata-basics textarea { min-height:84px; resize:vertical; line-height:1.6; }
 .metadata-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 .metadata-port-section + .metadata-port-section { border-left:1px solid var(--line); }
 .metadata-port-section > header { min-height:52px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; background:#fafbf9; border-bottom:1px solid var(--line); }

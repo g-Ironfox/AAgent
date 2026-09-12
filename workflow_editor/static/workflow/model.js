@@ -12,6 +12,7 @@ const initialConnections = [
 
 export const state = {
   name: 'workflow',
+  description: '',
   nodes: structuredClone(initialNodes),
   connections: structuredClone(initialConnections),
   input_ports: [],
@@ -101,6 +102,7 @@ export function deleteNode(id) {
 export function workflowSnapshot() {
   return structuredClone({
     name: state.name,
+    description: state.description,
     input_ports: state.input_ports,
     output_ports: state.output_ports,
     workflow_nodes: state.workflow_nodes,
@@ -180,6 +182,8 @@ export function loadSnapshot(saved, metadata = null) {
     const workflowName = metadata?.name ?? saved?.name;
     if (typeof workflowName !== 'string' || !workflowName.trim()) return false;
     state.name = workflowName.trim().slice(0, 120);
+    const workflowDescription = metadata?.description ?? saved?.description;
+    state.description = typeof workflowDescription === 'string' ? workflowDescription.trim().slice(0, 2000) : '';
     const inputPorts = metadataPorts(metadata?.input_ports ?? saved?.input_ports);
     const outputPorts = metadataPorts(metadata?.output_ports ?? saved?.output_ports);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);

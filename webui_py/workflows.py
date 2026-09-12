@@ -17,6 +17,7 @@ MAX_WORKFLOW_NODES = 200
 MAX_WORKFLOW_CONNECTIONS = 1000
 MAX_WORKFLOW_METADATA_PORTS = 50
 MAX_WORKFLOW_NODE_REFERENCES = 50
+MAX_WORKFLOW_DESCRIPTION_LENGTH = 2000
 
 logger = logging.getLogger("aagent.webui")
 
@@ -32,6 +33,7 @@ class WorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=MAX_WORKFLOW_DESCRIPTION_LENGTH)
     version: int = Field(ge=1)
     input_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
     output_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
@@ -250,6 +252,7 @@ def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": str(document["_id"]),
         "name": document.get("name", ""),
+        "description": document.get("description", ""),
         "version": document.get("version", 1),
         "nodes": document.get("nodes", []),
         "connections": document.get("connections", []),
@@ -274,13 +277,14 @@ def create_workflows_router(
         try:
             items = workflows.find(
                 {},
-                {"name": 1, "version": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "workflow_nodes": 1, "created_at": 1, "updated_at": 1},
+                {"name": 1, "description": 1, "version": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "workflow_nodes": 1, "created_at": 1, "updated_at": 1},
             ).sort("updated_at", DESCENDING)
             return {
                 "items": [
                     {
                         "id": str(item["_id"]),
                         "name": item.get("name", ""),
+                        "description": item.get("description", ""),
                         "version": item.get("version", 1),
                         "node_count": len(item.get("nodes", [])),
                         "connection_count": len(item.get("connections", [])),
@@ -304,6 +308,7 @@ def create_workflows_router(
         now = datetime.now(timezone.utc)
         document = {
             "name": name,
+            "description": "",
             "version": 1,
             "nodes": [
                 {"id": "input", "type": "input", "name": "Input", "x": 120, "y": 238, "workflowPorts": []},
@@ -592,6 +597,7 @@ def create_workflows_router(
         values["nodes"] = synchronized_nodes
         values["connections"] = synchronized_connections
         values["name"] = values["name"].strip()
+        values["description"] = values["description"].strip()
         values["updated_at"] = now
         try:
             if workflows.find_one({"name": values["name"], "_id": {"$ne": object_id}}, {"_id": 1}):

@@ -21,6 +21,7 @@ const elements = {
   metadataDialog: document.querySelector('#metadataDialog'),
   metadataForm: document.querySelector('#metadataForm'),
   workflowName: document.querySelector('#workflowName'),
+  workflowDescription: document.querySelector('#workflowDescription'),
   workflowNameDisplay: document.querySelector('#workflowNameDisplay'),
   callableWorkflowList: document.querySelector('#callableWorkflowList'),
   addCallableWorkflowButton: document.querySelector('#addCallableWorkflowButton'),
@@ -89,6 +90,7 @@ function renderMetadataPortList(collection) {
 
 function renderMetadataDialog() {
   elements.workflowName.value = state.name;
+  elements.workflowDescription.value = state.description;
   renderMetadataPortList('input_ports');
   renderMetadataPortList('output_ports');
   renderCallableWorkflowList();
@@ -218,6 +220,7 @@ elements.metadataForm.addEventListener('submit', (event) => {
   }
   syncCallableWorkflowNodes(callableWorkflows);
   state.name = elements.workflowName.value.trim();
+  state.description = elements.workflowDescription.value.trim();
   state.input_ports = inputPorts;
   state.output_ports = outputPorts;
   state.workflow_nodes = callableWorkflows.map(({ previous_id, ...workflow }) => ({ ...workflow, workflow_id: workflow.name }));

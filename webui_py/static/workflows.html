@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 管理</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflows.css">
+  <link rel="stylesheet" href="/css/workflows.css?v=2">
 </head>
 <body>
   <header class="topbar">
@@ -49,6 +49,7 @@
             <h2 id="configurationTitle">选择一个 Workflow</h2>
           </div>
           <div class="configuration-actions">
+            <button id="exportButton" class="export-workflow-button" type="button" title="导出 Workflow" hidden>导出</button>
             <button id="renameButton" class="rename-workflow-button" type="button" hidden>重命名</button>
             <button id="deleteButton" class="delete-workflow-button" type="button" hidden>删除</button>
           </div>
@@ -58,6 +59,10 @@
             <strong>暂无配置项</strong>
           </div>
           <section id="metadataPanel" class="workflow-metadata" hidden>
+            <section class="workflow-description" aria-labelledby="workflowDescriptionTitle">
+              <div><p>DESCRIPTION</p><h3 id="workflowDescriptionTitle">描述</h3></div>
+              <p id="workflowDescription"></p>
+            </section>
             <div class="metadata-heading">
               <div><p>DATA CONTRACT</p><h3>数据端口</h3></div>
               <span class="metadata-readonly">只读</span>
@@ -114,6 +119,6 @@
     </div>
   </template>
 
-  <script type="module" src="/workflows.js?v=11"></script>
+  <script type="module" src="/workflows.js?v=14"></script>
 </body>
 </html>
