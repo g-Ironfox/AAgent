@@ -233,22 +233,23 @@ function validateRenameName() {
 
 function resolveWorkflowReferences(imported) {
   const references = Array.isArray(imported.workflow_nodes) ? imported.workflow_nodes : [];
-  const resolvedIds = new Map();
+  const resolvedReferences = new Map();
   const workflowNodes = references.map((reference) => {
     const referenceName = reference.name || reference.workflow_name || reference.workflow_id;
     const matches = state.workflows.filter((workflow) => workflow.id === reference.workflow_id || workflow.name === referenceName);
     if (matches.length !== 1) {
       throw new Error(matches.length ? `被调用 Workflow“${referenceName}”名称不唯一` : `找不到被调用 Workflow“${referenceName}”`);
     }
-    resolvedIds.set(reference.workflow_id, matches[0]);
-    resolvedIds.set(referenceName, matches[0]);
-    return { workflow_id: matches[0].id };
+    if (reference.workflow_id) resolvedReferences.set(reference.workflow_id, matches[0]);
+    resolvedReferences.set(referenceName, matches[0]);
+    return { name: matches[0].name };
   });
   const nodes = imported.nodes.map((node) => {
     if (node.type !== 'workflow') return node;
-    const resolved = resolvedIds.get(node.workflow_id) || resolvedIds.get(node.workflow_name);
+    const resolved = resolvedReferences.get(node.workflow_id) || resolvedReferences.get(node.workflow_name);
     if (!resolved) throw new Error(`节点“${node.name || node.id}”引用的 Workflow 不存在`);
-    return { ...node, workflow_id: resolved.id, workflow_name: resolved.name };
+    const { workflow_id, ...nameBasedNode } = node;
+    return { ...nameBasedNode, workflow_name: resolved.name };
   });
   return { workflowNodes, nodes };
 }

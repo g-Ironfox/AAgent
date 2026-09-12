@@ -14,7 +14,7 @@ services:
     environment:
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
     networks:
-      - rainbow_net
+      - aagent_net
 
   qqbot:
     build: ./qqbot
@@ -29,7 +29,7 @@ services:
     environment:
       QQ_AGENT_QUEUE_NAME: ${QQ_AGENT_QUEUE_NAME:-subagent:qq:tasks}
     networks:
-      - rainbow_net
+      - aagent_net
 
   qqbot_consumer:
     build: ./qqbot_consumer
@@ -58,7 +58,7 @@ services:
       QQ_AGENT_HISTORY_COLLECTION: ${QQ_AGENT_HISTORY_COLLECTION:-subagent_qq_history}
       MONGO_DOCUMENT_COLLECTION: ${MONGO_DOCUMENT_COLLECTION:-documents}
     networks:
-      - rainbow_net
+      - aagent_net
 
   webui_py:
     build: ./webui_py
@@ -96,7 +96,7 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - rainbow_net
+      - aagent_net
 
   workflow_editor:
     build: ./workflow_editor
@@ -125,7 +125,7 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - rainbow_net
+      - aagent_net
 
   redis:
     image: redis:7-alpine
@@ -140,7 +140,7 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - rainbow_net
+      - aagent_net
 
   mongodb:
     image: mongo:8
@@ -158,8 +158,8 @@ services:
       retries: 10
       start_period: 60s
     networks:
-      - rainbow_net
+      - aagent_net
 
 networks:
-  rainbow_net:
+  aagent_net:
     driver: bridge

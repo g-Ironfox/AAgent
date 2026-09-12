@@ -4,10 +4,9 @@
 就目前的大换血而言,这套架构的可扩展性非常强    
 
 TODO:
-- bug workflow初始元数据input与output应为空,对应的初始工作流的input与output control-flow以外也应无port
-- workflow output节点没有删除按钮;而且后来新建的output节点的input也不是元数据规定的
-- workflow管理页在选择可以调用的workflow时,禁用可能存在循环依赖的。
-- workflow管理页显式依赖树
+- MCTS reward通过workflow实现
+- 交叉验证
+- reAct multiAgent编排 (穿插引导:上下文代表任务状态+todo) *长任务核心
 
 ## 快速启动
 0. QQ需配置NapNeko/NapCatQQ!

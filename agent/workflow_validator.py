@@ -174,9 +174,9 @@ def _validate_node(node: Any, index: int) -> None:
         if len(parameters) != len(set(parameters)):
             raise WorkflowValidationError("tool node parameters contains duplicates")
     elif node_type == "workflow":
-        workflow_id = node.get("workflow_id")
-        if not isinstance(workflow_id, str) or not workflow_id:
-            raise WorkflowValidationError("workflow node workflow_id must be a non-empty string")
+        workflow_name = node.get("workflow_name")
+        if not isinstance(workflow_name, str) or not workflow_name:
+            raise WorkflowValidationError("workflow node workflow_name must be a non-empty string")
         _validate_callable_workflow_ports(node, "input_ports")
         _validate_callable_workflow_ports(node, "output_ports")
 

@@ -274,11 +274,11 @@ def handle_task(e: dict):
 
     def workflow(e):
         active_workflow_id = read_active_workflow_id()
-        workflow_document = _read_workflow(active_workflow_id)
+        workflow_document = _read_workflow(active_workflow_id, by_id=True)
         validate_workflow(workflow_document)
         workflow_map = parse_workflow(workflow_document)
         for node in workflow_map:
-            node['_workflow_call_stack'] = [active_workflow_id]
+            node['_workflow_call_stack'] = [workflow_document['name']]
         start = -1
         for i in range(len(workflow_map)):
             if workflow_map[i]["id"]=="input":
@@ -401,12 +401,12 @@ def handle_task(e: dict):
         current_id = e['payload']['current_id']
         parent_map = e['payload']['workflow_map']
         parent_node = parent_map[current_id]
-        workflow_id = parent_node['workflow_id']
+        workflow_name = parent_node['workflow_name']
         call_stack = parent_node.get('_workflow_call_stack', [])
-        if workflow_id in call_stack:
-            raise ValueError(f"recursive workflow call detected: {' -> '.join([*call_stack, workflow_id])}")
+        if workflow_name in call_stack:
+            raise ValueError(f"recursive workflow call detected: {' -> '.join([*call_stack, workflow_name])}")
 
-        workflow_document = _read_workflow(workflow_id)
+        workflow_document = _read_workflow(workflow_name)
         validate_workflow(workflow_document)
         current_input_ports = workflow_document.get('input_ports', [])
         current_output_ports = workflow_document.get('output_ports', [])
@@ -415,15 +415,15 @@ def handle_task(e: dict):
             or parent_node.get('output_ports', []) != current_output_ports
         ):
             raise ValueError(
-                f"callable workflow contract changed; refresh the workflow node metadata: {workflow_id}"
+                f"callable workflow contract changed; refresh the workflow node metadata: {workflow_name}"
             )
         child_map = parse_workflow(workflow_document)
         child_input_id = next((index for index, node in enumerate(child_map) if node['type'] == 'input'), None)
         child_output_ids = [index for index, node in enumerate(child_map) if node['type'] == 'output']
         if child_input_id is None or not child_output_ids:
-            raise ValueError(f"callable workflow has an invalid boundary: {workflow_id}")
+            raise ValueError(f"callable workflow has an invalid boundary: {workflow_name}")
 
-        next_call_stack = [*call_stack, workflow_id]
+        next_call_stack = [*call_stack, workflow_name]
         for child_node in child_map:
             child_node['_workflow_call_stack'] = next_call_stack
         for output_id in child_output_ids:

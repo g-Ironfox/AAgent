@@ -1,0 +1,197 @@
+import { boundaryPorts, createNode, createWorkflowId, NODE_TYPES } from './node-contract.js';
+import { filterValidConnections } from './connection-rules.js';
+
+const initialNodes = [
+  { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
+  { id: 'output', type: 'output', name: 'Output', x: 310, y: 238 },
+];
+const initialConnections = [
+  { id: 'control-input-output', fromId: 'input', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
+];
+
+export const state = {
+  name: 'workflow',
+  description: '',
+  nodes: structuredClone(initialNodes),
+  connections: structuredClone(initialConnections),
+  input_ports: [],
+  output_ports: [],
+  workflow_nodes: [],
+};
+
+export function nodeById(id) {
+  return state.nodes.find((node) => node.id === id);
+}
+
+export function addNode(type, configuration = null) {
+  const node = createNode(type, state.nodes, configuration);
+  if (!node) return null;
+  state.nodes.push(node);
+  return node;
+}
+
+export function deleteNode(id) {
+  if (id === 'input') return false;
+  state.nodes = state.nodes.filter((node) => node.id !== id);
+  state.connections = state.connections.filter((connection) => connection.fromId !== id && connection.toId !== id);
+  return true;
+}
+
+export function workflowSnapshot() {
+  return structuredClone({
+    name: state.name,
+    description: state.description,
+    input_ports: state.input_ports,
+    output_ports: state.output_ports,
+    workflow_nodes: state.workflow_nodes,
+    nodes: state.nodes,
+    connections: state.connections,
+  });
+}
+
+function callableWorkflowMetadata(saved) {
+  const declarations = Array.isArray(saved?.workflow_nodes)
+    ? saved.workflow_nodes
+    : Array.isArray(saved?.callable_workflows)
+      ? saved.callable_workflows
+      : (Array.isArray(saved?.nodes) ? saved.nodes : []).filter((node) => node?.type === 'workflow');
+  const names = new Set();
+  return declarations.flatMap((workflow) => {
+    const name = typeof workflow?.name === 'string' && workflow.name.trim()
+      ? workflow.name.trim().slice(0, 120)
+      : typeof workflow?.workflow_name === 'string' && workflow.workflow_name.trim()
+        ? workflow.workflow_name.trim().slice(0, 120)
+        : typeof workflow?.workflow_id === 'string' ? workflow.workflow_id.trim().slice(0, 120) : '';
+    const normalizedName = name.toLocaleLowerCase();
+    if (!name || names.has(normalizedName)) return [];
+    names.add(normalizedName);
+    return [{
+      name,
+      input_ports: boundaryPorts(workflow.input_ports).map(({ id, ...port }) => port),
+      output_ports: boundaryPorts(workflow.output_ports).map(({ id, ...port }) => port),
+    }];
+  });
+}
+
+function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
+  const normalized = {
+    id: node.id,
+    type: node.type,
+    name: typeof node.name === 'string' ? node.name.slice(0, 30) : node.type.toUpperCase(),
+    x: Number.isFinite(node.x) ? Math.max(12, node.x) : 52,
+    y: Number.isFinite(node.y) ? Math.max(12, node.y) : 72,
+  };
+  if (node.type === 'input' || node.type === 'output') {
+    normalized.workflowPorts = structuredClone(node.type === 'input' ? inputPorts : outputPorts);
+  }
+  if (node.type === 'router') {
+    const branchIds = new Set();
+    normalized.branches = (Array.isArray(node.branches) ? node.branches : []).flatMap((branch) => {
+      if (!branch || typeof branch.id !== 'string' || branchIds.has(branch.id)) return [];
+      branchIds.add(branch.id);
+      return [{ id: branch.id, name: typeof branch.name === 'string' ? branch.name.slice(0, 30) : '分支' }];
+    });
+    if (!normalized.branches.length) normalized.branches.push({ id: createWorkflowId('branch'), name: '分支 1' });
+  }
+  if (node.type === 'llm') {
+    normalized.model = typeof node.model === 'string' ? node.model : 'gpt-5';
+    normalized.prompt = typeof node.prompt === 'string' ? node.prompt.slice(0, 500) : '';
+    const legacyCount = Number.isInteger(node.contextCount) ? node.contextCount : Array.isArray(node.inputs) ? node.inputs.length : 1;
+    const declaredCount = Array.isArray(node.dataInputPorts)
+      ? node.dataInputPorts.filter((portId) => typeof portId === 'string' && /^(?:content|message)-in-\d+$/.test(portId)).length
+      : legacyCount;
+    normalized.dataInputPorts = Array.from({ length: Math.min(20, Math.max(1, declaredCount)) }, (_, index) => `message-in-${index}`);
+    normalized.think = node.think === true;
+    normalized.tool_calls = node.tool_calls === true;
+    normalized.tools = normalized.tool_calls && Array.isArray(node.tools) ? [...new Set(node.tools.filter((tool) => typeof tool === 'string' && tool))] : [];
+  }
+  if (node.type === 'construct_message') normalized.role = ['user', 'system', 'assistant'].includes(node.role) ? node.role : 'user';
+  if (node.type === 'construct_content') {
+    normalized.append_items = Array.isArray(node.append_items) && node.append_items.length
+      ? node.append_items.flatMap((item, index) => item?.type === 'port'
+        ? [{ type: 'port', port_id: typeof item.port_id === 'string' && item.port_id ? item.port_id : `append-in-${index}` }]
+        : item?.type === 'fixed' ? [{ type: 'fixed', value: typeof item.value === 'string' ? item.value.slice(0, 100000) : '' }] : [])
+      : [{ type: 'port', port_id: 'append-in-0' }];
+    normalized.dataInputPorts = normalized.append_items.filter((item) => item.type === 'port').map((item) => item.port_id);
+  }
+  if (node.type === 'construct_list') {
+    normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
+    normalized.initial_value_count = Number.isInteger(node.initial_value_count) ? Math.min(20, Math.max(0, node.initial_value_count)) : 1;
+    normalized.dataInputPorts = Array.from({ length: normalized.initial_value_count }, (_, index) => `${normalized.item_type}-in-${index}`);
+  }
+  if (node.type === 'foreach') normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
+  if (node.type === 'tool') {
+    normalized.tool = typeof node.tool === 'string' ? node.tool : '';
+    normalized.parameters = Array.isArray(node.parameters) ? [...new Set(node.parameters.filter((parameter) => typeof parameter === 'string' && parameter))] : [];
+  }
+  if (node.type === 'workflow') {
+    const workflowName = typeof node.workflow_name === 'string' && node.workflow_name.trim()
+      ? node.workflow_name.trim().slice(0, 120)
+      : typeof node.workflow_id === 'string' ? node.workflow_id.trim().slice(0, 120) : '';
+    if (!workflowName) return null;
+    const declaration = callableWorkflows.get(workflowName);
+    normalized.workflow_name = declaration?.name || workflowName;
+    normalized.input_ports = structuredClone(declaration?.input_ports || boundaryPorts(node.input_ports).map(({ id, ...port }) => port));
+    normalized.output_ports = structuredClone(declaration?.output_ports || boundaryPorts(node.output_ports).map(({ id, ...port }) => port));
+  }
+  return normalized;
+}
+
+export function loadSnapshot(saved, metadata = null) {
+  try {
+    const savedNodes = Array.isArray(saved) ? saved : saved?.nodes;
+    if (!Array.isArray(savedNodes)) return false;
+    const workflowName = metadata?.name ?? saved?.name;
+    if (typeof workflowName !== 'string' || !workflowName.trim()) return false;
+    const inputPorts = boundaryPorts(metadata?.input_ports ?? saved?.input_ports);
+    const outputPorts = boundaryPorts(metadata?.output_ports ?? saved?.output_ports);
+    const workflowNodes = callableWorkflowMetadata(saved);
+    const callableWorkflows = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
+    const ids = new Set();
+    const nodes = savedNodes.flatMap((node) => {
+      if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type)) return [];
+      ids.add(node.id);
+      const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows);
+      return normalized ? [normalized] : [];
+    });
+    if (!nodes.some((node) => node.id === 'input' && node.type === 'input')) return false;
+    if (!nodes.some((node) => node.type === 'output')) {
+      const output = createNode('output', nodes, { output_ports: outputPorts.map(({ id, ...port }) => port) });
+      if (output) nodes.push(output);
+    }
+    state.name = workflowName.trim().slice(0, 120);
+    const description = metadata?.description ?? saved?.description;
+    state.description = typeof description === 'string' ? description.trim().slice(0, 2000) : '';
+    state.input_ports = inputPorts.map(({ id, ...port }) => port);
+    state.output_ports = outputPorts.map(({ id, ...port }) => port);
+    state.workflow_nodes = workflowNodes;
+    state.nodes = nodes;
+    state.connections = filterValidConnections(Array.isArray(saved?.connections) ? saved.connections : initialConnections, nodes);
+    return true;
+  } catch (error) {
+    console.warn('Workflow 数据读取失败', error);
+    return false;
+  }
+}
+
+export function normalizeImportedWorkflow(imported) {
+  if (!imported?.workflows || typeof imported.workflows !== 'object' || Array.isArray(imported.workflows)) return imported;
+  const entries = Object.entries(imported.workflows);
+  const main = typeof imported.main === 'string' && imported.workflows[imported.main] ? imported.main : entries[0]?.[0];
+  if (!main) throw new Error('Workflow 集合为空');
+  return {
+    ...imported.workflows[main],
+    name: imported.workflows[main].name || main,
+    workflow_nodes: entries
+      .filter(([name]) => name !== main)
+      .map(([name, callable]) => ({ name, input_ports: callable.input_ports || [], output_ports: callable.output_ports || [] })),
+  };
+}
+
+export function parseWorkflowText(text) {
+  const workflow = normalizeImportedWorkflow(JSON.parse(text));
+  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('内容不是有效的 Workflow JSON');
+  if (typeof workflow.name !== 'string' || !workflow.name.trim()) throw new Error('Workflow 名称不能为空');
+  if (!Array.isArray(workflow.nodes) || !Array.isArray(workflow.connections)) throw new Error('Workflow 缺少节点或连接数据');
+  return workflow;
+}

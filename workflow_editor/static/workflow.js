@@ -1,7 +1,13 @@
 import { fetchModels, fetchTools } from './api.js';
-import { addNode, loadSnapshot, state, workflowSnapshot } from './workflow/model.js';
-import { createConnectionController } from './workflow/connections.js';
-import { createWorkflowView } from './workflow/view.js';
+import { createWorkflowEditor } from './workflow/editor.js';
+import { createInspector } from './workflow/inspector/inspector.js';
+import {
+  addNode,
+  loadSnapshot,
+  parseWorkflowText,
+  state,
+  workflowSnapshot,
+} from './workflow/domain/serialization.js';
 
 const elements = {
   canvas: document.querySelector('#workflowCanvas'),
@@ -44,45 +50,17 @@ function markChanged() {
   elements.workflowState.classList.remove('saved');
 }
 
-const connections = createConnectionController(elements, markChanged);
-const view = createWorkflowView(elements, connections, markChanged);
-connections.bindCanvasPan();
+const editor = createWorkflowEditor(elements, markChanged);
+const inspector = createInspector(elements, editor, markChanged);
 
 function renderWorkflow() {
-  view.renderNodes();
-  view.renderInspector();
-  connections.renderConnections();
-}
-
-function normalizeImportedWorkflow(imported) {
-  let workflow = imported;
-  if (imported?.workflows && typeof imported.workflows === 'object' && !Array.isArray(imported.workflows)) {
-    const entries = Object.entries(imported.workflows);
-    const main = typeof imported.main === 'string' && imported.workflows[imported.main] ? imported.main : entries[0]?.[0];
-    if (!main) throw new Error('Workflow 集合为空');
-    workflow = {
-      ...imported.workflows[main],
-      name: imported.workflows[main].name || main,
-      workflow_nodes: entries
-        .filter(([name]) => name !== main)
-        .map(([name, callable]) => ({ workflow_id: name, name, input_ports: callable.input_ports || [], output_ports: callable.output_ports || [] })),
-    };
-  }
-  return workflow;
-}
-
-function parseWorkflowText(text) {
-  const workflow = normalizeImportedWorkflow(JSON.parse(text));
-  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('内容不是有效的 Workflow JSON');
-  if (typeof workflow.name !== 'string' || !workflow.name.trim()) throw new Error('Workflow 名称不能为空');
-  if (!Array.isArray(workflow.nodes) || !Array.isArray(workflow.connections)) throw new Error('Workflow 缺少节点或连接数据');
-  return workflow;
+  editor.renderWorkflow();
 }
 
 function importWorkflowText(text, source = '已导入') {
   const workflow = parseWorkflowText(text);
   if (!loadSnapshot(workflow)) throw new Error('内容不是有效的 Workflow JSON');
-  view.setWorkflowNodes(workflowReferences());
+  inspector.setWorkflowNodes(workflowReferences());
   hasUnsavedChanges = true;
   elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();
@@ -120,7 +98,6 @@ async function writeClipboardText(text) {
 
 function workflowReferences() {
   return state.workflow_nodes.map((workflow) => ({
-      workflow_id: workflow.workflow_id,
       name: workflow.name,
       input_ports: workflow.input_ports || [],
       output_ports: workflow.output_ports || [],
@@ -128,13 +105,13 @@ function workflowReferences() {
 }
 
 loadSnapshot(workflowSnapshot());
-view.setWorkflowNodes(workflowReferences());
+inspector.setWorkflowNodes(workflowReferences());
 elements.workflowNameDisplay.textContent = state.name;
 
 Promise.all([fetchModels(), fetchTools()])
   .then(([models, tools]) => {
-    view.setModels(models.items);
-    view.setTools(tools.items);
+    inspector.setModels(models.items);
+    inspector.setTools(tools.items);
     elements.resourceState.textContent = `${models.items.length} Models · ${tools.items.length} Tools`;
   })
   .catch((error) => {
@@ -189,7 +166,7 @@ function renderCallablePortList(row, collection, ports) {
 
 function createCallableWorkflowRow(workflow = { name: '', input_ports: [], output_ports: [] }) {
   const row = document.querySelector('#callableWorkflowTemplate').content.firstElementChild.cloneNode(true);
-  row.dataset.workflowId = workflow.workflow_id || '';
+  row.dataset.previousName = workflow.name || '';
   row.querySelector('[data-callable-workflow-name]').value = workflow.name || '';
   renderCallablePortList(row, 'input_ports', workflow.input_ports || []);
   renderCallablePortList(row, 'output_ports', workflow.output_ports || []);
@@ -218,8 +195,7 @@ function renderCallableWorkflowList() {
 
 function readCallableWorkflows() {
   return [...elements.callableWorkflowList.querySelectorAll('.callable-workflow-row')].map((row) => ({
-    previous_id: row.dataset.workflowId,
-    workflow_id: row.dataset.workflowId || row.querySelector('[data-callable-workflow-name]').value.trim(),
+    previous_name: row.dataset.previousName,
     name: row.querySelector('[data-callable-workflow-name]').value.trim(),
     input_ports: readPortsFromList(row.querySelector('[data-callable-port-list="input_ports"]')),
     output_ports: readPortsFromList(row.querySelector('[data-callable-port-list="output_ports"]')),
@@ -234,12 +210,11 @@ function readPortsFromList(list) {
 }
 
 function syncCallableWorkflowNodes(nextWorkflows) {
-  const nextByPreviousId = new Map(nextWorkflows.map((workflow) => [workflow.previous_id || workflow.workflow_id, workflow]));
+  const nextByPreviousName = new Map(nextWorkflows.map((workflow) => [workflow.previous_name || workflow.name, workflow]));
   for (const node of state.nodes) {
     if (node.type !== 'workflow') continue;
-    const workflow = nextByPreviousId.get(node.workflow_id);
+    const workflow = nextByPreviousName.get(node.workflow_name);
     if (!workflow) continue;
-    node.workflow_id = workflow.workflow_id;
     node.workflow_name = workflow.name;
     node.name = workflow.name;
     node.input_ports = structuredClone(workflow.input_ports);
@@ -285,10 +260,10 @@ elements.metadataForm.addEventListener('submit', (event) => {
     elements.resourceState.textContent = '可调用 Workflow 名称不能重复';
     return;
   }
-  const retainedIds = new Set(callableWorkflows.map((workflow) => workflow.previous_id || workflow.workflow_id));
-  const removedInUse = state.nodes.find((node) => node.type === 'workflow' && !retainedIds.has(node.workflow_id));
+  const retainedNames = new Set(callableWorkflows.map((workflow) => workflow.previous_name || workflow.name));
+  const removedInUse = state.nodes.find((node) => node.type === 'workflow' && !retainedNames.has(node.workflow_name));
   if (removedInUse) {
-    elements.resourceState.textContent = `“${removedInUse.workflow_name || removedInUse.workflow_id}”仍被画布节点调用`;
+    elements.resourceState.textContent = `“${removedInUse.workflow_name}”仍被画布节点调用`;
     return;
   }
   syncCallableWorkflowNodes(callableWorkflows);
@@ -296,13 +271,10 @@ elements.metadataForm.addEventListener('submit', (event) => {
   state.description = elements.workflowDescription.value.trim();
   state.input_ports = inputPorts;
   state.output_ports = outputPorts;
-  state.workflow_nodes = callableWorkflows.map(({ previous_id, ...workflow }) => ({ ...workflow, workflow_id: workflow.name }));
-  for (const node of state.nodes) {
-    if (node.type === 'workflow') node.workflow_id = node.workflow_name;
-  }
+  state.workflow_nodes = callableWorkflows.map(({ previous_name, ...workflow }) => workflow);
   const snapshot = workflowSnapshot();
   loadSnapshot(snapshot);
-  view.setWorkflowNodes(workflowReferences());
+  inspector.setWorkflowNodes(workflowReferences());
   markChanged();
   elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();
@@ -312,20 +284,21 @@ elements.metadataForm.addEventListener('submit', (event) => {
 document.querySelector('#workflowNodeLibrary').addEventListener('click', (event) => {
   const button = event.target.closest('[data-add-workflow-node]');
   if (!button) return;
-  const reference = workflowReferences().find((workflow) => workflow.workflow_id === button.dataset.addWorkflowNode);
+  const reference = workflowReferences().find((workflow) => workflow.name === button.dataset.addWorkflowNode);
   if (!reference) return;
-  addNode('workflow', reference);
+  const node = addNode('workflow', reference);
+  if (!node) return;
   markChanged();
-  renderWorkflow();
+  editor.selectNode(node.id);
 });
 
 for (const button of document.querySelectorAll('[data-add-node]')) {
   button.addEventListener('click', () => {
     const nodeType = button.dataset.addNode;
-    addNode(nodeType);
+    const node = addNode(nodeType, nodeType === 'output' ? { output_ports: state.output_ports } : null);
+    if (!node) return;
     markChanged();
-    view.renderNodes();
-    view.renderInspector();
+    editor.selectNode(node.id);
   });
 }
 
@@ -447,7 +420,7 @@ window.addEventListener('beforeunload', (event) => {
   event.returnValue = '';
 });
 
-window.addEventListener('resize', connections.renderConnections);
+window.addEventListener('resize', editor.renderConnections);
 
 renderWorkflow();
 importInitialWorkflow();

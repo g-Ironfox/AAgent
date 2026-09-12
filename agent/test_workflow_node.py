@@ -19,7 +19,6 @@ def callable_workflow_fixture() -> dict:
                 "id": "call-summary",
                 "type": "workflow",
                 "name": "Summary",
-                "workflow_id": "507f1f77bcf86cd799439011",
                 "workflow_name": "Summary",
                 "input_ports": [{"name": "query", "type": "content"}],
                 "output_ports": [{"name": "result", "type": "content"}],
@@ -49,7 +48,8 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
         self.assertEqual(parsed[1]["data_inputs"]["workflow:query"], [0, "workflow:query"])
         self.assertEqual(parsed[1]["data_outputs"]["workflow:result"], [[2, "workflow:result"]])
-        self.assertEqual(parsed[1]["workflow_id"], "507f1f77bcf86cd799439011")
+        self.assertEqual(parsed[1]["workflow_name"], "Summary")
+        self.assertNotIn("workflow_id", parsed[1])
         self.assertEqual(
             parsed[0]["workflowPorts"],
             [{"id": "workflow:query", "name": "query", "type": "content"}],

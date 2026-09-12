@@ -1,7 +1,14 @@
-import { state } from './model.js';
+import { portsForNode } from './domain/node-contract.js';
+import { state } from './domain/serialization.js';
 
-export function createConnectionController(elements, markChanged) {
+export function createWorkflowEditor(elements, markChanged) {
+  const editorState = { selectedId: 'input', connectionDrag: null };
   let connectionSequence = 0;
+  let renderInspector = () => {};
+
+  function setInspectorRenderer(renderer) {
+    renderInspector = renderer;
+  }
 
   function createConnectionId() {
     connectionSequence += 1;
@@ -32,9 +39,12 @@ export function createConnectionController(elements, markChanged) {
 
   function compatiblePort(port, drag) {
     const targetDirection = drag.targetDirection || (drag.direction === 'output' ? 'input' : 'output');
-    if (!port || port.dataset.portType !== drag.type || port.dataset.portDirection !== targetDirection) return false;
-    if (port.dataset.nodeId === drag.anchorNodeId) return false;
-    return true;
+    return Boolean(
+      port
+      && port.dataset.portType === drag.type
+      && port.dataset.portDirection === targetDirection
+      && port.dataset.nodeId !== drag.anchorNodeId,
+    );
   }
 
   function setCompatiblePorts(drag) {
@@ -44,14 +54,11 @@ export function createConnectionController(elements, markChanged) {
   }
 
   function finishConnectionDrag(event, cancelled = false) {
-    const drag = state.connectionDrag;
+    const drag = editorState.connectionDrag;
     if (!drag || event.pointerId !== drag.pointerId) return;
     if (cancelled) {
       if (drag.connection && !state.connections.includes(drag.connection)) state.connections.push(drag.connection);
-      for (const port of elements.nodeLayer.querySelectorAll('.node-port')) port.classList.remove('compatible');
-      if (event.currentTarget?.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-      state.connectionDrag = null;
-      renderConnections();
+      finishConnectionInteraction(event);
       return;
     }
     const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('.node-port');
@@ -93,9 +100,13 @@ export function createConnectionController(elements, markChanged) {
       state.connections = state.connections.filter((item) => item.id !== drag.connectionId);
       markChanged();
     }
+    finishConnectionInteraction(event);
+  }
+
+  function finishConnectionInteraction(event) {
     for (const port of elements.nodeLayer.querySelectorAll('.node-port')) port.classList.remove('compatible');
     if (event.currentTarget?.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    state.connectionDrag = null;
+    editorState.connectionDrag = null;
     renderConnections();
   }
 
@@ -109,45 +120,29 @@ export function createConnectionController(elements, markChanged) {
       const direction = port.dataset.portDirection;
       const type = port.dataset.portType;
       const incoming = direction === 'input'
-        ? state.connections.find((connection) => connection.toId === node.id && connection.toPortId === port.dataset.portId && connection.type === type)
+        ? state.connections.find((item) => item.toId === node.id && item.toPortId === port.dataset.portId && item.type === type)
         : null;
       const outgoing = direction === 'output'
-        ? state.connections.filter((connection) => connection.fromId === node.id && connection.fromPortId === port.dataset.portId && connection.type === type)
+        ? state.connections.filter((item) => item.fromId === node.id && item.fromPortId === port.dataset.portId && item.type === type)
         : [];
-      const connectionId = type === 'control'
-        ? incoming?.id || (outgoing.length === 1 ? outgoing[0].id : null)
-        : incoming?.id || null;
-      const connection = connectionId
-        ? incoming || outgoing.find((item) => item.id === connectionId)
-        : null;
-      if (connection) {
-        state.connections = state.connections.filter((item) => item.id !== connection.id);
-      }
+      const connectionId = type === 'control' ? incoming?.id || (outgoing.length === 1 ? outgoing[0].id : null) : incoming?.id || null;
+      const connection = connectionId ? incoming || outgoing.find((item) => item.id === connectionId) : null;
+      if (connection) state.connections = state.connections.filter((item) => item.id !== connection.id);
       const hasDataInputConnection = type !== 'control' && direction === 'input' && connection;
       const hasControlConnection = type === 'control' && connection;
       const anchorNodeId = hasDataInputConnection || (hasControlConnection && direction === 'input')
         ? connection.fromId
-        : hasControlConnection && direction === 'output'
-          ? connection.toId
-          : node.id;
+        : hasControlConnection && direction === 'output' ? connection.toId : node.id;
       const anchorPortId = hasDataInputConnection || (hasControlConnection && direction === 'input')
         ? connection.fromPortId
-        : hasControlConnection && direction === 'output'
-          ? connection.toPortId
-          : (port.dataset.portId || null);
+        : hasControlConnection && direction === 'output' ? connection.toPortId : port.dataset.portId;
       const anchorDirection = hasDataInputConnection || (hasControlConnection && direction === 'input')
         ? 'output'
-        : hasControlConnection && direction === 'output'
-          ? 'input'
-          : direction;
-      state.connectionDrag = {
+        : hasControlConnection && direction === 'output' ? 'input' : direction;
+      editorState.connectionDrag = {
         pointerId: event.pointerId,
         direction,
-        targetDirection: connection && type !== 'control' && direction === 'input'
-          ? 'input'
-          : hasControlConnection
-            ? direction
-            : null,
+        targetDirection: connection && type !== 'control' && direction === 'input' ? 'input' : hasControlConnection ? direction : null,
         type,
         anchorNodeId,
         anchorPortId,
@@ -157,12 +152,12 @@ export function createConnectionController(elements, markChanged) {
         pointer: { x: event.clientX, y: event.clientY },
       };
       port.setPointerCapture(event.pointerId);
-      setCompatiblePorts(state.connectionDrag);
+      setCompatiblePorts(editorState.connectionDrag);
       renderConnections();
     });
     port.addEventListener('pointermove', (event) => {
-      if (!state.connectionDrag || event.pointerId !== state.connectionDrag.pointerId) return;
-      state.connectionDrag.pointer = { x: event.clientX, y: event.clientY };
+      if (!editorState.connectionDrag || event.pointerId !== editorState.connectionDrag.pointerId) return;
+      editorState.connectionDrag.pointer = { x: event.clientX, y: event.clientY };
       renderConnections();
     });
     port.addEventListener('pointerup', finishConnectionDrag);
@@ -171,14 +166,12 @@ export function createConnectionController(elements, markChanged) {
 
   function bindNodeDrag(element, node) {
     let drag = null;
-
     element.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
       drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, nodeX: node.x, nodeY: node.y, moved: false };
       element.setPointerCapture(event.pointerId);
       element.classList.add('dragging');
     });
-
     element.addEventListener('pointermove', (event) => {
       if (!drag || event.pointerId !== drag.pointerId) return;
       const deltaX = event.clientX - drag.startX;
@@ -193,49 +186,69 @@ export function createConnectionController(elements, markChanged) {
       element.style.top = `${node.y}px`;
       renderConnections();
     });
-
-    function finishDrag(event) {
+    const finishDrag = (event) => {
       if (!drag || event.pointerId !== drag.pointerId) return;
       element.classList.remove('dragging');
       if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
       drag = null;
-    }
-
+    };
     element.addEventListener('pointerup', finishDrag);
     element.addEventListener('pointercancel', finishDrag);
   }
 
-  function bindCanvasPan() {
-    let pan = null;
-
-    elements.canvas.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0 || event.target.closest('.flow-node')) return;
-      pan = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        scrollLeft: elements.canvas.scrollLeft,
-        scrollTop: elements.canvas.scrollTop,
-      };
-      elements.canvas.setPointerCapture(event.pointerId);
-      elements.canvas.classList.add('panning');
-    });
-
-    elements.canvas.addEventListener('pointermove', (event) => {
-      if (!pan || event.pointerId !== pan.pointerId) return;
-      elements.canvas.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
-      elements.canvas.scrollTop = pan.scrollTop - (event.clientY - pan.startY);
-    });
-
-    function finishPan(event) {
-      if (!pan || event.pointerId !== pan.pointerId) return;
-      elements.canvas.classList.remove('panning');
-      if (elements.canvas.hasPointerCapture(event.pointerId)) elements.canvas.releasePointerCapture(event.pointerId);
-      pan = null;
+  function createNodeUI(node) {
+    const element = document.createElement('button');
+    const ports = portsForNode(node);
+    const inputs = ports.filter((port) => port.direction === 'input');
+    const outputs = ports.filter((port) => port.direction === 'output');
+    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', construct_list: 'L', foreach: 'FE', tool_call: 'TC', tool: 'T', workflow: 'WF' };
+    element.type = 'button';
+    element.className = `flow-node ${node.type}${node.id === editorState.selectedId ? ' selected' : ''}`;
+    element.style.left = `${node.x}px`;
+    element.style.top = `${node.y}px`;
+    element.dataset.nodeId = node.id;
+    const head = document.createElement('span');
+    head.className = 'flow-node-head';
+    head.innerHTML = `<span class="node-symbol ${node.type}-symbol">${symbols[node.type] || 'L'}</span><span><strong></strong><small></small></span>`;
+    head.querySelector('strong').textContent = node.name;
+    head.querySelector('small').textContent = node.type.toUpperCase();
+    const body = document.createElement('span');
+    body.className = 'flow-node-body';
+    body.style.height = `${Math.max(70, 8 + Math.max(inputs.length, outputs.length) * 28)}px`;
+    for (const port of ports) {
+      const portElement = document.createElement('span');
+      const row = port.direction === 'input' ? inputs.indexOf(port) : outputs.indexOf(port);
+      portElement.className = 'node-port';
+      portElement.style.top = `${8 + row * 28}px`;
+      Object.assign(portElement.dataset, {
+        portId: port.id,
+        portDirection: port.direction,
+        portType: port.type,
+        portMultiple: String(port.multiple === true),
+        portLabel: port.label,
+      });
+      portElement.setAttribute('aria-label', `${port.direction === 'input' ? '输入' : '输出'} ${port.label} (${port.type})`);
+      portElement.title = port.title;
+      body.append(portElement);
     }
+    element.append(head, body);
+    element.addEventListener('click', () => selectNode(node.id));
+    element.querySelectorAll('.node-port').forEach((port) => bindConnectionPort(port, node));
+    bindNodeDrag(element, node);
+    return element;
+  }
 
-    elements.canvas.addEventListener('pointerup', finishPan);
-    elements.canvas.addEventListener('pointercancel', finishPan);
+  function renderNodes() {
+    elements.nodeLayer.replaceChildren(...state.nodes.map(createNodeUI));
+    const renderedNodes = Array.from(elements.nodeLayer.querySelectorAll('.flow-node'));
+    const maxX = Math.max(1800, ...renderedNodes.map((element) => element.offsetLeft + element.offsetWidth + 20));
+    const maxY = Math.max(1200, ...renderedNodes.map((element) => element.offsetTop + element.offsetHeight + 20));
+    elements.nodeLayer.style.width = `${maxX}px`;
+    elements.nodeLayer.style.height = `${maxY}px`;
+    elements.connectionLayer.style.width = `${maxX}px`;
+    elements.connectionLayer.style.height = `${maxY}px`;
+    elements.nodeCount.textContent = `${state.nodes.length} 个实例`;
+    requestAnimationFrame(renderConnections);
   }
 
   function renderConnections() {
@@ -245,7 +258,7 @@ export function createConnectionController(elements, markChanged) {
     elements.connectionLayer.setAttribute('viewBox', `0 0 ${width} ${height}`);
     elements.connectionLayer.setAttribute('width', String(width));
     elements.connectionLayer.setAttribute('height', String(height));
-    const fragment = document.createDocumentFragment();
+    const paths = [];
     for (const connection of state.connections) {
       const start = portCenter(connection.fromId, connection.fromPortId, 'output');
       const end = portCenter(connection.toId, connection.toPortId, 'input');
@@ -253,10 +266,10 @@ export function createConnectionController(elements, markChanged) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('class', `connection-path ${connection.type}`);
       path.setAttribute('d', connectionPath(start, end));
-      fragment.append(path);
+      paths.push(path);
     }
-    if (state.connectionDrag) {
-      const drag = state.connectionDrag;
+    if (editorState.connectionDrag) {
+      const drag = editorState.connectionDrag;
       const canvasPoint = {
         x: drag.pointer.x - canvasRect.left + elements.canvas.scrollLeft,
         y: drag.pointer.y - canvasRect.top + elements.canvas.scrollTop,
@@ -267,12 +280,62 @@ export function createConnectionController(elements, markChanged) {
         const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         preview.setAttribute('class', `connection-path preview ${drag.type}`);
         preview.setAttribute('d', drag.anchorDirection === 'output' ? connectionPath(anchor, canvasPoint) : connectionPath(canvasPoint, anchor));
-        fragment.append(preview);
+        paths.push(preview);
       }
     }
-    elements.connectionLayer.replaceChildren(fragment);
+    elements.connectionLayer.replaceChildren(...paths);
     elements.connectionCount.textContent = `${state.connections.length} 条连接`;
   }
 
-  return { bindCanvasPan, bindConnectionPort, bindNodeDrag, renderConnections };
+  function selectNode(id) {
+    editorState.selectedId = id;
+    renderNodes();
+    renderInspector();
+  }
+
+  function ensureSelection() {
+    if (!state.nodes.some((node) => node.id === editorState.selectedId)) editorState.selectedId = state.nodes[0]?.id;
+    return editorState.selectedId;
+  }
+
+  function bindCanvasPan() {
+    let pan = null;
+    elements.canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || event.target.closest('.flow-node')) return;
+      pan = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, scrollLeft: elements.canvas.scrollLeft, scrollTop: elements.canvas.scrollTop };
+      elements.canvas.setPointerCapture(event.pointerId);
+      elements.canvas.classList.add('panning');
+    });
+    elements.canvas.addEventListener('pointermove', (event) => {
+      if (!pan || event.pointerId !== pan.pointerId) return;
+      elements.canvas.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
+      elements.canvas.scrollTop = pan.scrollTop - (event.clientY - pan.startY);
+    });
+    const finishPan = (event) => {
+      if (!pan || event.pointerId !== pan.pointerId) return;
+      elements.canvas.classList.remove('panning');
+      if (elements.canvas.hasPointerCapture(event.pointerId)) elements.canvas.releasePointerCapture(event.pointerId);
+      pan = null;
+    };
+    elements.canvas.addEventListener('pointerup', finishPan);
+    elements.canvas.addEventListener('pointercancel', finishPan);
+  }
+
+  function renderWorkflow() {
+    ensureSelection();
+    renderNodes();
+    renderInspector();
+    renderConnections();
+  }
+
+  bindCanvasPan();
+  return {
+    editorState,
+    ensureSelection,
+    renderConnections,
+    renderNodes,
+    renderWorkflow,
+    selectNode,
+    setInspectorRenderer,
+  };
 }

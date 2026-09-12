@@ -20,7 +20,6 @@
   ],
   "workflow_nodes": [
     {
-      "workflow_id": "目标 Workflow ID",
       "name": "目标 Workflow 名称",
       "input_ports": [{"name": "query", "type": "content"}],
       "output_ports": [{"name": "result", "type": "content"}]
@@ -29,7 +28,7 @@
 }
 ```
 
-`workflow_nodes` 是当前 Workflow 被允许调用的目标列表。保存元数据时，服务端读取目标 Workflow，并快照其名称和端口契约。
+`workflow_nodes` 是当前 Workflow 被允许调用的目标列表。Workflow 名称由数据库唯一索引保证唯一，也是调用关系的唯一身份。保存元数据时，服务端按名称读取目标 Workflow，并快照其名称和端口契约；MongoDB `_id` 只用于管理 API 定位文档，不写入 Workflow 定义。
 
 引用限制：
 
@@ -49,7 +48,6 @@
   "id": "workflow-...",
   "type": "workflow",
   "name": "Summary",
-  "workflow_id": "目标 Workflow ID",
   "workflow_name": "Summary",
   "input_ports": [{"name": "query", "type": "content"}],
   "output_ports": [{"name": "result", "type": "content"}]
@@ -65,7 +63,7 @@
 
 例如 `query` 输入和 `result` 输出分别映射为 `workflow:query` 与 `workflow:result`。
 
-Workflow 节点仅可使用元数据中已引入 Workflow 的快照契约。保存画布时，后端会校验节点的 `workflow_id`、名称及输入/输出 Port 是否与当前元数据一致。
+Workflow 节点仅可使用元数据中已引入 Workflow 的快照契约。保存画布时，后端会校验节点的 `workflow_name` 及输入/输出 Port 是否与当前元数据一致。重命名 Workflow 时，服务端会同步更新引用方的 `workflow_nodes.name` 与画布节点的 `workflow_name`。
 
 ## 编辑器与 UI
 
@@ -103,7 +101,7 @@ Workflow 节点使用与其他节点相同的布局、默认宽度、标题字�
 
 `agent/workflow_validator.py` 校验：
 
-- `workflow_id` 存在。
+- `workflow_name` 存在。
 - `input_ports` 和 `output_ports` 为合法列表。
 - 每个 Port 有名称和受支持的数据类型。
 - 输入与输出分别不存在重复名称。
@@ -117,7 +115,7 @@ Workflow 节点使用与其他节点相同的布局、默认宽度、标题字�
 
 执行步骤：
 
-1. 从父 Workflow 节点读取 `workflow_id`。
+1. 从父 Workflow 节点读取 `workflow_name`。
 2. 加载、校验并解析目标 Workflow。
 3. 比对目标 Workflow 当前契约与调用节点快照；不一致时拒绝执行并提示刷新元数据。
 4. 将调用节点的数据输入写入子 Workflow 的 Input 节点。

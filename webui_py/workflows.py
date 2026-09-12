@@ -56,7 +56,7 @@ class WorkflowRenameRequest(BaseModel):
 class WorkflowNodeReference(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    workflow_id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=120)
 
 
 class WorkflowMetadataRequest(BaseModel):
@@ -205,11 +205,11 @@ def synchronize_workflow_nodes(
     connections: list[dict[str, Any]],
     workflow_nodes: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    references = {reference["workflow_id"]: reference for reference in workflow_nodes}
+    references = {reference["name"]: reference for reference in workflow_nodes}
     removed_node_ids = {
         node.get("id")
         for node in nodes
-        if node.get("type") == "workflow" and node.get("workflow_id") not in references
+        if node.get("type") == "workflow" and node.get("workflow_name") not in references
     }
     synchronized_nodes = []
     workflow_node_by_id = {}
@@ -217,7 +217,7 @@ def synchronize_workflow_nodes(
         if node.get("id") in removed_node_ids:
             continue
         if node.get("type") == "workflow":
-            reference = references[node["workflow_id"]]
+            reference = references[node["workflow_name"]]
             node = {
                 **node,
                 "workflow_name": reference["name"],
@@ -399,11 +399,33 @@ def create_workflows_router(
         try:
             if workflows.find_one({"name": name, "_id": {"$ne": object_id}}, {"_id": 1}):
                 return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
+            existing = workflows.find_one({"_id": object_id}, {"name": 1})
+            if existing is None:
+                return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+            previous_name = existing.get("name", "")
             document = workflows.find_one_and_update(
                 {"_id": object_id},
                 {"$set": {"name": name, "updated_at": datetime.now(timezone.utc)}},
                 return_document=True,
             )
+            if previous_name != name:
+                workflows.update_many(
+                    {
+                        "$or": [
+                            {"workflow_nodes.name": previous_name},
+                            {"nodes": {"$elemMatch": {"type": "workflow", "workflow_name": previous_name}}},
+                        ]
+                    },
+                    {"$set": {
+                        "workflow_nodes.$[reference].name": name,
+                        "nodes.$[node].workflow_name": name,
+                        "updated_at": datetime.now(timezone.utc),
+                    }},
+                    array_filters=[
+                        {"reference.name": previous_name},
+                        {"node.type": "workflow", "node.workflow_name": previous_name},
+                    ],
+                )
         except DuplicateKeyError:
             return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
         except PyMongoError:
@@ -423,34 +445,31 @@ def create_workflows_router(
         object_id = workflow_object_id(workflow_id)
         if isinstance(object_id, JSONResponse):
             return object_id
-        workflow_node_ids = [reference.workflow_id for reference in payload.workflow_nodes]
-        if len(workflow_node_ids) != len(set(workflow_node_ids)):
+        workflow_node_names = [reference.name.strip() for reference in payload.workflow_nodes]
+        if any(not name for name in workflow_node_names):
+            return JSONResponse(status_code=400, content={"error": "引入的 Workflow 名称不能为空"})
+        if len(workflow_node_names) != len(set(workflow_node_names)):
             return JSONResponse(status_code=400, content={"error": "引入的 Workflow 不能重复"})
-        if workflow_id in workflow_node_ids:
-            return JSONResponse(status_code=400, content={"error": "Workflow 不能引入自身"})
-        try:
-            referenced_object_ids = [ObjectId(reference_id) for reference_id in workflow_node_ids]
-        except (InvalidId, TypeError):
-            return JSONResponse(status_code=400, content={"error": "引入的 Workflow id 无效"})
         try:
             existing = workflows.find_one({"_id": object_id})
             if existing is None:
                 return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
+            if existing.get("name") in workflow_node_names:
+                return JSONResponse(status_code=400, content={"error": "Workflow 不能引入自身"})
             referenced_workflows = list(workflows.find(
-                {"_id": {"$in": referenced_object_ids}},
+                {"name": {"$in": workflow_node_names}},
                 {"name": 1, "input_ports": 1, "output_ports": 1},
             ))
-            if len(referenced_workflows) != len(referenced_object_ids):
+            if len(referenced_workflows) != len(workflow_node_names):
                 return JSONResponse(status_code=400, content={"error": "引入的 Workflow 不存在或已被删除"})
-            referenced_by_id = {str(workflow["_id"]): workflow for workflow in referenced_workflows}
+            referenced_by_name = {workflow["name"]: workflow for workflow in referenced_workflows}
             workflow_nodes = [
                 {
-                    "workflow_id": reference_id,
-                    "name": referenced_by_id[reference_id].get("name", reference_id),
-                    "input_ports": referenced_by_id[reference_id].get("input_ports", []),
-                    "output_ports": referenced_by_id[reference_id].get("output_ports", []),
+                    "name": reference_name,
+                    "input_ports": referenced_by_name[reference_name].get("input_ports", []),
+                    "output_ports": referenced_by_name[reference_name].get("output_ports", []),
                 }
-                for reference_id in workflow_node_ids
+                for reference_name in workflow_node_names
             ]
             nodes, connections = synchronize_metadata_ports(
                 existing.get("nodes", []), existing.get("connections", []), input_ports, output_ports
@@ -524,7 +543,7 @@ def create_workflows_router(
         workflow_nodes = [node for node in payload.nodes if node.get("type") == "workflow"]
         workflow_document = workflows.find_one(
             {"_id": object_id},
-            {"workflow_nodes": 1, "input_ports": 1, "output_ports": 1},
+            {"name": 1, "workflow_nodes": 1, "input_ports": 1, "output_ports": 1},
         )
         if workflow_document is None:
             return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
@@ -534,11 +553,11 @@ def create_workflows_router(
         ):
             return JSONResponse(status_code=400, content={"error": "Workflow 边界端口与当前元数据不一致，请刷新后重试"})
         allowed_workflow_nodes = {
-            reference.get("workflow_id"): reference
+            reference.get("name"): reference
             for reference in workflow_document.get("workflow_nodes", [])
         }
         for node in workflow_nodes:
-            reference = allowed_workflow_nodes.get(node.get("workflow_id"))
+            reference = allowed_workflow_nodes.get(node.get("workflow_name"))
             if reference is None:
                 return JSONResponse(status_code=400, content={"error": "Workflow 节点未在元数据中引入"})
             if node.get("input_ports") != reference.get("input_ports", []) or node.get("output_ports") != reference.get("output_ports", []):
@@ -607,6 +626,25 @@ def create_workflows_router(
                 {"$set": values, "$setOnInsert": {"created_at": now}},
                 return_document=True,
             )
+            previous_name = workflow_document.get("name", "")
+            if previous_name != values["name"]:
+                workflows.update_many(
+                    {
+                        "$or": [
+                            {"workflow_nodes.name": previous_name},
+                            {"nodes": {"$elemMatch": {"type": "workflow", "workflow_name": previous_name}}},
+                        ]
+                    },
+                    {"$set": {
+                        "workflow_nodes.$[reference].name": values["name"],
+                        "nodes.$[node].workflow_name": values["name"],
+                        "updated_at": now,
+                    }},
+                    array_filters=[
+                        {"reference.name": previous_name},
+                        {"node.type": "workflow", "node.workflow_name": previous_name},
+                    ],
+                )
         except DuplicateKeyError:
             return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
         except PyMongoError:
