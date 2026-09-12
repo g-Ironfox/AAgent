@@ -3,12 +3,19 @@
 .workflow-state span { color:var(--muted); font-size:9px; }
 .workflow-state strong { font-size:12px; }
 .workflow-state strong.saved { color:var(--green); }
-.toolbar-button { height:38px; padding:0 13px; border:1px solid var(--line); font-size:11px; }
+.workflow-page .top-actions { gap:12px; }
+.toolbar-action-group { display:flex; align-items:center; gap:6px; }
+.toolbar-action-group.export-actions { padding-left:12px; border-left:1px solid var(--line); }
+.toolbar-button { height:38px; padding:0 12px; display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid var(--line); font-size:11px; white-space:nowrap; }
+.toolbar-button svg { width:15px; height:15px; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .toolbar-button.secondary { color:var(--ink); background:var(--surface); }
+.toolbar-button.secondary:hover { border-color:#8e9994; background:#f3f5f2; }
+.toolbar-button.clipboard { color:var(--blue); border-color:#aac5d8; background:var(--surface); }
+.toolbar-button.clipboard:hover { color:#fff; border-color:var(--blue); background:var(--blue); }
 .toolbar-button.primary { color:#fff; border-color:var(--green); background:var(--green); }
+.toolbar-button.primary:hover { border-color:#0d5f47; background:#0d684e; }
 .toolbar-button.danger { color:var(--red); border-color:#dfb8b4; background:#fff; }
 .toolbar-button:disabled { cursor:not-allowed; opacity:.45; }
-.toolbar-button:hover { border-color:var(--ink); }
 .workflow-main { width:min(1540px,calc(100% - 32px)); padding:12px 0; }
 .workflow-shell { flex:1; min-height:650px; display:grid; grid-template-columns:238px minmax(520px,1fr) 300px; border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); overflow:hidden; }
 .node-library,.node-inspector,.workflow-canvas-panel { min-width:0; min-height:0; }
@@ -60,6 +67,13 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .metadata-dialog form > header p { margin:0 0 4px; color:var(--green); font:700 9px Consolas,monospace; }
 .metadata-dialog form > header h2 { margin:0; font:700 20px Georgia,"Microsoft YaHei",serif; }
 .metadata-close { width:34px; height:34px; padding:0; color:var(--muted); border:1px solid var(--line); background:var(--surface); font-size:20px; }
+.text-import-dialog { width:min(720px,calc(100vw - 32px)); }
+.text-import-body { padding:16px; overflow-y:auto; }
+.text-import-body label { display:grid; gap:6px; color:var(--muted); font-size:10px; }
+.text-import-body textarea { width:100%; min-height:300px; padding:10px; resize:vertical; color:var(--ink); border:1px solid var(--line); background:#fff; font:11px/1.6 Consolas,monospace; }
+.text-import-error { min-height:16px; margin:8px 0 0; color:var(--red); font-size:10px; }
+.metadata-dialog form > footer.text-import-actions { justify-content:space-between; }
+.text-import-actions > div { display:flex; gap:8px; }
 .metadata-body { overflow-y:auto; }
 .metadata-basics { padding:16px; display:grid; grid-template-columns:minmax(0,1fr); gap:12px; border-bottom:1px solid var(--line); }
 .metadata-basics label { display:grid; gap:6px; color:var(--muted); font-size:10px; }
@@ -99,4 +113,4 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 
 @media (max-width:1180px) { .workflow-shell { grid-template-columns:210px minmax(480px,1fr) 270px; } .workflow-state { display:none; } }
 @media (max-width:900px) { .workflow-main { overflow:auto; } .workflow-shell { min-width:800px; grid-template-columns:190px minmax(420px,1fr) 240px; } .page-nav a { padding:0 8px; } }
-@media (max-width:560px) { .workflow-page .brand { display:none; } .workflow-page .page-nav { right:8px; left:8px; overflow-x:auto; transform:none; } .workflow-page .page-nav a { flex:none; } .workflow-main { width:calc(100% - 16px); } .toolbar-button { padding:0 8px; } .metadata-columns,.callable-contract-columns { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section,.callable-contract-columns > section + section { border-left:0; border-top:1px solid var(--line); } .metadata-basics { grid-template-columns:1fr; } }
+@media (max-width:560px) { .workflow-page .brand { display:none; } .workflow-page .page-nav { right:8px; left:8px; overflow-x:auto; transform:none; } .workflow-page .page-nav a { flex:none; } .workflow-page .top-actions { gap:8px; } .workflow-main { width:calc(100% - 16px); } .toolbar-action-group { gap:4px; } .toolbar-action-group.export-actions { padding-left:8px; } .toolbar-button { width:38px; padding:0; } .toolbar-button span { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; } .metadata-columns,.callable-contract-columns { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section,.callable-contract-columns > section + section { border-left:0; border-top:1px solid var(--line); } .metadata-basics { grid-template-columns:1fr; } }

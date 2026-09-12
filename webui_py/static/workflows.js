@@ -4,14 +4,19 @@ const state = { workflows: [], selectedId: null, loading: false, saving: false, 
 const elements = {
   state: document.querySelector('#workflowState'),
   list: document.querySelector('#workflowList'),
-  refreshButton: document.querySelector('#refreshButton'),
   uploadButton: document.querySelector('#uploadButton'),
   uploadFileInput: document.querySelector('#uploadFileInput'),
+  textImportButton: document.querySelector('#textImportButton'),
+  textImportDialog: document.querySelector('#textImportDialog'),
+  textImportForm: document.querySelector('#textImportForm'),
+  textImportValue: document.querySelector('#textImportValue'),
+  textImportError: document.querySelector('#textImportError'),
   uploadDialog: document.querySelector('#uploadDialog'),
   uploadForm: document.querySelector('#uploadForm'),
   uploadName: document.querySelector('#uploadName'),
   uploadError: document.querySelector('#uploadError'),
   uploadSubmit: document.querySelector('#uploadSubmit'),
+  copyButton: document.querySelector('#copyButton'),
   exportButton: document.querySelector('#exportButton'),
   renameButton: document.querySelector('#renameButton'),
   deleteButton: document.querySelector('#deleteButton'),
@@ -46,8 +51,9 @@ function workflowSummary(workflow) {
 function updateControls() {
   const selected = Boolean(selectedWorkflow());
   const busy = state.loading || state.saving;
-  elements.refreshButton.disabled = busy;
   elements.uploadButton.disabled = busy;
+  elements.textImportButton.disabled = busy;
+  elements.copyButton.disabled = busy || !selected;
   elements.exportButton.disabled = busy || !selected;
   elements.renameButton.disabled = busy || !selected;
   elements.deleteButton.disabled = busy || !selected;
@@ -123,6 +129,7 @@ function renderConfiguration() {
   const workflow = selectedWorkflow();
   elements.empty.hidden = Boolean(workflow);
   elements.metadataPanel.hidden = !workflow;
+  elements.copyButton.hidden = !workflow;
   elements.exportButton.hidden = !workflow;
   elements.renameButton.hidden = !workflow;
   elements.deleteButton.hidden = !workflow;
@@ -246,24 +253,60 @@ function resolveWorkflowReferences(imported) {
   return { workflowNodes, nodes };
 }
 
+function parseWorkflowText(text) {
+  const imported = JSON.parse(text);
+  if (!imported || typeof imported !== 'object' || Array.isArray(imported)) throw new Error('内容不是有效的 Workflow JSON');
+  if (typeof imported.name !== 'string' || !imported.name.trim()) throw new Error('Workflow 名称不能为空');
+  if (!Array.isArray(imported.nodes) || !Array.isArray(imported.connections)) throw new Error('Workflow 缺少节点或连接数据');
+  return imported;
+}
+
+function prepareWorkflowUpload(imported) {
+  state.pendingUpload = imported;
+  elements.uploadName.value = imported.name.trim();
+  validateUploadName();
+  elements.uploadDialog.showModal();
+  elements.uploadName.focus();
+  elements.uploadName.select();
+}
+
 async function chooseWorkflowFile() {
   const [file] = elements.uploadFileInput.files;
   elements.uploadFileInput.value = '';
   if (!file || state.saving) return;
   try {
-    const imported = JSON.parse(await file.text());
-    if (!imported || typeof imported !== 'object' || Array.isArray(imported)) throw new Error('文件不是有效的 Workflow JSON');
-    if (typeof imported.name !== 'string' || !imported.name.trim()) throw new Error('Workflow 名称不能为空');
-    if (!Array.isArray(imported.nodes) || !Array.isArray(imported.connections)) throw new Error('Workflow 缺少节点或连接数据');
-    state.pendingUpload = imported;
-    elements.uploadName.value = imported.name.trim();
-    validateUploadName();
-    elements.uploadDialog.showModal();
-    elements.uploadName.focus();
-    elements.uploadName.select();
+    prepareWorkflowUpload(parseWorkflowText(await file.text()));
   } catch (error) {
     state.pendingUpload = null;
     elements.state.textContent = error.message || '读取上传文件失败';
+  }
+}
+
+async function openTextImportDialog() {
+  elements.textImportValue.value = '';
+  elements.textImportError.textContent = '';
+  elements.textImportDialog.showModal();
+  if (navigator.clipboard?.readText) {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      parseWorkflowText(clipboardText);
+      if (elements.textImportDialog.open && !elements.textImportValue.value) elements.textImportValue.value = clipboardText;
+    } catch (error) {
+      if (error.name !== 'NotAllowedError' && !(error instanceof SyntaxError)) console.debug('剪贴板中没有可导入的 Workflow', error);
+    }
+  }
+  elements.textImportValue.focus();
+}
+
+function submitTextImport(event) {
+  event.preventDefault();
+  try {
+    const imported = parseWorkflowText(elements.textImportValue.value);
+    elements.textImportError.textContent = '';
+    elements.textImportDialog.close();
+    prepareWorkflowUpload(imported);
+  } catch (error) {
+    elements.textImportError.textContent = error.message || 'Workflow 文本无效';
   }
 }
 
@@ -337,6 +380,54 @@ async function submitRename(event) {
   }
 }
 
+function exportableWorkflow(detail) {
+  return {
+    name: detail.name,
+    description: detail.description || '',
+    version: detail.version,
+    input_ports: detail.input_ports || [],
+    output_ports: detail.output_ports || [],
+    workflow_nodes: detail.workflow_nodes || [],
+    nodes: detail.nodes || [],
+    connections: detail.connections || [],
+  };
+}
+
+async function writeClipboardText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('浏览器不允许访问剪贴板');
+}
+
+async function copySelectedWorkflow() {
+  const workflow = selectedWorkflow();
+  if (!workflow || state.saving) return;
+  state.saving = true;
+  elements.state.textContent = '复制中';
+  updateControls();
+  try {
+    const detail = await fetchWorkflow(workflow.id);
+    await writeClipboardText(JSON.stringify(exportableWorkflow(detail)));
+    elements.state.textContent = '已复制到剪贴板';
+  } catch (error) {
+    elements.state.textContent = error.name === 'AbortError' ? '复制超时' : (error.message || '复制失败');
+  } finally {
+    state.saving = false;
+    updateControls();
+  }
+}
+
 async function exportSelectedWorkflow() {
   const workflow = selectedWorkflow();
   if (!workflow || state.saving) return;
@@ -345,16 +436,7 @@ async function exportSelectedWorkflow() {
   updateControls();
   try {
     const detail = await fetchWorkflow(workflow.id);
-    const exported = {
-      name: detail.name,
-      description: detail.description || '',
-      version: detail.version,
-      input_ports: detail.input_ports || [],
-      output_ports: detail.output_ports || [],
-      workflow_nodes: detail.workflow_nodes || [],
-      nodes: detail.nodes || [],
-      connections: detail.connections || [],
-    };
+    const exported = exportableWorkflow(detail);
     const blob = new Blob([`${JSON.stringify(exported, null, 2)}\n`], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -393,9 +475,10 @@ async function removeSelectedWorkflow() {
   }
 }
 
-elements.refreshButton.addEventListener('click', loadWorkflows);
 elements.uploadButton.addEventListener('click', () => elements.uploadFileInput.click());
 elements.uploadFileInput.addEventListener('change', chooseWorkflowFile);
+elements.textImportButton.addEventListener('click', openTextImportDialog);
+elements.textImportForm.addEventListener('submit', submitTextImport);
 elements.uploadName.addEventListener('input', validateUploadName);
 elements.renameName.addEventListener('input', validateRenameName);
 elements.uploadForm.addEventListener('submit', confirmWorkflowUpload);
@@ -403,6 +486,7 @@ elements.uploadDialog.addEventListener('close', () => {
   if (!state.saving) state.pendingUpload = null;
 });
 elements.renameButton.addEventListener('click', openRenameDialog);
+elements.copyButton.addEventListener('click', copySelectedWorkflow);
 elements.exportButton.addEventListener('click', exportSelectedWorkflow);
 elements.deleteButton.addEventListener('click', removeSelectedWorkflow);
 elements.renameForm.addEventListener('submit', submitRename);

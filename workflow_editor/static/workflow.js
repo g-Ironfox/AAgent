@@ -16,6 +16,15 @@ const elements = {
   workflowState: document.querySelector('#workflowState'),
   importButton: document.querySelector('#importButton'),
   importFileInput: document.querySelector('#importFileInput'),
+  textImportButton: document.querySelector('#textImportButton'),
+  textImportDialog: document.querySelector('#textImportDialog'),
+  textImportValue: document.querySelector('#textImportValue'),
+  textImportError: document.querySelector('#textImportError'),
+  closeTextImportButton: document.querySelector('#closeTextImportButton'),
+  overwriteTextImportButton: document.querySelector('#overwriteTextImportButton'),
+  openTextImportButton: document.querySelector('#openTextImportButton'),
+  cancelTextImportButton: document.querySelector('#cancelTextImportButton'),
+  copyButton: document.querySelector('#copyButton'),
   exportButton: document.querySelector('#exportButton'),
   metadataButton: document.querySelector('#metadataButton'),
   metadataDialog: document.querySelector('#metadataDialog'),
@@ -43,6 +52,70 @@ function renderWorkflow() {
   view.renderNodes();
   view.renderInspector();
   connections.renderConnections();
+}
+
+function normalizeImportedWorkflow(imported) {
+  let workflow = imported;
+  if (imported?.workflows && typeof imported.workflows === 'object' && !Array.isArray(imported.workflows)) {
+    const entries = Object.entries(imported.workflows);
+    const main = typeof imported.main === 'string' && imported.workflows[imported.main] ? imported.main : entries[0]?.[0];
+    if (!main) throw new Error('Workflow 集合为空');
+    workflow = {
+      ...imported.workflows[main],
+      name: imported.workflows[main].name || main,
+      workflow_nodes: entries
+        .filter(([name]) => name !== main)
+        .map(([name, callable]) => ({ workflow_id: name, name, input_ports: callable.input_ports || [], output_ports: callable.output_ports || [] })),
+    };
+  }
+  return workflow;
+}
+
+function parseWorkflowText(text) {
+  const workflow = normalizeImportedWorkflow(JSON.parse(text));
+  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('内容不是有效的 Workflow JSON');
+  if (typeof workflow.name !== 'string' || !workflow.name.trim()) throw new Error('Workflow 名称不能为空');
+  if (!Array.isArray(workflow.nodes) || !Array.isArray(workflow.connections)) throw new Error('Workflow 缺少节点或连接数据');
+  return workflow;
+}
+
+function importWorkflowText(text, source = '已导入') {
+  const workflow = parseWorkflowText(text);
+  if (!loadSnapshot(workflow)) throw new Error('内容不是有效的 Workflow JSON');
+  view.setWorkflowNodes(workflowReferences());
+  hasUnsavedChanges = true;
+  elements.workflowNameDisplay.textContent = state.name;
+  renderWorkflow();
+  elements.workflowState.textContent = source;
+  elements.workflowState.classList.remove('saved');
+}
+
+function isPristineEditor() {
+  return !hasUnsavedChanges
+    && state.name === 'workflow'
+    && state.description === ''
+    && state.input_ports.length === 0
+    && state.output_ports.length === 0
+    && state.workflow_nodes.length === 0
+    && state.nodes.length === 2
+    && state.connections.length === 1;
+}
+
+async function writeClipboardText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('浏览器不允许访问剪贴板');
 }
 
 function workflowReferences() {
@@ -266,28 +339,92 @@ elements.importFileInput.addEventListener('change', async () => {
   elements.importFileInput.value = '';
   if (!file) return;
   try {
-    const imported = JSON.parse(await file.text());
-    let workflow = imported;
-    if (imported?.workflows && typeof imported.workflows === 'object' && !Array.isArray(imported.workflows)) {
-      const entries = Object.entries(imported.workflows);
-      const main = typeof imported.main === 'string' && imported.workflows[imported.main] ? imported.main : entries[0]?.[0];
-      if (!main) throw new Error('Workflow 集合为空');
-      workflow = {
-        ...imported.workflows[main],
-        name: imported.workflows[main].name || main,
-        workflow_nodes: entries
-          .filter(([name]) => name !== main)
-          .map(([name, callable]) => ({ workflow_id: name, name, input_ports: callable.input_ports || [], output_ports: callable.output_ports || [] })),
-      };
-    }
-    if (!loadSnapshot(workflow)) throw new Error('文件不是有效的 Workflow JSON');
-    view.setWorkflowNodes(workflowReferences());
-    markChanged();
-    elements.workflowNameDisplay.textContent = state.name;
-    renderWorkflow();
-    elements.workflowState.textContent = '已导入';
+    importWorkflowText(await file.text());
   } catch (error) {
     elements.workflowState.textContent = error.message || '导入失败';
+    elements.workflowState.classList.remove('saved');
+  }
+});
+
+elements.textImportButton.addEventListener('click', async () => {
+  elements.textImportValue.value = '';
+  elements.textImportError.textContent = '';
+  elements.textImportDialog.showModal();
+  if (navigator.clipboard?.readText) {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      parseWorkflowText(clipboardText);
+      if (elements.textImportDialog.open && !elements.textImportValue.value) elements.textImportValue.value = clipboardText;
+    } catch (error) {
+      if (error.name !== 'NotAllowedError' && !(error instanceof SyntaxError)) console.debug('剪贴板中没有可导入的 Workflow', error);
+    }
+  }
+  elements.textImportValue.focus();
+});
+
+elements.overwriteTextImportButton.addEventListener('click', () => {
+  try {
+    importWorkflowText(elements.textImportValue.value, '已从文本导入');
+    elements.textImportDialog.close();
+  } catch (error) {
+    elements.textImportError.textContent = error.message || 'Workflow 文本无效';
+  }
+});
+
+elements.openTextImportButton.addEventListener('click', () => {
+  try {
+    parseWorkflowText(elements.textImportValue.value);
+    const target = new URL('/workflow_edit.html', window.location.origin);
+    target.searchParams.set('workflow', elements.textImportValue.value);
+    const editorWindow = window.open(target.toString(), '_blank');
+    if (!editorWindow) throw new Error('新窗口被浏览器拦截');
+    editorWindow.opener = null;
+    elements.textImportDialog.close();
+  } catch (error) {
+    elements.textImportError.textContent = error.message || 'Workflow 文本无效';
+  }
+});
+
+elements.closeTextImportButton.addEventListener('click', () => elements.textImportDialog.close());
+elements.cancelTextImportButton.addEventListener('click', () => elements.textImportDialog.close());
+
+document.addEventListener('paste', (event) => {
+  if (!isPristineEditor() || event.target.closest('input, textarea, [contenteditable="true"]')) return;
+  const text = event.clipboardData?.getData('text/plain');
+  if (!text) return;
+  try {
+    importWorkflowText(text, '已从剪贴板导入');
+    event.preventDefault();
+  } catch (error) {
+    elements.workflowState.textContent = error.message || '剪贴板导入失败';
+  }
+});
+
+async function importInitialWorkflow() {
+  const workflowParameter = new URLSearchParams(window.location.search).get('workflow');
+  if (workflowParameter) {
+    try {
+      importWorkflowText(workflowParameter, '已从 URL 导入');
+    } catch (error) {
+      elements.workflowState.textContent = error.message || 'URL Workflow 导入失败';
+    }
+    return;
+  }
+  if (!isPristineEditor() || !navigator.clipboard?.readText) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text && isPristineEditor()) importWorkflowText(text, '已从剪贴板自动导入');
+  } catch (error) {
+    if (error.name !== 'NotAllowedError') console.warn('剪贴板自动导入失败', error);
+  }
+}
+
+elements.copyButton.addEventListener('click', async () => {
+  try {
+    await writeClipboardText(JSON.stringify(workflowSnapshot()));
+    elements.workflowState.textContent = '已复制到剪贴板';
+  } catch (error) {
+    elements.workflowState.textContent = error.message || '复制失败';
     elements.workflowState.classList.remove('saved');
   }
 });
@@ -313,3 +450,4 @@ window.addEventListener('beforeunload', (event) => {
 window.addEventListener('resize', connections.renderConnections);
 
 renderWorkflow();
+importInitialWorkflow();

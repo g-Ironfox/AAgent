@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css">
+  <link rel="stylesheet" href="/css/workflow.css?v=5">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -16,8 +16,26 @@
     </a>
     <div class="top-actions">
       <input id="importFileInput" type="file" accept="application/json,.json" hidden>
-      <button id="importButton" class="toolbar-button secondary" type="button">导入</button>
-      <button id="exportButton" class="toolbar-button primary" type="button">导出</button>
+      <div class="toolbar-action-group" aria-label="导入 Workflow">
+        <button id="importButton" class="toolbar-button secondary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v6h6M12 18v-6m-3 3 3-3 3 3"></path></svg>
+          <span>从文件导入</span>
+        </button>
+        <button id="textImportButton" class="toolbar-button secondary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M8 11h8M8 15h8M8 19h5"></path></svg>
+          <span>从文本导入</span>
+        </button>
+      </div>
+      <div class="toolbar-action-group export-actions" aria-label="导出 Workflow">
+        <button id="exportButton" class="toolbar-button primary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v6h6M12 12v6m-3-3 3 3 3-3"></path></svg>
+          <span>导出文件</span>
+        </button>
+        <button id="copyButton" class="toolbar-button clipboard" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span>导出到剪贴板</span>
+        </button>
+      </div>
     </div>
   </header>
   <main class="workflow-main">
@@ -109,6 +127,26 @@
       </aside>
     </section>
   </main>
+
+  <dialog id="textImportDialog" class="metadata-dialog text-import-dialog">
+    <form id="textImportForm">
+      <header>
+        <div><p>IMPORT WORKFLOW</p><h2>从文本导入</h2></div>
+        <button id="closeTextImportButton" class="metadata-close" type="button" aria-label="关闭" title="关闭">×</button>
+      </header>
+      <div class="text-import-body">
+        <label>Workflow JSON<textarea id="textImportValue" rows="16" required spellcheck="false" placeholder="粘贴 Workflow JSON"></textarea></label>
+        <p id="textImportError" class="text-import-error" role="alert"></p>
+      </div>
+      <footer class="text-import-actions">
+        <div>
+          <button id="overwriteTextImportButton" class="toolbar-button primary" type="button">覆盖</button>
+          <button id="openTextImportButton" class="toolbar-button secondary" type="button">在新页面打开</button>
+        </div>
+        <button id="cancelTextImportButton" class="toolbar-button secondary" type="button">取消</button>
+      </footer>
+    </form>
+  </dialog>
 
   <dialog id="metadataDialog" class="metadata-dialog">
     <form id="metadataForm" method="dialog">
@@ -293,6 +331,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js"></script>
+  <script type="module" src="/workflow.js?v=5"></script>
 </body>
 </html>
