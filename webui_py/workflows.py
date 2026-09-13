@@ -57,6 +57,9 @@ class WorkflowNodeReference(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=120)
+    input_ports: list[WorkflowPortMetadata] | None = None
+    output_ports: list[WorkflowPortMetadata] | None = None
+    previous_name: str | None = Field(default=None, max_length=120)
 
 
 class WorkflowMetadataRequest(BaseModel):
@@ -463,17 +466,44 @@ def create_workflows_router(
             if len(referenced_workflows) != len(workflow_node_names):
                 return JSONResponse(status_code=400, content={"error": "引入的 Workflow 不存在或已被删除"})
             referenced_by_name = {workflow["name"]: workflow for workflow in referenced_workflows}
+            existing_by_name = {
+                reference.get("name"): reference
+                for reference in existing.get("workflow_nodes", [])
+            }
             workflow_nodes = [
                 {
                     "name": reference_name,
-                    "input_ports": referenced_by_name[reference_name].get("input_ports", []),
-                    "output_ports": referenced_by_name[reference_name].get("output_ports", []),
+                    "input_ports": (
+                        [port.model_dump() for port in reference.input_ports]
+                        if reference.input_ports is not None
+                        else referenced_by_name[reference_name].get("input_ports", [])
+                    ),
+                    "output_ports": (
+                        [port.model_dump() for port in reference.output_ports]
+                        if reference.output_ports is not None
+                        else referenced_by_name[reference_name].get("output_ports", [])
+                    ),
                 }
-                for reference_name in workflow_node_names
+                for reference, reference_name in zip(payload.workflow_nodes, workflow_node_names)
             ]
+            renamed_workflow_nodes = {
+                reference.previous_name.strip(): reference.name.strip()
+                for reference in payload.workflow_nodes
+                if reference.previous_name and reference.previous_name.strip() != reference.name.strip()
+            }
             nodes, connections = synchronize_metadata_ports(
                 existing.get("nodes", []), existing.get("connections", []), input_ports, output_ports
             )
+            if renamed_workflow_nodes:
+                nodes = [
+                    {
+                        **node,
+                        "workflow_name": renamed_workflow_nodes.get(node.get("workflow_name"), node.get("workflow_name")),
+                    }
+                    if node.get("type") == "workflow" and node.get("workflow_name") in renamed_workflow_nodes
+                    else node
+                    for node in nodes
+                ]
             nodes, connections = synchronize_workflow_nodes(nodes, connections, workflow_nodes)
             nodes, connections = filter_invalid_connections(nodes, connections, input_ports, output_ports)
             document = workflows.find_one_and_update(

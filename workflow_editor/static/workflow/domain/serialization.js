@@ -49,6 +49,18 @@ export function workflowSnapshot() {
   });
 }
 
+export function resetWorkflow() {
+  return loadSnapshot({
+    name: 'workflow',
+    description: '',
+    input_ports: [],
+    output_ports: [],
+    workflow_nodes: [],
+    nodes: initialNodes,
+    connections: initialConnections,
+  });
+}
+
 function callableWorkflowMetadata(saved) {
   const declarations = Array.isArray(saved?.workflow_nodes)
     ? saved.workflow_nodes

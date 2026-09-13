@@ -1,6 +1,6 @@
 import { createWorkflow, deleteWorkflow, fetchWorkflow, fetchWorkflows, renameWorkflow, updateWorkflowMetadata, uploadWorkflow } from './api.js';
 
-const state = { workflows: [], selectedId: null, loading: false, saving: false, pendingUpload: null };
+const state = { workflows: [], selectedId: null, loading: false, saving: false, pendingUpload: null, uploadMode: 'create' };
 const elements = {
   state: document.querySelector('#workflowState'),
   list: document.querySelector('#workflowList'),
@@ -16,6 +16,7 @@ const elements = {
   uploadName: document.querySelector('#uploadName'),
   uploadError: document.querySelector('#uploadError'),
   uploadSubmit: document.querySelector('#uploadSubmit'),
+  uploadOverwrite: document.querySelector('#uploadOverwrite'),
   copyButton: document.querySelector('#copyButton'),
   exportButton: document.querySelector('#exportButton'),
   renameButton: document.querySelector('#renameButton'),
@@ -91,6 +92,27 @@ function createDependencyContract(title, markerClass, ports) {
   return section;
 }
 
+function samePortContract(leftPorts = [], rightPorts = []) {
+  return JSON.stringify(leftPorts.map((port) => ({ name: port.name, type: port.type })))
+    === JSON.stringify(rightPorts.map((port) => ({ name: port.name, type: port.type })));
+}
+
+function createContractWarning(reference, referenceName) {
+  const target = state.workflows.find((workflow) => workflow.name === referenceName);
+  if (!target) return null;
+  const inputMatches = samePortContract(reference.input_ports, target.input_ports);
+  const outputMatches = samePortContract(reference.output_ports, target.output_ports);
+  if (inputMatches && outputMatches) return null;
+  const warning = document.createElement('p');
+  warning.className = 'dependency-contract-warning';
+  const mismatches = [
+    !inputMatches ? 'Input' : '',
+    !outputMatches ? 'Output' : '',
+  ].filter(Boolean).join('、');
+  warning.textContent = `契约错误：${mismatches} 端口与对应 Workflow 不一致`;
+  return warning;
+}
+
 function renderDependencies(references) {
   elements.dependencies.replaceChildren();
   elements.dependencyCount.textContent = `${references.length} 项`;
@@ -111,17 +133,115 @@ function renderDependencies(references) {
     marker.className = 'metadata-port-mark workflow';
     marker.textContent = 'WF';
     const name = document.createElement('strong');
-    name.textContent = reference.name || reference.workflow_name || '未命名 Workflow';
+    const referenceName = reference.name || reference.workflow_name || '';
+    name.textContent = referenceName || '未命名 Workflow';
     identity.append(marker, name);
-    heading.append(identity);
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'dependency-edit-button';
+    editButton.textContent = '修改';
+    editButton.title = '修改依赖 Workflow';
+    editButton.addEventListener('click', () => editDependency(item, references, referenceName));
+    heading.append(identity, editButton);
     const contracts = document.createElement('div');
     contracts.className = 'dependency-contracts';
     contracts.append(
       createDependencyContract('Input', 'input', reference.input_ports),
       createDependencyContract('Output', 'output', reference.output_ports),
     );
-    item.append(heading, contracts);
+    const warning = createContractWarning(reference, referenceName);
+    item.append(heading);
+    if (warning) item.append(warning);
+    item.append(contracts);
     elements.dependencies.append(item);
+  }
+}
+
+function editDependency(item, references, currentName) {
+  if (state.saving) return;
+  const heading = item.querySelector(':scope > header');
+  const identity = item.querySelector('.workflow-dependency-identity');
+  const input = document.createElement('input');
+  input.className = 'dependency-name-input';
+  input.type = 'text';
+  input.value = currentName;
+  input.maxLength = 120;
+  input.setAttribute('aria-label', '输入依赖 Workflow 名称');
+  const actions = document.createElement('span');
+  actions.className = 'dependency-edit-actions';
+  const saveButton = document.createElement('button');
+  saveButton.type = 'button';
+  saveButton.className = 'dependency-save-button';
+  saveButton.textContent = '保存';
+  const updateSaveState = () => {
+    const name = input.value.trim();
+    const exists = state.workflows.some((workflow) => workflow.id !== state.selectedId && workflow.name === name);
+    const duplicate = references.some((reference) => {
+      const referenceValue = reference.name || reference.workflow_name;
+      return referenceValue !== currentName && referenceValue === name;
+    });
+    saveButton.disabled = !name || !exists || duplicate;
+    input.classList.toggle('invalid', Boolean(name) && (!exists || duplicate));
+  };
+  const cancelButton = document.createElement('button');
+  cancelButton.type = 'button';
+  cancelButton.className = 'dependency-cancel-button';
+  cancelButton.textContent = '取消';
+  actions.append(saveButton, cancelButton);
+  identity.replaceChildren(input);
+  heading.replaceChildren(identity, actions);
+  cancelButton.addEventListener('click', () => renderConfiguration());
+  input.addEventListener('input', updateSaveState);
+  saveButton.addEventListener('click', () => {
+    if (input.value.trim() === currentName) {
+      renderConfiguration();
+      return;
+    }
+    saveDependency(references, currentName, input.value.trim());
+  });
+  updateSaveState();
+  input.focus();
+  input.select();
+}
+
+async function saveDependency(references, previousName, nextName) {
+  const workflow = selectedWorkflow();
+  if (!workflow || state.saving || !nextName || nextName === previousName) return;
+  const target = state.workflows.find((item) => item.id !== workflow.id && item.name === nextName);
+  if (!target) {
+    elements.state.textContent = '依赖 Workflow 不存在，无法保存';
+    return;
+  }
+  const nextReferences = references.map((reference) => ({
+    name: (reference.name || reference.workflow_name) === previousName ? nextName : reference.name || reference.workflow_name,
+    input_ports: reference.input_ports || [],
+    output_ports: reference.output_ports || [],
+    ...(reference.name === previousName || reference.workflow_name === previousName ? { previous_name: previousName } : {}),
+  }));
+  if (new Set(nextReferences.map((reference) => reference.name)).size !== nextReferences.length) {
+    elements.state.textContent = '依赖 Workflow 不能重复';
+    return;
+  }
+  state.saving = true;
+  elements.state.textContent = '保存依赖中';
+  updateControls();
+  try {
+    const updated = workflowSummary(await updateWorkflowMetadata(
+      workflow.id,
+      workflow.input_ports || [],
+      workflow.output_ports || [],
+      nextReferences,
+    ));
+    const index = state.workflows.findIndex((item) => item.id === workflow.id);
+    state.workflows[index] = { ...state.workflows[index], ...updated };
+    elements.state.textContent = '依赖已更新';
+    renderList();
+    renderConfiguration();
+  } catch (error) {
+    elements.state.textContent = error.name === 'AbortError' ? '保存依赖超时' : (error.message || '保存依赖失败');
+  } finally {
+    state.saving = false;
+    updateControls();
   }
 }
 
@@ -218,13 +338,19 @@ function openRenameDialog() {
 function validateWorkflowName(input, error, submit, excludedWorkflowId = null) {
   const name = input.value.trim();
   const duplicate = state.workflows.some((workflow) => workflow.id !== excludedWorkflowId && workflow.name === name);
-  error.textContent = !name ? 'Workflow 名称不能为空' : duplicate ? 'Workflow 名称已存在，请修改' : '';
+  error.textContent = !name ? 'Workflow 名称不能为空' : duplicate ? 'Workflow 名称已存在，可选择覆盖' : '';
   submit.disabled = !name || duplicate || state.saving;
   return Boolean(name) && !duplicate;
 }
 
 function validateUploadName() {
-  return validateWorkflowName(elements.uploadName, elements.uploadError, elements.uploadSubmit);
+  const name = elements.uploadName.value.trim();
+  const duplicate = state.workflows.some((workflow) => workflow.name === name);
+  elements.uploadError.textContent = !name ? 'Workflow 名称不能为空' : duplicate ? 'Workflow 名称已存在，可选择覆盖' : '';
+  elements.uploadSubmit.disabled = !name || duplicate || state.saving;
+  elements.uploadOverwrite.disabled = !name || !duplicate || state.saving;
+  state.uploadMode = duplicate ? 'overwrite' : 'create';
+  return Boolean(name) && !duplicate;
 }
 
 function validateRenameName() {
@@ -264,6 +390,7 @@ function parseWorkflowText(text) {
 
 function prepareWorkflowUpload(imported) {
   state.pendingUpload = imported;
+  state.uploadMode = 'create';
   elements.uploadName.value = imported.name.trim();
   validateUploadName();
   elements.uploadDialog.showModal();
@@ -316,6 +443,7 @@ async function confirmWorkflowUpload(event) {
   if (!state.pendingUpload || state.saving || !validateUploadName()) return;
   const imported = state.pendingUpload;
   const uploadName = elements.uploadName.value.trim();
+  const existing = state.workflows.find((workflow) => workflow.name === uploadName);
   let created = null;
   state.saving = true;
   elements.uploadSubmit.disabled = true;
@@ -348,6 +476,46 @@ async function confirmWorkflowUpload(event) {
       }
     }
     elements.state.textContent = error.name === 'AbortError' ? '上传超时' : (error.message || '上传失败');
+  } finally {
+    state.saving = false;
+    validateUploadName();
+    updateControls();
+    renderList();
+    renderConfiguration();
+  }
+}
+
+async function overwriteWorkflow() {
+  if (!state.pendingUpload || state.saving) return;
+  const imported = state.pendingUpload;
+  const uploadName = elements.uploadName.value.trim();
+  const existing = state.workflows.find((workflow) => workflow.name === uploadName);
+  if (!existing || !uploadName) return;
+  state.saving = true;
+  elements.uploadOverwrite.disabled = true;
+  elements.uploadSubmit.disabled = true;
+  elements.state.textContent = '覆盖中';
+  updateControls();
+  try {
+    const { workflowNodes, nodes } = resolveWorkflowReferences(imported);
+    await updateWorkflowMetadata(existing.id, imported.input_ports || [], imported.output_ports || [], workflowNodes);
+    const uploaded = workflowSummary(await uploadWorkflow(existing.id, {
+      name: uploadName,
+      description: typeof imported.description === 'string' ? imported.description : '',
+      version: Number.isInteger(imported.version) && imported.version >= 1 ? imported.version : 1,
+      input_ports: imported.input_ports || [],
+      output_ports: imported.output_ports || [],
+      nodes,
+      connections: imported.connections,
+    }));
+    const index = state.workflows.findIndex((workflow) => workflow.id === existing.id);
+    state.workflows[index] = uploaded;
+    state.selectedId = uploaded.id;
+    state.pendingUpload = null;
+    elements.uploadDialog.close();
+    elements.state.textContent = `已覆盖，共 ${state.workflows.length} 个`;
+  } catch (error) {
+    elements.state.textContent = error.name === 'AbortError' ? '覆盖超时' : (error.message || '覆盖失败');
   } finally {
     state.saving = false;
     validateUploadName();
@@ -483,8 +651,12 @@ elements.textImportForm.addEventListener('submit', submitTextImport);
 elements.uploadName.addEventListener('input', validateUploadName);
 elements.renameName.addEventListener('input', validateRenameName);
 elements.uploadForm.addEventListener('submit', confirmWorkflowUpload);
+elements.uploadOverwrite.addEventListener('click', overwriteWorkflow);
 elements.uploadDialog.addEventListener('close', () => {
-  if (!state.saving) state.pendingUpload = null;
+  if (!state.saving) {
+    state.pendingUpload = null;
+    state.uploadMode = 'create';
+  }
 });
 elements.renameButton.addEventListener('click', openRenameDialog);
 elements.copyButton.addEventListener('click', copySelectedWorkflow);
@@ -494,7 +666,10 @@ elements.renameForm.addEventListener('submit', submitRename);
 for (const button of document.querySelectorAll('[data-close-dialog]')) {
   button.addEventListener('click', () => {
     const dialog = button.closest('dialog');
-    if (dialog === elements.uploadDialog) state.pendingUpload = null;
+    if (dialog === elements.uploadDialog) {
+      state.pendingUpload = null;
+      state.uploadMode = 'create';
+    }
     dialog.close();
   });
 }

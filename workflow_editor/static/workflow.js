@@ -5,6 +5,7 @@ import {
   addNode,
   loadSnapshot,
   parseWorkflowText,
+  resetWorkflow,
   state,
   workflowSnapshot,
 } from './workflow/domain/serialization.js';
@@ -32,6 +33,7 @@ const elements = {
   cancelTextImportButton: document.querySelector('#cancelTextImportButton'),
   copyButton: document.querySelector('#copyButton'),
   exportButton: document.querySelector('#exportButton'),
+  clearButton: document.querySelector('#clearButton'),
   metadataButton: document.querySelector('#metadataButton'),
   metadataDialog: document.querySelector('#metadataDialog'),
   metadataForm: document.querySelector('#metadataForm'),
@@ -225,6 +227,17 @@ function syncCallableWorkflowNodes(nextWorkflows) {
 elements.metadataButton.addEventListener('click', () => {
   renderMetadataDialog();
   elements.metadataDialog.showModal();
+});
+
+elements.clearButton.addEventListener('click', () => {
+  if (hasUnsavedChanges && !window.confirm('清空会覆盖当前未保存的 Workflow，确定继续吗？')) return;
+  if (!resetWorkflow()) return;
+  inspector.setWorkflowNodes([]);
+  hasUnsavedChanges = true;
+  elements.workflowNameDisplay.textContent = state.name;
+  renderWorkflow();
+  elements.workflowState.textContent = '已清空';
+  elements.workflowState.classList.remove('saved');
 });
 
 elements.addCallableWorkflowButton.addEventListener('click', () => {
