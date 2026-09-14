@@ -652,23 +652,8 @@ def create_workflows_router(
                 registered_tool_names = set(redis_client.hkeys(tools_key))
             except redis.RedisError:
                 return JSONResponse(status_code=503, content={"error": "暂时无法校验 Tool 注册表"})
-            if not registered_tool_names:
-                return JSONResponse(
-                    status_code=503,
-                    content={"error": "Tool 注册表为空，请确认 Agent 已启动并完成工具注册"},
-                )
-            missing_tool_names = sorted(
-                {
-                    node_arguments(node).get("tool")
-                    for node in tool_nodes
-                    if node_arguments(node).get("tool") not in registered_tool_names
-                }
-            )
-            if missing_tool_names:
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": f"Tool 节点引用了未注册的工具: {', '.join(missing_tool_names)}"},
-                )
+            if any(node_arguments(node).get("tool") not in registered_tool_names for node in tool_nodes):
+                return JSONResponse(status_code=400, content={"error": "Tool 节点引用了未注册的工具"})
             try:
                 schemas = redis_client.hmget(tools_key, [node_arguments(node).get("tool") for node in tool_nodes])
                 tool_properties = {
