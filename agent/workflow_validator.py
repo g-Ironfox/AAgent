@@ -6,11 +6,16 @@ from typing import Any
 
 from workflow_contract import (
     DATA_CONNECTION_TYPES,
+    NODE_ARGUMENT_FIELDS,
+    NODE_ARGUMENT_FIELDS_BY_TYPE,
+    NODE_BASE_FIELDS,
+    NODE_SHARED_FIELDS,
     SUPPORTED_NODE_TYPES,
     boundary_ports,
     control_ports_for_node,
     data_ports_for_node,
     filter_connections,
+    node_argument,
 )
 
 
@@ -35,7 +40,7 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
             expected_ports = boundary_ports(
                 input_ports if node["type"] == "input" else output_ports
             )
-            if node["workflowPorts"] != expected_ports:
+            if node.get("workflowPorts") != expected_ports:
                 raise WorkflowValidationError(
                     f"nodes[{index}].workflowPorts must match workflow {node['type']}_ports"
                 )
@@ -135,36 +140,78 @@ def _validate_node(node: Any, index: int) -> None:
     node_type = node.get("type")
     if node_type not in SUPPORTED_NODE_TYPES:
         raise WorkflowValidationError(f"unsupported node type: {node_type}")
+    arguments = node.get("arguments", {})
+    if not isinstance(arguments, dict):
+        raise WorkflowValidationError(f"nodes[{index}].arguments must be an object")
+    misplaced_arguments = NODE_ARGUMENT_FIELDS.intersection(node)
+    if misplaced_arguments:
+        fields = ", ".join(sorted(misplaced_arguments))
+        raise WorkflowValidationError(
+            f"nodes[{index}] configurable fields must be inside arguments: {fields}"
+        )
+    misplaced_shared_fields = NODE_SHARED_FIELDS.intersection(arguments)
+    if misplaced_shared_fields:
+        fields = ", ".join(sorted(misplaced_shared_fields))
+        raise WorkflowValidationError(
+            f"nodes[{index}] shared fields must be top-level: {fields}"
+        )
+    unknown_arguments = set(arguments) - NODE_ARGUMENT_FIELDS_BY_TYPE[node_type]
+    if unknown_arguments:
+        fields = ", ".join(sorted(unknown_arguments))
+        raise WorkflowValidationError(
+            f"nodes[{index}].arguments contains unsupported fields: {fields}"
+        )
+    unknown_fields = set(node) - NODE_BASE_FIELDS - NODE_SHARED_FIELDS
+    if unknown_fields:
+        fields = ", ".join(sorted(unknown_fields))
+        raise WorkflowValidationError(
+            f"nodes[{index}] contains unsupported top-level fields: {fields}"
+        )
     _validate_declared_data_inputs(node, index)
 
     if node_type in {"input", "output"}:
         _validate_workflow_ports(node, index)
 
     if node_type == "router":
-        branches = node.get("branches")
+        branches = node_argument(node, "branches")
         if not isinstance(branches, list) or not branches:
-            raise WorkflowValidationError(f"nodes[{index}].branches must be a non-empty list")
+            raise WorkflowValidationError(f"nodes[{index}].arguments.branches must be a non-empty list")
         branch_ids = [
             branch.get("id") if isinstance(branch, dict) else None
+            for branch in branches
+        ]
+        branch_names = [
+            branch.get("name") if isinstance(branch, dict) else None
             for branch in branches
         ]
         if any(not isinstance(branch_id, str) or not branch_id for branch_id in branch_ids):
             raise WorkflowValidationError(
                 f"nodes[{index}].branches must contain non-empty ids"
             )
+        if any(
+            not isinstance(branch_name, str) or not branch_name
+            for branch_name in branch_names
+        ):
+            raise WorkflowValidationError(
+                f"nodes[{index}].branches must contain non-empty names"
+            )
         if len(branch_ids) != len(set(branch_ids)):
             raise WorkflowValidationError(f"nodes[{index}].branches contains duplicate ids")
+        if len(branch_names) != len(set(branch_names)):
+            raise WorkflowValidationError(
+                f"nodes[{index}].branches contains duplicate names"
+            )
     elif node_type == "construct_content":
         _validate_construct_content(node)
     elif node_type == "construct_list":
         _validate_construct_list(node)
     elif node_type == "foreach":
-        if node.get("item_type") not in {"content", "message"}:
+        if node_argument(node, "item_type") not in {"content", "message"}:
             raise WorkflowValidationError(
                 "foreach node item_type must be 'content' or 'message'"
             )
     elif node_type == "tool":
-        parameters = node.get("parameters", [])
+        parameters = node_argument(node, "parameters", [])
         if not isinstance(parameters, list) or any(
             not isinstance(parameter, str) or not parameter for parameter in parameters
         ):
@@ -174,7 +221,7 @@ def _validate_node(node: Any, index: int) -> None:
         if len(parameters) != len(set(parameters)):
             raise WorkflowValidationError("tool node parameters contains duplicates")
     elif node_type == "workflow":
-        workflow_name = node.get("workflow_name")
+        workflow_name = node_argument(node, "workflow_name")
         if not isinstance(workflow_name, str) or not workflow_name:
             raise WorkflowValidationError("workflow node workflow_name must be a non-empty string")
         _validate_callable_workflow_ports(node, "input_ports")
@@ -223,7 +270,7 @@ def _validate_declared_data_inputs(node: dict[str, Any], index: int) -> None:
 
 
 def _validate_workflow_ports(node: dict[str, Any], index: int) -> None:
-    if "workflowPorts" not in node:
+    if node.get("workflowPorts") is None:
         raise WorkflowValidationError(
             f"nodes[{index}].workflowPorts is required for {node['type']} nodes"
         )
@@ -258,7 +305,7 @@ def _validate_workflow_ports(node: dict[str, Any], index: int) -> None:
 
 
 def _validate_construct_content(node: dict[str, Any]) -> None:
-    append_items = node.get("append_items", [])
+    append_items = node_argument(node, "append_items", [])
     if not isinstance(append_items, list) or not append_items:
         raise WorkflowValidationError(
             "construct_content node append_items must be a non-empty list"
@@ -291,12 +338,12 @@ def _validate_construct_content(node: dict[str, Any]) -> None:
 
 
 def _validate_construct_list(node: dict[str, Any]) -> None:
-    item_type = node.get("item_type")
+    item_type = node_argument(node, "item_type")
     if item_type not in {"content", "message"}:
         raise WorkflowValidationError(
             "construct_list node item_type must be 'content' or 'message'"
         )
-    initial_value_count = node.get("initial_value_count")
+    initial_value_count = node_argument(node, "initial_value_count")
     if (
         not isinstance(initial_value_count, int)
         or isinstance(initial_value_count, bool)

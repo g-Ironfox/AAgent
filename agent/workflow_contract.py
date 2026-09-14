@@ -20,6 +20,45 @@ SUPPORTED_NODE_TYPES = {
     "workflow",
 }
 
+NODE_BASE_FIELDS = {"id", "type", "name", "x", "y", "arguments"}
+NODE_SHARED_FIELDS = {
+    "workflowPorts",
+    "dataInputPorts",
+    "input_ports",
+    "output_ports",
+}
+NODE_ARGUMENT_FIELDS_BY_TYPE = {
+    "input": set(),
+    "output": set(),
+    "router": {"branches"},
+    "construct_message": {"role"},
+    "construct_content": {"append_items"},
+    "construct_list": {"item_type", "initial_value_count"},
+    "foreach": {"item_type"},
+    "llm": {"model", "prompt", "think", "tool_calls", "tools"},
+    "tool": {"tool", "parameters"},
+    "tool_call": set(),
+    "workflow": {"workflow_name"},
+}
+NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
+
+
+def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
+    arguments = node.get("arguments")
+    return arguments if isinstance(arguments, dict) else {}
+
+
+def node_argument(node: dict[str, Any], name: str, default: Any = None) -> Any:
+    return node_arguments(node).get(name, default)
+
+
+def normalize_node_arguments(node: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in node.items()
+        if key in NODE_BASE_FIELDS or key in NODE_SHARED_FIELDS
+    }
+
 
 def boundary_ports(
     ports: list[dict[str, Any]],
@@ -53,9 +92,9 @@ def data_ports_for_node(
         return declared_inputs | {"content-in"}, set()
     if node_type == "llm":
         outputs = {"output"}
-        if node.get("think") is True:
+        if node_argument(node, "think") is True:
             outputs.add("reasoning")
-        if node.get("tool_calls") is True:
+        if node_argument(node, "tool_calls") is True:
             outputs.add("tool_calls")
         return declared_inputs, outputs
     if node_type == "construct_message":
@@ -67,7 +106,7 @@ def data_ports_for_node(
     if node_type == "foreach":
         return declared_inputs | {"list-in"}, {"item-out"}
     if node_type == "tool":
-        return declared_inputs | set(node.get("parameters", [])), {"output"}
+        return declared_inputs | set(node_argument(node, "parameters", [])), {"output"}
     if node_type == "workflow":
         return (
             {f"workflow:{port['name']}" for port in node.get("input_ports", [])},
@@ -83,7 +122,9 @@ def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
     if node_type == "output":
         return {"control-in"}, set()
     if node_type == "router":
-        return {"control-in"}, {branch["id"] for branch in node["branches"]}
+        return {"control-in"}, {
+            branch["id"] for branch in node_argument(node, "branches", [])
+        }
     if node_type == "foreach":
         return {"control-in", "loop-in"}, {"control-out", "loop-out"}
     return {"control-in"}, {"control-out"}
@@ -128,22 +169,22 @@ def is_valid_connection(
             if connection_type != target_port["type"]:
                 return False
         if source_node["type"] == "workflow":
-            source_port = next(port for port in source_node["output_ports"] if f"workflow:{port['name']}" == from_port)
+            source_port = next(port for port in source_node.get("output_ports", []) if f"workflow:{port['name']}" == from_port)
             if connection_type != source_port["type"]:
                 return False
         if target_node["type"] == "workflow":
-            target_port = next(port for port in target_node["input_ports"] if f"workflow:{port['name']}" == to_port)
+            target_port = next(port for port in target_node.get("input_ports", []) if f"workflow:{port['name']}" == to_port)
             if connection_type != target_port["type"]:
                 return False
         source_type = source_node["type"]
         target_type = target_node["type"]
-        if target_type == "construct_list" and connection_type != target_node["item_type"]:
+        if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):
             return False
-        if source_type == "construct_list" and connection_type != f"list-{source_node['item_type']}":
+        if source_type == "construct_list" and connection_type != f"list-{node_argument(source_node, 'item_type')}":
             return False
-        if target_type == "foreach" and (connection_type != f"list-{target_node['item_type']}" or to_port != "list-in"):
+        if target_type == "foreach" and (connection_type != f"list-{node_argument(target_node, 'item_type')}" or to_port != "list-in"):
             return False
-        if source_type == "foreach" and (connection_type != source_node["item_type"] or from_port != "item-out"):
+        if source_type == "foreach" and (connection_type != node_argument(source_node, "item_type") or from_port != "item-out"):
             return False
         return not (source_type == "llm" and from_port == "tool_calls" and connection_type != "list-content")
     except (KeyError, StopIteration, TypeError):

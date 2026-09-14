@@ -21,6 +21,48 @@ MAX_WORKFLOW_DESCRIPTION_LENGTH = 2000
 
 logger = logging.getLogger("aagent.webui")
 
+NODE_BASE_FIELDS = {"id", "type", "name", "x", "y", "arguments"}
+NODE_SHARED_FIELDS = {"workflowPorts", "dataInputPorts", "input_ports", "output_ports"}
+NODE_ARGUMENT_FIELDS_BY_TYPE = {
+    "input": set(),
+    "output": set(),
+    "router": {"branches"},
+    "construct_message": {"role"},
+    "construct_content": {"append_items"},
+    "construct_list": {"item_type", "initial_value_count"},
+    "foreach": {"item_type"},
+    "llm": {"model", "prompt", "think", "tool_calls", "tools"},
+    "tool": {"tool", "parameters"},
+    "tool_call": set(),
+    "workflow": {"workflow_name"},
+}
+NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
+
+
+def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
+    arguments = node.get("arguments")
+    return arguments if isinstance(arguments, dict) else {}
+
+
+def node_format_error(node: dict[str, Any], index: int) -> str | None:
+    node_type = node.get("type")
+    arguments = node.get("arguments", {})
+    if not isinstance(arguments, dict):
+        return f"nodes[{index}].arguments 必须是对象"
+    misplaced_arguments = NODE_ARGUMENT_FIELDS.intersection(node)
+    if misplaced_arguments:
+        return f"nodes[{index}] 的可配置字段必须放入 arguments: {', '.join(sorted(misplaced_arguments))}"
+    misplaced_shared = NODE_SHARED_FIELDS.intersection(arguments)
+    if misplaced_shared:
+        return f"nodes[{index}] 的公共字段必须位于一级: {', '.join(sorted(misplaced_shared))}"
+    unsupported_arguments = set(arguments) - NODE_ARGUMENT_FIELDS_BY_TYPE.get(node_type, set())
+    if unsupported_arguments:
+        return f"nodes[{index}].arguments 包含该节点不支持的字段: {', '.join(sorted(unsupported_arguments))}"
+    unsupported_fields = set(node) - NODE_BASE_FIELDS - NODE_SHARED_FIELDS
+    if unsupported_fields:
+        return f"nodes[{index}] 包含不支持的一级字段: {', '.join(sorted(unsupported_fields))}"
+    return None
+
 
 class WorkflowPortMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -139,7 +181,7 @@ def filter_invalid_connections(
             if source.get("type") == "input":
                 source_outputs = {"control-out"}
             elif source.get("type") == "router":
-                source_outputs = {branch.get("id") for branch in source.get("branches", [])}
+                source_outputs = {branch.get("id") for branch in node_arguments(source).get("branches", [])}
             elif source.get("type") == "foreach":
                 source_outputs = {"control-out", "loop-out"}
             if target.get("type") == "input":
@@ -164,14 +206,14 @@ def filter_invalid_connections(
                 return "content"
             if node_type == "tool_call" and from_port in {"tool_call_id", "result"}:
                 return "content"
-            if node_type == "llm" and from_port == "reasoning" and source.get("think") is True:
+            if node_type == "llm" and from_port == "reasoning" and node_arguments(source).get("think") is True:
                 return "content"
-            if node_type == "llm" and from_port == "tool_calls" and source.get("tool_calls") is True:
+            if node_type == "llm" and from_port == "tool_calls" and node_arguments(source).get("tool_calls") is True:
                 return "list-content"
             if node_type == "construct_list" and from_port == "list-out":
-                return f"list-{source.get('item_type')}"
+                return f"list-{node_arguments(source).get('item_type')}"
             if node_type == "foreach" and from_port == "item-out":
-                return source.get("item_type")
+                return node_arguments(source).get("item_type")
             if node_type == "workflow":
                 return next((port.get("type") for port in source.get("output_ports", []) if f"workflow:{port.get('name')}" == from_port), None)
             return None
@@ -186,14 +228,14 @@ def filter_invalid_connections(
                 return "content"
             if node_type in {"construct_content", "router"} and to_port in target.get("dataInputPorts", ["content-in"]):
                 return "content"
-            if node_type == "tool" and to_port in target.get("parameters", []):
+            if node_type == "tool" and to_port in node_arguments(target).get("parameters", []):
                 return "content"
             if node_type == "tool_call" and to_port == "tool_call":
                 return "content"
             if node_type == "construct_list" and to_port in target.get("dataInputPorts", []):
-                return target.get("item_type")
+                return node_arguments(target).get("item_type")
             if node_type == "foreach" and to_port == "list-in":
-                return f"list-{target.get('item_type')}"
+                return f"list-{node_arguments(target).get('item_type')}"
             if node_type == "workflow":
                 return next((port.get("type") for port in target.get("input_ports", []) if f"workflow:{port.get('name')}" == to_port), None)
             return None
@@ -212,7 +254,7 @@ def synchronize_workflow_nodes(
     removed_node_ids = {
         node.get("id")
         for node in nodes
-        if node.get("type") == "workflow" and node.get("workflow_name") not in references
+        if node.get("type") == "workflow" and node_arguments(node).get("workflow_name") not in references
     }
     synchronized_nodes = []
     workflow_node_by_id = {}
@@ -220,10 +262,11 @@ def synchronize_workflow_nodes(
         if node.get("id") in removed_node_ids:
             continue
         if node.get("type") == "workflow":
-            reference = references[node["workflow_name"]]
+            arguments = node_arguments(node)
+            reference = references[arguments["workflow_name"]]
             node = {
                 **node,
-                "workflow_name": reference["name"],
+                "arguments": {**arguments, "workflow_name": reference["name"]},
                 "input_ports": reference["input_ports"],
                 "output_ports": reference["output_ports"],
             }
@@ -416,17 +459,17 @@ def create_workflows_router(
                     {
                         "$or": [
                             {"workflow_nodes.name": previous_name},
-                            {"nodes": {"$elemMatch": {"type": "workflow", "workflow_name": previous_name}}},
+                            {"nodes": {"$elemMatch": {"type": "workflow", "arguments.workflow_name": previous_name}}},
                         ]
                     },
                     {"$set": {
                         "workflow_nodes.$[reference].name": name,
-                        "nodes.$[node].workflow_name": name,
+                        "nodes.$[node].arguments.workflow_name": name,
                         "updated_at": datetime.now(timezone.utc),
                     }},
                     array_filters=[
                         {"reference.name": previous_name},
-                        {"node.type": "workflow", "node.workflow_name": previous_name},
+                        {"node.type": "workflow", "node.arguments.workflow_name": previous_name},
                     ],
                 )
         except DuplicateKeyError:
@@ -498,9 +541,15 @@ def create_workflows_router(
                 nodes = [
                     {
                         **node,
-                        "workflow_name": renamed_workflow_nodes.get(node.get("workflow_name"), node.get("workflow_name")),
+                        "arguments": {
+                            **node_arguments(node),
+                            "workflow_name": renamed_workflow_nodes.get(
+                                node_arguments(node).get("workflow_name"),
+                                node_arguments(node).get("workflow_name"),
+                            ),
+                        },
                     }
-                    if node.get("type") == "workflow" and node.get("workflow_name") in renamed_workflow_nodes
+                    if node.get("type") == "workflow" and node_arguments(node).get("workflow_name") in renamed_workflow_nodes
                     else node
                     for node in nodes
                 ]
@@ -561,6 +610,10 @@ def create_workflows_router(
         }
         if any(node.get("type") not in valid_node_types for node in payload.nodes):
             return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})
+        for index, node in enumerate(payload.nodes):
+            format_error = node_format_error(node, index)
+            if format_error:
+                return JSONResponse(status_code=400, content={"error": format_error})
         if not any(node.get("type") == "output" for node in payload.nodes):
             return JSONResponse(status_code=400, content={"error": "Workflow 必须至少包含一个 Output 节点"})
         if any(
@@ -587,7 +640,7 @@ def create_workflows_router(
             for reference in workflow_document.get("workflow_nodes", [])
         }
         for node in workflow_nodes:
-            reference = allowed_workflow_nodes.get(node.get("workflow_name"))
+            reference = allowed_workflow_nodes.get(node_arguments(node).get("workflow_name"))
             if reference is None:
                 return JSONResponse(status_code=400, content={"error": "Workflow 节点未在元数据中引入"})
             if node.get("input_ports") != reference.get("input_ports", []) or node.get("output_ports") != reference.get("output_ports", []):
@@ -599,25 +652,40 @@ def create_workflows_router(
                 registered_tool_names = set(redis_client.hkeys(tools_key))
             except redis.RedisError:
                 return JSONResponse(status_code=503, content={"error": "暂时无法校验 Tool 注册表"})
-            if any(node.get("tool") not in registered_tool_names for node in tool_nodes):
-                return JSONResponse(status_code=400, content={"error": "Tool 节点引用了未注册的工具"})
+            if not registered_tool_names:
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "Tool 注册表为空，请确认 Agent 已启动并完成工具注册"},
+                )
+            missing_tool_names = sorted(
+                {
+                    node_arguments(node).get("tool")
+                    for node in tool_nodes
+                    if node_arguments(node).get("tool") not in registered_tool_names
+                }
+            )
+            if missing_tool_names:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Tool 节点引用了未注册的工具: {', '.join(missing_tool_names)}"},
+                )
             try:
-                schemas = redis_client.hmget(tools_key, [node.get("tool") for node in tool_nodes])
+                schemas = redis_client.hmget(tools_key, [node_arguments(node).get("tool") for node in tool_nodes])
                 tool_properties = {
-                    node.get("tool"): set(json.loads(raw).get("function", {}).get("parameters", {}).get("properties", {}))
+                    node_arguments(node).get("tool"): set(json.loads(raw).get("function", {}).get("parameters", {}).get("properties", {}))
                     for node, raw in zip(tool_nodes, schemas)
                     if raw
                 }
             except (redis.RedisError, TypeError, ValueError):
                 return JSONResponse(status_code=503, content={"error": "暂时无法读取 Tool 参数定义"})
             for node in tool_nodes:
-                parameters = node.get("parameters", [])
-                if not isinstance(parameters, list) or set(parameters) != tool_properties.get(node.get("tool"), set()):
+                parameters = node_arguments(node).get("parameters", [])
+                if not isinstance(parameters, list) or set(parameters) != tool_properties.get(node_arguments(node).get("tool"), set()):
                     return JSONResponse(status_code=400, content={"error": "Tool 节点参数端口与工具定义不一致"})
 
         llm_nodes = [node for node in payload.nodes if node.get("type") == "llm"]
         try:
-            model_ids = [ObjectId(node.get("model", "")) for node in llm_nodes]
+            model_ids = [ObjectId(node_arguments(node).get("model", "")) for node in llm_nodes]
         except (InvalidId, TypeError):
             return JSONResponse(status_code=400, content={"error": "LLM 节点必须选择有效的模型配置"})
         try:
@@ -662,17 +730,17 @@ def create_workflows_router(
                     {
                         "$or": [
                             {"workflow_nodes.name": previous_name},
-                            {"nodes": {"$elemMatch": {"type": "workflow", "workflow_name": previous_name}}},
+                            {"nodes": {"$elemMatch": {"type": "workflow", "arguments.workflow_name": previous_name}}},
                         ]
                     },
                     {"$set": {
                         "workflow_nodes.$[reference].name": values["name"],
-                        "nodes.$[node].workflow_name": values["name"],
+                        "nodes.$[node].arguments.workflow_name": values["name"],
                         "updated_at": now,
                     }},
                     array_filters=[
                         {"reference.name": previous_name},
-                        {"node.type": "workflow", "node.workflow_name": previous_name},
+                        {"node.type": "workflow", "node.arguments.workflow_name": previous_name},
                     ],
                 )
         except DuplicateKeyError:

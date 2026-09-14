@@ -110,15 +110,40 @@ loadSnapshot(workflowSnapshot());
 inspector.setWorkflowNodes(workflowReferences());
 elements.workflowNameDisplay.textContent = state.name;
 
-Promise.all([fetchModels(), fetchTools()])
-  .then(([models, tools]) => {
+const resourceCounts = { models: null, tools: null };
+const resourceErrors = {};
+
+function renderResourceState() {
+  const counts = [
+    resourceCounts.models === null ? null : `${resourceCounts.models} Models`,
+    resourceCounts.tools === null ? null : `${resourceCounts.tools} Tools`,
+  ].filter(Boolean);
+  const errors = Object.values(resourceErrors);
+  elements.resourceState.textContent = [...counts, ...errors].join(' · ') || '资源读取中';
+}
+
+fetchModels()
+  .then((models) => {
     inspector.setModels(models.items);
-    inspector.setTools(tools.items);
-    elements.resourceState.textContent = `${models.items.length} Models · ${tools.items.length} Tools`;
+    resourceCounts.models = models.items.length;
+    renderResourceState();
   })
   .catch((error) => {
-    console.warn('数据库资源读取失败', error);
-    elements.resourceState.textContent = error.message || '数据库资源读取失败';
+    console.warn('模型配置读取失败', error);
+    resourceErrors.models = `Models: ${error.message || '读取失败'}`;
+    renderResourceState();
+  });
+
+fetchTools()
+  .then((tools) => {
+    inspector.setTools(tools.items);
+    resourceCounts.tools = tools.items.length;
+    renderResourceState();
+  })
+  .catch((error) => {
+    console.warn('Tool 注册表读取失败', error);
+    resourceErrors.tools = `Tools: ${error.message || '读取失败'}`;
+    renderResourceState();
   });
 
 function createMetadataPortRow(port = {}) {

@@ -10,6 +10,7 @@ from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from workflow_parser import _read_workflow,parse_workflow
 from workflow_validator import validate_workflow
+from workflow_nodes import propagate_workflow_output, run_workflow_map
 
 import tools.qq
 import tools.bilibili
@@ -238,40 +239,6 @@ def handle_task(e: dict):
         }
         publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
 
-    def read_workflow_input(node, port_id):
-        values = node.get('data_inputs', {}).get(port_id)
-        if not isinstance(values, list) or len(values) <= 2:
-            return False, None
-        return True, values[-1]
-
-    def propagate_workflow_output(workflow_map, node, port_id, value):
-        for target_id, target_port in node.get('data_outputs', {}).get(port_id, []):
-            target_values = workflow_map[target_id].get('data_inputs', {}).get(target_port)
-            if not isinstance(target_values, list) or len(target_values) < 2:
-                raise ValueError(
-                    f"workflow target input is not connected: node {target_id}, port {target_port}"
-                )
-            target_values.append(value)
-
-    def publish_workflow_node(workflow_map, endpoint):
-        if endpoint is None:
-            return
-        target_id, target_port = endpoint
-        event = {
-            "event_type": f"workflow_{workflow_map[target_id]['type']}",
-            "payload": {
-                "workflow_map": workflow_map,
-                "current_id": target_id,
-            },
-        }
-        publish_to_queue(MAIN_AGENT_QUEUE_NAME, event)
-
-    def publish_workflow_control_output(workflow_map, node, port_id='control-out'):
-        publish_workflow_node(
-            workflow_map,
-            node.get('control_outputs', {}).get(port_id),
-        )
-
     def workflow(e):
         active_workflow_id = read_active_workflow_id()
         workflow_document = _read_workflow(active_workflow_id, by_id=True)
@@ -279,13 +246,17 @@ def handle_task(e: dict):
         workflow_map = parse_workflow(workflow_document)
         for node in workflow_map:
             node['_workflow_call_stack'] = [workflow_document['name']]
-        start = -1
-        for i in range(len(workflow_map)):
-            if workflow_map[i]["id"]=="input":
-                start = i
         
-        if start == -1:
-            return 
+        start = next(
+            (
+                index
+                for index, node in enumerate(workflow_map)
+                if node["type"] == "input"
+            ),
+            None,
+        )
+        if start is None:
+            raise ValueError("workflow has no input node")
 
         input_node = workflow_map[start]
         workflow_ports = input_node.get('workflowPorts', [])
@@ -294,259 +265,11 @@ def handle_task(e: dict):
                 workflow_map, input_node, port['id'], e['payload'].get(port['name'])
             )
 
-        publish_workflow_node(
-            workflow_map,
-            workflow_map[start].get('control_outputs', {}).get('control-out'),
-        )
-
-    def workflow_llm(e):
-        current_id=e['payload']['current_id']
-        workflow_map=e['payload']['workflow_map']
-
-        node = workflow_map[current_id]
-        prompt = node['prompt']
-        def message_order(port_id):
-            return int(port_id.removeprefix('message-in-'))
-
-        messages = []
-        input_ports = sorted(
-            (
-                port_id
-                for port_id in node['data_inputs']
-                if port_id.startswith('message-in-')
-                and port_id.removeprefix('message-in-').isdigit()
-            ),
-            key=message_order,
-        )
-        for port_id in input_ports:
-            has_value, value = read_workflow_input(node, port_id)
-            if has_value:
-                messages.append(value)
-        if prompt:
-            messages.insert(0, {"role":"system", "content":prompt})
-        print(messages)
-
-        configured_tools = set(node.get("tools", []))
-        tools = [
-            schema
-            for schema in registered_tools
-            if schema["function"]["name"] in configured_tools
-        ]
-        content,reasoning,tool_calls=chat_with_deepseek(messages,tools=tools)
-
-        jsonfied_tool_calls=[json.dumps(i) for i in tool_calls]
-
-        propagate_workflow_output(workflow_map, node, 'output', content)
-        if "reasoning" in node.get("data_outputs", {}):
-            propagate_workflow_output(workflow_map, node, 'reasoning', reasoning)
-        if "tool_calls" in node.get("data_outputs", {}):
-            propagate_workflow_output(workflow_map, node, 'tool_calls', jsonfied_tool_calls)
-
-        publish_workflow_control_output(workflow_map, node)
-
-    def workflow_construct_message(e):
-        current_id=e['payload']['current_id']
-        workflow_map=e['payload']['workflow_map']
-        node=workflow_map[current_id]
-        has_content, content = read_workflow_input(node, 'content-in')
-        if not has_content:
-            return
-
-        message = {"role":node.get("role", "user"), "content":content}
-        propagate_workflow_output(workflow_map, node, 'message-out', message)
-
-        publish_workflow_control_output(workflow_map, node)
-
-    def workflow_construct_content(e):
-        current_id = e['payload']['current_id']
-        workflow_map = e['payload']['workflow_map']
-        node = workflow_map[current_id]
-        parts = []
-        for item in node.get('append_items', []):
-            if item.get('type') == 'fixed':
-                parts.append(item.get('value', ''))
-                continue
-            has_value, value = read_workflow_input(node, item['port_id'])
-            if has_value:
-                parts.append(value if isinstance(value, str) else str(value))
-
-        propagate_workflow_output(workflow_map, node, 'content-out', ''.join(parts))
-        publish_workflow_control_output(workflow_map, node)
-
-    def workflow_output(e):
-        current_id = e['payload']['current_id']
-        workflow_map = e['payload']['workflow_map']
-        node = workflow_map[current_id]
-        workflow_ports = node.get('workflowPorts', [])
-        output = {}
-        for port in workflow_ports:
-            has_value, value = read_workflow_input(node, port['id'])
-            if has_value:
-                output[port['name']] = value
-        content = output.get('content', output)
-        return_context = node.get('_workflow_return')
-        if isinstance(return_context, dict):
-            parent_map = return_context['workflow_map']
-            parent_node = parent_map[return_context['current_id']]
-            for name, value in output.items():
-                propagate_workflow_output(parent_map, parent_node, f'workflow:{name}', value)
-            publish_workflow_control_output(parent_map, parent_node)
-        else:
-            publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
-                "event_type": "response",
-                "payload": {"content": content},
-            })
-
-    def workflow_workflow(e):
-        current_id = e['payload']['current_id']
-        parent_map = e['payload']['workflow_map']
-        parent_node = parent_map[current_id]
-        workflow_name = parent_node['workflow_name']
-        call_stack = parent_node.get('_workflow_call_stack', [])
-        if workflow_name in call_stack:
-            raise ValueError(f"recursive workflow call detected: {' -> '.join([*call_stack, workflow_name])}")
-
-        workflow_document = _read_workflow(workflow_name)
-        validate_workflow(workflow_document)
-        current_input_ports = workflow_document.get('input_ports', [])
-        current_output_ports = workflow_document.get('output_ports', [])
-        if (
-            parent_node.get('input_ports', []) != current_input_ports
-            or parent_node.get('output_ports', []) != current_output_ports
-        ):
-            raise ValueError(
-                f"callable workflow contract changed; refresh the workflow node metadata: {workflow_name}"
-            )
-        child_map = parse_workflow(workflow_document)
-        child_input_id = next((index for index, node in enumerate(child_map) if node['type'] == 'input'), None)
-        child_output_ids = [index for index, node in enumerate(child_map) if node['type'] == 'output']
-        if child_input_id is None or not child_output_ids:
-            raise ValueError(f"callable workflow has an invalid boundary: {workflow_name}")
-
-        next_call_stack = [*call_stack, workflow_name]
-        for child_node in child_map:
-            child_node['_workflow_call_stack'] = next_call_stack
-        for output_id in child_output_ids:
-            child_map[output_id]['_workflow_return'] = {
-                'workflow_map': parent_map,
-                'current_id': current_id,
-            }
-
-        child_input = child_map[child_input_id]
-        for port in child_input.get('workflowPorts', []):
-            has_value, value = read_workflow_input(parent_node, f"workflow:{port['name']}")
-            if has_value:
-                propagate_workflow_output(child_map, child_input, port['id'], value)
-        publish_workflow_node(
-            child_map,
-            child_input.get('control_outputs', {}).get('control-out'),
-        )
-
-    def workflow_construct_list(e):
-        current_id = e['payload']['current_id']
-        workflow_map = e['payload']['workflow_map']
-        node = workflow_map[current_id]
-        init_values = []
-        for port_id in node.get('data_inputs', {}):
-            has_value, value = read_workflow_input(node, port_id)
-            if has_value:
-                init_values.append(value)
-
-        propagate_workflow_output(workflow_map, node, 'list-out', init_values)
-
-        publish_workflow_control_output(workflow_map, node)
-
-    def workflow_foreach(e):
-        current_id = e['payload']['current_id']
-        workflow_map = e['payload']['workflow_map']
-        node = workflow_map[current_id]
-        has_items, items = read_workflow_input(node, 'list-in')
-        if not has_items:
-            return
-        if not isinstance(items, list):
-            raise ValueError(f"foreach input must be a list: node {node.get('id')}")
-        if not items:
-            publish_workflow_control_output(workflow_map, node)
-            return
-
-        propagate_workflow_output(
-            workflow_map, node, 'item-out', items.pop(0)
-        )
-        publish_workflow_node(
-            workflow_map,
-            node.get('control_outputs', {}).get('loop-out'),
-        )
-
-    def workflow_router(e):
-        current_id=e['payload']['current_id']
-        workflow_map=e['payload']['workflow_map']
-
-
-        node = workflow_map[current_id]
-        has_key, key = read_workflow_input(node, 'content-in')
-        if not has_key:
-            return
-        cases = {i['name']:i['successor'] for i in node['branches']}
-        if key not in cases:
-            return
-
-        control_successors_id=cases.get(key)
-        if control_successors_id is not None:
-            publish_workflow_node(
-                workflow_map,
-                [control_successors_id, 'control-in'],
-            )
-
-    def workflow_tool(e):
-        current_id=e['payload']['current_id']
-        workflow_map=e['payload']['workflow_map']
-        node=workflow_map[current_id]
-        args = {}
-        for parameter in node.get('parameters', []):
-            has_value, value = read_workflow_input(node, parameter)
-            if has_value:
-                args[parameter] = value
-
-        result=execute_tool(node['id'],node['tool'],args)
-        propagate_workflow_output(workflow_map, node, 'output', result)
-
-        publish_workflow_control_output(workflow_map, node)
-
-    def workflow_tool_call(e):
-        current_id = e['payload']['current_id']
-        workflow_map = e['payload']['workflow_map']
-        node = workflow_map[current_id]
-        has_tool_call, tool_call = read_workflow_input(node, 'tool_call')
-        if not has_tool_call:
-            return
-        if not isinstance(tool_call, str):
-            raise ValueError(f"tool_call input must be an string: node {node.get('id')}")
-        tool_call = json.loads(tool_call)
-        if not isinstance(tool_call, dict):
-            raise ValueError(f"tool_call input must be jsunfy: node {node.get('id')}")
-
-        tool_call_id = tool_call.get('id')
-        function = tool_call.get('function')
-        if not isinstance(tool_call_id, str) or not isinstance(function, dict):
-            raise ValueError(f"tool_call input must use OpenAI tool call format: node {node.get('id')}")
-        tool_name = function.get('name')
-        arguments = function.get('arguments')
-        if not isinstance(tool_name, str) or not isinstance(arguments, str):
-            raise ValueError(f"tool_call function must contain name and raw arguments: node {node.get('id')}")
-
-        try:
-            args = json.loads(arguments)
-            if not isinstance(args, dict):
-                raise ValueError("tool arguments must be a JSON object")
-            result = execute_tool(tool_call_id, tool_name, args)
-        except (json.JSONDecodeError, TypeError, ValueError) as error:
-            result = f"Error: 工具参数 JSON 解析失败: {error}"
-        except Exception as error:
-            result = f"Error: {error}"
-
-        propagate_workflow_output(workflow_map, node, 'tool_call_id', tool_call_id)
-        propagate_workflow_output(workflow_map, node, 'result', result)
-        publish_workflow_control_output(workflow_map, node)
+        output = run_workflow_map(workflow_map, start)
+        publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
+            "event_type": "response",
+            "payload": {"content": output.get("content", output)},
+        })
 
     handle_map = {
         "qq": qq,
@@ -558,16 +281,6 @@ def handle_task(e: dict):
         "rpc_review":rpc_review,
         "rpc_apply":rpc_apply,
         "workflow":workflow,
-        "workflow_llm":workflow_llm,
-        "workflow_construct_message":workflow_construct_message,
-        "workflow_construct_content":workflow_construct_content,
-        "workflow_output":workflow_output,
-        "workflow_construct_list":workflow_construct_list,
-        "workflow_foreach":workflow_foreach,
-        "workflow_router":workflow_router,
-        "workflow_tool":workflow_tool,
-        "workflow_tool_call":workflow_tool_call,
-        "workflow_workflow":workflow_workflow,
     }
 
     record_history(e)

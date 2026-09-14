@@ -10,7 +10,13 @@ from typing import Any
 
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
-from workflow_contract import boundary_ports, data_ports_for_node, filter_connections
+from workflow_contract import (
+    boundary_ports,
+    data_ports_for_node,
+    filter_connections,
+    node_argument,
+    normalize_node_arguments,
+)
 
 
 class WorkflowParseError(ValueError):
@@ -20,8 +26,9 @@ class WorkflowParseError(ValueError):
 def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     """Convert ``nodes`` and ``connections`` to an index-linked node list.
 
-    Control-flow links contain node indexes. Data inputs contain one endpoint
-    in the form ``[node_index, port_id]``; data outputs contain endpoint lists.
+    Control-flow links contain node indexes. Data inputs contain one mutable
+    slot in the form ``[node_index, port_id, value_or_default]``; data outputs
+    contain endpoint lists.
     """
     nodes = workflow["nodes"]
     connections = filter_connections(
@@ -35,30 +42,24 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     node_indexes = {node["id"]: index for index, node in enumerate(nodes)}
     linked_nodes: list[dict[str, Any]] = []
     for node in nodes:
-        parsed_node = {
-            key: value
-            for key, value in node.items()
-            if key not in {"x", "y", "dataInputPorts"}
-        }
+        parsed_node = normalize_node_arguments(node)
+        parsed_node.pop("x", None)
+        parsed_node.pop("y", None)
         if node.get("type") == "input":
             parsed_node["workflowPorts"] = boundary_ports(input_ports)
         elif node.get("type") == "output":
             parsed_node["workflowPorts"] = boundary_ports(output_ports)
-        if node.get("type") == "router":
-            parsed_node["branches"] = [
-                {**branch, "successor": None} for branch in node["branches"]
-            ]
         node_input_ports, node_output_ports = data_ports_for_node(
             node, input_ports, output_ports
         )
         linked_nodes.append(
             {
                 **parsed_node,
-                "control_predecessors": [],
-                "control_successors": [],
-                "control_inputs": {},
-                "control_outputs": {},
-                "data_inputs": {port_id: None for port_id in node_input_ports},
+                "predecessors": {},
+                "successors": {},
+                "data_inputs": {
+                    port_id: [None, None, None] for port_id in node_input_ports
+                },
                 "data_outputs": {port_id: [] for port_id in node_output_ports},
             }
         )
@@ -72,22 +73,12 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
         to_port = connection["toPortId"]
         connection_type = connection["type"]
         if connection_type == "control":
-            _append_unique(linked_nodes[from_index]["control_successors"], to_index)
-            _append_unique(linked_nodes[to_index]["control_predecessors"], from_index)
-            linked_nodes[from_index]["control_outputs"][from_port] = [
-                to_index,
-                to_port,
-            ]
-            linked_nodes[to_index]["control_inputs"].setdefault(to_port, []).append(
-                [from_index, from_port]
-            )
-            if linked_nodes[from_index].get("type") == "router":
-                branch = next(
-                    branch
-                    for branch in linked_nodes[from_index]["branches"]
-                    if branch["id"] == from_port
-                )
-                branch["successor"] = to_index
+            successor_key = _successor_key(linked_nodes[from_index], from_port)
+            predecessor_key = _predecessor_key(linked_nodes[to_index], to_port)
+            linked_nodes[from_index]["successors"][successor_key] = to_index
+            linked_nodes[to_index]["predecessors"].setdefault(
+                predecessor_key, []
+            ).append(from_index)
         else:
             _append_output_endpoint(
                 linked_nodes[from_index]["data_outputs"],
@@ -97,14 +88,29 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
             linked_nodes[to_index]["data_inputs"][to_port] = [
                 from_index,
                 from_port,
+                None,
             ]
 
     return linked_nodes
 
 
-def _append_unique(items: list[int], value: int) -> None:
-    if value not in items:
-        items.append(value)
+def _successor_key(node: dict[str, Any], port_id: str) -> str:
+    if node.get("type") == "router":
+        branch = next(
+            branch
+            for branch in node_argument(node, "branches", [])
+            if branch["id"] == port_id
+        )
+        return f"branch-{branch['name']}"
+    if node.get("type") == "foreach" and port_id == "loop-out":
+        return "item"
+    return "next"
+
+
+def _predecessor_key(node: dict[str, Any], port_id: str) -> str:
+    if node.get("type") == "foreach" and port_id == "loop-in":
+        return "continue"
+    return "last"
 
 
 def _append_output_endpoint(

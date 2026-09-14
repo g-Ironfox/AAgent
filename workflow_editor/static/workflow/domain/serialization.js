@@ -9,6 +9,52 @@ const initialConnections = [
   { id: 'control-input-output', fromId: 'input', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
 ];
 
+const NODE_BASE_FIELDS = new Set(['id', 'type', 'name', 'x', 'y', 'arguments']);
+const NODE_SHARED_FIELDS = new Set(['workflowPorts', 'dataInputPorts', 'input_ports', 'output_ports']);
+const NODE_ARGUMENT_FIELDS_BY_TYPE = {
+  input: new Set(),
+  output: new Set(),
+  router: new Set(['branches']),
+  construct_message: new Set(['role']),
+  construct_content: new Set(['append_items']),
+  construct_list: new Set(['item_type', 'initial_value_count']),
+  foreach: new Set(['item_type']),
+  llm: new Set(['model', 'prompt', 'think', 'tool_calls', 'tools']),
+  tool: new Set(['tool', 'parameters']),
+  tool_call: new Set(),
+  workflow: new Set(['workflow_name']),
+};
+const NODE_ARGUMENT_FIELDS = new Set(Object.values(NODE_ARGUMENT_FIELDS_BY_TYPE).flatMap((fields) => [...fields]));
+
+function hasStrictNodeFormat(node) {
+  const argumentsValue = node.arguments ?? {};
+  if (!argumentsValue || typeof argumentsValue !== 'object' || Array.isArray(argumentsValue)) return false;
+  if (Object.keys(node).some((key) => NODE_ARGUMENT_FIELDS.has(key))) return false;
+  if (Object.keys(argumentsValue).some((key) => NODE_SHARED_FIELDS.has(key))) return false;
+  if (Object.keys(argumentsValue).some((key) => !NODE_ARGUMENT_FIELDS_BY_TYPE[node.type]?.has(key))) return false;
+  return Object.keys(node).every((key) => NODE_BASE_FIELDS.has(key) || NODE_SHARED_FIELDS.has(key));
+}
+
+function expandNodeArguments(node) {
+  const argumentsValue = node?.arguments && typeof node.arguments === 'object' && !Array.isArray(node.arguments)
+    ? node.arguments
+    : {};
+  const expanded = { ...argumentsValue, ...node };
+  delete expanded.arguments;
+  return expanded;
+}
+
+function compactNodeArguments(node) {
+  const argumentsValue = Object.fromEntries(
+    Object.entries(node).filter(([key]) => NODE_ARGUMENT_FIELDS.has(key)),
+  );
+  return {
+    ...Object.fromEntries(Object.entries(node).filter(([key]) => NODE_BASE_FIELDS.has(key) && key !== 'arguments')),
+    ...Object.fromEntries(Object.entries(node).filter(([key]) => NODE_SHARED_FIELDS.has(key))),
+    arguments: argumentsValue,
+  };
+}
+
 export const state = {
   name: 'workflow',
   description: '',
@@ -44,7 +90,7 @@ export function workflowSnapshot() {
     input_ports: state.input_ports,
     output_ports: state.output_ports,
     workflow_nodes: state.workflow_nodes,
-    nodes: state.nodes,
+    nodes: state.nodes.map(compactNodeArguments),
     connections: state.connections,
   });
 }
@@ -62,18 +108,12 @@ export function resetWorkflow() {
 }
 
 function callableWorkflowMetadata(saved) {
-  const declarations = Array.isArray(saved?.workflow_nodes)
-    ? saved.workflow_nodes
-    : Array.isArray(saved?.callable_workflows)
-      ? saved.callable_workflows
-      : (Array.isArray(saved?.nodes) ? saved.nodes : []).filter((node) => node?.type === 'workflow');
+  const declarations = Array.isArray(saved?.workflow_nodes) ? saved.workflow_nodes : [];
   const names = new Set();
   return declarations.flatMap((workflow) => {
     const name = typeof workflow?.name === 'string' && workflow.name.trim()
       ? workflow.name.trim().slice(0, 120)
-      : typeof workflow?.workflow_name === 'string' && workflow.workflow_name.trim()
-        ? workflow.workflow_name.trim().slice(0, 120)
-        : typeof workflow?.workflow_id === 'string' ? workflow.workflow_id.trim().slice(0, 120) : '';
+      : '';
     const normalizedName = name.toLocaleLowerCase();
     if (!name || names.has(normalizedName)) return [];
     names.add(normalizedName);
@@ -86,6 +126,7 @@ function callableWorkflowMetadata(saved) {
 }
 
 function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
+  node = expandNodeArguments(node);
   const normalized = {
     id: node.id,
     type: node.type,
@@ -108,10 +149,9 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
   if (node.type === 'llm') {
     normalized.model = typeof node.model === 'string' ? node.model : 'gpt-5';
     normalized.prompt = typeof node.prompt === 'string' ? node.prompt.slice(0, 500) : '';
-    const legacyCount = Number.isInteger(node.contextCount) ? node.contextCount : Array.isArray(node.inputs) ? node.inputs.length : 1;
     const declaredCount = Array.isArray(node.dataInputPorts)
       ? node.dataInputPorts.filter((portId) => typeof portId === 'string' && /^(?:content|message)-in-\d+$/.test(portId)).length
-      : legacyCount;
+      : 1;
     normalized.dataInputPorts = Array.from({ length: Math.min(20, Math.max(1, declaredCount)) }, (_, index) => `message-in-${index}`);
     normalized.think = node.think === true;
     normalized.tool_calls = node.tool_calls === true;
@@ -139,7 +179,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
   if (node.type === 'workflow') {
     const workflowName = typeof node.workflow_name === 'string' && node.workflow_name.trim()
       ? node.workflow_name.trim().slice(0, 120)
-      : typeof node.workflow_id === 'string' ? node.workflow_id.trim().slice(0, 120) : '';
+      : '';
     if (!workflowName) return null;
     const declaration = callableWorkflows.get(workflowName);
     normalized.workflow_name = declaration?.name || workflowName;
@@ -160,12 +200,14 @@ export function loadSnapshot(saved, metadata = null) {
     const workflowNodes = callableWorkflowMetadata(saved);
     const callableWorkflows = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
     const ids = new Set();
-    const nodes = savedNodes.flatMap((node) => {
-      if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type)) return [];
+    const nodes = [];
+    for (const node of savedNodes) {
+      if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type) || !hasStrictNodeFormat(node)) return false;
       ids.add(node.id);
       const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows);
-      return normalized ? [normalized] : [];
-    });
+      if (!normalized) return false;
+      nodes.push(normalized);
+    }
     if (!nodes.some((node) => node.id === 'input' && node.type === 'input')) return false;
     if (!nodes.some((node) => node.type === 'output')) {
       const output = createNode('output', nodes, { output_ports: outputPorts.map(({ id, ...port }) => port) });

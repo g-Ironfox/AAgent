@@ -1,6 +1,7 @@
 import unittest
 
 from workflow_parser import parse_workflow
+from workflow_nodes import run_workflow_map
 from workflow_validator import WorkflowValidationError, validate_workflow
 
 
@@ -19,7 +20,7 @@ def callable_workflow_fixture() -> dict:
                 "id": "call-summary",
                 "type": "workflow",
                 "name": "Summary",
-                "workflow_name": "Summary",
+                "arguments": {"workflow_name": "Summary"},
                 "input_ports": [{"name": "query", "type": "content"}],
                 "output_ports": [{"name": "result", "type": "content"}],
             },
@@ -40,15 +41,110 @@ def callable_workflow_fixture() -> dict:
 
 
 class CallableWorkflowNodeTest(unittest.TestCase):
+    def test_parser_uses_named_control_flow_dictionaries(self):
+        workflow = {
+            "input_ports": [],
+            "output_ports": [],
+            "nodes": [
+                {"id": "input", "type": "input", "workflowPorts": []},
+                {
+                    "id": "router",
+                    "type": "router",
+                    "arguments": {
+                        "branches": [
+                            {"id": "route-yes", "name": "yes"},
+                            {"id": "route-no", "name": "no"},
+                        ],
+                    },
+                },
+                {"id": "foreach", "type": "foreach", "arguments": {"item_type": "content"}},
+                {"id": "output", "type": "output", "workflowPorts": []},
+            ],
+            "connections": [
+                {"fromId": "input", "fromPortId": "control-out", "toId": "router", "toPortId": "control-in", "type": "control"},
+                {"fromId": "router", "fromPortId": "route-yes", "toId": "foreach", "toPortId": "control-in", "type": "control"},
+                {"fromId": "router", "fromPortId": "route-no", "toId": "output", "toPortId": "control-in", "type": "control"},
+                {"fromId": "foreach", "fromPortId": "loop-out", "toId": "foreach", "toPortId": "loop-in", "type": "control"},
+                {"fromId": "foreach", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
+            ],
+        }
+
+        parsed = parse_workflow(workflow)
+
+        self.assertEqual(parsed[0]["successors"], {"next": 1})
+        self.assertEqual(parsed[1]["predecessors"], {"last": [0]})
+        self.assertEqual(
+            parsed[1]["successors"], {"branch-yes": 2, "branch-no": 3}
+        )
+        self.assertNotIn("branches", parsed[1])
+        self.assertEqual(
+            parsed[1]["arguments"]["branches"],
+            [
+                {"id": "route-yes", "name": "yes"},
+                {"id": "route-no", "name": "no"},
+            ],
+        )
+        self.assertEqual(
+            parsed[2]["predecessors"], {"last": [1], "continue": [2]}
+        )
+        self.assertEqual(parsed[2]["successors"], {"item": 2, "next": 3})
+        self.assertEqual(parsed[3]["predecessors"], {"last": [1, 2]})
+
+    def test_validator_rejects_duplicate_router_branch_names(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].insert(
+            1,
+            {
+                "id": "router",
+                "type": "router",
+                "arguments": {
+                    "branches": [
+                        {"id": "route-a", "name": "same"},
+                        {"id": "route-b", "name": "same"},
+                    ],
+                },
+            },
+        )
+
+        with self.assertRaisesRegex(WorkflowValidationError, "duplicate names"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_flattened_node_arguments(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][1]["workflow_name"] = "Summary"
+
+        with self.assertRaisesRegex(WorkflowValidationError, "must be inside arguments"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_shared_fields_inside_arguments(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][1]["arguments"]["input_ports"] = workflow["nodes"][1].pop("input_ports")
+
+        with self.assertRaisesRegex(WorkflowValidationError, "shared fields must be top-level"):
+            validate_workflow(workflow)
+
     def test_validator_and_parser_accept_callable_workflow_ports(self):
         workflow = callable_workflow_fixture()
 
         validate_workflow(workflow)
         parsed = parse_workflow(workflow)
 
-        self.assertEqual(parsed[1]["data_inputs"]["workflow:query"], [0, "workflow:query"])
+        self.assertEqual(
+            parsed[1]["data_inputs"]["workflow:query"],
+            [0, "workflow:query", None],
+        )
         self.assertEqual(parsed[1]["data_outputs"]["workflow:result"], [[2, "workflow:result"]])
-        self.assertEqual(parsed[1]["workflow_name"], "Summary")
+        self.assertEqual(parsed[1]["arguments"]["workflow_name"], "Summary")
+        self.assertEqual(
+            parsed[1]["input_ports"],
+            [{"name": "query", "type": "content"}],
+        )
+        self.assertEqual(
+            parsed[1]["output_ports"],
+            [{"name": "result", "type": "content"}],
+        )
+        self.assertNotIn("input_ports", parsed[1]["arguments"])
+        self.assertNotIn("output_ports", parsed[1]["arguments"])
         self.assertNotIn("workflow_id", parsed[1])
         self.assertEqual(
             parsed[0]["workflowPorts"],
@@ -65,7 +161,9 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
         validate_workflow(workflow)
         parsed = parse_workflow(workflow)
-        self.assertIsNone(parsed[1]["data_inputs"]["workflow:query"])
+        self.assertEqual(
+            parsed[1]["data_inputs"]["workflow:query"], [None, None, None]
+        )
 
     def test_parser_filters_connection_invalidated_by_metadata(self):
         workflow = callable_workflow_fixture()
@@ -149,6 +247,82 @@ class CallableWorkflowNodeTest(unittest.TestCase):
         workflow["connections"][3]["fromPortId"] = "workflow:query"
 
         validate_workflow(workflow)
+
+
+class WorkflowExecutionTest(unittest.TestCase):
+    def test_run_workflow_map_traverses_to_output(self):
+        workflow_map = [
+            {
+                "id": "input",
+                "type": "input",
+                "successors": {"next": 1},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+            {
+                "id": "content",
+                "type": "construct_content",
+                "arguments": {"append_items": [{"type": "fixed", "value": "done"}]},
+                "successors": {"next": 2},
+                "data_inputs": {},
+                "data_outputs": {"content-out": [[2, "workflow:result"]]},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [
+                    {"id": "workflow:result", "name": "result", "type": "content"}
+                ],
+                "successors": {},
+                "data_inputs": {"workflow:result": [1, "content-out", None]},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "done"})
+
+    def test_run_workflow_map_completes_foreach_in_one_call(self):
+        input_items = ["first", "second", "third"]
+        workflow_map = [
+            {
+                "id": "input",
+                "type": "input",
+                "successors": {"next": 1},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+            {
+                "id": "foreach",
+                "type": "foreach",
+                "successors": {"item": 2, "next": 3},
+                "data_inputs": {"list-in": [0, "list-out", input_items]},
+                "data_outputs": {"item-out": [[2, "content-in"]]},
+            },
+            {
+                "id": "body",
+                "type": "construct_message",
+                "successors": {"next": 1},
+                "data_inputs": {"content-in": [1, "item-out", None]},
+                "data_outputs": {"message-out": []},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_workflow_map(workflow_map, 0), {})
+        self.assertEqual(
+            workflow_map[2]["data_inputs"]["content-in"],
+            [1, "item-out", "third"],
+        )
+        self.assertEqual(len(workflow_map[2]["data_inputs"]["content-in"]), 3)
+        self.assertEqual(input_items, ["first", "second", "third"])
+        self.assertNotIn("_foreach_items", workflow_map[1])
 
 
 if __name__ == "__main__":
