@@ -19,6 +19,8 @@ docs/
 ├── 10-文档中心的信息处理.md ← MongoDB 双文档集合、召回路径、Skills 与 Pin 的关系
 ├── 13-Workflow解析器.md    ← MongoDB Workflow 到索引链表的解析规则
 ├── 15-Workflow配色规范.md  ← Workflow 节点职责、数据类型与交互状态配色
+├── 17-Tool Server设计.md   ← 分布式工具注册、调用、任务状态与回调协议
+├── 18-Tool Server内核实现.md ← Provider 并发、Redis 等待、状态原子性与回调投递
 ├── webUI/                ← WebUI 设计、优化记录、前端 API 格式
 ├── 审查日志/             ← 审查报告、问题清单
 └── README.md
@@ -32,6 +34,7 @@ docs/
 | 修改业务代码 | 03 → 对应源码；格式约定（事件/上下文/工具）见 06 |
 | 启动和维护项目 | 根目录 README → 04 |
 | 了解 WebUI | [08-终端设计](08-终端设计.md) → [13-Workflow解析器](13-Workflow解析器.md) → [15-Workflow配色规范](15-Workflow配色规范.md) → [webUI/前端优化记录](webUI/前端优化记录.md) → [webUI/前端事件流设计](webUI/前端事件流设计.md) → [webUI/前端API格式](webUI/前端API格式.md) |
+| 设计分布式工具服务 | [17-Tool Server设计](17-Tool Server设计.md) → [18-Tool Server内核实现](18-Tool Server内核实现.md) |
 | 安排未来开发 | 05 |
 | 优化同步架构性能 | 00 → 07 → [09-同步架构加速](09-同步架构加速.md) |
 

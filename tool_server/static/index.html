@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent Tool Server</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/tool-server.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent Tool Server">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>TOOL SERVER</small></span>
+    </a>
+    <div class="top-actions">
+      <span id="connectionState" class="connection-state checking"><i></i><span>连接中</span></span>
+      <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><input id="searchInput" type="search" placeholder="搜索工具、Provider 或任务"></label>
+      <div class="sync-meta topbar-sync">
+        <span>最后同步</span>
+        <strong id="lastRefresh">同步中</strong>
+        <small id="refreshState">自动刷新已开启</small>
+      </div>
+      <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="interval"><option value="500">0.5s</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
+      <button id="pauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新"><span class="pause-icon" aria-hidden="true"></span></button>
+      <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg></button>
+    </div>
+  </header>
+
+  <main>
+    <section class="summary" aria-label="服务概览">
+      <div><span>在线 Provider</span><strong id="providerCount">--</strong><small>WebSocket 连接</small></div>
+      <div><span>可用工具</span><strong id="toolCount">--</strong><small>当前注册表</small></div>
+      <div><span>执行中</span><strong id="workingCount">--</strong><small>最近任务窗口</small></div>
+      <div><span>异常任务</span><strong id="failedCount">--</strong><small>失败与取消</small></div>
+    </section>
+
+    <div id="notice" class="notice" role="alert" hidden></div>
+
+    <section class="workspace">
+      <aside class="provider-pane" aria-labelledby="providerTitle">
+        <header class="pane-head"><div><p>CONNECTIONS</p><h1 id="providerTitle">Provider</h1></div><span id="providerBadge" class="count-badge">0</span></header>
+        <div id="providerList" class="provider-list"></div>
+      </aside>
+
+      <section class="tool-pane" aria-labelledby="toolTitle">
+        <header class="pane-head"><div><p>REGISTRY</p><h2 id="toolTitle">工具目录</h2></div><span id="toolBadge" class="count-badge">0</span></header>
+        <div class="tool-columns" aria-hidden="true"><span>工具</span><span>Provider</span><span>Revision</span><span></span></div>
+        <div id="toolList" class="tool-list"></div>
+      </section>
+
+      <section class="task-pane" aria-labelledby="taskTitle">
+        <header class="pane-head"><div><p>RECENT ACTIVITY</p><h2 id="taskTitle">任务流水</h2></div><span id="taskBadge" class="count-badge">0</span></header>
+        <div class="task-filters" role="group" aria-label="任务状态筛选">
+          <button class="active" type="button" data-status="all">全部</button>
+          <button type="button" data-status="working">执行中</button>
+          <button type="button" data-status="completed">完成</button>
+          <button type="button" data-status="failed">异常</button>
+        </div>
+        <div id="taskList" class="task-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="invokeDialog">
+    <form id="invokeForm" method="dialog">
+      <header><div><p>INVOKE TOOL</p><h2 id="invokeTitle">调用工具</h2></div><button class="dialog-close" type="button" data-close="invokeDialog" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></header>
+      <div class="dialog-body">
+        <label>参数 JSON<textarea id="argumentsInput" rows="12" spellcheck="false"></textarea></label>
+        <div class="form-row">
+          <label>调用模式<select id="modeInput"><option value="async">异步返回</option><option value="wait">阻塞等待</option></select></label>
+          <label>等待上限 (ms)<input id="timeoutInput" type="number" min="1" max="30000" value="30000"></label>
+        </div>
+        <label class="check-row"><input id="callbackInput" type="checkbox"><span>完成后回调到 main_agent_queue</span></label>
+        <p id="invokeError" class="form-error" hidden></p>
+      </div>
+      <footer><button class="secondary" type="button" data-close="invokeDialog">取消</button><button class="primary" type="submit"><svg viewBox="0 0 24 24"><path d="m5 12 14-7-4 14-3-6-7-1Z"></path></svg>派发任务</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="taskDialog">
+    <div class="task-detail">
+      <header><div><p>TASK INSPECTOR</p><h2 id="detailTitle">任务详情</h2></div><button class="dialog-close" type="button" data-close="taskDialog" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></header>
+      <div id="taskDetailBody" class="dialog-body"></div>
+      <footer><button id="cancelTaskButton" class="danger" type="button">取消任务</button><button class="secondary" type="button" data-close="taskDialog">关闭</button></footer>
+    </div>
+  </dialog>
+
+  <template id="emptyTemplate"><div class="empty"><span>暂无数据</span><small>等待 Provider 注册或任务创建</small></div></template>
+  <script type="module" src="/console.js"></script>
+</body>
+</html>

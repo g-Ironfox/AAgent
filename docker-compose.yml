@@ -127,6 +127,47 @@ services:
     networks:
       - aagent_net
 
+  tool_server:
+    build: ./tool_server
+    container_name: tool_server_aagent
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      TOOL_CALLBACK_QUEUES: ${TOOL_CALLBACK_QUEUES:-main_agent_queue}
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8083/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aagent_net
+
+  tool_provider:
+    build: ./tool_provider
+    container_name: tool_provider_aagent
+    restart: unless-stopped
+    depends_on:
+      tool_server:
+        condition: service_healthy
+    environment:
+      TOOL_SERVER_WS_URL: ws://tool_server:8083/ws/providers
+      TOOL_PROVIDER_ID: ${TOOL_PROVIDER_ID:-provider-default-01}
+      TOOL_PROVIDER_REVISION: ${TOOL_PROVIDER_REVISION:-1}
+      TOOL_PROVIDER_CONSUMERS: ${TOOL_PROVIDER_CONSUMERS:-1}
+      TOOL_PROVIDER_QUEUE_SIZE: ${TOOL_PROVIDER_QUEUE_SIZE:-128}
+      TOOL_PROVIDER_HEARTBEAT_SECONDS: ${TOOL_PROVIDER_HEARTBEAT_SECONDS:-20}
+      TOOL_MODULES: ${TOOL_MODULES:-tools.echo}
+    networks:
+      - aagent_net
+
   redis:
     image: redis:7-alpine
     container_name: redis_aagent

@@ -57,6 +57,20 @@ services:
       mongodb:
         condition: service_started
 
+  tool_server:
+    volumes:
+      - ./tool_server:/app
+    depends_on:
+      redis:
+        condition: service_started
+
+  tool_provider:
+    volumes:
+      - ./tool_provider:/app
+    depends_on:
+      tool_server:
+        condition: service_started
+
   redis:
     ports:
       - "6379:6379"
