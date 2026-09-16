@@ -12,9 +12,6 @@ from workflow_parser import _read_workflow,parse_workflow
 from workflow_validator import validate_workflow
 from workflow_nodes import propagate_workflow_output, run_workflow_map
 
-import tools.qq
-import tools.bilibili
-
 from history_repository import record_history,get_recent_history
 from queue_client import (
     MAIN_AGENT_QUEUE_NAME,

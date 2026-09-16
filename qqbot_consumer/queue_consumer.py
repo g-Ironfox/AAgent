@@ -35,7 +35,7 @@ def send_group_message(group_id,message):
         "payload":{
             "subagent_name":"qqbot",
             "callback_queue_name":QQ_AGENT_QUEUE_NAME,
-            "tool_name":"qq_send_group_msg",
+            "tool_name":"qq.send_group_msg",
             "tool_arguments":{"group_id":group_id,"message":message}
         }
     }

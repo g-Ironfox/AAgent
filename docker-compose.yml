@@ -157,6 +157,8 @@ services:
     depends_on:
       tool_server:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       TOOL_SERVER_WS_URL: ws://tool_server:8083/ws/providers
       TOOL_PROVIDER_ID: ${TOOL_PROVIDER_ID:-provider-default-01}
@@ -164,7 +166,7 @@ services:
       TOOL_PROVIDER_CONSUMERS: ${TOOL_PROVIDER_CONSUMERS:-1}
       TOOL_PROVIDER_QUEUE_SIZE: ${TOOL_PROVIDER_QUEUE_SIZE:-128}
       TOOL_PROVIDER_HEARTBEAT_SECONDS: ${TOOL_PROVIDER_HEARTBEAT_SECONDS:-20}
-      TOOL_MODULES: ${TOOL_MODULES:-tools.echo}
+      TOOL_MODULES: ${TOOL_MODULES:-tools.echo,tools.qq,tools.bilibili}
     networks:
       - aagent_net
 
