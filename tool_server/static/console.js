@@ -12,8 +12,8 @@ const elements = Object.fromEntries([
   "connectionState", "searchInput", "lastRefresh", "refreshState", "interval", "pauseButton", "refreshButton", "providerCount", "toolCount",
   "workingCount", "failedCount", "notice", "providerBadge", "providerList", "toolBadge",
   "toolList", "taskBadge", "taskList", "invokeDialog", "invokeForm", "invokeTitle", "argumentsInput",
-  "modeInput", "timeoutInput", "callbackInput", "invokeError", "taskDialog", "detailTitle", "taskDetailBody",
-  "cancelTaskButton",
+  "modeInput", "timeoutInput", "callbackInput", "callbackOptions", "callbackQueueInput", "callbackEventTypeInput",
+  "callbackWorkingInput", "callbackCompletedInput", "callbackFailedInput", "callbackContextInput", "invokeError", "taskDialog", "detailTitle", "taskDetailBody",
 ].map((id) => [id, document.getElementById(id)]));
 
 const statusNames = {
@@ -21,7 +21,6 @@ const statusNames = {
   working: "执行中",
   completed: "已完成",
   failed: "失败",
-  cancelled: "已取消",
 };
 
 async function request(path, options = {}) {
@@ -83,7 +82,7 @@ function renderSummary() {
   elements.providerCount.textContent = summary.providers;
   elements.toolCount.textContent = summary.tools;
   elements.workingCount.textContent = summary.statuses.working;
-  elements.failedCount.textContent = summary.statuses.failed + summary.statuses.cancelled;
+  elements.failedCount.textContent = summary.statuses.failed;
   elements.lastRefresh.textContent = formatTime(state.data.fetched_at);
   elements.lastRefresh.classList.remove("sync-error");
 }
@@ -122,7 +121,7 @@ function renderTools() {
 
 function visibleTasks() {
   return state.data.tasks.filter((task) => {
-    const statusMatch = state.status === "all" || task.status === state.status || (state.status === "failed" && task.status === "cancelled");
+    const statusMatch = state.status === "all" || task.status === state.status;
     return statusMatch && includesQuery(task.task_id, task.tool, task.provider_id, task.status);
   });
 }
@@ -174,13 +173,20 @@ function openInvoke(tool) {
   state.selectedTool = tool;
   elements.invokeTitle.textContent = tool.name;
   elements.argumentsInput.value = JSON.stringify(schemaExample(tool.inputSchema), null, 2);
+  elements.callbackInput.checked = false;
+  elements.callbackOptions.hidden = true;
+  elements.callbackQueueInput.value = "main_agent_queue";
+  elements.callbackEventTypeInput.value = "async_result";
+  elements.callbackWorkingInput.checked = true;
+  elements.callbackCompletedInput.checked = true;
+  elements.callbackFailedInput.checked = true;
+  elements.callbackContextInput.value = "{}";
   elements.invokeError.hidden = true;
   elements.invokeDialog.showModal();
 }
 
 function renderTaskDetail(task) {
   elements.detailTitle.textContent = task.tool;
-  elements.cancelTaskButton.hidden = !["pending", "working"].includes(task.status);
   const details = [
     ["task_id", task.task_id], ["status", statusNames[task.status] || task.status], ["provider", task.provider_id || "未派发"],
     ["created_at", formatTime(task.created_at, true)], ["updated_at", formatTime(task.updated_at, true)],
@@ -209,7 +215,26 @@ elements.invokeForm.addEventListener("submit", async (event) => {
   elements.invokeError.hidden = true;
   try {
     const argumentsValue = JSON.parse(elements.argumentsInput.value);
-    const callback = elements.callbackInput.checked ? { type: "redis", queue: "main_agent_queue", event_type: "async_result" } : null;
+    let callback = null;
+    if (elements.callbackInput.checked) {
+      const context = JSON.parse(elements.callbackContextInput.value);
+      if (!context || Array.isArray(context) || typeof context !== "object") {
+        throw new Error("回调 context 必须是 JSON 对象。");
+      }
+      const on = [
+        elements.callbackWorkingInput,
+        elements.callbackCompletedInput,
+        elements.callbackFailedInput,
+      ].filter((input) => input.checked).map((input) => input.value);
+      if (!on.length) throw new Error("至少选择一个回调终态。");
+      callback = {
+        type: "redis",
+        queue: elements.callbackQueueInput.value.trim(),
+        event_type: elements.callbackEventTypeInput.value.trim(),
+        on,
+        context,
+      };
+    }
     const task = await request(`/api/tools/${encodeURIComponent(state.selectedTool.name)}/calls`, {
       method: "POST",
       body: JSON.stringify({ arguments: argumentsValue, mode: elements.modeInput.value, timeout_ms: Number(elements.timeoutInput.value), callback }),
@@ -223,15 +248,8 @@ elements.invokeForm.addEventListener("submit", async (event) => {
   }
 });
 
-elements.cancelTaskButton.addEventListener("click", async () => {
-  if (!state.selectedTaskId) return;
-  try {
-    const task = await request(`/api/tasks/${state.selectedTaskId}/cancel`, { method: "POST" });
-    renderTaskDetail(task);
-    await refresh();
-  } catch (error) {
-    showNotice(`取消任务失败：${error.message}`);
-  }
+elements.callbackInput.addEventListener("change", () => {
+  elements.callbackOptions.hidden = !elements.callbackInput.checked;
 });
 
 document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => document.getElementById(button.dataset.close).close()));

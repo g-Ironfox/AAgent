@@ -33,7 +33,6 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "foreach": {"item_type"},
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
     "tool": {"tool", "parameters"},
-    "tool_call": set(),
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
@@ -47,6 +46,8 @@ def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
 def node_format_error(node: dict[str, Any], index: int) -> str | None:
     node_type = node.get("type")
     arguments = node.get("arguments", {})
+    if node_type not in NODE_ARGUMENT_FIELDS_BY_TYPE:
+        return f"nodes[{index}].type 不受支持: {node_type}"
     if not isinstance(arguments, dict):
         return f"nodes[{index}].arguments 必须是对象"
     misplaced_arguments = NODE_ARGUMENT_FIELDS.intersection(node)
@@ -204,8 +205,6 @@ def filter_invalid_connections(
                 return "content"
             if node_type in {"llm", "tool"} and from_port == "output":
                 return "content"
-            if node_type == "tool_call" and from_port in {"tool_call_id", "result"}:
-                return "content"
             if node_type == "llm" and from_port == "reasoning" and node_arguments(source).get("think") is True:
                 return "content"
             if node_type == "llm" and from_port == "tool_calls" and node_arguments(source).get("tool_calls") is True:
@@ -229,8 +228,6 @@ def filter_invalid_connections(
             if node_type in {"construct_content", "router"} and to_port in target.get("dataInputPorts", ["content-in"]):
                 return "content"
             if node_type == "tool" and to_port in node_arguments(target).get("parameters", []):
-                return "content"
-            if node_type == "tool_call" and to_port == "tool_call":
                 return "content"
             if node_type == "construct_list" and to_port in target.get("dataInputPorts", []):
                 return node_arguments(target).get("item_type")
@@ -606,7 +603,7 @@ def create_workflows_router(
 
         valid_node_types = {
             "input", "output", "router", "construct_message", "construct_content", "construct_list",
-            "foreach", "llm", "tool", "tool_call", "workflow",
+            "foreach", "llm", "tool", "workflow",
         }
         if any(node.get("type") not in valid_node_types for node in payload.nodes):
             return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})

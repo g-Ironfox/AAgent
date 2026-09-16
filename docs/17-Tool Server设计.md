@@ -154,7 +154,6 @@ GET  /api/tools
 GET  /api/tools/{tool_name}
 POST /api/tools/{tool_name}/calls
 GET  /api/tasks/{task_id}
-POST /api/tasks/{task_id}/cancel
 ```
 
 统一调用请求：
@@ -168,17 +167,31 @@ POST /api/tasks/{task_id}/cancel
   "callback": {
     "type": "redis",
     "queue": "main_agent_queue",
-    "event_type": "async_result"
+    "event_type": "async_result",
+    "on": ["working", "completed", "failed"],
+    "context": {
+      "workflow_id": "wf-123",
+      "node_id": "search-2",
+      "request_id": "req-456"
+    }
   }
 }
 ```
+
+`callback` 的扩展字段：
+
+- `queue` 是调用方直接指定的 Redis List key。Tool Server 只负责向该 key 投递 JSON 事件；调用方自行保证目标 key 的权限和消费方存在；
+- `event_type` 是回调事件类型，由服务端允许集合控制，不能使用空字符串或未注册类型；
+- `on` 是触发状态列表，可选值为 `working`、`completed`、`failed`，分别表示状态更新、成功完成和执行失败，默认全部状态；
+- `context` 是调用方附带的业务关联数据，例如 Workflow、节点、会话或请求 ID。它会原样放入回调 payload，但受大小、嵌套深度和字段名限制；
+- `context` 不能覆盖 `task_id`、`tool`、`status`、`result`、`error` 等由 Tool Server 生成的事实字段。
 
 ### 6.1 阻塞等待
 
 `mode: "wait"` 时，HTTP 请求等待任务完成：
 
 - 在 `timeout_ms` 内完成：返回 `200` 和最终任务；
-- 等待超时但任务仍在执行：返回 `202` 和 `task_id`，任务不会取消；
+- 等待超时但任务仍在执行：返回 `202` 和 `task_id`，任务继续执行；
 - `timeout_ms` 必须设置上限，避免长期占用 HTTP 连接。
 
 阻塞等待只依赖统一任务状态，不直接等待某一条 WebSocket 消息。Provider 的状态和结果上报会推进任务状态并唤醒请求；具体等待与唤醒机制见 [18-Tool Server内核实现](18-Tool Server内核实现.md)。
@@ -189,7 +202,7 @@ POST /api/tasks/{task_id}/cancel
 
 ### 6.3 Queue 回调
 
-Queue 回调仍使用 `mode: "async"`，只是额外提供 `callback`。任务进入终态后，Tool Server 向指定队列发布一次事件：
+Queue 回调仍使用 `mode: "async"`，只是额外提供 `callback`。任务进入或更新为 `callback.on` 指定的状态后，Tool Server 向 `callback.queue` 发布一次事件：
 
 ```json
 {
@@ -198,13 +211,20 @@ Queue 回调仍使用 `mode: "async"`，只是额外提供 `callback`。任务�
     "task_id": "01J...",
     "tool": "web.search",
     "status": "completed",
+    "progress": null,
+    "message": null,
     "result": [{ "title": "Model Context Protocol" }],
-    "error": null
+    "error": null,
+    "context": {
+      "workflow_id": "wf-123",
+      "node_id": "search-2",
+      "request_id": "req-456"
+    }
   }
 }
 ```
 
-对 AAgent 的回调只能进入统一事件队列，由单 worker 记录和处理。Tool Server 不直接写入 AAgent 历史，也不直接恢复或执行 Workflow。
+调用方可以将回调投递到任意自己管理的 Redis List；对 AAgent 的回调仍应进入统一事件队列，由单 worker 记录和处理。Tool Server 不直接写入 AAgent 历史，也不直接恢复或执行 Workflow。
 
 ## 7. 任务模型
 
@@ -233,9 +253,8 @@ Queue 回调仍使用 `mode: "async"`，只是额外提供 `callback`。任务�
 | `working` | 已派发，Provider 正在执行 |
 | `completed` | 成功完成，结果不可再修改 |
 | `failed` | 执行失败或超时，错误不可再修改 |
-| `cancelled` | 已取消，属于终态 |
 
-任务终态必须不可变。取消采用协作式语义：Server 接受取消请求后通知 Provider，但 Provider 可能已经完成，因此状态更新必须通过原子条件写入解决竞态。
+任务终态必须不可变。迟到的 Provider 状态消息不能覆盖 `completed` 或 `failed`。
 
 ## 8. 可靠性语义
 
@@ -254,7 +273,7 @@ Queue 回调仍使用 `mode: "async"`，只是额外提供 `callback`。任务�
 - 注册时校验 Schema 的大小、深度和 `$ref`，默认禁止远程 `$ref`；
 - 校验调用参数和结构化输出；
 - 限制参数、结果、消息体和并发任务大小；
-- callback queue 使用服务端白名单，禁止调用方写入任意 Redis Key；
+- callback queue 允许调用方直接指定 Redis Key；Tool Server 只执行受控的 JSON 事件投递，不执行任意 Redis 命令，并限制 key 格式、消息大小和 `event_type`；
 - 记录调用方、工具、Provider、耗时、状态和错误用于审计。
 
 ## 10. MCP 兼容策略

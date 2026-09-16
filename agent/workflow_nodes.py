@@ -198,43 +198,6 @@ def workflow_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
-def workflow_tool_call(current_id: int, workflow_map: WorkflowMap) -> int:
-    from tools.tool import execute_tool
-
-    node = workflow_map[current_id]
-    has_tool_call, raw_tool_call = read_workflow_input(node, "tool_call")
-    if not has_tool_call:
-        raise ValueError(f"tool_call input is missing: node {node.get('id')}")
-    if not isinstance(raw_tool_call, str):
-        raise ValueError(f"tool_call input must be a string: node {node.get('id')}")
-
-    tool_call = json.loads(raw_tool_call)
-    if not isinstance(tool_call, dict):
-        raise ValueError(f"tool_call input must be a JSON object: node {node.get('id')}")
-    tool_call_id = tool_call.get("id")
-    function = tool_call.get("function")
-    if not isinstance(tool_call_id, str) or not isinstance(function, dict):
-        raise ValueError(f"tool_call input must use OpenAI format: node {node.get('id')}")
-    tool_name = function.get("name")
-    raw_arguments = function.get("arguments")
-    if not isinstance(tool_name, str) or not isinstance(raw_arguments, str):
-        raise ValueError(f"tool_call function is invalid: node {node.get('id')}")
-
-    try:
-        arguments = json.loads(raw_arguments)
-        if not isinstance(arguments, dict):
-            raise ValueError("tool arguments must be a JSON object")
-        result = execute_tool(tool_call_id, tool_name, arguments)
-    except (json.JSONDecodeError, TypeError, ValueError) as error:
-        result = f"Error: tool arguments JSON parse failed: {error}"
-    except Exception as error:
-        result = f"Error: {error}"
-
-    propagate_workflow_output(workflow_map, node, "tool_call_id", tool_call_id)
-    propagate_workflow_output(workflow_map, node, "result", result)
-    return next_successor(node)
-
-
 def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
     from workflow_parser import _read_workflow, parse_workflow
     from workflow_validator import validate_workflow
@@ -296,6 +259,5 @@ nodes_map: dict[str, NodeHandler] = {
     "foreach": workflow_foreach,
     "llm": workflow_llm,
     "tool": workflow_tool,
-    "tool_call": workflow_tool_call,
     "workflow": workflow_workflow,
 }

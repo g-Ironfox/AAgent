@@ -6,7 +6,7 @@ from typing import Any
 from redis.asyncio import Redis
 
 
-TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+TERMINAL_STATUSES = {"completed", "failed"}
 
 TRANSITION_SCRIPT = """
 local raw = redis.call('GET', KEYS[1])
@@ -15,7 +15,7 @@ if not raw then
 end
 
 local task = cjson.decode(raw)
-if task.status == 'completed' or task.status == 'failed' or task.status == 'cancelled' then
+if task.status == 'completed' or task.status == 'failed' then
   return {0, 'terminal'}
 end
 

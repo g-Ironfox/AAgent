@@ -29,11 +29,12 @@ settings = Settings.from_env()
 redis = Redis.from_url(settings.redis_url, decode_responses=True)
 store = TaskStore(redis, settings.task_ttl_seconds)
 registry = ProviderRegistry()
+CALLBACK_STATUSES = {"working", "completed", "failed"}
 
 
 def callback_event(task: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any] | None:
     callback = task.get("callback")
-    if not callback:
+    if not callback or patch["status"] not in callback.get("on", CALLBACK_STATUSES):
         return None
     return {
         "queue": callback["queue"],
@@ -45,6 +46,9 @@ def callback_event(task: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any
                 "status": patch["status"],
                 "result": patch.get("result"),
                 "error": patch.get("error"),
+                "progress": patch.get("progress"),
+                "message": patch.get("message"),
+                "context": callback.get("context", {}),
             },
         },
     }
@@ -76,7 +80,8 @@ async def handle_provider_event(connection: ProviderConnection, event: ProviderE
         raise ValueError("task does not belong to provider")
 
     if event.type == "accepted":
-        await store.transition(event.task_id, {"pending"}, {"status": "working"})
+        patch = {"status": "working"}
+        await store.transition(event.task_id, {"pending"}, patch, callback_event(task, patch))
     elif event.type == "rejected":
         await store.transition(
             event.task_id,
@@ -86,11 +91,8 @@ async def handle_provider_event(connection: ProviderConnection, event: ProviderE
     elif event.type == "status":
         if event.status != "working":
             raise ValueError("provider status must be working")
-        await store.transition(
-            event.task_id,
-            {"working"},
-            {"status": "working", "progress": event.progress, "message": event.message},
-        )
+        patch = {"status": "working", "progress": event.progress, "message": event.message}
+        await store.transition(event.task_id, {"working"}, patch, callback_event(task, patch))
     elif event.type == "result":
         if event.success is None:
             raise ValueError("result.success is required")
@@ -179,7 +181,7 @@ async def overview(limit: int = 100):
         registry.list_tools(),
         store.list_recent(bounded_limit),
     )
-    status_counts = {status: 0 for status in ["pending", "working", "completed", "failed", "cancelled"]}
+    status_counts = {status: 0 for status in ["pending", "working", "completed", "failed"]}
     for task in tasks:
         if task["status"] in status_counts:
             status_counts[task["status"]] += 1
@@ -210,8 +212,8 @@ async def call_tool(tool_name: str, request: ToolCallRequest):
     tool = await registry.get_tool(tool_name)
     if tool is None:
         raise HTTPException(status_code=503, detail="tool provider is unavailable")
-    if request.callback and request.callback.queue not in settings.callback_queues:
-        raise HTTPException(status_code=400, detail="callback queue is not allowed")
+    if request.callback and request.callback.event_type not in settings.callback_event_types:
+        raise HTTPException(status_code=400, detail="callback event type is not allowed")
     try:
         Draft202012Validator.check_schema(tool.inputSchema)
         Draft202012Validator(tool.inputSchema).validate(request.arguments)
@@ -283,23 +285,6 @@ async def get_task(task_id: str):
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
     return task
-
-
-@app.post("/api/tasks/{task_id}/cancel")
-async def cancel_task(task_id: str):
-    task = await store.get(task_id)
-    if task is None:
-        raise HTTPException(status_code=404, detail="task not found")
-    changed, result = await store.transition(
-        task_id,
-        {"pending", "working"},
-        {"status": "cancelled", "error": {"code": "cancelled", "message": "cancelled by caller"}},
-        callback_event(task, {"status": "cancelled", "error": {"code": "cancelled", "message": "cancelled by caller"}}),
-    )
-    if changed and task.get("provider_id"):
-        await registry.send(task["tool"], {"type": "cancel", "task_id": task_id})
-    current = result if changed else await store.get(task_id)
-    return current
 
 
 @app.websocket("/ws/providers")

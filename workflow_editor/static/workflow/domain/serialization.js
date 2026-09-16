@@ -21,7 +21,6 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   foreach: new Set(['item_type']),
   llm: new Set(['model', 'prompt', 'think', 'tool_calls', 'tools']),
   tool: new Set(['tool', 'parameters']),
-  tool_call: new Set(),
   workflow: new Set(['workflow_name']),
 };
 const NODE_ARGUMENT_FIELDS = new Set(Object.values(NODE_ARGUMENT_FIELDS_BY_TYPE).flatMap((fields) => [...fields]));

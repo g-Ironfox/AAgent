@@ -139,7 +139,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
-      TOOL_CALLBACK_QUEUES: ${TOOL_CALLBACK_QUEUES:-main_agent_queue}
+      TOOL_CALLBACK_EVENT_TYPES: ${TOOL_CALLBACK_EVENT_TYPES:-async_result}
     ports:
       - "8083:8083"
     healthcheck:

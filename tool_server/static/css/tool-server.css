@@ -58,7 +58,7 @@ svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2; s
 .status-dot.pending { background:var(--blue); }
 .status-dot.working { background:var(--amber); }
 .status-dot.completed { background:var(--green); }
-.status-dot.failed,.status-dot.cancelled { background:var(--red); }
+.status-dot.failed { background:var(--red); }
 .task-name { min-width:0; }
 .task-name strong,.task-name small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .task-name strong { font:700 10px Consolas,monospace; }
@@ -67,7 +67,7 @@ svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2; s
 .status-label.pending { color:var(--blue); background:var(--blue-soft); }
 .status-label.working { color:#8a610d; background:var(--amber-soft); }
 .status-label.completed { color:var(--green); background:var(--green-soft); }
-.status-label.failed,.status-label.cancelled { color:var(--red); background:#fff0ee; }
+.status-label.failed { color:var(--red); background:#fff0ee; }
 .task-time { justify-self:end; color:var(--muted); font:8px Consolas,monospace; }
 .empty { min-height:150px; padding:22px; display:grid; place-content:center; gap:5px; color:var(--muted); text-align:center; }
 .empty span { font:700 16px Georgia,"Microsoft YaHei",serif; }
@@ -90,6 +90,12 @@ dialog header h2 { margin:0; font:700 20px Georgia,"Microsoft YaHei",serif; lett
 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .dialog-body .check-row { display:flex; align-items:center; gap:8px; }
 .check-row input { width:15px; height:15px; accent-color:var(--green); }
+.callback-options { display:grid; gap:14px; padding:14px; border:1px solid var(--line); background:#fafbf9; }
+.callback-options[hidden] { display:none; }
+.callback-statuses { margin:0; padding:10px 12px; display:flex; flex-wrap:wrap; gap:14px; border:1px solid var(--line); }
+.callback-statuses legend { padding:0 5px; color:var(--muted); font-size:10px; }
+.callback-statuses .check-row { margin:0; }
+.callback-options textarea { min-height:78px; }
 .form-error { min-height:14px; margin:0; color:var(--red); font-size:10px; }
 .field-help { margin:-8px 0 0; color:var(--muted); font-size:9px; }
 dialog footer { min-height:62px; padding:12px 18px; display:flex; align-items:center; justify-content:flex-end; gap:8px; border-top:1px solid var(--line); background:#fafbf9; }

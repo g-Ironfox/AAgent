@@ -12,7 +12,7 @@ class Settings:
     task_ttl_seconds: int = 86400
     max_wait_ms: int = 30000
     dispatch_timeout_seconds: float = 5.0
-    callback_queues: tuple[str, ...] = ("main_agent_queue",)
+    callback_event_types: tuple[str, ...] = ("async_result",)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -24,15 +24,15 @@ class Settings:
             password = os.getenv("REDIS_PASSWORD")
             credentials = f":{password}@" if password else ""
             redis_url = f"redis://{credentials}{host}:{port}/{database}"
-        queues = tuple(
-            queue.strip()
-            for queue in env("TOOL_CALLBACK_QUEUES", "main_agent_queue").split(",")
-            if queue.strip()
+        event_types = tuple(
+            event_type.strip()
+            for event_type in env("TOOL_CALLBACK_EVENT_TYPES", "async_result").split(",")
+            if event_type.strip()
         )
         return cls(
             redis_url=redis_url,
             task_ttl_seconds=int(env("TOOL_TASK_TTL_SECONDS", "86400")),
             max_wait_ms=int(env("TOOL_MAX_WAIT_MS", "30000")),
             dispatch_timeout_seconds=float(env("TOOL_DISPATCH_TIMEOUT_SECONDS", "5")),
-            callback_queues=queues,
+            callback_event_types=event_types,
         )

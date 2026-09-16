@@ -10,7 +10,6 @@ export const NODE_TYPES = new Set([
   'foreach',
   'llm',
   'tool',
-  'tool_call',
   'workflow',
 ]);
 
@@ -109,15 +108,6 @@ export function portsForNode(node) {
       { id: 'output', direction: 'output', type: 'content', label: '结果', title: '工具执行结果', multiple: true },
     ];
   }
-  if (node.type === 'tool_call') {
-    return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-      { id: 'tool_call', direction: 'input', type: 'content', label: 'Tool Call', title: 'OpenAI 格式的 tool_call JSON', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'tool_call_id', direction: 'output', type: 'content', label: 'Call ID', title: 'Tool call ID', multiple: true },
-      { id: 'result', direction: 'output', type: 'content', label: '结果', title: '工具执行结果', multiple: true },
-    ];
-  }
   if (node.type === 'workflow') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '调用 Workflow', multiple: false },
@@ -169,7 +159,6 @@ export function createNode(type, nodes, configuration = null) {
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
   if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, ...position };
-  if (type === 'tool_call') return { id: createWorkflowId('tool-call'), type, name: `Tool Call ${number}`, ...position };
   if (type === 'tool') return { id: createWorkflowId('tool'), type, name: `Tool ${number}`, tool: '', parameters: [], ...position };
   if (type === 'workflow' && configuration) {
     return {

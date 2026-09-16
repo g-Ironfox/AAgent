@@ -56,7 +56,7 @@ Provider 使用固定数量的 Consumer 控制并发，每个 Consumer 同时执
 - 每个 Task 固有一个带 TTL 的独立 List，保存状态变化唤醒信号；
 - 独立 Outbox 保存尚未成功发布的 callback。
 
-Tool Server 先持久化 `pending` 任务，再发送 `invoke`。收到 `accepted` 后将任务更新为 `working`。`accepted`、`rejected`、`status` 和 `result` 都按 `task_id` 幂等处理，终态写入使用条件更新，避免取消与完成相互覆盖。
+Tool Server 先持久化 `pending` 任务，再发送 `invoke`。收到 `accepted` 后将任务更新为 `working`。`accepted`、`rejected`、`status` 和 `result` 都按 `task_id` 幂等处理，终态写入使用条件更新，避免迟到状态覆盖完成或失败结果。
 
 任务记录是唯一事实来源。通知 List、WebSocket 消息和 Outbox 都不是任务状态来源。
 
@@ -107,9 +107,11 @@ Provider 不必为了阻塞机制定时上报状态，最终 `result` 本身会�
 
 ## 6. Callback 投递
 
-任务进入终态后，Tool Server 先在 Outbox 写入 callback，再由独立投递循环发送到 AAgent Queue。投递采用至少一次语义：成功后标记 Outbox 记录，失败则按退避策略重试；AAgent 按 `task_id` 去重。
+任务进入或更新为 `callback.on` 指定的状态后，Tool Server 先在 Outbox 写入 callback，再由独立投递循环发送到 `callback.queue`。可回调状态为 `working`、`completed` 和 `failed`；`working` 用于转发 Provider 的状态更新。投递采用至少一次语义：成功后标记 Outbox 记录，失败则按退避策略重试；消费者按 `task_id` 去重。
 
-callback queue 必须使用服务端白名单，调用方不能借 callback 参数写入任意 Redis Key。Tool Server 只投递结果事件，不直接写入 AAgent 历史或恢复 Workflow。
+调用方可以直接指定 Redis List key，Tool Server 不再要求 queue 白名单，也不把 queue 映射为固定 sink。Tool Server 只执行一次 `LPUSH` 形式的消息投递，不执行调用方提供的 Redis 命令；投递前仍需校验 key 格式、消息大小和服务端允许的 `event_type`。
+
+回调 payload 由服务端生成事实字段，并合并调用方的 `context`。`context` 只能作为业务关联信息，不能覆盖 `task_id`、`tool`、`status`、`result`、`error`、`progress` 或 `message`。`on`、`event_type` 和 `context` 必须随任务一起持久化，确保 Outbox 重试时使用完全相同的事件内容。
 
 ## 7. 原子性与清理
 
@@ -118,7 +120,7 @@ callback queue 必须使用服务端白名单，调用方不能借 callback 参�
 3. 任务记录与通知 List 使用相同 TTL；
 4. 大结果保存到外部存储，任务记录只保存引用；
 5. 终态不可变，迟到的状态消息只记录日志，不覆盖任务；
-6. callback Outbox 独立保留到成功投递或超过明确的保留期限。
+6. callback Outbox 独立保留到成功投递或超过明确的保留期限；重试不能重新计算 `on`、`event_type` 或 `context`。
 
 ## 8. 实施顺序
 
@@ -127,4 +129,4 @@ callback queue 必须使用服务端白名单，调用方不能借 callback 参�
 3. 实现 Provider 内部有界队列和 Consumer；
 4. 实现每任务通知 List 与异步等待循环；
 5. 实现 callback Outbox、重试和消费去重；
-6. 增加断线、超时、取消和重复消息测试。
+6. 增加断线、超时和重复消息测试。

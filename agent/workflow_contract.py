@@ -16,7 +16,6 @@ SUPPORTED_NODE_TYPES = {
     "foreach",
     "llm",
     "tool",
-    "tool_call",
     "workflow",
 }
 
@@ -37,7 +36,6 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "foreach": {"item_type"},
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
     "tool": {"tool", "parameters"},
-    "tool_call": set(),
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
@@ -112,7 +110,7 @@ def data_ports_for_node(
             {f"workflow:{port['name']}" for port in node.get("input_ports", [])},
             {f"workflow:{port['name']}" for port in node.get("output_ports", [])},
         )
-    return declared_inputs | {"tool_call"}, {"tool_call_id", "result"}
+    return declared_inputs, set()
 
 
 def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:

@@ -116,6 +116,18 @@ class CallableWorkflowNodeTest(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowValidationError, "must be inside arguments"):
             validate_workflow(workflow)
 
+    def test_validator_rejects_removed_tool_call_node(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][1] = {
+            "id": "tool-call",
+            "type": "tool_call",
+            "name": "Tool Call",
+            "arguments": {},
+        }
+
+        with self.assertRaisesRegex(WorkflowValidationError, "unsupported node type: tool_call"):
+            validate_workflow(workflow)
+
     def test_validator_rejects_shared_fields_inside_arguments(self):
         workflow = callable_workflow_fixture()
         workflow["nodes"][1]["arguments"]["input_ports"] = workflow["nodes"][1].pop("input_ports")

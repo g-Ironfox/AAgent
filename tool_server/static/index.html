@@ -33,7 +33,7 @@
       <div><span>在线 Provider</span><strong id="providerCount">--</strong><small>WebSocket 连接</small></div>
       <div><span>可用工具</span><strong id="toolCount">--</strong><small>当前注册表</small></div>
       <div><span>执行中</span><strong id="workingCount">--</strong><small>最近任务窗口</small></div>
-      <div><span>异常任务</span><strong id="failedCount">--</strong><small>失败与取消</small></div>
+      <div><span>失败任务</span><strong id="failedCount">--</strong><small>最近任务窗口</small></div>
     </section>
 
     <div id="notice" class="notice" role="alert" hidden></div>
@@ -72,7 +72,21 @@
           <label>调用模式<select id="modeInput"><option value="async">异步返回</option><option value="wait">阻塞等待</option></select></label>
           <label>等待上限 (ms)<input id="timeoutInput" type="number" min="1" max="30000" value="30000"></label>
         </div>
-        <label class="check-row"><input id="callbackInput" type="checkbox"><span>完成后回调到 main_agent_queue</span></label>
+        <label class="check-row"><input id="callbackInput" type="checkbox"><span>任务终态后发送 Redis 回调</span></label>
+        <div id="callbackOptions" class="callback-options" hidden>
+          <div class="form-row">
+            <label>Redis List key<input id="callbackQueueInput" type="text" value="main_agent_queue" maxlength="256"></label>
+            <label>事件类型<input id="callbackEventTypeInput" type="text" value="async_result" maxlength="128"></label>
+          </div>
+          <fieldset class="callback-statuses">
+            <legend>触发状态</legend>
+            <label class="check-row"><input id="callbackWorkingInput" type="checkbox" value="working" checked><span>状态更新</span></label>
+            <label class="check-row"><input id="callbackCompletedInput" type="checkbox" value="completed" checked><span>完成</span></label>
+            <label class="check-row"><input id="callbackFailedInput" type="checkbox" value="failed" checked><span>失败</span></label>
+          </fieldset>
+          <label>业务上下文 JSON<textarea id="callbackContextInput" rows="4" spellcheck="false">{}</textarea></label>
+          <p class="field-help">context 会原样放入回调 payload，用于 Workflow、节点或请求关联。</p>
+        </div>
         <p id="invokeError" class="form-error" hidden></p>
       </div>
       <footer><button class="secondary" type="button" data-close="invokeDialog">取消</button><button class="primary" type="submit"><svg viewBox="0 0 24 24"><path d="m5 12 14-7-4 14-3-6-7-1Z"></path></svg>派发任务</button></footer>
@@ -83,7 +97,7 @@
     <div class="task-detail">
       <header><div><p>TASK INSPECTOR</p><h2 id="detailTitle">任务详情</h2></div><button class="dialog-close" type="button" data-close="taskDialog" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></header>
       <div id="taskDetailBody" class="dialog-body"></div>
-      <footer><button id="cancelTaskButton" class="danger" type="button">取消任务</button><button class="secondary" type="button" data-close="taskDialog">关闭</button></footer>
+      <footer><button class="secondary" type="button" data-close="taskDialog">关闭</button></footer>
     </div>
   </dialog>
 
