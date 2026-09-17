@@ -16,12 +16,21 @@ class ToolServerError(RuntimeError):
         self.task_id = task_id
 
 
-def call_remote_tool(tool: str, arguments: dict[str, Any], mode: str, timeout_ms: int) -> Any:
+def call_remote_tool(
+    tool: str,
+    arguments: dict[str, Any],
+    mode: str,
+    timeout_ms: int,
+    callback: dict[str, Any] | None = None,
+) -> Any:
     base_url = os.getenv("TOOL_SERVER_URL", "http://tool_server:8083").rstrip("/")
+    request_body = {"arguments": arguments, "mode": mode, "timeout_ms": timeout_ms}
+    if callback is not None:
+        request_body["callback"] = callback
     try:
         response = requests.post(
             f"{base_url}/api/tools/{tool}/calls",
-            json={"arguments": arguments, "mode": mode, "timeout_ms": timeout_ms},
+            json=request_body,
             timeout=(3, timeout_ms / 1000 + 5),
         )
     except requests.RequestException as error:

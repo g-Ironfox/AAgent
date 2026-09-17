@@ -357,6 +357,20 @@
         </span>
       </label>
       <label>任务超时 (ms)<input data-field="timeout_ms" type="number" min="1" max="3600000" step="1"></label>
+      <label class="checkbox-field">
+        <input data-callback-enabled type="checkbox">
+        <span><strong>发送 Redis 回调</strong><small>任务状态变化时发布事件</small></span>
+      </label>
+      <div class="callback-options" data-callback-options hidden>
+        <label>Redis List key<input data-callback-queue maxlength="256"></label>
+        <label>事件类型<input data-callback-event-type maxlength="128"></label>
+        <fieldset class="callback-statuses">
+          <legend>触发状态</legend>
+          <label><input data-callback-status type="checkbox" value="working"><span>状态更新</span></label>
+          <label><input data-callback-status type="checkbox" value="completed"><span>完成</span></label>
+          <label><input data-callback-status type="checkbox" value="failed"><span>失败</span></label>
+        </fieldset>
+      </div>
     </section>
     <section class="inspector-section">
       <div class="section-label"><strong>参数端口</strong><span>强类型</span></div>
@@ -375,6 +389,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=13"></script>
+  <script type="module" src="/workflow.js?v=14"></script>
 </body>
 </html>

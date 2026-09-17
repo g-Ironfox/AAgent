@@ -274,6 +274,24 @@ def _validate_node(node: Any, index: int) -> None:
             raise WorkflowValidationError(
                 f"remote tool timeout_ms must not exceed {maximum_ms}"
             )
+        if node_type == "remote_async_tool":
+            callback = node_argument(node, "callback")
+            if callback is not None and (
+                not isinstance(callback, dict)
+                or set(callback) != {"type", "queue", "event_type", "on"}
+                or callback.get("type") != "redis"
+                or not isinstance(callback.get("queue"), str)
+                or not callback["queue"]
+                or len(callback["queue"]) > 256
+                or not isinstance(callback.get("event_type"), str)
+                or not callback["event_type"]
+                or len(callback["event_type"]) > 128
+                or not isinstance(callback.get("on"), list)
+                or not callback["on"]
+                or any(status not in {"working", "completed", "failed"} for status in callback["on"])
+                or len(callback["on"]) != len(set(callback["on"]))
+            ):
+                raise WorkflowValidationError("remote async tool callback must be a valid Redis callback")
     elif node_type == "workflow":
         workflow_name = node_argument(node, "workflow_name")
         if not isinstance(workflow_name, str) or not workflow_name:

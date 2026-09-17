@@ -24,6 +24,12 @@
 .form-section input:not([type="checkbox"]),.form-section textarea,.form-section select { width:100%; padding:9px; color:var(--ink); border:1px solid var(--line); background:var(--surface); font-size:11px; resize:vertical; }
 .checkbox-field input[type="checkbox"],.tool-options input[type="checkbox"] { width:15px; height:15px; margin:0; padding:0; flex:none; accent-color:var(--green); }
 .form-section select { height:36px; }
+.callback-options { padding:10px; display:grid; gap:10px; border:1px solid var(--line); background:var(--surface); }
+.callback-options[hidden] { display:none; }
+.callback-statuses { margin:0; padding:8px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; border:1px solid var(--line); }
+.callback-statuses legend { padding:0 4px; color:var(--muted); font-size:8px; }
+.form-section .callback-statuses label { display:flex; align-items:center; gap:5px; color:var(--ink); }
+.callback-statuses input { width:13px; height:13px; margin:0; accent-color:var(--green); }
 .remote-tool-picker { position:relative; display:block; min-width:0; }
 .remote-tool-candidates { position:absolute; z-index:20; top:calc(100% + 4px); right:0; left:0; max-height:220px; overflow-y:auto; border:1px solid var(--line); background:var(--surface); box-shadow:0 10px 24px rgba(23,32,29,.16); }
 .remote-tool-candidates[hidden] { display:none; }

@@ -22,7 +22,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   llm: new Set(['model', 'prompt', 'think', 'tool_calls', 'tools']),
   local_tool: new Set(['tool', 'parameters']),
   remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
-  remote_async_tool: new Set(['tool', 'parameters', 'timeout_ms']),
+  remote_async_tool: new Set(['tool', 'parameters', 'timeout_ms', 'callback']),
   workflow: new Set(['workflow_name']),
 };
 const NODE_ARGUMENT_FIELDS = new Set(Object.values(NODE_ARGUMENT_FIELDS_BY_TYPE).flatMap((fields) => [...fields]));
@@ -218,6 +218,34 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
       }
       const defaultTimeoutMs = node.type === 'remote_async_tool' ? 600000 : 10000;
       normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : defaultTimeoutMs;
+      if (node.type === 'remote_async_tool') {
+        const callback = node.callback;
+        if (callback == null) normalized.callback = null;
+        else {
+          if (
+            typeof callback !== 'object'
+            || Array.isArray(callback)
+            || Object.keys(callback).length !== 4
+            || callback.type !== 'redis'
+            || typeof callback.queue !== 'string'
+            || !callback.queue
+            || callback.queue.length > 256
+            || typeof callback.event_type !== 'string'
+            || !callback.event_type
+            || callback.event_type.length > 128
+            || !Array.isArray(callback.on)
+            || !callback.on.length
+            || callback.on.length !== new Set(callback.on).size
+            || callback.on.some((status) => !['working', 'completed', 'failed'].includes(status))
+          ) return null;
+          normalized.callback = {
+            type: 'redis',
+            queue: callback.queue,
+            event_type: callback.event_type,
+            on: [...callback.on],
+          };
+        }
+      }
     }
   }
   if (node.type === 'workflow') {

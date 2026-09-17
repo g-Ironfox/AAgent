@@ -144,7 +144,13 @@ remote_async_tool -> Tool Server API mode=async -> Tool Server -> Tool Provider
     "parameters": [
       { "name": "bvid", "type": "content" }
     ],
-    "timeout_ms": 600000
+    "timeout_ms": 600000,
+    "callback": {
+      "type": "redis",
+      "queue": "main_agent_queue",
+      "event_type": "async_result",
+      "on": ["completed", "failed"]
+    }
   }
 }
 ```
@@ -154,8 +160,9 @@ remote_async_tool -> Tool Server API mode=async -> Tool Server -> Tool Provider
 | `tool` | string | 非空；不要求保存时在线 |
 | `parameters` | object[] | 与 Remote Sync Tool 相同 |
 | `timeout_ms` | integer | Provider 执行 deadline；正整数；不受同步等待上限约束 |
+| `callback` | object \| null | 可选 Redis 回调；包含固定 `type: redis`、队列、事件类型和至少一个触发状态 |
 
-运行时固定发送 `mode: "async"`。HTTP `202` 表示提交成功，节点取得 `task_id` 后立即继续。节点不保存 `outputs`、`mode`、`provider_id` 或 `callback`。
+运行时固定发送 `mode: "async"`。HTTP `202` 表示提交成功，节点取得 `task_id` 后立即继续。节点不保存 `outputs`、`mode` 或 `provider_id`；配置 `callback` 时由 Tool Server 在 `working`、`completed`、`failed` 中选定的状态变化后向指定 Redis List 发布事件。
 
 两种远程节点参数以及 Remote Sync Tool 输出的 `type` 只能是 `content`、`message`、`list-content` 或 `list-message`。类型约束 Workflow 连线；输入类型不转换发送给 Tool Server 的参数值，输出类型也不隐式转换 Tool Server 返回值。旧的字符串参数数组和旧的固定 `output` 端口不做迁移，直接拒绝。
 

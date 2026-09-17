@@ -39,7 +39,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
-    "remote_async_tool": {"tool", "parameters", "timeout_ms"},
+    "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())

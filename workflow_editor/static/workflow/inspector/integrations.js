@@ -104,6 +104,20 @@ export function createIntegrationInspector(context) {
     candidates.replaceChildren();
     renderPortRows(node, 'parameters', 'control-in');
     if (node.type === 'remote_sync_tool') renderPortRows(node, 'outputs', 'control-out');
+    if (node.type === 'remote_async_tool') renderCallback(node);
+  }
+
+  function renderCallback(node) {
+    const enabled = context.elements.inspectorContent.querySelector('[data-callback-enabled]');
+    const options = context.elements.inspectorContent.querySelector('[data-callback-options]');
+    const callback = node.callback;
+    enabled.checked = callback !== null;
+    options.hidden = callback === null;
+    options.querySelector('[data-callback-queue]').value = callback?.queue || 'main_agent_queue';
+    options.querySelector('[data-callback-event-type]').value = callback?.event_type || 'async_result';
+    for (const input of options.querySelectorAll('[data-callback-status]')) {
+      input.checked = callback?.on?.includes(input.value) ?? ['completed', 'failed'].includes(input.value);
+    }
   }
 
   function bindRemoteTool(node) {
@@ -181,6 +195,29 @@ export function createIntegrationInspector(context) {
     timeoutInput.addEventListener('input', () => {
       node.timeout_ms = Number(timeoutInput.value);
     });
+    if (node.type === 'remote_async_tool') bindCallback(node);
+  }
+
+  function bindCallback(node) {
+    const enabled = context.elements.inspectorContent.querySelector('[data-callback-enabled]');
+    const options = context.elements.inspectorContent.querySelector('[data-callback-options]');
+    const queue = options.querySelector('[data-callback-queue]');
+    const eventType = options.querySelector('[data-callback-event-type]');
+    const statuses = [...options.querySelectorAll('[data-callback-status]')];
+    const syncCallback = () => {
+      node.callback = enabled.checked ? {
+        type: 'redis',
+        queue: queue.value.trim(),
+        event_type: eventType.value.trim(),
+        on: statuses.filter((input) => input.checked).map((input) => input.value),
+      } : null;
+      options.hidden = !enabled.checked;
+      context.markChanged();
+    };
+    enabled.addEventListener('change', syncCallback);
+    queue.addEventListener('input', syncCallback);
+    eventType.addEventListener('input', syncCallback);
+    for (const input of statuses) input.addEventListener('change', syncCallback);
   }
 
   function bindTools(node) {

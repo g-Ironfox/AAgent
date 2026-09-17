@@ -35,7 +35,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
-    "remote_async_tool": {"tool", "parameters", "timeout_ms"},
+    "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
@@ -97,6 +97,24 @@ def tool_node_error(node: dict[str, Any], max_wait_ms: int, max_async_timeout_ms
             or timeout_ms > maximum_ms
         ):
             return f"Remote Tool timeout_ms 必须是 1 到 {maximum_ms} 的整数"
+        if node.get("type") == "remote_async_tool":
+            callback = arguments.get("callback")
+            if callback is not None and (
+                not isinstance(callback, dict)
+                or set(callback) != {"type", "queue", "event_type", "on"}
+                or callback.get("type") != "redis"
+                or not isinstance(callback.get("queue"), str)
+                or not callback["queue"]
+                or len(callback["queue"]) > 256
+                or not isinstance(callback.get("event_type"), str)
+                or not callback["event_type"]
+                or len(callback["event_type"]) > 128
+                or not isinstance(callback.get("on"), list)
+                or not callback["on"]
+                or any(status not in {"working", "completed", "failed"} for status in callback["on"])
+                or len(callback["on"]) != len(set(callback["on"]))
+            ):
+                return "Remote Async Tool callback 必须是有效的 Redis 回调配置"
     return None
 
 

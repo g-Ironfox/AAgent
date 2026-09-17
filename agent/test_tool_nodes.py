@@ -75,7 +75,7 @@ class ToolNodeExecutionTest(unittest.TestCase):
         next_id = workflow_remote_sync_tool(0, workflow_map)
 
         self.assertEqual(next_id, 1)
-        call_tool.assert_called_once_with("echo", {"value": "hello"}, "wait", 2500)
+        call_tool.assert_called_once_with("echo", {"value": "hello"}, "wait", 2500, None)
         self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "done")
 
     @patch("tool_server_client.call_remote_tool")
@@ -119,8 +119,27 @@ class ToolNodeExecutionTest(unittest.TestCase):
         next_id = workflow_remote_async_tool(0, workflow_map)
 
         self.assertEqual(next_id, 1)
-        call_tool.assert_called_once_with("echo", {"value": "hello"}, "async", 60000)
+        call_tool.assert_called_once_with("echo", {"value": "hello"}, "async", 60000, None)
         self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "task-7")
+
+    @patch("tool_server_client.call_remote_tool")
+    def test_remote_async_tool_submits_callback(self, call_tool):
+        call_tool.return_value = "task-8"
+        callback = {
+            "type": "redis",
+            "queue": "main_agent_queue",
+            "event_type": "async_result",
+            "on": ["completed", "failed"],
+        }
+        workflow_map = tool_workflow_map(
+            "remote_async_tool", timeout_ms=60000, callback=callback
+        )
+
+        workflow_remote_async_tool(0, workflow_map)
+
+        call_tool.assert_called_once_with(
+            "echo", {"value": "hello"}, "async", 60000, callback
+        )
 
 
 class ToolServerClientTest(unittest.TestCase):
@@ -158,6 +177,30 @@ class ToolServerClientTest(unittest.TestCase):
         post.assert_called_once_with(
             "http://tool_server:8083/api/tools/echo/calls",
             json={"arguments": {}, "mode": "async", "timeout_ms": 60000},
+            timeout=(3, 65.0),
+        )
+
+    @patch("tool_server_client.requests.post")
+    def test_async_request_includes_callback(self, post):
+        response = Mock(status_code=202)
+        response.json.return_value = {"task_id": "task-4", "status": "pending"}
+        post.return_value = response
+        callback = {
+            "type": "redis",
+            "queue": "main_agent_queue",
+            "event_type": "async_result",
+            "on": ["completed", "failed"],
+        }
+
+        self.assertEqual(call_remote_tool("echo", {}, "async", 60000, callback), "task-4")
+        post.assert_called_once_with(
+            "http://tool_server:8083/api/tools/echo/calls",
+            json={
+                "arguments": {},
+                "mode": "async",
+                "timeout_ms": 60000,
+                "callback": callback,
+            },
             timeout=(3, 65.0),
         )
 
@@ -278,6 +321,46 @@ class ToolNodeValidationTest(unittest.TestCase):
         })
 
         with patch.dict("os.environ", {"TOOL_CLIENT_MAX_WAIT_MS": "10000"}):
+            validate_workflow(workflow)
+
+    def test_remote_async_tool_rejects_callback_without_statuses(self):
+        workflow = valid_workflow({
+            "id": "remote",
+            "type": "remote_async_tool",
+            "arguments": {
+                "tool": "echo",
+                "parameters": [],
+                "timeout_ms": 60000,
+                "callback": {
+                    "type": "redis",
+                    "queue": "main_agent_queue",
+                    "event_type": "async_result",
+                    "on": [],
+                },
+            },
+        })
+
+        with self.assertRaisesRegex(WorkflowValidationError, "valid Redis callback"):
+            validate_workflow(workflow)
+
+    def test_remote_async_tool_rejects_non_string_callback_status(self):
+        workflow = valid_workflow({
+            "id": "remote",
+            "type": "remote_async_tool",
+            "arguments": {
+                "tool": "echo",
+                "parameters": [],
+                "timeout_ms": 60000,
+                "callback": {
+                    "type": "redis",
+                    "queue": "main_agent_queue",
+                    "event_type": "async_result",
+                    "on": [{"status": "completed"}],
+                },
+            },
+        })
+
+        with self.assertRaisesRegex(WorkflowValidationError, "valid Redis callback"):
             validate_workflow(workflow)
 
     def test_control_in_is_not_a_valid_tool_parameter(self):

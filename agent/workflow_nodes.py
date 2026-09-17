@@ -210,7 +210,11 @@ def workflow_local_tool(current_id: int, workflow_map: WorkflowMap) -> int:
 
 
 def _call_remote_node(
-    node: dict[str, Any], mode: str, default_timeout_env: str, default_timeout_ms: str
+    node: dict[str, Any],
+    mode: str,
+    default_timeout_env: str,
+    default_timeout_ms: str,
+    callback: dict[str, Any] | None = None,
 ) -> Any:
     from tool_server_client import ToolServerError, call_remote_tool
 
@@ -219,7 +223,7 @@ def _call_remote_node(
         node, "timeout_ms", int(os.getenv(default_timeout_env, default_timeout_ms))
     )
     try:
-        return call_remote_tool(tool, _tool_arguments(node), mode, timeout_ms)
+        return call_remote_tool(tool, _tool_arguments(node), mode, timeout_ms, callback)
     except ToolServerError as error:
         execution = "remote_sync" if mode == "wait" else "remote_async"
         details = {"node_id": node["id"], "tool": tool, "execution": execution, "message": str(error)}
@@ -249,7 +253,11 @@ def workflow_remote_sync_tool(current_id: int, workflow_map: WorkflowMap) -> int
 def workflow_remote_async_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     task_id = _call_remote_node(
-        node, "async", "TOOL_CLIENT_DEFAULT_ASYNC_TIMEOUT_MS", "600000"
+        node,
+        "async",
+        "TOOL_CLIENT_DEFAULT_ASYNC_TIMEOUT_MS",
+        "600000",
+        node_argument(node, "callback"),
     )
     propagate_workflow_output(workflow_map, node, "task_id", task_id)
     return next_successor(node)
