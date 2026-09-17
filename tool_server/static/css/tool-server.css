@@ -86,6 +86,7 @@ dialog header h2 { margin:0; font:700 20px Georgia,"Microsoft YaHei",serif; lett
 .dialog-body label { display:grid; gap:7px; color:var(--muted); font-size:10px; }
 .dialog-body textarea,.dialog-body input,.dialog-body select { width:100%; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:11px; }
 .dialog-body textarea { min-height:240px; padding:10px; resize:vertical; font:11px/1.55 Consolas,monospace; }
+#argumentsInput { height:120px; min-height:120px; }
 .dialog-body input,.dialog-body select { height:38px; padding:0 10px; }
 .schema-visualizer { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .schema-panel { min-width:0; border:1px solid var(--line); background:#fafbf9; }
