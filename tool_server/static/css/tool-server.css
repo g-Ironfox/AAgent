@@ -73,7 +73,7 @@ svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2; s
 .empty span { font:700 16px Georgia,"Microsoft YaHei",serif; }
 .empty small { font-size:9px; }
 
-dialog { width:min(610px,calc(100% - 28px)); padding:0; color:var(--ink); border:1px solid var(--line); border-radius:4px; background:var(--surface); box-shadow:0 22px 60px rgba(23,32,29,.2); }
+dialog { width:min(780px,calc(100% - 28px)); max-height:calc(100dvh - 28px); padding:0; overflow:auto; color:var(--ink); border:1px solid var(--line); border-radius:4px; background:var(--surface); box-shadow:0 22px 60px rgba(23,32,29,.2); }
 dialog::backdrop { background:rgba(23,32,29,.42); }
 dialog form,.task-detail { display:grid; }
 dialog header { min-height:76px; padding:15px 18px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fafbf9; }
@@ -87,6 +87,23 @@ dialog header h2 { margin:0; font:700 20px Georgia,"Microsoft YaHei",serif; lett
 .dialog-body textarea,.dialog-body input,.dialog-body select { width:100%; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:11px; }
 .dialog-body textarea { min-height:240px; padding:10px; resize:vertical; font:11px/1.55 Consolas,monospace; }
 .dialog-body input,.dialog-body select { height:38px; padding:0 10px; }
+.schema-visualizer { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.schema-panel { min-width:0; border:1px solid var(--line); background:#fafbf9; }
+.schema-panel h3 { margin:0; padding:9px 11px; color:var(--muted); border-bottom:1px solid var(--line); font:700 10px "Bahnschrift","Microsoft YaHei",sans-serif; }
+.schema-view { min-height:86px; max-height:230px; overflow:auto; padding:8px 10px; }
+.schema-tree,.schema-tree ul { margin:0; padding:0; list-style:none; }
+.schema-node { position:relative; padding-left:calc(var(--schema-depth) * 14px); }
+.schema-node + .schema-node { margin-top:7px; }
+.schema-node ul { margin-top:7px; }
+.schema-node ul > .schema-node::before { position:absolute; top:8px; left:calc(var(--schema-depth) * 14px - 9px); width:6px; content:""; border-top:1px solid #bfc8c2; }
+.schema-row { min-height:18px; display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.schema-key { padding:0; color:var(--ink); background:transparent; font:700 10px Consolas,monospace; overflow-wrap:anywhere; }
+.schema-type { padding:2px 5px; color:var(--blue); background:var(--blue-soft); font:8px Consolas,monospace; }
+.schema-required { padding:2px 5px; color:var(--red); background:#fff0ee; font:700 8px "Bahnschrift","Microsoft YaHei",sans-serif; }
+.schema-description,.schema-constraints { margin:3px 0 0; padding-left:1px; overflow-wrap:anywhere; font-size:9px; line-height:1.45; }
+.schema-description { color:var(--muted); }
+.schema-constraints { color:#8a610d; font-family:Consolas,monospace; }
+.schema-empty { margin:0; min-height:68px; display:grid; place-items:center; color:var(--muted); font-size:9px; }
 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .dialog-body .check-row { display:flex; align-items:center; gap:8px; }
 .check-row input { width:15px; height:15px; accent-color:var(--green); }
@@ -114,5 +131,5 @@ dialog footer button svg { width:14px; height:14px; margin-right:5px; vertical-a
 .json-block { max-height:230px; overflow:auto; margin:0; padding:11px; color:var(--ink); border:1px solid var(--line); background:#f5f7f4; font:10px/1.5 Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 
 @media (max-width:1100px) { .workspace { grid-template-columns:240px minmax(0,1fr); overflow:auto; } .task-pane { grid-column:1/-1; min-height:330px; border-top:1px solid var(--line); } .summary { grid-template-columns:repeat(2,1fr); } .search { width:210px; } }
-@media (max-width:700px) { .search { width:min(230px,44vw); } .connection-state { display:none; } .summary { grid-template-columns:1fr 1fr; } .workspace { grid-template-columns:1fr; } .provider-pane,.tool-pane { min-height:280px; border-right:0; border-bottom:1px solid var(--line); } .task-pane { grid-column:auto; } .tool-columns,.tool-item { grid-template-columns:minmax(130px,1fr) 80px 32px; } .tool-columns span:nth-child(3),.revision { display:none; } .form-row { grid-template-columns:1fr; } }
+@media (max-width:700px) { .search { width:min(230px,44vw); } .connection-state { display:none; } .summary { grid-template-columns:1fr 1fr; } .workspace { grid-template-columns:1fr; } .provider-pane,.tool-pane { min-height:280px; border-right:0; border-bottom:1px solid var(--line); } .task-pane { grid-column:auto; } .tool-columns,.tool-item { grid-template-columns:minmax(130px,1fr) 80px 32px; } .tool-columns span:nth-child(3),.revision { display:none; } .schema-visualizer,.form-row { grid-template-columns:1fr; } }
 @media (max-width:560px) { .topbar { height:158px; padding-top:102px; } .search { position:absolute; top:56px; right:12px; left:12px; width:auto; } .summary > div { padding:11px 13px; } .summary strong { font-size:21px; } .task-item { grid-template-columns:9px minmax(100px,1fr) 64px; } .task-time { display:none; } }

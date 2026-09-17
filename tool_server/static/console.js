@@ -12,6 +12,7 @@ const elements = Object.fromEntries([
   "connectionState", "searchInput", "lastRefresh", "refreshState", "interval", "pauseButton", "refreshButton", "providerCount", "toolCount",
   "workingCount", "failedCount", "notice", "providerBadge", "providerList", "toolBadge",
   "toolList", "taskBadge", "taskList", "invokeDialog", "invokeForm", "invokeTitle", "argumentsInput",
+  "inputSchemaView", "outputSchemaView",
   "modeInput", "timeoutInput", "callbackInput", "callbackOptions", "callbackQueueInput", "callbackEventTypeInput",
   "callbackWorkingInput", "callbackCompletedInput", "callbackFailedInput", "invokeError", "taskDialog", "detailTitle", "taskDetailBody",
 ].map((id) => [id, document.getElementById(id)]));
@@ -66,6 +67,98 @@ function schemaExample(schema) {
   if (schema.type === "boolean") return false;
   if (schema.type === "integer" || schema.type === "number") return 0;
   return "";
+}
+
+function schemaType(schema) {
+  if (!schema || typeof schema !== "object") return "unknown";
+  if (Array.isArray(schema.type)) return schema.type.join(" | ");
+  if (schema.type) return schema.type;
+  if (schema.properties) return "object";
+  if (schema.items) return "array";
+  if (schema.const !== undefined) return "const";
+  return "any";
+}
+
+function schemaConstraint(schema) {
+  const parts = [];
+  if (Array.isArray(schema.enum)) parts.push(`enum: ${schema.enum.map((value) => JSON.stringify(value)).join(", ")}`);
+  if (schema.const !== undefined) parts.push(`const: ${JSON.stringify(schema.const)}`);
+  if (schema.default !== undefined) parts.push(`default: ${JSON.stringify(schema.default)}`);
+  if (schema.format) parts.push(`format: ${schema.format}`);
+  if (schema.pattern) parts.push(`pattern: ${schema.pattern}`);
+  if (schema.minimum !== undefined) parts.push(`min: ${schema.minimum}`);
+  if (schema.maximum !== undefined) parts.push(`max: ${schema.maximum}`);
+  if (schema.minLength !== undefined) parts.push(`minLength: ${schema.minLength}`);
+  if (schema.maxLength !== undefined) parts.push(`maxLength: ${schema.maxLength}`);
+  return parts.join(" · ");
+}
+
+function createSchemaNode(name, schema, required = false, depth = 0) {
+  const item = document.createElement("li");
+  item.className = "schema-node";
+  item.style.setProperty("--schema-depth", depth);
+
+  const row = document.createElement("div");
+  row.className = "schema-row";
+
+  const key = document.createElement("code");
+  key.className = "schema-key";
+  key.textContent = name;
+  row.append(key);
+
+  const type = document.createElement("span");
+  type.className = "schema-type";
+  type.textContent = schemaType(schema);
+  row.append(type);
+
+  if (required) {
+    const badge = document.createElement("span");
+    badge.className = "schema-required";
+    badge.textContent = "必填";
+    row.append(badge);
+  }
+  item.append(row);
+
+  if (schema.description) {
+    const description = document.createElement("p");
+    description.className = "schema-description";
+    description.textContent = schema.description;
+    item.append(description);
+  }
+
+  const constraintText = schemaConstraint(schema);
+  if (constraintText) {
+    const constraints = document.createElement("p");
+    constraints.className = "schema-constraints";
+    constraints.textContent = constraintText;
+    item.append(constraints);
+  }
+
+  const children = document.createElement("ul");
+  const requiredProperties = new Set(schema.required || []);
+  for (const [propertyName, propertySchema] of Object.entries(schema.properties || {})) {
+    children.append(createSchemaNode(propertyName, propertySchema, requiredProperties.has(propertyName), depth + 1));
+  }
+  if (schema.items && typeof schema.items === "object") {
+    children.append(createSchemaNode("items[]", schema.items, false, depth + 1));
+  }
+  if (children.childElementCount) item.append(children);
+  return item;
+}
+
+function renderSchema(container, schema, rootName) {
+  container.replaceChildren();
+  if (!schema || typeof schema !== "object") {
+    const empty = document.createElement("p");
+    empty.className = "schema-empty";
+    empty.textContent = "未声明 Schema";
+    container.append(empty);
+    return;
+  }
+  const tree = document.createElement("ul");
+  tree.className = "schema-tree";
+  tree.append(createSchemaNode(rootName, schema));
+  container.append(tree);
 }
 
 function formatTime(value, includeDate = false) {
@@ -173,6 +266,8 @@ function openInvoke(tool) {
   state.selectedTool = tool;
   elements.invokeTitle.textContent = tool.name;
   elements.argumentsInput.value = JSON.stringify(schemaExample(tool.inputSchema), null, 2);
+  renderSchema(elements.inputSchemaView, tool.inputSchema, "input");
+  renderSchema(elements.outputSchemaView, tool.outputSchema, "output");
   elements.callbackInput.checked = false;
   elements.callbackOptions.hidden = true;
   elements.callbackQueueInput.value = "main_agent_queue";

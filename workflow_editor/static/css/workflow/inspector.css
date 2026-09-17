@@ -38,7 +38,7 @@
 .parameter-row input { box-sizing:border-box; width:100%; min-width:0; height:34px; padding:0 9px; color:var(--ink); border:1px solid var(--line); background:var(--surface); font-size:10px; }
 .parameter-row input:focus { outline:1px solid var(--green); border-color:var(--green); }
 .parameter-row input.invalid { border-color:#c96a55; background:#fff7f6; }
-.parameter-row select { box-sizing:border-box; width:100%; min-width:0; height:34px; padding:0 5px; color:var(--ink); border:1px solid var(--line); background:var(--surface); font-size:8px; }
+.parameter-row select { box-sizing:border-box; width:100%; min-width:0; height:34px; padding:0 5px; color:var(--ink); border:1px solid var(--line); background:var(--surface); font-size:10px; }
 .parameter-row button { width:32px; height:34px; padding:0; border:1px solid var(--line); background:var(--surface); color:var(--muted); cursor:pointer; font-size:16px; line-height:1; }
 .parameter-row button:hover { border-color:#a94f36; color:#a94f36; }
 .route-option,.tool-options label { min-height:46px; padding:8px; display:flex; align-items:center; gap:9px; border:1px solid var(--line); background:var(--surface); }

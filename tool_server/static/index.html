@@ -67,6 +67,16 @@
     <form id="invokeForm" method="dialog">
       <header><div><p>INVOKE TOOL</p><h2 id="invokeTitle">调用工具</h2></div><button class="dialog-close" type="button" data-close="invokeDialog" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></header>
       <div class="dialog-body">
+        <section class="schema-visualizer" aria-label="工具 Schema">
+          <div class="schema-panel">
+            <h3>输入 Schema</h3>
+            <div id="inputSchemaView" class="schema-view"></div>
+          </div>
+          <div class="schema-panel">
+            <h3>输出 Schema</h3>
+            <div id="outputSchemaView" class="schema-view"></div>
+          </div>
+        </section>
         <label>参数 JSON<textarea id="argumentsInput" rows="12" spellcheck="false"></textarea></label>
         <div class="form-row">
           <label>调用模式<select id="modeInput"><option value="async">异步返回</option><option value="wait">阻塞等待</option></select></label>
