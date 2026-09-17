@@ -111,7 +111,7 @@ Provider 不必为了阻塞机制定时上报状态，最终 `result` 本身会�
 
 调用方可以直接指定 Redis List key，Tool Server 不再要求 queue 白名单，也不把 queue 映射为固定 sink。Tool Server 只执行一次 `LPUSH` 形式的消息投递，不执行调用方提供的 Redis 命令；投递前仍需校验 key 格式、消息大小和服务端允许的 `event_type`。
 
-回调 payload 由服务端生成事实字段，并合并调用方的 `context`。`context` 只能作为业务关联信息，不能覆盖 `task_id`、`tool`、`status`、`result`、`error`、`progress` 或 `message`。`on`、`event_type` 和 `context` 必须随任务一起持久化，确保 Outbox 重试时使用完全相同的事件内容。
+回调 payload 的事实字段全部由服务端生成。`on` 和 `event_type` 必须随任务一起持久化，确保 Outbox 重试时使用完全相同的事件内容。
 
 ## 7. 原子性与清理
 
@@ -120,7 +120,7 @@ Provider 不必为了阻塞机制定时上报状态，最终 `result` 本身会�
 3. 任务记录与通知 List 使用相同 TTL；
 4. 大结果保存到外部存储，任务记录只保存引用；
 5. 终态不可变，迟到的状态消息只记录日志，不覆盖任务；
-6. callback Outbox 独立保留到成功投递或超过明确的保留期限；重试不能重新计算 `on`、`event_type` 或 `context`。
+6. callback Outbox 独立保留到成功投递或超过明确的保留期限；重试不能重新计算 `on` 或 `event_type`。
 
 ## 8. 实施顺序
 

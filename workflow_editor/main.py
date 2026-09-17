@@ -2,6 +2,8 @@ import logging
 import json
 import os
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +48,7 @@ if os.getenv("MONGO_USER"):
 database = MongoClient(**mongo_options)[env("MONGO_DATABASE", "agent")]
 models = database[env("MONGO_MODEL_COLLECTION", "models")]
 tools_key = env("AGENT_TOOLS_KEY", "aagent:tools")
+tool_server_url = env("TOOL_SERVER_URL", "http://tool_server:8083").rstrip("/")
 
 
 @app.middleware("http")
@@ -100,8 +103,8 @@ def list_models():
         return JSONResponse(status_code=503, content={"error": "模型配置暂时不可用"})
 
 
-@app.get("/api/tools")
-def list_tools():
+@app.get("/api/tools/local")
+def list_local_tools():
     try:
         schemas = redis_client.hgetall(tools_key)
     except redis.RedisError:
@@ -122,11 +125,35 @@ def list_tools():
             {
                 "name": tool_name,
                 "description": function_schema.get("description", ""),
-                "parameters": function_schema.get("parameters", {}),
+                "inputSchema": function_schema.get("parameters", {}),
+                "outputSchema": None,
             }
         )
     items.sort(key=lambda item: item["name"])
     return {"items": items}
+
+
+@app.get("/api/tools/remote")
+def list_remote_tools():
+    try:
+        with urllib.request.urlopen(f"{tool_server_url}/api/tools", timeout=5) as response:
+            payload = json.load(response)
+    except (urllib.error.URLError, TimeoutError, ValueError) as error:
+        logger.warning("remote tool catalog unavailable: %s", error)
+        return JSONResponse(status_code=503, content={"error": "Remote Tool 目录暂时不可用"})
+    tools = payload.get("tools", []) if isinstance(payload, dict) else []
+    return {
+        "items": [
+            {
+                "name": tool.get("name"),
+                "description": tool.get("description", ""),
+                "inputSchema": tool.get("inputSchema", {}),
+                "outputSchema": tool.get("outputSchema"),
+            }
+            for tool in tools
+            if isinstance(tool, dict) and isinstance(tool.get("name"), str)
+        ]
+    }
 
 
 static_directory = Path(__file__).parent / "static"

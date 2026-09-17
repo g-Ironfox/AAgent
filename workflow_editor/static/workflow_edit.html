@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=5">
+  <link rel="stylesheet" href="/css/workflow.css?v=8">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -85,9 +85,19 @@
             <div><strong>遍历列表</strong><small>逐项执行循环体控制流</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <button class="library-item" type="button" data-add-node="tool">
-            <span class="node-symbol tool-symbol" aria-hidden="true">T</span>
-            <div><strong>Tool</strong><small>直接调用一个已注册工具</small></div>
+          <button class="library-item" type="button" data-add-node="local_tool">
+            <span class="node-symbol local_tool-symbol" aria-hidden="true">LT</span>
+            <div><strong>Local Tool</strong><small>调用 Agent 进程内工具</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="remote_sync_tool">
+            <span class="node-symbol remote_sync_tool-symbol" aria-hidden="true">RS</span>
+            <div><strong>Remote Sync Tool</strong><small>等待 Tool Server 返回结果</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="remote_async_tool">
+            <span class="node-symbol remote_async_tool-symbol" aria-hidden="true">RA</span>
+            <div><strong>Remote Async Tool</strong><small>发布任务并返回 Task ID</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <div id="workflowNodeLibrary" class="workflow-node-library" hidden></div>
@@ -302,11 +312,56 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="toolInspectorTemplate">
+  <template id="local_toolInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Tool<select data-field="tool"><option>加载 Tool 注册表中</option></select></label>
+      <label>Local Tool<select data-field="tool"><option>加载 Local Tool 注册表中</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="remote_sync_toolInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Remote Sync Tool
+        <span class="remote-tool-picker">
+          <input data-field="tool" maxlength="128" autocomplete="off" aria-autocomplete="list" aria-controls="remoteToolCandidates">
+          <span id="remoteToolCandidates" class="remote-tool-candidates" role="listbox" hidden></span>
+        </span>
+      </label>
+      <label>等待时间 (ms)<input data-field="timeout_ms" type="number" min="1" max="10000" step="1"></label>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>参数端口</strong><span>content</span></div>
+      <div data-remote-parameters></div>
+      <button class="add-branch-button" type="button" data-add-remote-parameter>+ 添加参数</button>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>输出端口</strong><span>强类型</span></div>
+      <div data-remote-outputs></div>
+      <button class="add-branch-button" type="button" data-add-remote-output>+ 添加输出</button>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="remote_async_toolInspectorTemplate">
+    <div data-interface-contract data-contract-status="发布后不等待"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Remote Async Tool
+        <span class="remote-tool-picker">
+          <input data-field="tool" maxlength="128" autocomplete="off" aria-autocomplete="list" aria-controls="remoteToolCandidates">
+          <span id="remoteToolCandidates" class="remote-tool-candidates" role="listbox" hidden></span>
+        </span>
+      </label>
+      <label>任务超时 (ms)<input data-field="timeout_ms" type="number" min="1" max="3600000" step="1"></label>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>参数端口</strong><span>强类型</span></div>
+      <div data-remote-parameters></div>
+      <button class="add-branch-button" type="button" data-add-remote-parameter>+ 添加参数</button>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -320,6 +375,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=7"></script>
+  <script type="module" src="/workflow.js?v=13"></script>
 </body>
 </html>

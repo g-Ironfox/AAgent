@@ -13,7 +13,7 @@ const elements = Object.fromEntries([
   "workingCount", "failedCount", "notice", "providerBadge", "providerList", "toolBadge",
   "toolList", "taskBadge", "taskList", "invokeDialog", "invokeForm", "invokeTitle", "argumentsInput",
   "modeInput", "timeoutInput", "callbackInput", "callbackOptions", "callbackQueueInput", "callbackEventTypeInput",
-  "callbackWorkingInput", "callbackCompletedInput", "callbackFailedInput", "callbackContextInput", "invokeError", "taskDialog", "detailTitle", "taskDetailBody",
+  "callbackWorkingInput", "callbackCompletedInput", "callbackFailedInput", "invokeError", "taskDialog", "detailTitle", "taskDetailBody",
 ].map((id) => [id, document.getElementById(id)]));
 
 const statusNames = {
@@ -180,7 +180,6 @@ function openInvoke(tool) {
   elements.callbackWorkingInput.checked = true;
   elements.callbackCompletedInput.checked = true;
   elements.callbackFailedInput.checked = true;
-  elements.callbackContextInput.value = "{}";
   elements.invokeError.hidden = true;
   elements.invokeDialog.showModal();
 }
@@ -217,10 +216,6 @@ elements.invokeForm.addEventListener("submit", async (event) => {
     const argumentsValue = JSON.parse(elements.argumentsInput.value);
     let callback = null;
     if (elements.callbackInput.checked) {
-      const context = JSON.parse(elements.callbackContextInput.value);
-      if (!context || Array.isArray(context) || typeof context !== "object") {
-        throw new Error("回调 context 必须是 JSON 对象。");
-      }
       const on = [
         elements.callbackWorkingInput,
         elements.callbackCompletedInput,
@@ -232,7 +227,6 @@ elements.invokeForm.addEventListener("submit", async (event) => {
         queue: elements.callbackQueueInput.value.trim(),
         event_type: elements.callbackEventTypeInput.value.trim(),
         on,
-        context,
       };
     }
     const task = await request(`/api/tools/${encodeURIComponent(state.selectedTool.name)}/calls`, {

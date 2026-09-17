@@ -163,17 +163,11 @@ GET  /api/tasks/{task_id}
   "arguments": { "keyword": "MCP" },
   "mode": "wait",
   "timeout_ms": 30000,
-  "idempotency_key": "optional-client-generated-key",
   "callback": {
     "type": "redis",
     "queue": "main_agent_queue",
     "event_type": "async_result",
-    "on": ["working", "completed", "failed"],
-    "context": {
-      "workflow_id": "wf-123",
-      "node_id": "search-2",
-      "request_id": "req-456"
-    }
+    "on": ["working", "completed", "failed"]
   }
 }
 ```
@@ -182,9 +176,7 @@ GET  /api/tasks/{task_id}
 
 - `queue` 是调用方直接指定的 Redis List key。Tool Server 只负责向该 key 投递 JSON 事件；调用方自行保证目标 key 的权限和消费方存在；
 - `event_type` 是回调事件类型，由服务端允许集合控制，不能使用空字符串或未注册类型；
-- `on` 是触发状态列表，可选值为 `working`、`completed`、`failed`，分别表示状态更新、成功完成和执行失败，默认全部状态；
-- `context` 是调用方附带的业务关联数据，例如 Workflow、节点、会话或请求 ID。它会原样放入回调 payload，但受大小、嵌套深度和字段名限制；
-- `context` 不能覆盖 `task_id`、`tool`、`status`、`result`、`error` 等由 Tool Server 生成的事实字段。
+- `on` 是触发状态列表，可选值为 `working`、`completed`、`failed`，分别表示状态更新、成功完成和执行失败，默认全部状态。
 
 ### 6.1 阻塞等待
 
@@ -214,12 +206,7 @@ Queue 回调仍使用 `mode: "async"`，只是额外提供 `callback`。任务�
     "progress": null,
     "message": null,
     "result": [{ "title": "Model Context Protocol" }],
-    "error": null,
-    "context": {
-      "workflow_id": "wf-123",
-      "node_id": "search-2",
-      "request_id": "req-456"
-    }
+    "error": null
   }
 }
 ```

@@ -15,11 +15,15 @@ export function createWorkflowEditor(elements, markChanged) {
     return `connection-${Date.now()}-${connectionSequence}`;
   }
 
-  function portCenter(nodeId, portId, direction = null) {
+  function portCenter(nodeId, portId, direction = null, type = null) {
     const nodeElement = Array.from(elements.nodeLayer.querySelectorAll('[data-node-id]'))
       .find((element) => element.dataset.nodeId === nodeId);
     const port = Array.from(nodeElement?.querySelectorAll('[data-port-id]') || [])
-      .find((element) => element.dataset.portId === portId && (!direction || element.dataset.portDirection === direction));
+      .find((element) => (
+        element.dataset.portId === portId
+        && (!direction || element.dataset.portDirection === direction)
+        && (!type || element.dataset.portType === type)
+      ));
     if (!port) return null;
     const canvasRect = elements.canvas.getBoundingClientRect();
     const rect = port.getBoundingClientRect();
@@ -201,7 +205,7 @@ export function createWorkflowEditor(elements, markChanged) {
     const ports = portsForNode(node);
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
-    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', construct_list: 'L', foreach: 'FE', tool: 'T', workflow: 'WF' };
+    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', construct_list: 'L', foreach: 'FE', local_tool: 'LT', remote_sync_tool: 'RS', remote_async_tool: 'RA', workflow: 'WF' };
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === editorState.selectedId ? ' selected' : ''}`;
     element.style.left = `${node.x}px`;
@@ -260,8 +264,8 @@ export function createWorkflowEditor(elements, markChanged) {
     elements.connectionLayer.setAttribute('height', String(height));
     const paths = [];
     for (const connection of state.connections) {
-      const start = portCenter(connection.fromId, connection.fromPortId, 'output');
-      const end = portCenter(connection.toId, connection.toPortId, 'input');
+      const start = portCenter(connection.fromId, connection.fromPortId, 'output', connection.type);
+      const end = portCenter(connection.toId, connection.toPortId, 'input', connection.type);
       if (!start || !end) continue;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('class', `connection-path ${connection.type}`);
@@ -275,7 +279,7 @@ export function createWorkflowEditor(elements, markChanged) {
         y: drag.pointer.y - canvasRect.top + elements.canvas.scrollTop,
         direction: drag.anchorDirection === 'output' ? 'input' : 'output',
       };
-      const anchor = portCenter(drag.anchorNodeId, drag.anchorPortId, drag.anchorDirection);
+      const anchor = portCenter(drag.anchorNodeId, drag.anchorPortId, drag.anchorDirection, drag.type);
       if (anchor) {
         const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         preview.setAttribute('class', `connection-path preview ${drag.type}`);

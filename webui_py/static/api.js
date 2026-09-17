@@ -111,7 +111,7 @@ export function fetchModels() {
 }
 
 export function fetchTools() {
-  return request('/api/tools');
+  return request('/api/tools/local');
 }
 
 export function fetchWorkflows() {

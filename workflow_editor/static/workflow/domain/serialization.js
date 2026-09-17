@@ -20,7 +20,9 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   construct_list: new Set(['item_type', 'initial_value_count']),
   foreach: new Set(['item_type']),
   llm: new Set(['model', 'prompt', 'think', 'tool_calls', 'tools']),
-  tool: new Set(['tool', 'parameters']),
+  local_tool: new Set(['tool', 'parameters']),
+  remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
+  remote_async_tool: new Set(['tool', 'parameters', 'timeout_ms']),
   workflow: new Set(['workflow_name']),
 };
 const NODE_ARGUMENT_FIELDS = new Set(Object.values(NODE_ARGUMENT_FIELDS_BY_TYPE).flatMap((fields) => [...fields]));
@@ -171,9 +173,52 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
     normalized.dataInputPorts = Array.from({ length: normalized.initial_value_count }, (_, index) => `${normalized.item_type}-in-${index}`);
   }
   if (node.type === 'foreach') normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
-  if (node.type === 'tool') {
+  if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     normalized.tool = typeof node.tool === 'string' ? node.tool : '';
-    normalized.parameters = Array.isArray(node.parameters) ? [...new Set(node.parameters.filter((parameter) => typeof parameter === 'string' && parameter))] : [];
+    if (node.type === 'local_tool') {
+      normalized.parameters = Array.isArray(node.parameters)
+        ? [...new Set(node.parameters.filter((parameter) => typeof parameter === 'string' && parameter && parameter !== 'control-in'))]
+        : [];
+    } else {
+      if (!Array.isArray(node.parameters)) return null;
+      const parameterNames = new Set();
+      normalized.parameters = [];
+      for (const parameter of node.parameters) {
+        if (
+          !parameter
+          || typeof parameter !== 'object'
+          || Object.keys(parameter).length !== 2
+          || typeof parameter.name !== 'string'
+          || !parameter.name
+          || parameter.name === 'control-in'
+          || parameterNames.has(parameter.name)
+          || !['content', 'message', 'list-content', 'list-message'].includes(parameter.type)
+        ) return null;
+        parameterNames.add(parameter.name);
+        normalized.parameters.push({ name: parameter.name, type: parameter.type });
+      }
+      if (node.type === 'remote_sync_tool') {
+        if (!Array.isArray(node.outputs)) return null;
+        const outputNames = new Set();
+        normalized.outputs = [];
+        for (const output of node.outputs) {
+          if (
+            !output
+            || typeof output !== 'object'
+            || Object.keys(output).length !== 2
+            || typeof output.name !== 'string'
+            || !output.name
+            || output.name === 'control-out'
+            || outputNames.has(output.name)
+            || !['content', 'message', 'list-content', 'list-message'].includes(output.type)
+          ) return null;
+          outputNames.add(output.name);
+          normalized.outputs.push({ name: output.name, type: output.type });
+        }
+      }
+      const defaultTimeoutMs = node.type === 'remote_async_tool' ? 600000 : 10000;
+      normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : defaultTimeoutMs;
+    }
   }
   if (node.type === 'workflow') {
     const workflowName = typeof node.workflow_name === 'string' && node.workflow_name.trim()

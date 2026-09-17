@@ -105,7 +105,11 @@ export function fetchModels() {
   return request('/api/models');
 }
 
-export function fetchTools() {
-  return request('/api/tools');
+export function fetchLocalTools() {
+  return request('/api/tools/local');
+}
+
+export function fetchRemoteTools() {
+  return request('/api/tools/remote');
 }
 

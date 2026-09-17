@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -32,7 +33,9 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_list": {"item_type", "initial_value_count"},
     "foreach": {"item_type"},
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
-    "tool": {"tool", "parameters"},
+    "local_tool": {"tool", "parameters"},
+    "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
+    "remote_async_tool": {"tool", "parameters", "timeout_ms"},
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
@@ -41,6 +44,60 @@ NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
 def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
     arguments = node.get("arguments")
     return arguments if isinstance(arguments, dict) else {}
+
+
+def tool_node_error(node: dict[str, Any], max_wait_ms: int, max_async_timeout_ms: int) -> str | None:
+    arguments = node_arguments(node)
+    tool_name = arguments.get("tool")
+    parameters = arguments.get("parameters", [])
+    if not isinstance(tool_name, str) or not tool_name:
+        return "Tool 节点必须填写工具名称"
+    if node.get("type") == "local_tool":
+        if (
+            not isinstance(parameters, list)
+            or any(not isinstance(parameter, str) or not parameter or parameter == "control-in" for parameter in parameters)
+            or len(parameters) != len(set(parameters))
+        ):
+            return "Local Tool 参数必须是非空、不重复且不能为 control-in 的字符串"
+    else:
+        if not isinstance(parameters, list) or any(
+            not isinstance(parameter, dict)
+            or set(parameter) != {"name", "type"}
+            or not isinstance(parameter.get("name"), str)
+            or not parameter["name"]
+            or parameter["name"] == "control-in"
+            or parameter.get("type") not in {"content", "message", "list-content", "list-message"}
+            for parameter in parameters
+        ):
+            return "Remote Tool 参数必须包含有效的 name 和 type"
+        parameter_names = [parameter["name"] for parameter in parameters]
+        if len(parameter_names) != len(set(parameter_names)):
+            return "Remote Tool 参数名称不能重复"
+        if node.get("type") == "remote_sync_tool":
+            outputs = arguments.get("outputs", [])
+            if not isinstance(outputs, list) or any(
+                not isinstance(output, dict)
+                or set(output) != {"name", "type"}
+                or not isinstance(output.get("name"), str)
+                or not output["name"]
+                or output["name"] == "control-out"
+                or output.get("type") not in {"content", "message", "list-content", "list-message"}
+                for output in outputs
+            ):
+                return "Remote Sync Tool 输出必须包含有效的 name 和 type"
+            output_names = [output["name"] for output in outputs]
+            if len(output_names) != len(set(output_names)):
+                return "Remote Sync Tool 输出名称不能重复"
+        timeout_ms = arguments.get("timeout_ms")
+        maximum_ms = max_wait_ms if node.get("type") == "remote_sync_tool" else max_async_timeout_ms
+        if timeout_ms is not None and (
+            not isinstance(timeout_ms, int)
+            or isinstance(timeout_ms, bool)
+            or timeout_ms <= 0
+            or timeout_ms > maximum_ms
+        ):
+            return f"Remote Tool timeout_ms 必须是 1 到 {maximum_ms} 的整数"
+    return None
 
 
 def node_format_error(node: dict[str, Any], index: int) -> str | None:
@@ -203,7 +260,14 @@ def filter_invalid_connections(
                 return "message"
             if node_type == "construct_content" and from_port == "content-out":
                 return "content"
-            if node_type in {"llm", "tool"} and from_port == "output":
+            if node_type in {"llm", "local_tool"} and from_port == "output":
+                return "content"
+            if node_type == "remote_sync_tool":
+                return next(
+                    (output.get("type") for output in node_arguments(source).get("outputs", []) if output.get("name") == from_port),
+                    None,
+                )
+            if node_type == "remote_async_tool" and from_port == "task_id":
                 return "content"
             if node_type == "llm" and from_port == "reasoning" and node_arguments(source).get("think") is True:
                 return "content"
@@ -227,8 +291,13 @@ def filter_invalid_connections(
                 return "content"
             if node_type in {"construct_content", "router"} and to_port in target.get("dataInputPorts", ["content-in"]):
                 return "content"
-            if node_type == "tool" and to_port in node_arguments(target).get("parameters", []):
+            if node_type == "local_tool" and to_port in node_arguments(target).get("parameters", []):
                 return "content"
+            if node_type in {"remote_sync_tool", "remote_async_tool"}:
+                return next(
+                    (parameter.get("type") for parameter in node_arguments(target).get("parameters", []) if parameter.get("name") == to_port),
+                    None,
+                )
             if node_type == "construct_list" and to_port in target.get("dataInputPorts", []):
                 return node_arguments(target).get("item_type")
             if node_type == "foreach" and to_port == "list-in":
@@ -384,7 +453,7 @@ def create_workflows_router(
         document["_id"] = result.inserted_id
         return workflow_response(document)
 
-    @router.get("/api/tools")
+    @router.get("/api/tools/local")
     def list_tools():
         try:
             schemas = redis_client.hgetall(tools_key)
@@ -406,7 +475,8 @@ def create_workflows_router(
                 {
                     "name": tool_name,
                     "description": function_schema.get("description", ""),
-                    "parameters": function_schema.get("parameters", {}),
+                    "inputSchema": function_schema.get("parameters", {}),
+                    "outputSchema": None,
                 }
             )
         items.sort(key=lambda item: item["name"])
@@ -601,10 +671,7 @@ def create_workflows_router(
             if connection.get("fromId") not in node_id_set or connection.get("toId") not in node_id_set:
                 return JSONResponse(status_code=400, content={"error": "连接引用了不存在的节点"})
 
-        valid_node_types = {
-            "input", "output", "router", "construct_message", "construct_content", "construct_list",
-            "foreach", "llm", "tool", "workflow",
-        }
+        valid_node_types = set(NODE_ARGUMENT_FIELDS_BY_TYPE)
         if any(node.get("type") not in valid_node_types for node in payload.nodes):
             return JSONResponse(status_code=400, content={"error": "Workflow 包含不支持的节点类型"})
         for index, node in enumerate(payload.nodes):
@@ -643,26 +710,35 @@ def create_workflows_router(
             if node.get("input_ports") != reference.get("input_ports", []) or node.get("output_ports") != reference.get("output_ports", []):
                 return JSONResponse(status_code=400, content={"error": "Workflow 节点端口与元数据契约不一致"})
 
-        tool_nodes = [node for node in payload.nodes if node.get("type") == "tool"]
-        if tool_nodes:
+        max_wait_ms = int(os.getenv("TOOL_CLIENT_MAX_WAIT_MS", "10000"))
+        max_async_timeout_ms = int(os.getenv("TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS", "3600000"))
+        for node in payload.nodes:
+            if node.get("type") in {"local_tool", "remote_sync_tool", "remote_async_tool"}:
+                error = tool_node_error(node, max_wait_ms, max_async_timeout_ms)
+                if error:
+                    return JSONResponse(status_code=400, content={"error": error})
+
+        local_tool_nodes = [node for node in payload.nodes if node.get("type") == "local_tool"]
+        if local_tool_nodes:
             try:
                 registered_tool_names = set(redis_client.hkeys(tools_key))
             except redis.RedisError:
                 return JSONResponse(status_code=503, content={"error": "暂时无法校验 Tool 注册表"})
-            if any(node_arguments(node).get("tool") not in registered_tool_names for node in tool_nodes):
+            if any(node_arguments(node).get("tool") not in registered_tool_names for node in local_tool_nodes):
                 return JSONResponse(status_code=400, content={"error": "Tool 节点引用了未注册的工具"})
             try:
-                schemas = redis_client.hmget(tools_key, [node_arguments(node).get("tool") for node in tool_nodes])
+                schemas = redis_client.hmget(tools_key, [node_arguments(node).get("tool") for node in local_tool_nodes])
                 tool_properties = {
                     node_arguments(node).get("tool"): set(json.loads(raw).get("function", {}).get("parameters", {}).get("properties", {}))
-                    for node, raw in zip(tool_nodes, schemas)
+                    for node, raw in zip(local_tool_nodes, schemas)
                     if raw
                 }
             except (redis.RedisError, TypeError, ValueError):
                 return JSONResponse(status_code=503, content={"error": "暂时无法读取 Tool 参数定义"})
-            for node in tool_nodes:
+            for node in local_tool_nodes:
                 parameters = node_arguments(node).get("parameters", [])
-                if not isinstance(parameters, list) or set(parameters) != tool_properties.get(node_arguments(node).get("tool"), set()):
+                expected = tool_properties.get(node_arguments(node).get("tool"))
+                if set(parameters) != expected:
                     return JSONResponse(status_code=400, content={"error": "Tool 节点参数端口与工具定义不一致"})
 
         llm_nodes = [node for node in payload.nodes if node.get("type") == "llm"]

@@ -82,5 +82,11 @@ export function createInspector(elements, editor, markChanged) {
   }
 
   editor.setInspectorRenderer(renderInspector);
-  return { renderInspector, setModels: integrations.setModels, setTools: integrations.setTools, setWorkflowNodes };
+  return {
+    renderInspector,
+    setModels: integrations.setModels,
+    setLocalTools: integrations.setLocalTools,
+    setRemoteTools: integrations.setRemoteTools,
+    setWorkflowNodes,
+  };
 }

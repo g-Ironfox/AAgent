@@ -9,7 +9,9 @@ export const NODE_TYPES = new Set([
   'construct_list',
   'foreach',
   'llm',
-  'tool',
+  'local_tool',
+  'remote_sync_tool',
+  'remote_async_tool',
   'workflow',
 ]);
 
@@ -92,20 +94,31 @@ export function portsForNode(node) {
       { id: 'item-out', direction: 'output', type: node.item_type, label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
     ];
   }
-  if (node.type === 'tool') {
+  if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
+    const isRemote = node.type !== 'local_tool';
     const parameterPorts = (node.parameters || []).map((parameter) => ({
-      id: parameter,
+      id: isRemote ? parameter.name : parameter,
       direction: 'input',
-      type: 'content',
-      label: parameter,
-      title: `工具参数: ${parameter}`,
+      type: isRemote ? parameter.type : 'content',
+      label: isRemote ? parameter.name : parameter,
+      title: `工具参数: ${isRemote ? parameter.name : parameter}`,
       multiple: false,
     }));
+    const resultPorts = node.type === 'remote_sync_tool'
+      ? (node.outputs || []).map((output) => ({ id: output.name, direction: 'output', type: output.type, label: output.name, title: `工具输出: ${output.name}`, multiple: true }))
+      : [{
+        id: node.type === 'remote_async_tool' ? 'task_id' : 'output',
+        direction: 'output',
+        type: 'content',
+        label: node.type === 'remote_async_tool' ? 'Task ID' : '结果',
+        title: node.type === 'remote_async_tool' ? '已发布任务 ID' : '工具执行结果',
+        multiple: true,
+      }];
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       ...parameterPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'output', direction: 'output', type: 'content', label: '结果', title: '工具执行结果', multiple: true },
+      ...resultPorts,
     ];
   }
   if (node.type === 'workflow') {
@@ -159,7 +172,9 @@ export function createNode(type, nodes, configuration = null) {
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
   if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, ...position };
-  if (type === 'tool') return { id: createWorkflowId('tool'), type, name: `Tool ${number}`, tool: '', parameters: [], ...position };
+  if (type === 'local_tool') return { id: createWorkflowId('local-tool'), type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
+  if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
+  if (type === 'remote_async_tool') return { id: createWorkflowId('remote-async-tool'), type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, ...position };
   if (type === 'workflow' && configuration) {
     return {
       id: createWorkflowId('workflow'),

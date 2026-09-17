@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from typing import Any, Callable
 
-from workflow_contract import node_argument
+from workflow_contract import node_argument, tool_parameter_names
 
 
 WorkflowMap = list[dict[str, Any]]
 NodeHandler = Callable[[int, WorkflowMap], int]
 WORKFLOW_END = -1
+logger = logging.getLogger("aagent.workflow")
 
 
 def read_workflow_input(node: dict[str, Any], port_id: str) -> tuple[bool, Any]:
@@ -182,19 +185,73 @@ def workflow_router(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node, f"branch-{key}")
 
 
-def workflow_tool(current_id: int, workflow_map: WorkflowMap) -> int:
-    from tools.tool import execute_tool
-
-    node = workflow_map[current_id]
+def _tool_arguments(node: dict[str, Any]) -> dict[str, Any]:
     arguments = {}
-    for parameter in node_argument(node, "parameters", []):
+    for parameter in tool_parameter_names(node):
         has_value, value = read_workflow_input(node, parameter)
         if has_value:
             arguments[parameter] = value
-    result = execute_tool(
-        node["id"], node_argument(node, "tool"), arguments
+    return arguments
+
+
+def _tool_output(result: Any) -> str:
+    if isinstance(result, str):
+        return result
+    return json.dumps(result, ensure_ascii=False)
+
+
+def workflow_local_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    from tools.tool import execute_tool
+
+    node = workflow_map[current_id]
+    result = execute_tool(node["id"], node_argument(node, "tool"), _tool_arguments(node))
+    propagate_workflow_output(workflow_map, node, "output", _tool_output(result))
+    return next_successor(node)
+
+
+def _call_remote_node(
+    node: dict[str, Any], mode: str, default_timeout_env: str, default_timeout_ms: str
+) -> Any:
+    from tool_server_client import ToolServerError, call_remote_tool
+
+    tool = node_argument(node, "tool")
+    timeout_ms = node_argument(
+        node, "timeout_ms", int(os.getenv(default_timeout_env, default_timeout_ms))
     )
-    propagate_workflow_output(workflow_map, node, "output", result)
+    try:
+        return call_remote_tool(tool, _tool_arguments(node), mode, timeout_ms)
+    except ToolServerError as error:
+        execution = "remote_sync" if mode == "wait" else "remote_async"
+        details = {"node_id": node["id"], "tool": tool, "execution": execution, "message": str(error)}
+        if error.task_id:
+            details["task_id"] = error.task_id
+        logger.error("remote tool failed: %s", json.dumps(details, ensure_ascii=False))
+        raise ValueError(json.dumps(details, ensure_ascii=False)) from error
+
+
+def workflow_remote_sync_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    result = _call_remote_node(node, "wait", "TOOL_CLIENT_DEFAULT_WAIT_MS", "10000")
+    outputs = node_argument(node, "outputs", [])
+    if len(outputs) == 1 and outputs[0]["name"] == "result":
+        propagate_workflow_output(workflow_map, node, "result", result)
+    elif isinstance(result, dict):
+        missing = [output["name"] for output in outputs if output["name"] not in result]
+        if missing:
+            raise ValueError(f"remote sync tool result is missing outputs: {', '.join(missing)}")
+        for output in outputs:
+            propagate_workflow_output(workflow_map, node, output["name"], result[output["name"]])
+    elif outputs:
+        raise ValueError("remote sync tool result must be an object for named outputs")
+    return next_successor(node)
+
+
+def workflow_remote_async_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    task_id = _call_remote_node(
+        node, "async", "TOOL_CLIENT_DEFAULT_ASYNC_TIMEOUT_MS", "600000"
+    )
+    propagate_workflow_output(workflow_map, node, "task_id", task_id)
     return next_successor(node)
 
 
@@ -258,6 +315,8 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_list": workflow_construct_list,
     "foreach": workflow_foreach,
     "llm": workflow_llm,
-    "tool": workflow_tool,
+    "local_tool": workflow_local_tool,
+    "remote_sync_tool": workflow_remote_sync_tool,
+    "remote_async_tool": workflow_remote_async_tool,
     "workflow": workflow_workflow,
 }

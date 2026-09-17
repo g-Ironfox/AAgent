@@ -25,10 +25,6 @@ def system_prompt_from_documents():
         for document in selected_documents
     )
 
-
-
-
-
 def send_group_message(group_id,message):
     e = {
         "event_type":"rpc_apply",

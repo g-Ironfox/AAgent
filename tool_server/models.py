@@ -1,4 +1,3 @@
-import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,33 +33,6 @@ class CallbackSpec(BaseModel):
         min_length=1,
         max_length=3,
     )
-    context: dict[str, Any] = Field(default_factory=dict)
-
-    @staticmethod
-    def _validate_context(value: Any, depth: int = 0) -> None:
-        if depth > 5:
-            raise ValueError("callback context nesting is too deep")
-        if isinstance(value, dict):
-            if len(value) > 64:
-                raise ValueError("callback context has too many fields")
-            for key, nested in value.items():
-                if not isinstance(key, str) or len(key) > 128:
-                    raise ValueError("callback context field name is invalid")
-                CallbackSpec._validate_context(nested, depth + 1)
-        elif isinstance(value, list):
-            if len(value) > 256:
-                raise ValueError("callback context list is too large")
-            for nested in value:
-                CallbackSpec._validate_context(nested, depth + 1)
-
-    def model_post_init(self, __context: Any) -> None:
-        self._validate_context(self.context)
-        try:
-            encoded = json.dumps(self.context, ensure_ascii=False, separators=(",", ":"))
-        except (TypeError, ValueError) as error:
-            raise ValueError("callback context must be JSON serializable") from error
-        if len(encoded.encode("utf-8")) > 16384:
-            raise ValueError("callback context is too large")
 
 
 class ToolCallRequest(BaseModel):
@@ -69,7 +41,6 @@ class ToolCallRequest(BaseModel):
     arguments: dict[str, Any]
     mode: Literal["wait", "async"] = "wait"
     timeout_ms: int = Field(default=30000, ge=1)
-    idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
     callback: CallbackSpec | None = None
 
 

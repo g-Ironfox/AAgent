@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import json
 import logging
 import uuid
@@ -48,7 +47,6 @@ def callback_event(task: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any
                 "error": patch.get("error"),
                 "progress": patch.get("progress"),
                 "message": patch.get("message"),
-                "context": callback.get("context", {}),
             },
         },
     }
@@ -220,16 +218,6 @@ async def call_tool(tool_name: str, request: ToolCallRequest):
     except (SchemaError, ValidationError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
-    idempotency_key = None
-    if request.idempotency_key:
-        digest = hashlib.sha256(f"{tool_name}:{request.idempotency_key}".encode()).hexdigest()
-        idempotency_key = f"tool:idempotency:{digest}"
-        existing_task_id = await redis.get(idempotency_key)
-        if existing_task_id:
-            existing = await store.get(existing_task_id)
-            if existing:
-                return JSONResponse(status_code=200 if existing["status"] in TERMINAL_STATUSES else 202, content=existing)
-
     task_id = uuid.uuid4().hex
     now = datetime.now(timezone.utc)
     task = {
@@ -246,13 +234,6 @@ async def call_tool(tool_name: str, request: ToolCallRequest):
     }
     if not await store.create(task):
         raise HTTPException(status_code=409, detail="task id collision")
-    if idempotency_key:
-        claimed = await redis.set(idempotency_key, task_id, ex=settings.task_ttl_seconds, nx=True)
-        if not claimed:
-            existing_task_id = await redis.get(idempotency_key)
-            existing = await store.get(existing_task_id) if existing_task_id else None
-            if existing:
-                return JSONResponse(status_code=202, content=existing)
 
     tools = await registry.list_tools()
     provider_id = next(item["provider_id"] for item in tools if item["name"] == tool_name)

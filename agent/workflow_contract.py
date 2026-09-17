@@ -15,7 +15,9 @@ SUPPORTED_NODE_TYPES = {
     "construct_list",
     "foreach",
     "llm",
-    "tool",
+    "local_tool",
+    "remote_sync_tool",
+    "remote_async_tool",
     "workflow",
 }
 
@@ -35,7 +37,9 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_list": {"item_type", "initial_value_count"},
     "foreach": {"item_type"},
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
-    "tool": {"tool", "parameters"},
+    "local_tool": {"tool", "parameters"},
+    "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
+    "remote_async_tool": {"tool", "parameters", "timeout_ms"},
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
@@ -48,6 +52,37 @@ def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
 
 def node_argument(node: dict[str, Any], name: str, default: Any = None) -> Any:
     return node_arguments(node).get(name, default)
+
+
+def tool_parameter_names(node: dict[str, Any]) -> list[str]:
+    parameters = node_argument(node, "parameters", [])
+    if node.get("type") in {"remote_sync_tool", "remote_async_tool"}:
+        return [parameter["name"] for parameter in parameters]
+    return parameters
+
+
+def tool_parameter_type(node: dict[str, Any], name: str) -> str | None:
+    if node.get("type") == "local_tool":
+        return "content" if name in tool_parameter_names(node) else None
+    if node.get("type") in {"remote_sync_tool", "remote_async_tool"}:
+        return next(
+            (parameter["type"] for parameter in node_argument(node, "parameters", []) if parameter["name"] == name),
+            None,
+        )
+    return None
+
+
+def tool_output_type(node: dict[str, Any], name: str) -> str | None:
+    if node.get("type") == "local_tool" and name == "output":
+        return "content"
+    if node.get("type") == "remote_sync_tool":
+        return next(
+            (output["type"] for output in node_argument(node, "outputs", []) if output["name"] == name),
+            None,
+        )
+    if node.get("type") == "remote_async_tool" and name == "task_id":
+        return "content"
+    return None
 
 
 def normalize_node_arguments(node: dict[str, Any]) -> dict[str, Any]:
@@ -103,8 +138,14 @@ def data_ports_for_node(
         return declared_inputs, {"list-out"}
     if node_type == "foreach":
         return declared_inputs | {"list-in"}, {"item-out"}
-    if node_type == "tool":
-        return declared_inputs | set(node_argument(node, "parameters", [])), {"output"}
+    if node_type == "local_tool":
+        return declared_inputs | set(tool_parameter_names(node)), {"output"}
+    if node_type == "remote_sync_tool":
+        return declared_inputs | set(tool_parameter_names(node)), {
+            output["name"] for output in node_argument(node, "outputs", [])
+        }
+    if node_type == "remote_async_tool":
+        return declared_inputs | set(tool_parameter_names(node)), {"task_id"}
     if node_type == "workflow":
         return (
             {f"workflow:{port['name']}" for port in node.get("input_ports", [])},
@@ -174,6 +215,10 @@ def is_valid_connection(
             target_port = next(port for port in target_node.get("input_ports", []) if f"workflow:{port['name']}" == to_port)
             if connection_type != target_port["type"]:
                 return False
+        if target_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_parameter_type(target_node, to_port):
+            return False
+        if source_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_output_type(source_node, from_port):
+            return False
         source_type = source_node["type"]
         target_type = target_node["type"]
         if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):

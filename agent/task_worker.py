@@ -197,8 +197,7 @@ def handle_task(e: dict):
         "payload":{
                 "content":content,
                 "reasoning":reasoning,
-                "tool_calls":tool_calls,
-                "context":messages
+                "tool_calls":tool_calls
             }
         }
         if tool_calls:

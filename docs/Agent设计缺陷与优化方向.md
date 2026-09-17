@@ -137,7 +137,7 @@ load run(version=N)
 
 - 为每次节点尝试生成稳定的 `operation_id = run_id + node_id + logical_iteration`;
 - 工具声明 `effect`: `pure`、`read`、`idempotent_write`、`non_idempotent_write`;
-- 写工具优先接受 `idempotency_key`并保存执行收据;
+- 写工具需要明确超时后的结果未知语义，并由调用方决定是否允许重试;
 - 工具结果先持久化,再推进 Workflow;
 - 对未知结果使用 `indeterminate` 状态,交由查询、补偿或人工确认,不能直接当失败重试;
 - 分支探索、MCTS 和 Draft 阶段默认禁止执行不可逆工具。

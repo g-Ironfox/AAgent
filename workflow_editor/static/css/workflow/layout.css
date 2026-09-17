@@ -41,7 +41,9 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .construct_content-symbol { background:#2f6f8f; }
 .construct_list-symbol { background:#176f73; }
 .foreach-symbol { background:#9a5a24; }
-.tool-symbol { background:var(--green); }
+.local_tool-symbol { background:var(--green); }
+.remote_sync_tool-symbol { background:#a94f36; }
+.remote_async_tool-symbol { background:#b47a22; }
 .workflow-node-library { padding-top:8px; display:grid; gap:8px; border-top:1px solid var(--line); }
 .workflow-node-library[hidden] { display:none; }
 .workflow-symbol { background:#785d9b; }

@@ -1,4 +1,4 @@
-import { fetchModels, fetchTools } from './api.js';
+import { fetchLocalTools, fetchModels, fetchRemoteTools } from './api.js';
 import { createWorkflowEditor } from './workflow/editor.js';
 import { createInspector } from './workflow/inspector/inspector.js';
 import {
@@ -110,13 +110,14 @@ loadSnapshot(workflowSnapshot());
 inspector.setWorkflowNodes(workflowReferences());
 elements.workflowNameDisplay.textContent = state.name;
 
-const resourceCounts = { models: null, tools: null };
+const resourceCounts = { models: null, localTools: null, remoteTools: null };
 const resourceErrors = {};
 
 function renderResourceState() {
   const counts = [
     resourceCounts.models === null ? null : `${resourceCounts.models} Models`,
-    resourceCounts.tools === null ? null : `${resourceCounts.tools} Tools`,
+    resourceCounts.localTools === null ? null : `${resourceCounts.localTools} Local Tools`,
+    resourceCounts.remoteTools === null ? null : `${resourceCounts.remoteTools} Remote Tools`,
   ].filter(Boolean);
   const errors = Object.values(resourceErrors);
   elements.resourceState.textContent = [...counts, ...errors].join(' · ') || '资源读取中';
@@ -134,15 +135,27 @@ fetchModels()
     renderResourceState();
   });
 
-fetchTools()
+fetchLocalTools()
   .then((tools) => {
-    inspector.setTools(tools.items);
-    resourceCounts.tools = tools.items.length;
+    inspector.setLocalTools(tools.items);
+    resourceCounts.localTools = tools.items.length;
     renderResourceState();
   })
   .catch((error) => {
-    console.warn('Tool 注册表读取失败', error);
-    resourceErrors.tools = `Tools: ${error.message || '读取失败'}`;
+    console.warn('Local Tool 注册表读取失败', error);
+    resourceErrors.localTools = `Local Tools: ${error.message || '读取失败'}`;
+    renderResourceState();
+  });
+
+fetchRemoteTools()
+  .then((tools) => {
+    inspector.setRemoteTools(tools.items);
+    resourceCounts.remoteTools = tools.items.length;
+    renderResourceState();
+  })
+  .catch((error) => {
+    console.warn('Remote Tool 目录读取失败', error);
+    resourceErrors.remoteTools = `Remote Tools: ${error.message || '读取失败'}`;
     renderResourceState();
   });
 

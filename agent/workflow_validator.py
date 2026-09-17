@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from workflow_contract import (
@@ -210,16 +211,69 @@ def _validate_node(node: Any, index: int) -> None:
             raise WorkflowValidationError(
                 "foreach node item_type must be 'content' or 'message'"
             )
-    elif node_type == "tool":
+    elif node_type == "local_tool":
         parameters = node_argument(node, "parameters", [])
         if not isinstance(parameters, list) or any(
-            not isinstance(parameter, str) or not parameter for parameter in parameters
+            not isinstance(parameter, str) or not parameter or parameter == "control-in"
+            for parameter in parameters
         ):
             raise WorkflowValidationError(
-                "tool node parameters must be a list of non-empty strings"
+                "tool node parameters must be non-empty strings other than control-in"
             )
         if len(parameters) != len(set(parameters)):
             raise WorkflowValidationError("tool node parameters contains duplicates")
+        tool_name = node_argument(node, "tool")
+        if not isinstance(tool_name, str) or not tool_name:
+            raise WorkflowValidationError("tool node tool must be a non-empty string")
+    elif node_type in {"remote_sync_tool", "remote_async_tool"}:
+        parameters = node_argument(node, "parameters", [])
+        if not isinstance(parameters, list) or any(
+            not isinstance(parameter, dict)
+            or set(parameter) != {"name", "type"}
+            or not isinstance(parameter.get("name"), str)
+            or not parameter["name"]
+            or parameter["name"] == "control-in"
+            or parameter.get("type") not in {"content", "message", "list-content", "list-message"}
+            for parameter in parameters
+        ):
+            raise WorkflowValidationError("remote tool parameters must contain valid name and type fields")
+        parameter_names = [parameter["name"] for parameter in parameters]
+        if len(parameter_names) != len(set(parameter_names)):
+            raise WorkflowValidationError("tool node parameters contains duplicate names")
+        tool_name = node_argument(node, "tool")
+        if not isinstance(tool_name, str) or not tool_name:
+            raise WorkflowValidationError("tool node tool must be a non-empty string")
+        if node_type == "remote_sync_tool":
+            outputs = node_argument(node, "outputs", [])
+            if not isinstance(outputs, list) or any(
+                not isinstance(output, dict)
+                or set(output) != {"name", "type"}
+                or not isinstance(output.get("name"), str)
+                or not output["name"]
+                or output["name"] == "control-out"
+                or output.get("type") not in DATA_CONNECTION_TYPES
+                for output in outputs
+            ):
+                raise WorkflowValidationError("remote sync tool outputs must contain valid name and type fields")
+            output_names = [output["name"] for output in outputs]
+            if len(output_names) != len(set(output_names)):
+                raise WorkflowValidationError("remote sync tool outputs contains duplicate names")
+        timeout_ms = node_argument(node, "timeout_ms")
+        if timeout_ms is not None and (
+            not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms <= 0
+        ):
+            raise WorkflowValidationError("remote tool timeout_ms must be a positive integer")
+        maximum_env = (
+            "TOOL_CLIENT_MAX_WAIT_MS"
+            if node_type == "remote_sync_tool"
+            else "TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS"
+        )
+        default_maximum = "10000" if node_type == "remote_sync_tool" else "3600000"
+        maximum_ms = int(os.getenv(maximum_env, default_maximum))
+        if timeout_ms is not None and timeout_ms > maximum_ms:
+            raise WorkflowValidationError(
+                f"remote tool timeout_ms must not exceed {maximum_ms}"
+            )
     elif node_type == "workflow":
         workflow_name = node_argument(node, "workflow_name")
         if not isinstance(workflow_name, str) or not workflow_name:
