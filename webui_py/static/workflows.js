@@ -231,6 +231,7 @@ async function saveDependency(references, previousName, nextName) {
       workflow.input_ports || [],
       workflow.output_ports || [],
       nextReferences,
+      workflow.remote_tools || [],
     ));
     const index = state.workflows.findIndex((item) => item.id === workflow.id);
     state.workflows[index] = { ...state.workflows[index], ...updated };
@@ -452,7 +453,7 @@ async function confirmWorkflowUpload(event) {
   try {
     const { workflowNodes, nodes } = resolveWorkflowReferences(imported);
     created = await createWorkflow(uploadName);
-    await updateWorkflowMetadata(created.id, imported.input_ports || [], imported.output_ports || [], workflowNodes);
+    await updateWorkflowMetadata(created.id, imported.input_ports || [], imported.output_ports || [], workflowNodes, imported.remote_tools || []);
     const uploaded = workflowSummary(await uploadWorkflow(created.id, {
       name: uploadName,
       description: typeof imported.description === 'string' ? imported.description : '',
@@ -498,7 +499,7 @@ async function overwriteWorkflow() {
   updateControls();
   try {
     const { workflowNodes, nodes } = resolveWorkflowReferences(imported);
-    await updateWorkflowMetadata(existing.id, imported.input_ports || [], imported.output_ports || [], workflowNodes);
+    await updateWorkflowMetadata(existing.id, imported.input_ports || [], imported.output_ports || [], workflowNodes, imported.remote_tools || []);
     const uploaded = workflowSummary(await uploadWorkflow(existing.id, {
       name: uploadName,
       description: typeof imported.description === 'string' ? imported.description : '',
@@ -557,6 +558,7 @@ function exportableWorkflow(detail) {
     input_ports: detail.input_ports || [],
     output_ports: detail.output_ports || [],
     workflow_nodes: detail.workflow_nodes || [],
+    remote_tools: detail.remote_tools || [],
     nodes: detail.nodes || [],
     connections: detail.connections || [],
   };

@@ -90,6 +90,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .metadata-port-section > header button { width:30px; height:30px; padding:0; color:var(--green); border:1px solid var(--line); background:#fff; font-size:20px; }
 .metadata-port-mark { min-width:29px; padding:3px 5px; color:#fff; text-align:center; font:700 8px Consolas,monospace; }
 .metadata-port-mark.input { background:var(--blue); }.metadata-port-mark.output { background:#b75b18; }.metadata-port-mark.workflow { background:#785d9b; }
+.metadata-port-mark.remote-tool { background:#a94f36; }
 .metadata-port-list { min-height:72px; }
 .metadata-port-row { padding:9px 12px; display:grid; grid-template-columns:minmax(0,1fr) 126px 30px; gap:7px; border-bottom:1px solid #e7ebe7; }
 .metadata-port-row input,.metadata-port-row select { min-width:0; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; font-size:10px; }
@@ -99,13 +100,23 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .callable-workflow-section > header { min-height:54px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; background:#fafbf9; border-bottom:1px solid var(--line); }
 .callable-workflow-section > header div { display:flex; align-items:center; gap:8px; }
 .callable-workflow-section h3 { margin:0; font-size:13px; }
-.callable-workflow-section button,.callable-contract-heading button { width:30px; height:30px; padding:0; color:var(--green); border:1px solid var(--line); background:#fff; font-size:20px; }
+.callable-workflow-section > header button,.callable-contract-heading button { width:30px; height:30px; padding:0; color:var(--green); border:1px solid var(--line); background:#fff; font-size:20px; }
 .callable-workflow-list > .metadata-empty { padding:32px 14px; }
 .callable-workflow-row { margin:12px; border:1px solid var(--line); background:#fff; }
 .callable-workflow-row > header { padding:10px 12px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:end; gap:8px; border-bottom:1px solid var(--line); background:#fafbf9; }
 .callable-workflow-row > header label { display:grid; gap:5px; color:var(--muted); font-size:10px; }
-.callable-workflow-row > header input { width:100%; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; }
-.callable-workflow-row > header button { color:var(--red); border-color:#dfb8b4; }
+.callable-workflow-row > header input,.callable-workflow-row > header select { width:100%; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; }
+.remote-tool-name-field { position:relative; }
+.remote-tool-suggestions { position:absolute; z-index:3; top:100%; right:0; left:0; overflow:hidden; border:1px solid var(--line); background:#fff; box-shadow:0 8px 18px rgba(23,32,29,.12); }
+.remote-tool-suggestions button { width:100%; padding:8px 9px; display:grid; gap:3px; color:var(--ink); border:0; border-bottom:1px solid #e7ebe7; background:#fff; text-align:left; cursor:pointer; }
+.remote-tool-suggestions button:last-child { border-bottom:0; }
+.remote-tool-suggestions button:hover,.remote-tool-suggestions button:focus-visible { background:#e7f1ec; outline:0; }
+.remote-tool-suggestions strong { overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.remote-tool-suggestions span { overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.callable-workflow-row > header > button,.callable-workflow-row > header > .metadata-row-actions button { color:var(--red); border-color:#dfb8b4; }
+.callable-workflow-row > header .metadata-row-actions { display:flex; gap:6px; }
+.callable-workflow-row > header:has(.metadata-row-actions) { grid-template-columns:minmax(0,1fr) auto; }
+.callable-workflow-row > header .metadata-row-actions button:first-child { color:var(--green); border-color:var(--line); }
 .callable-contract-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 .callable-contract-columns > section + section { border-left:1px solid var(--line); }
 .callable-contract-heading { min-height:44px; padding:7px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e7ebe7; }

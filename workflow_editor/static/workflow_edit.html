@@ -182,6 +182,13 @@
           </header>
           <div id="callableWorkflowList" class="callable-workflow-list"></div>
         </section>
+        <section class="callable-workflow-section">
+          <header>
+            <div><span class="metadata-port-mark remote-tool">RT</span><h3>Remote Tools</h3></div>
+            <button id="addRemoteToolButton" type="button" title="注册 Remote Tool" aria-label="注册 Remote Tool">+</button>
+          </header>
+          <div id="remoteToolList" class="callable-workflow-list"></div>
+        </section>
       </div>
       <footer><span id="resourceState">正在读取数据库资源</span><button id="applyMetadataButton" class="toolbar-button primary" value="default">应用</button></footer>
     </form>
@@ -200,6 +207,28 @@
       <header>
         <label>Workflow 名称<input data-callable-workflow-name maxlength="120" required placeholder="workflow_name"></label>
         <button type="button" data-remove-callable-workflow title="删除可调用 Workflow" aria-label="删除可调用 Workflow">×</button>
+      </header>
+      <div class="callable-contract-columns">
+        <section>
+          <div class="callable-contract-heading"><strong>输入契约</strong><button type="button" data-add-callable-port="input_ports" title="添加输入接口">+</button></div>
+          <div class="metadata-port-list" data-callable-port-list="input_ports"></div>
+        </section>
+        <section>
+          <div class="callable-contract-heading"><strong>输出契约</strong><button type="button" data-add-callable-port="output_ports" title="添加输出接口">+</button></div>
+          <div class="metadata-port-list" data-callable-port-list="output_ports"></div>
+        </section>
+      </div>
+    </article>
+  </template>
+
+  <template id="remoteToolMetadataTemplate">
+    <article class="callable-workflow-row remote-tool-metadata-row">
+      <header>
+        <label class="remote-tool-name-field">Remote Tool 名称<input data-remote-tool-name maxlength="128" required placeholder="输入工具名称以搜索"><div data-remote-tool-suggestions class="remote-tool-suggestions" role="listbox" hidden></div></label>
+        <div class="metadata-row-actions">
+          <button type="button" data-fill-remote-tool title="从 Tool Server 填充" aria-label="从 Tool Server 填充">↻</button>
+          <button type="button" data-remove-remote-tool title="删除 Remote Tool" aria-label="删除 Remote Tool">×</button>
+        </div>
       </header>
       <div class="callable-contract-columns">
         <section>
@@ -326,22 +355,9 @@
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Remote Sync Tool
-        <span class="remote-tool-picker">
-          <input data-field="tool" maxlength="128" autocomplete="off" aria-autocomplete="list" aria-controls="remoteToolCandidates">
-          <span id="remoteToolCandidates" class="remote-tool-candidates" role="listbox" hidden></span>
-        </span>
+        <select data-field="tool"></select>
       </label>
       <label>等待时间 (ms)<input data-field="timeout_ms" type="number" min="1" max="10000" step="1"></label>
-    </section>
-    <section class="inspector-section">
-      <div class="section-label"><strong>参数端口</strong><span>强类型</span></div>
-      <div data-remote-parameters></div>
-      <button class="add-branch-button" type="button" data-add-remote-parameter>+ 添加参数</button>
-    </section>
-    <section class="inspector-section">
-      <div class="section-label"><strong>输出端口</strong><span>强类型</span></div>
-      <div data-remote-outputs></div>
-      <button class="add-branch-button" type="button" data-add-remote-output>+ 添加输出</button>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -351,10 +367,7 @@
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Remote Async Tool
-        <span class="remote-tool-picker">
-          <input data-field="tool" maxlength="128" autocomplete="off" aria-autocomplete="list" aria-controls="remoteToolCandidates">
-          <span id="remoteToolCandidates" class="remote-tool-candidates" role="listbox" hidden></span>
-        </span>
+        <select data-field="tool"></select>
       </label>
       <label>任务超时 (ms)<input data-field="timeout_ms" type="number" min="1" max="3600000" step="1"></label>
       <label class="checkbox-field">
@@ -371,11 +384,6 @@
           <label><input data-callback-status type="checkbox" value="failed"><span>失败</span></label>
         </fieldset>
       </div>
-    </section>
-    <section class="inspector-section">
-      <div class="section-label"><strong>参数端口</strong><span>强类型</span></div>
-      <div data-remote-parameters></div>
-      <button class="add-branch-button" type="button" data-add-remote-parameter>+ 添加参数</button>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

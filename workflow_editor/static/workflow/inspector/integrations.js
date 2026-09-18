@@ -4,7 +4,7 @@ import { nodeById, state } from '../domain/serialization.js';
 export function createIntegrationInspector(context) {
   let modelConfigs = [];
   let localToolSchemas = [];
-  let remoteToolSchemas = [];
+  let remoteToolReferences = [];
 
   function prepare(node) {
     if (node.type === 'llm') renderModelOptions(node);
@@ -68,43 +68,22 @@ export function createIntegrationInspector(context) {
     });
   }
 
-  function workflowType(schema) {
-    const declared = schema?.['x-workflow-port-type'];
-    if (['content', 'message', 'list-content', 'list-message'].includes(declared)) return declared;
-    return schema?.type === 'array' ? 'list-content' : 'content';
-  }
-
-  function schemaPorts(schema, defaultName = null) {
-    if (!schema || typeof schema !== 'object') return [];
-    if (schema.properties && typeof schema.properties === 'object') {
-      return Object.entries(schema.properties).map(([name, property]) => ({ name, type: workflowType(property) }));
-    }
-    return defaultName ? [{ name: defaultName, type: workflowType(schema) }] : [];
-  }
-
-  function renderPortRows(node, key, reservedName) {
-    const container = context.elements.inspectorContent.querySelector(`[data-remote-${key}]`);
-    if (!container) return;
-    const rows = node[key].map((port) => {
-      const row = document.createElement('div');
-      row.className = 'parameter-row';
-      row.innerHTML = '<input maxlength="80" aria-label="端口名称"><select aria-label="端口类型"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select><button type="button" title="删除端口" aria-label="删除端口">×</button>';
-      const input = row.querySelector('input');
-      input.value = port.name;
-      input.classList.toggle('invalid', !port.name || port.name === reservedName);
-      row.querySelector('select').value = port.type;
-      return row;
-    });
-    container.replaceChildren(...rows);
-    if (!rows.length) container.append(Object.assign(document.createElement('div'), { className: 'empty-options', textContent: '暂无端口' }));
-  }
-
   function renderRemoteToolFields(node) {
-    const candidates = context.elements.inspectorContent.querySelector('#remoteToolCandidates');
-    candidates.replaceChildren();
-    renderPortRows(node, 'parameters', 'control-in');
-    if (node.type === 'remote_sync_tool') renderPortRows(node, 'outputs', 'control-out');
+    renderRemoteToolSelect(node);
     if (node.type === 'remote_async_tool') renderCallback(node);
+  }
+
+  function renderRemoteToolSelect(node) {
+    const toolSelect = context.elements.inspectorContent.querySelector('[data-field="tool"]');
+    const options = remoteToolReferences.map((tool) => Object.assign(document.createElement('option'), { value: tool.name, textContent: tool.name }));
+    if (!remoteToolReferences.some((tool) => tool.name === node.tool)) {
+      options.unshift(Object.assign(document.createElement('option'), {
+        value: '',
+        textContent: remoteToolReferences.length ? '选择已注册的 Remote Tool' : '元数据中没有 Remote Tool',
+      }));
+    }
+    toolSelect.replaceChildren(...options);
+    toolSelect.disabled = remoteToolReferences.length === 0;
   }
 
   function renderCallback(node) {
@@ -121,76 +100,17 @@ export function createIntegrationInspector(context) {
   }
 
   function bindRemoteTool(node) {
-    const bindPortRows = (key, reservedName) => {
-      const container = context.elements.inspectorContent.querySelector(`[data-remote-${key}]`);
-      if (!container) return;
-      const syncPorts = () => {
-      const rows = [...container.querySelectorAll('.parameter-row')];
-      const inputs = rows.map((row) => row.querySelector('input'));
-      node[key] = rows.map((row) => ({
-        name: row.querySelector('input').value.trim(),
-        type: row.querySelector('select').value,
-      }));
-      for (const input of inputs) input.classList.toggle('invalid', !input.value.trim() || input.value.trim() === reservedName);
-      reconcileConnections(state);
-      context.markChanged();
-      context.editor.renderNodes();
-      context.renderInterfaceContract(node);
-      };
-      for (const row of container.querySelectorAll('.parameter-row')) {
-        row.querySelector('input').addEventListener('input', syncPorts);
-        row.querySelector('select').addEventListener('change', syncPorts);
-        row.querySelector('button').addEventListener('click', () => {
-          row.remove();
-          syncPorts();
-          context.renderInspector();
-        });
-      }
-      context.elements.inspectorContent.querySelector(`[data-add-remote-${key.slice(0, -1)}]`).addEventListener('click', () => {
-        const prefix = key === 'parameters' ? 'parameter' : 'result';
-        let index = node[key].length + 1;
-        while (node[key].some((port) => port.name === `${prefix}_${index}`)) index += 1;
-        node[key].push({ name: `${prefix}_${index}`, type: 'content' });
-        context.markChanged();
-        context.renderInspector();
-      });
-    };
-    bindPortRows('parameters', 'control-in');
-    if (node.type === 'remote_sync_tool') bindPortRows('outputs', 'control-out');
-    const toolInput = context.elements.inspectorContent.querySelector('[data-field="tool"]');
-    const candidates = context.elements.inspectorContent.querySelector('#remoteToolCandidates');
-    const selectTool = (schema) => {
-      toolInput.value = schema.name;
-      node.tool = schema.name;
-      node.parameters = schemaPorts(schema.inputSchema);
-      if (node.type === 'remote_sync_tool') node.outputs = schemaPorts(schema.outputSchema, 'result');
+    const toolSelect = context.elements.inspectorContent.querySelector('[data-field="tool"]');
+    toolSelect.addEventListener('change', () => {
+      const tool = remoteToolReferences.find((reference) => reference.name === toolSelect.value);
+      node.tool = tool?.name || '';
+      node.parameters = structuredClone(tool?.input_ports || []);
+      if (node.type === 'remote_sync_tool') node.outputs = structuredClone(tool?.output_ports || []);
       reconcileConnections(state);
       context.markChanged();
       context.editor.renderNodes();
       context.renderInspector();
-    };
-    const renderCandidates = () => {
-      const query = toolInput.value.trim().toLocaleLowerCase();
-      const matches = remoteToolSchemas.filter((tool) => !query || tool.name.toLocaleLowerCase().includes(query));
-      candidates.replaceChildren(...matches.map((tool) => {
-        const option = document.createElement('button');
-        option.type = 'button';
-        option.className = 'remote-tool-candidate';
-        option.setAttribute('role', 'option');
-        option.innerHTML = '<strong></strong><small></small>';
-        option.querySelector('strong').textContent = tool.name;
-        option.querySelector('small').textContent = tool.description || '无描述';
-        option.addEventListener('pointerdown', (event) => {
-          event.preventDefault();
-          selectTool(tool);
-        });
-        return option;
-      }));
-      candidates.hidden = matches.length === 0;
-    };
-    toolInput.addEventListener('focus', renderCandidates);
-    toolInput.addEventListener('input', renderCandidates);
-    toolInput.addEventListener('blur', () => { candidates.hidden = true; });
+    });
     const timeoutInput = context.elements.inspectorContent.querySelector('[data-field="timeout_ms"]');
     timeoutInput.addEventListener('input', () => {
       node.timeout_ms = Number(timeoutInput.value);
@@ -288,10 +208,10 @@ export function createIntegrationInspector(context) {
     if (['llm', 'local_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
   }
 
-  function setRemoteTools(tools) {
-    remoteToolSchemas = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
+  function setRemoteToolReferences(tools) {
+    remoteToolReferences = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
     if (['remote_sync_tool', 'remote_async_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
   }
 
-  return { bind, prepare, setModels, setLocalTools, setRemoteTools };
+  return { bind, prepare, setModels, setLocalTools, setRemoteToolReferences };
 }

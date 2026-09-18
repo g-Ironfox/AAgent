@@ -42,6 +42,8 @@ const elements = {
   workflowNameDisplay: document.querySelector('#workflowNameDisplay'),
   callableWorkflowList: document.querySelector('#callableWorkflowList'),
   addCallableWorkflowButton: document.querySelector('#addCallableWorkflowButton'),
+  remoteToolList: document.querySelector('#remoteToolList'),
+  addRemoteToolButton: document.querySelector('#addRemoteToolButton'),
   resourceState: document.querySelector('#resourceState'),
 };
 let hasUnsavedChanges = false;
@@ -54,6 +56,7 @@ function markChanged() {
 
 const editor = createWorkflowEditor(elements, markChanged);
 const inspector = createInspector(elements, editor, markChanged);
+let remoteToolSchemas = [];
 
 function renderWorkflow() {
   editor.renderWorkflow();
@@ -63,6 +66,7 @@ function importWorkflowText(text, source = '已导入') {
   const workflow = parseWorkflowText(text);
   if (!loadSnapshot(workflow)) throw new Error('内容不是有效的 Workflow JSON');
   inspector.setWorkflowNodes(workflowReferences());
+  inspector.setRemoteToolReferences(remoteToolReferences());
   hasUnsavedChanges = true;
   elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();
@@ -77,6 +81,7 @@ function isPristineEditor() {
     && state.input_ports.length === 0
     && state.output_ports.length === 0
     && state.workflow_nodes.length === 0
+    && state.remote_tools.length === 0
     && state.nodes.length === 2
     && state.connections.length === 1;
 }
@@ -106,8 +111,17 @@ function workflowReferences() {
     }));
 }
 
+function remoteToolReferences() {
+  return state.remote_tools.map((tool) => ({
+    name: tool.name,
+    input_ports: tool.input_ports || [],
+    output_ports: tool.output_ports || [],
+  }));
+}
+
 loadSnapshot(workflowSnapshot());
 inspector.setWorkflowNodes(workflowReferences());
+inspector.setRemoteToolReferences(remoteToolReferences());
 elements.workflowNameDisplay.textContent = state.name;
 
 const resourceCounts = { models: null, localTools: null, remoteTools: null };
@@ -149,7 +163,8 @@ fetchLocalTools()
 
 fetchRemoteTools()
   .then((tools) => {
-    inspector.setRemoteTools(tools.items);
+    remoteToolSchemas = tools.items;
+    document.querySelectorAll('.remote-tool-metadata-row').forEach((row) => renderRemoteToolSuggestions(row));
     resourceCounts.remoteTools = tools.items.length;
     renderResourceState();
   })
@@ -184,6 +199,7 @@ function renderMetadataDialog() {
   renderMetadataPortList('input_ports');
   renderMetadataPortList('output_ports');
   renderCallableWorkflowList();
+  renderRemoteToolList();
 }
 
 function readMetadataPorts(collection) {
@@ -242,6 +258,96 @@ function readCallableWorkflows() {
   }));
 }
 
+function createRemoteToolRow(tool = { name: '', input_ports: [], output_ports: [] }) {
+  const row = document.querySelector('#remoteToolMetadataTemplate').content.firstElementChild.cloneNode(true);
+  row.dataset.previousName = tool.name || '';
+  const nameInput = row.querySelector('[data-remote-tool-name]');
+  nameInput.value = tool.name || '';
+  renderRemoteToolSuggestions(row);
+  renderCallablePortList(row, 'input_ports', tool.input_ports || []);
+  renderCallablePortList(row, 'output_ports', tool.output_ports || []);
+  row.querySelector('[data-remove-remote-tool]').addEventListener('click', () => row.remove());
+  const fillFromSchema = (schema) => {
+    if (!schema) {
+      elements.resourceState.textContent = 'Tool Server 中没有同名 Remote Tool';
+      return;
+    }
+    const schemaPorts = (schemaValue, defaultName = null) => {
+      if (!schemaValue || typeof schemaValue !== 'object') return [];
+      const workflowType = (value) => ['content', 'message', 'list-content', 'list-message'].includes(value?.['x-workflow-port-type'])
+        ? value['x-workflow-port-type']
+        : value?.type === 'array' ? 'list-content' : 'content';
+      if (schemaValue.properties && typeof schemaValue.properties === 'object') {
+        return Object.entries(schemaValue.properties).map(([name, value]) => ({ name, type: workflowType(value) }));
+      }
+      return defaultName ? [{ name: defaultName, type: workflowType(schemaValue) }] : [];
+    };
+    renderCallablePortList(row, 'input_ports', schemaPorts(schema.inputSchema));
+    renderCallablePortList(row, 'output_ports', schemaPorts(schema.outputSchema, 'result'));
+  };
+  const selectSchema = (schema) => {
+    if (!schema) return;
+    nameInput.value = schema.name;
+    fillFromSchema(schema);
+    row.querySelector('[data-remote-tool-suggestions]').hidden = true;
+  };
+  nameInput.addEventListener('input', () => renderRemoteToolSuggestions(row));
+  nameInput.addEventListener('focus', () => renderRemoteToolSuggestions(row));
+  row.querySelector('[data-remote-tool-suggestions]').addEventListener('mousedown', (event) => {
+    const option = event.target.closest('[data-remote-tool-suggestion]');
+    if (!option) return;
+    event.preventDefault();
+    selectSchema(remoteToolSchemas.find((candidate) => candidate.name === option.dataset.remoteToolSuggestion));
+  });
+  row.querySelector('[data-fill-remote-tool]').addEventListener('click', () => {
+    fillFromSchema(remoteToolSchemas.find((candidate) => candidate.name === nameInput.value.trim()));
+  });
+  for (const button of row.querySelectorAll('[data-add-callable-port]')) {
+    button.addEventListener('click', () => {
+      const list = row.querySelector(`[data-callable-port-list="${button.dataset.addCallablePort}"]`);
+      list.querySelector('.metadata-empty')?.remove();
+      list.append(createMetadataPortRow());
+    });
+  }
+  return row;
+}
+
+function renderRemoteToolSuggestions(row) {
+  const input = row.querySelector('[data-remote-tool-name]');
+  const suggestions = row.querySelector('[data-remote-tool-suggestions]');
+  const query = input.value.trim().toLocaleLowerCase();
+  const matches = remoteToolSchemas.filter((tool) => `${tool.name} ${tool.description || ''}`.toLocaleLowerCase().includes(query)).slice(0, 8);
+  suggestions.replaceChildren(...matches.map((tool) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.dataset.remoteToolSuggestion = tool.name;
+    option.setAttribute('role', 'option');
+    const name = document.createElement('strong');
+    name.textContent = tool.name;
+    const description = document.createElement('span');
+    description.textContent = tool.description || '无描述';
+    option.append(name, description);
+    return option;
+  }));
+  suggestions.hidden = matches.length === 0 || document.activeElement !== input;
+}
+
+function renderRemoteToolList() {
+  elements.remoteToolList.replaceChildren(...state.remote_tools.map(createRemoteToolRow));
+  if (!state.remote_tools.length) {
+    elements.remoteToolList.append(Object.assign(document.createElement('p'), { className: 'metadata-empty', textContent: '暂无 Remote Tool' }));
+  }
+}
+
+function readRemoteTools() {
+  return [...elements.remoteToolList.querySelectorAll('.remote-tool-metadata-row')].map((row) => ({
+    previous_name: row.dataset.previousName,
+    name: row.querySelector('[data-remote-tool-name]').value.trim(),
+    input_ports: readPortsFromList(row.querySelector('[data-callable-port-list="input_ports"]')),
+    output_ports: readPortsFromList(row.querySelector('[data-callable-port-list="output_ports"]')),
+  }));
+}
+
 function readPortsFromList(list) {
   return [...list.querySelectorAll('.metadata-port-row')].map((row) => ({
     name: row.querySelector('[data-metadata-port-name]').value.trim(),
@@ -262,6 +368,18 @@ function syncCallableWorkflowNodes(nextWorkflows) {
   }
 }
 
+function syncRemoteToolNodes(nextTools) {
+  const nextByPreviousName = new Map(nextTools.map((tool) => [tool.previous_name || tool.name, tool]));
+  for (const node of state.nodes) {
+    if (!['remote_sync_tool', 'remote_async_tool'].includes(node.type)) continue;
+    const tool = nextByPreviousName.get(node.tool);
+    if (!tool) continue;
+    node.tool = tool.name;
+    node.parameters = structuredClone(tool.input_ports);
+    if (node.type === 'remote_sync_tool') node.outputs = structuredClone(tool.output_ports);
+  }
+}
+
 elements.metadataButton.addEventListener('click', () => {
   renderMetadataDialog();
   elements.metadataDialog.showModal();
@@ -271,6 +389,7 @@ elements.clearButton.addEventListener('click', () => {
   if (hasUnsavedChanges && !window.confirm('清空会覆盖当前未保存的 Workflow，确定继续吗？')) return;
   if (!resetWorkflow()) return;
   inspector.setWorkflowNodes([]);
+  inspector.setRemoteToolReferences([]);
   hasUnsavedChanges = true;
   elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();
@@ -282,6 +401,13 @@ elements.addCallableWorkflowButton.addEventListener('click', () => {
   elements.callableWorkflowList.querySelector('.metadata-empty')?.remove();
   const row = createCallableWorkflowRow();
   elements.callableWorkflowList.append(row);
+  row.querySelector('input').focus();
+});
+
+elements.addRemoteToolButton.addEventListener('click', () => {
+  elements.remoteToolList.querySelector('.metadata-empty')?.remove();
+  const row = createRemoteToolRow();
+  elements.remoteToolList.append(row);
   row.querySelector('input').focus();
 });
 
@@ -302,7 +428,8 @@ elements.metadataForm.addEventListener('submit', (event) => {
   const inputPorts = readMetadataPorts('input_ports');
   const outputPorts = readMetadataPorts('output_ports');
   const callableWorkflows = readCallableWorkflows();
-  const allPortLists = [inputPorts, outputPorts, ...callableWorkflows.flatMap((workflow) => [workflow.input_ports, workflow.output_ports])];
+  const remoteTools = readRemoteTools();
+  const allPortLists = [inputPorts, outputPorts, ...callableWorkflows.flatMap((workflow) => [workflow.input_ports, workflow.output_ports]), ...remoteTools.flatMap((tool) => [tool.input_ports, tool.output_ports])];
   if (allPortLists.some((ports) => new Set(ports.map((port) => port.name.toLocaleLowerCase())).size !== ports.length)) {
     elements.resourceState.textContent = '同一侧接口名称不能重复';
     return;
@@ -311,21 +438,34 @@ elements.metadataForm.addEventListener('submit', (event) => {
     elements.resourceState.textContent = '可调用 Workflow 名称不能重复';
     return;
   }
+  if (new Set(remoteTools.map((tool) => tool.name.toLocaleLowerCase())).size !== remoteTools.length) {
+    elements.resourceState.textContent = 'Remote Tool 名称不能重复';
+    return;
+  }
   const retainedNames = new Set(callableWorkflows.map((workflow) => workflow.previous_name || workflow.name));
   const removedInUse = state.nodes.find((node) => node.type === 'workflow' && !retainedNames.has(node.workflow_name));
   if (removedInUse) {
     elements.resourceState.textContent = `“${removedInUse.workflow_name}”仍被画布节点调用`;
     return;
   }
+  const retainedToolNames = new Set(remoteTools.map((tool) => tool.previous_name || tool.name));
+  const removedToolInUse = state.nodes.find((node) => ['remote_sync_tool', 'remote_async_tool'].includes(node.type) && node.tool && !retainedToolNames.has(node.tool));
+  if (removedToolInUse) {
+    elements.resourceState.textContent = `“${removedToolInUse.tool}”仍被画布节点调用`;
+    return;
+  }
   syncCallableWorkflowNodes(callableWorkflows);
+  syncRemoteToolNodes(remoteTools);
   state.name = elements.workflowName.value.trim();
   state.description = elements.workflowDescription.value.trim();
   state.input_ports = inputPorts;
   state.output_ports = outputPorts;
   state.workflow_nodes = callableWorkflows.map(({ previous_name, ...workflow }) => workflow);
+  state.remote_tools = remoteTools.map(({ previous_name, ...tool }) => tool);
   const snapshot = workflowSnapshot();
   loadSnapshot(snapshot);
   inspector.setWorkflowNodes(workflowReferences());
+  inspector.setRemoteToolReferences(remoteToolReferences());
   markChanged();
   elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();

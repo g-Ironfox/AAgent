@@ -18,6 +18,7 @@ MAX_WORKFLOW_NODES = 200
 MAX_WORKFLOW_CONNECTIONS = 1000
 MAX_WORKFLOW_METADATA_PORTS = 50
 MAX_WORKFLOW_NODE_REFERENCES = 50
+MAX_REMOTE_TOOL_REFERENCES = 100
 MAX_WORKFLOW_DESCRIPTION_LENGTH = 2000
 
 logger = logging.getLogger("aagent.webui")
@@ -180,12 +181,21 @@ class WorkflowNodeReference(BaseModel):
     previous_name: str | None = Field(default=None, max_length=120)
 
 
+class RemoteToolReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=128)
+    input_ports: list[WorkflowPortMetadata] = Field(default_factory=list, max_length=MAX_WORKFLOW_METADATA_PORTS)
+    output_ports: list[WorkflowPortMetadata] = Field(default_factory=list, max_length=MAX_WORKFLOW_METADATA_PORTS)
+
+
 class WorkflowMetadataRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     input_ports: list[WorkflowPortMetadata] = Field(default_factory=list, max_length=MAX_WORKFLOW_METADATA_PORTS)
     output_ports: list[WorkflowPortMetadata] = Field(default_factory=list, max_length=MAX_WORKFLOW_METADATA_PORTS)
     workflow_nodes: list[WorkflowNodeReference] = Field(default_factory=list, max_length=MAX_WORKFLOW_NODE_REFERENCES)
+    remote_tools: list[RemoteToolReference] = Field(default_factory=list, max_length=MAX_REMOTE_TOOL_REFERENCES)
 
 
 def duplicate_port_name(ports: list[WorkflowPortMetadata]) -> bool:
@@ -389,6 +399,7 @@ def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
         "input_ports": document.get("input_ports", []),
         "output_ports": document.get("output_ports", []),
         "workflow_nodes": document.get("workflow_nodes", []),
+        "remote_tools": document.get("remote_tools", []),
         "created_at": document.get("created_at"),
         "updated_at": document.get("updated_at"),
     }
@@ -407,7 +418,7 @@ def create_workflows_router(
         try:
             items = workflows.find(
                 {},
-                {"name": 1, "description": 1, "version": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "workflow_nodes": 1, "created_at": 1, "updated_at": 1},
+                {"name": 1, "description": 1, "version": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "workflow_nodes": 1, "remote_tools": 1, "created_at": 1, "updated_at": 1},
             ).sort("updated_at", DESCENDING)
             return {
                 "items": [
@@ -421,6 +432,7 @@ def create_workflows_router(
                         "input_ports": item.get("input_ports", []),
                         "output_ports": item.get("output_ports", []),
                         "workflow_nodes": item.get("workflow_nodes", []),
+                        "remote_tools": item.get("remote_tools", []),
                         "created_at": item.get("created_at"),
                         "updated_at": item.get("updated_at"),
                     }
@@ -457,6 +469,7 @@ def create_workflows_router(
             "input_ports": [],
             "output_ports": [],
             "workflow_nodes": [],
+            "remote_tools": [],
             "created_at": now,
             "updated_at": now,
         }
@@ -573,6 +586,20 @@ def create_workflows_router(
             return JSONResponse(status_code=400, content={"error": "输出 Port 名称不能为空或重名"})
         input_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.input_ports]
         output_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.output_ports]
+        remote_tool_names = [tool.name.strip() for tool in payload.remote_tools]
+        normalized_remote_tool_names = [name.casefold() for name in remote_tool_names]
+        if any(not name for name in remote_tool_names) or len(normalized_remote_tool_names) != len(set(normalized_remote_tool_names)):
+            return JSONResponse(status_code=400, content={"error": "Remote Tool 名称不能为空或重复"})
+        if any(duplicate_port_name(tool.input_ports) or duplicate_port_name(tool.output_ports) for tool in payload.remote_tools):
+            return JSONResponse(status_code=400, content={"error": "Remote Tool 端口名称不能为空或重复"})
+        remote_tools = [
+            {
+                "name": name,
+                "input_ports": [port.model_dump() | {"name": port.name.strip()} for port in tool.input_ports],
+                "output_ports": [port.model_dump() | {"name": port.name.strip()} for port in tool.output_ports],
+            }
+            for tool, name in zip(payload.remote_tools, remote_tool_names)
+        ]
         object_id = workflow_object_id(workflow_id)
         if isinstance(object_id, JSONResponse):
             return object_id
@@ -646,6 +673,7 @@ def create_workflows_router(
                     "input_ports": input_ports,
                     "output_ports": output_ports,
                     "workflow_nodes": workflow_nodes,
+                    "remote_tools": remote_tools,
                     "nodes": nodes,
                     "connections": connections,
                     "updated_at": datetime.now(timezone.utc),
@@ -708,7 +736,7 @@ def create_workflows_router(
         workflow_nodes = [node for node in payload.nodes if node.get("type") == "workflow"]
         workflow_document = workflows.find_one(
             {"_id": object_id},
-            {"name": 1, "workflow_nodes": 1, "input_ports": 1, "output_ports": 1},
+            {"name": 1, "workflow_nodes": 1, "remote_tools": 1, "input_ports": 1, "output_ports": 1},
         )
         if workflow_document is None:
             return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
@@ -727,6 +755,22 @@ def create_workflows_router(
                 return JSONResponse(status_code=400, content={"error": "Workflow 节点未在元数据中引入"})
             if node.get("input_ports") != reference.get("input_ports", []) or node.get("output_ports") != reference.get("output_ports", []):
                 return JSONResponse(status_code=400, content={"error": "Workflow 节点端口与元数据契约不一致"})
+
+        remote_tools = {
+            tool.get("name"): tool
+            for tool in workflow_document.get("remote_tools", [])
+        }
+        for node in payload.nodes:
+            if node.get("type") not in {"remote_sync_tool", "remote_async_tool"}:
+                continue
+            arguments = node_arguments(node)
+            tool = remote_tools.get(arguments.get("tool"))
+            if tool is None:
+                return JSONResponse(status_code=400, content={"error": "Remote Tool 节点未在元数据中注册"})
+            if arguments.get("parameters") != tool.get("input_ports", []):
+                return JSONResponse(status_code=400, content={"error": "Remote Tool 节点输入端口与元数据契约不一致"})
+            if node.get("type") == "remote_sync_tool" and arguments.get("outputs") != tool.get("output_ports", []):
+                return JSONResponse(status_code=400, content={"error": "Remote Sync Tool 节点输出端口与元数据契约不一致"})
 
         max_wait_ms = int(os.getenv("TOOL_CLIENT_MAX_WAIT_MS", "10000"))
         max_async_timeout_ms = int(os.getenv("TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS", "3600000"))

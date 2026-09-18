@@ -8,7 +8,7 @@
 - `remote_sync_tool`（编辑器显示 `Remote Sync Tool`）：通过 Tool Server 调用 Tool Provider，并等待最终结果；
 - `remote_async_tool`（编辑器显示 `Remote Async Tool`）：向 Tool Server 发布任务，取得 `task_id` 后立即继续，之后不再管理该任务。
 
-节点持久化类型使用 snake_case。两种远程节点共享工具目录和参数编辑模型，但不得用单个 `remote_tool` 节点上的 `mode` 字段切换语义。同步结果与异步任务 ID 是不同契约，应由节点类型直接表达。本文定义设计和实施要求，不表示代码已经完成改造。
+节点持久化类型使用 snake_case。远程 Tool 先在 Workflow 元数据的 `remote_tools` 中注册名称和输入/输出契约，两种远程节点只选择已注册工具并保存契约快照。不得用单个 `remote_tool` 节点上的 `mode` 字段切换语义。同步结果与异步任务 ID 是不同契约，应由节点类型直接表达。
 
 ## 2. 设计动机
 
@@ -232,10 +232,11 @@ GET /api/tools/remote
 - `/api/tools/local` 读取 `AGENT_TOOLS_KEY`，将 `function.parameters` 转换为 `inputSchema`；现有 `/api/tools` 直接改名，LLM 挂载项复用此接口；
 - `/api/tools/remote` 由编辑器后端代理 Tool Server 的 `GET /api/tools`，完整保留 `inputSchema` 和 `outputSchema`；浏览器不直接访问内部地址或持有凭据；
 - 响应不增加 `execution` 字段，来源由端点表达；
-- 两个目录不能合并。Local Tool 受本地目录约束；Remote Tool 目录由两种远程节点共享，仅用于候选和参数填充，允许输入目录外名称并独立编辑参数；
-- 不建立可独立更新的 Remote Registry。允许明确的短 TTL 容错缓存，但执行时仍以 Tool Server 当前状态为准。
+- 两个目录不能合并。Local Tool 受本地目录约束；Remote Tool 目录供元数据编辑区辅助注册和填充，也允许手动注册目录外名称；
+- Workflow 元数据维护 `remote_tools` 契约表，每项包含 `name`、`input_ports` 和 `output_ports`；它是画布节点的选择来源和离线契约快照，不参与运行时 Provider 路由；
+- 元数据中的 Remote Tool 可手动配置，也可按名称从 Tool Server 目录填充。执行时仍以 Tool Server 当前状态为准。
 
-Remote Sync Tool Inspector 同时使用两个 Schema 辅助编辑：
+Remote Tool 元数据编辑区同时使用两个 Schema 辅助填充：
 
 - `inputSchema.properties` 生成输入端口候选；
 - 对象型 `outputSchema.properties` 生成同名输出端口候选；
@@ -243,9 +244,9 @@ Remote Sync Tool Inspector 同时使用两个 Schema 辅助编辑：
 - Schema 节点存在合法 `x-workflow-port-type` 时直接采用该类型；
 - 未声明扩展类型时，`type: "array"` 默认映射为 `list-content`，其他 JSON Schema 类型默认映射为 `content`；
 - `message` 和 `list-message` 不根据 JSON 值形状猜测，必须由 Schema 扩展字段声明或由用户手动选择；
-- Schema 只用于填充建议。生成后输入和输出均可自由增删、改名和改类型，不与在线 Schema 保持强绑定。
+- Schema 只用于填充元数据建议。填充后可在元数据中增删、改名和改类型，不与在线 Schema 保持强绑定。
 
-Remote Async Tool 只使用 `inputSchema` 辅助生成输入端口，不使用 `outputSchema`，因为它固定只输出 `task_id`。
+Remote Async Tool 节点使用元数据的输入契约生成输入端口，但忽略元数据输出契约，因为它固定只输出 `task_id`。同一个注册工具仍可被 Remote Sync Tool 使用其输出契约。
 
 ### 5.2 保存校验
 
@@ -260,21 +261,21 @@ Remote Async Tool 只使用 `inputSchema` 辅助生成输入端口，不使用 `
 
 `remote_sync_tool`：
 
-1. `tool` 是非空字符串；
-2. `parameters` 每项严格包含非空且不重复的 `name`，以及有效的数据端口 `type`；
-3. `outputs` 每项严格包含非空且不重复的 `name`，以及有效的数据端口 `type`；
+1. `tool` 是非空字符串，且存在于 Workflow 元数据的 `remote_tools`；
+2. `parameters` 与该元数据项的 `input_ports` 完全一致；
+3. `outputs` 与该元数据项的 `output_ports` 完全一致；
 4. `timeout_ms` 是正整数且不超过 `TOOL_CLIENT_MAX_WAIT_MS`，超限直接拒绝，不截断；
 5. 只包含该类型允许的 arguments；
 6. 输入和输出连接均指向用户当前声明且类型一致的端口。
 
 `remote_async_tool`：
 
-1. 工具名、输入参数和输入连接规则与 Remote Sync Tool 相同；
+1. 工具名和输入参数必须与元数据契约一致，输入连接规则与 Remote Sync Tool 相同；
 2. `timeout_ms` 是正整数且不超过 `TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS`；
 3. 不允许出现 `mode` 或 `callback` arguments；
 4. 不允许 `outputs`；节点只提供固定的 `task_id: content` 输出端口。
 
-保存两种 Remote Tool 均不依赖 Tool Server，不校验工具在线状态，也不要求输入或同步输出与候选 Schema 一致。实际输入缺失、多余或类型不符时，由调用时的 Tool Server Schema 以 `422` 拒绝；同步结果与用户声明输出不匹配时，节点执行失败。
+保存两种 Remote Tool 均不依赖 Tool Server，不校验工具在线状态；节点端口必须与 Workflow 元数据契约一致，但元数据不要求与在线候选 Schema 一致。实际输入缺失、多余或类型不符时，由调用时的 Tool Server Schema 以 `422` 拒绝；同步结果与用户声明输出不匹配时，节点执行失败。
 
 ## 6. 运行时语义
 
@@ -386,7 +387,7 @@ Remote Sync Tool 按 `outputs` 声明分发原始结果字段，不统一压成 
 | `workflow_editor/main.py` | 本地目录 API 改名并新增远程代理 API |
 | `workflow_editor/static/workflow/domain/node-contract.js` | 节点类型、创建逻辑和端口 |
 | `workflow_editor/static/workflow/domain/serialization.js` | arguments 白名单和规范化 |
-| `workflow_editor/static/workflow/inspector/integrations.js` | 本地受约束选择；远程自由输入、候选和参数编辑 |
+| `workflow_editor/static/workflow/inspector/integrations.js` | 本地受约束选择；远程从元数据契约选择并生成端口快照 |
 | `workflow_editor/static/workflow_edit.html` | 三个节点入口和 Inspector 模板 |
 | `docker-compose.yml` | Tool Server 地址、同步等待与异步 deadline 配置 |
 
@@ -398,12 +399,12 @@ Remote Sync Tool 按 `outputs` 声明分发原始结果字段，不统一压成 
 
 - 三种节点均能保存、校验和解析，未知 arguments 被拒绝；
 - 旧 `tool`、`tool_call` 和 `remote_tool` 均被直接拒绝；
-- Local Tool 只显示本地目录，Remote Tool 提供在线候选但允许目录外名称；
+- Local Tool 只显示本地目录；Remote Tool 先在元数据中注册，节点只显示已注册项；
 - LLM 挂载项仍只显示本地工具；
 - Tool Server 不可用不影响编辑和保存，只影响远程候选与执行；
 - Local Tool 和 LLM 挂载项只保留当前本地目录中存在的工具，目录为空时清空选择且拒绝保存 Local Tool 节点；
-- 两种 Remote Tool 的输入端口均可自由增删并指定四种数据端口类型；Remote Sync Tool 的输出端口同样可自由增删、改名和指定类型；
-- Remote API 的 `inputSchema` 辅助填充输入端口，`outputSchema` 辅助填充同步输出端口，填充后不强制绑定 Schema；
+- Remote Tool 元数据的输入输出端口可自由增删并指定四种数据端口类型，节点端口只读并跟随元数据契约；
+- Remote API 的 `inputSchema` 辅助填充元数据输入端口，`outputSchema` 辅助填充元数据输出端口，填充后不强制绑定在线 Schema；
 - 输入端口拒绝空值、重复和 `control-in`；同步输出端口拒绝空值、重复和 `control-out`；
 - 旧 Remote Tool 字符串参数数组直接拒绝，不做迁移或默认类型补全；
 - `timeout_ms` 缺失时使用各自默认值；同步超等待上限、异步超 deadline 上限或非正整数时拒绝保存；

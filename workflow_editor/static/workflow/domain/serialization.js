@@ -64,6 +64,7 @@ export const state = {
   input_ports: [],
   output_ports: [],
   workflow_nodes: [],
+  remote_tools: [],
 };
 
 export function nodeById(id) {
@@ -91,6 +92,7 @@ export function workflowSnapshot() {
     input_ports: state.input_ports,
     output_ports: state.output_ports,
     workflow_nodes: state.workflow_nodes,
+    remote_tools: state.remote_tools,
     nodes: state.nodes.map(compactNodeArguments),
     connections: state.connections,
   });
@@ -103,6 +105,7 @@ export function resetWorkflow() {
     input_ports: [],
     output_ports: [],
     workflow_nodes: [],
+    remote_tools: [],
     nodes: initialNodes,
     connections: initialConnections,
   });
@@ -126,7 +129,25 @@ function callableWorkflowMetadata(saved) {
   });
 }
 
-function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
+function remoteToolMetadata(saved) {
+  const declarations = Array.isArray(saved?.remote_tools) ? saved.remote_tools : [];
+  const names = new Set();
+  return declarations.flatMap((tool) => {
+    const name = typeof tool?.name === 'string' && tool.name.trim()
+      ? tool.name.trim().slice(0, 128)
+      : '';
+    const normalizedName = name.toLocaleLowerCase();
+    if (!name || names.has(normalizedName)) return [];
+    names.add(normalizedName);
+    return [{
+      name,
+      input_ports: boundaryPorts(tool.input_ports).map(({ id, ...port }) => port),
+      output_ports: boundaryPorts(tool.output_ports).map(({ id, ...port }) => port),
+    }];
+  });
+}
+
+function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteTools) {
   node = expandNodeArguments(node);
   const normalized = {
     id: node.id,
@@ -180,6 +201,8 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
         ? [...new Set(node.parameters.filter((parameter) => typeof parameter === 'string' && parameter && parameter !== 'control-in'))]
         : [];
     } else {
+      const declaration = remoteTools.get(normalized.tool);
+      if (normalized.tool && !declaration) return null;
       if (!Array.isArray(node.parameters)) return null;
       const parameterNames = new Set();
       normalized.parameters = [];
@@ -197,6 +220,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
         parameterNames.add(parameter.name);
         normalized.parameters.push({ name: parameter.name, type: parameter.type });
       }
+      if (declaration) normalized.parameters = structuredClone(declaration.input_ports);
       if (node.type === 'remote_sync_tool') {
         if (!Array.isArray(node.outputs)) return null;
         const outputNames = new Set();
@@ -215,6 +239,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows) {
           outputNames.add(output.name);
           normalized.outputs.push({ name: output.name, type: output.type });
         }
+        if (declaration) normalized.outputs = structuredClone(declaration.output_ports);
       }
       const defaultTimeoutMs = node.type === 'remote_async_tool' ? 600000 : 10000;
       normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : defaultTimeoutMs;
@@ -271,12 +296,14 @@ export function loadSnapshot(saved, metadata = null) {
     const outputPorts = boundaryPorts(metadata?.output_ports ?? saved?.output_ports);
     const workflowNodes = callableWorkflowMetadata(saved);
     const callableWorkflows = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
+    const remoteTools = remoteToolMetadata(saved);
+    const remoteToolsByName = new Map(remoteTools.map((tool) => [tool.name, tool]));
     const ids = new Set();
     const nodes = [];
     for (const node of savedNodes) {
       if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type) || !hasStrictNodeFormat(node)) return false;
       ids.add(node.id);
-      const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows);
+      const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteToolsByName);
       if (!normalized) return false;
       nodes.push(normalized);
     }
@@ -291,6 +318,7 @@ export function loadSnapshot(saved, metadata = null) {
     state.input_ports = inputPorts.map(({ id, ...port }) => port);
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
     state.workflow_nodes = workflowNodes;
+    state.remote_tools = remoteTools;
     state.nodes = nodes;
     state.connections = filterValidConnections(Array.isArray(saved?.connections) ? saved.connections : initialConnections, nodes);
     return true;
@@ -311,6 +339,7 @@ export function normalizeImportedWorkflow(imported) {
     workflow_nodes: entries
       .filter(([name]) => name !== main)
       .map(([name, callable]) => ({ name, input_ports: callable.input_ports || [], output_ports: callable.output_ports || [] })),
+    remote_tools: imported.workflows[main].remote_tools || [],
   };
 }
 

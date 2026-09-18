@@ -33,10 +33,28 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         raise WorkflowValidationError("workflow.connections must be a list")
     input_ports = _validate_boundary_metadata(workflow, "input_ports")
     output_ports = _validate_boundary_metadata(workflow, "output_ports")
+    remote_tools = _validate_remote_tool_metadata(workflow)
 
     node_by_id: dict[str, dict[str, Any]] = {}
     for index, node in enumerate(nodes):
         _validate_node(node, index)
+        if node["type"] in {"remote_sync_tool", "remote_async_tool"}:
+            declaration = remote_tools.get(node_argument(node, "tool"))
+            if declaration is None:
+                raise WorkflowValidationError(
+                    f"nodes[{index}] remote tool is not registered in workflow.remote_tools"
+                )
+            if node_argument(node, "parameters") != declaration["input_ports"]:
+                raise WorkflowValidationError(
+                    f"nodes[{index}] remote tool inputs must match workflow.remote_tools"
+                )
+            if (
+                node["type"] == "remote_sync_tool"
+                and node_argument(node, "outputs") != declaration["output_ports"]
+            ):
+                raise WorkflowValidationError(
+                    f"nodes[{index}] remote tool outputs must match workflow.remote_tools"
+                )
         if node["type"] in {"input", "output"}:
             expected_ports = boundary_ports(
                 input_ports if node["type"] == "input" else output_ports
@@ -308,6 +326,38 @@ def _validate_boundary_metadata(
         raise WorkflowValidationError(f"workflow.{field} must be a list")
     _validate_callable_workflow_ports({field: ports}, field)
     return ports
+
+
+def _validate_remote_tool_metadata(
+    workflow: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    declarations = workflow.get("remote_tools", [])
+    if not isinstance(declarations, list):
+        raise WorkflowValidationError("workflow.remote_tools must be a list")
+    remote_tools: dict[str, dict[str, Any]] = {}
+    normalized_names: set[str] = set()
+    for index, declaration in enumerate(declarations):
+        if not isinstance(declaration, dict) or set(declaration) != {
+            "name",
+            "input_ports",
+            "output_ports",
+        }:
+            raise WorkflowValidationError(
+                f"workflow.remote_tools[{index}] must contain name, input_ports and output_ports"
+            )
+        name = declaration.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise WorkflowValidationError(
+                f"workflow.remote_tools[{index}].name must be a non-empty string"
+            )
+        normalized_name = name.strip().casefold()
+        if normalized_name in normalized_names:
+            raise WorkflowValidationError(f"duplicate remote tool name: {name}")
+        normalized_names.add(normalized_name)
+        _validate_callable_workflow_ports(declaration, "input_ports")
+        _validate_callable_workflow_ports(declaration, "output_ports")
+        remote_tools[name] = declaration
+    return remote_tools
 
 
 def _validate_callable_workflow_ports(node: dict[str, Any], field: str) -> None:

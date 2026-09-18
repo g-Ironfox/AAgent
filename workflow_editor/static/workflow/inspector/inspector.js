@@ -81,12 +81,16 @@ export function createInspector(elements, editor, markChanged) {
     }));
   }
 
+  function setRemoteToolReferences(references) {
+    integrations.setRemoteToolReferences(references);
+  }
+
   editor.setInspectorRenderer(renderInspector);
   return {
     renderInspector,
     setModels: integrations.setModels,
     setLocalTools: integrations.setLocalTools,
-    setRemoteTools: integrations.setRemoteTools,
+    setRemoteToolReferences,
     setWorkflowNodes,
   };
 }

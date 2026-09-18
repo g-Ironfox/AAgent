@@ -37,7 +37,7 @@ def tool_workflow_map(node_type: str, **arguments) -> list[dict]:
 
 
 def valid_workflow(node: dict) -> dict:
-    return {
+    workflow = {
         "input_ports": [],
         "output_ports": [],
         "nodes": [
@@ -50,6 +50,15 @@ def valid_workflow(node: dict) -> dict:
             {"fromId": node["id"], "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
         ],
     }
+    if node["type"] in {"remote_sync_tool", "remote_async_tool"}:
+        parameters = node["arguments"].get("parameters", [])
+        outputs = node["arguments"].get("outputs", [])
+        workflow["remote_tools"] = [{
+            "name": node["arguments"]["tool"],
+            "input_ports": parameters if all(isinstance(port, dict) for port in parameters) else [],
+            "output_ports": outputs if all(isinstance(port, dict) for port in outputs) else [],
+        }]
+    return workflow
 
 
 class ToolNodeExecutionTest(unittest.TestCase):
@@ -265,6 +274,22 @@ class ToolNodeValidationTest(unittest.TestCase):
         })
 
         with self.assertRaisesRegex(WorkflowValidationError, "valid name and type fields"):
+            validate_workflow(workflow)
+
+    def test_remote_tool_ports_must_match_metadata_contract(self):
+        workflow = valid_workflow({
+            "id": "remote",
+            "type": "remote_sync_tool",
+            "arguments": {
+                "tool": "echo",
+                "parameters": [{"name": "value", "type": "content"}],
+                "outputs": [{"name": "result", "type": "content"}],
+                "timeout_ms": 1000,
+            },
+        })
+        workflow["remote_tools"][0]["input_ports"] = [{"name": "query", "type": "content"}]
+
+        with self.assertRaisesRegex(WorkflowValidationError, "inputs must match"):
             validate_workflow(workflow)
 
     def test_remote_tool_connections_must_match_declared_types(self):
