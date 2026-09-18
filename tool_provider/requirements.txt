@@ -2,3 +2,4 @@ jsonschema==4.25.1
 websocket-client==1.8.0
 requests
 pydub
+pymongo
