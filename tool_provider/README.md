@@ -21,11 +21,25 @@ class SearchTool(Tool):
         "required": ["keyword"],
         "additionalProperties": False,
     }
+    output_schema = {
+        "type": "object",
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": {"type": "string"},
+                "x-workflow-port-type": "list-content",
+            }
+        },
+        "required": ["results"],
+        "additionalProperties": False,
+    }
 
-    def execute(self, arguments: dict[str, Any], context: ToolContext) -> Any:
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> dict[str, list[str]]:
         context.report_progress(0.5, "正在搜索")
-        return {"keyword": arguments["keyword"]}
+        return {"results": [arguments["keyword"]]}
 ```
+
+每个工具必须显式声明 `output_schema`。输出统一使用具名对象，一级属性对应 Workflow 的输出端口；对象必须声明 `required` 并设置 `additionalProperties: False`。可通过 `x-workflow-port-type` 将属性标记为 `content`、`message`、`list-content` 或 `list-message`。
 
 ## 实例化并启动
 

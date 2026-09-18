@@ -9,7 +9,7 @@ class ToolSchema(BaseModel):
     name: str = Field(pattern=r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_.-]+$", max_length=128)
     description: str = Field(max_length=4096)
     inputSchema: dict[str, Any]
-    outputSchema: dict[str, Any] | None = None
+    outputSchema: dict[str, Any]
     annotations: dict[str, Any] = Field(default_factory=dict)
 
 

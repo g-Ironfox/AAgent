@@ -16,9 +16,22 @@ class QQSendGroupMessageTool(Tool):
         "required": ["group_id", "message"],
         "additionalProperties": False,
     }
+    output_schema = {
+        "type": "object",
+        "properties": {
+            "message_id": {
+                "type": "integer",
+                "description": "已发送消息的 ID",
+                "x-workflow-port-type": "content",
+            }
+        },
+        "required": ["message_id"],
+        "additionalProperties": False,
+    }
 
-    def execute(self, arguments: dict[str, Any], context: ToolContext) -> Any:
-        return send_group_msg(arguments["group_id"], arguments["message"])
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> dict[str, int]:
+        result = send_group_msg(arguments["group_id"], arguments["message"])
+        return {"message_id": result["message_id"]}
 
 
 class QQSendPrivateMessageTool(Tool):
@@ -33,6 +46,19 @@ class QQSendPrivateMessageTool(Tool):
         "required": ["user_id", "message"],
         "additionalProperties": False,
     }
+    output_schema = {
+        "type": "object",
+        "properties": {
+            "message_id": {
+                "type": "integer",
+                "description": "已发送消息的 ID",
+                "x-workflow-port-type": "content",
+            }
+        },
+        "required": ["message_id"],
+        "additionalProperties": False,
+    }
 
-    def execute(self, arguments: dict[str, Any], context: ToolContext) -> Any:
-        return send_private_msg(arguments["user_id"], arguments["message"])
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> dict[str, int]:
+        result = send_private_msg(arguments["user_id"], arguments["message"])
+        return {"message_id": result["message_id"]}

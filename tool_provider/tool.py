@@ -18,7 +18,7 @@ class Tool(ABC):
     name: str
     description: str
     input_schema: dict[str, Any]
-    output_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any]
     annotations: dict[str, Any] = {}
 
     def schema(self) -> dict[str, Any]:

@@ -112,9 +112,21 @@ class BilibiliContentTool(Tool):
         "required": ["bvid"],
         "additionalProperties": False,
     }
+    output_schema = {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "视频音频的转写文本",
+                "x-workflow-port-type": "content",
+            }
+        },
+        "required": ["text"],
+        "additionalProperties": False,
+    }
 
-    def execute(self, arguments: dict[str, Any], context: ToolContext) -> str:
-        return _asr(_download_bvid(arguments["bvid"], context))
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> dict[str, str]:
+        return {"text": _asr(_download_bvid(arguments["bvid"], context))}
 
 
 class BilibiliShortUrlTool(Tool):
@@ -126,9 +138,21 @@ class BilibiliShortUrlTool(Tool):
         "required": ["short_url"],
         "additionalProperties": False,
     }
-    output_schema = {"type": "string"}
+    output_schema = {
+        "type": "object",
+        "properties": {
+            "bvid": {
+                "type": "string",
+                "description": "解析得到的视频 BV 号",
+                "pattern": "^BV[0-9A-Za-z]+$",
+                "x-workflow-port-type": "content",
+            }
+        },
+        "required": ["bvid"],
+        "additionalProperties": False,
+    }
 
-    def execute(self, arguments: dict[str, Any], context: ToolContext) -> str:
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> dict[str, str]:
         response = requests.head(arguments["short_url"], allow_redirects=True, timeout=10, headers=_headers())
         response.raise_for_status()
-        return response.url.rstrip("/").split("/")[-1]
+        return {"bvid": response.url.rstrip("/").split("/")[-1]}

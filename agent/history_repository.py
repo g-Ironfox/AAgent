@@ -36,12 +36,8 @@ def get_history_collection():
         _client = MongoClient(**client_options)
         _collection = _client[MONGO_DATABASE][MONGO_HISTORY_COLLECTION]
         _collection.create_index(
-            [("created_at", DESCENDING)],
-            name="created_at_desc",
-        )
-        _collection.create_index(
-            [("event_type", ASCENDING), ("created_at", DESCENDING)],
-            name="event_type_created_at",
+            [("event_type", ASCENDING), ("_id", DESCENDING)],
+            name="event_type_id",
         )
         _collection.create_index(
             [("payload.id", ASCENDING)],

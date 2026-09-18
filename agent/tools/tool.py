@@ -4,6 +4,7 @@ from itertools import cycle
 
 import requests
 
+from history_repository import get_recent_history
 from queue_client import redis_register_tool, redis_reset_tools,publish_to_queue,MAIN_AGENT_QUEUE_NAME
 
 DEEPSEEK_BASE_URL = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
@@ -132,6 +133,19 @@ def output_to_terminal(content):
         }
     }
     publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+
+@tool(
+    "查询最近N条记录",
+    {
+        "type": "object",
+        "properties": {
+            "limit": {"type": "integer", "description": "要查询的记录数量"}
+        },
+        "required": ["limit"]
+    }
+)
+def get_recent_records(limit):
+    return get_recent_history(limit=limit)
 
 def bocha_search(keyword):
     url = f"{BOCHA_BASE_URL.rstrip('/')}/v1/web-search"

@@ -96,7 +96,7 @@ async def handle_provider_event(connection: ProviderConnection, event: ProviderE
             raise ValueError("result.success is required")
         if event.success:
             tool = await registry.get_tool(task["tool"])
-            if tool and tool.outputSchema:
+            if tool:
                 Draft202012Validator(tool.outputSchema).validate(event.output)
             await transition_terminal(task, {"status": "completed", "result": event.output, "error": None})
         else:
@@ -277,8 +277,7 @@ async def provider_socket(websocket: WebSocket):
         registration = RegisterMessage.model_validate(raw)
         for tool in registration.tools:
             Draft202012Validator.check_schema(tool.inputSchema)
-            if tool.outputSchema:
-                Draft202012Validator.check_schema(tool.outputSchema)
+            Draft202012Validator.check_schema(tool.outputSchema)
         connection = await registry.register(registration, websocket)
         await connection.outgoing.put({"type": "registered", "provider_id": registration.provider_id})
         await redis.hset(

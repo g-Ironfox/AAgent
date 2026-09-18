@@ -65,8 +65,7 @@ class ToolProvider:
             if "." not in tool.name:
                 raise ValueError(f"tool name must contain a domain: {tool.name}")
             Draft202012Validator.check_schema(tool.input_schema)
-            if tool.output_schema is not None:
-                Draft202012Validator.check_schema(tool.output_schema)
+            Draft202012Validator.check_schema(tool.output_schema)
 
     def start(self, daemon: bool = True) -> threading.Thread:
         if self._thread and self._thread.is_alive():
@@ -234,8 +233,7 @@ class ToolProvider:
             arguments = message.get("arguments", {})
             Draft202012Validator(tool.input_schema).validate(arguments)
             output = tool.execute(arguments, context)
-            if tool.output_schema is not None:
-                Draft202012Validator(tool.output_schema).validate(output)
+            Draft202012Validator(tool.output_schema).validate(output)
             if cancellation.is_set():
                 return
             self.events.put({"type": "result", "task_id": task_id, "success": True, "output": output})
