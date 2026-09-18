@@ -29,6 +29,8 @@ const elements = {
   outputPorts: document.querySelector('#outputPorts'),
   dependencies: document.querySelector('#workflowDependencies'),
   dependencyCount: document.querySelector('#dependencyCount'),
+  remoteTools: document.querySelector('#remoteTools'),
+  remoteToolCount: document.querySelector('#remoteToolCount'),
   portTemplate: document.querySelector('#metadataPortTemplate'),
   renameDialog: document.querySelector('#renameDialog'),
   renameForm: document.querySelector('#renameForm'),
@@ -157,6 +159,40 @@ function renderDependencies(references) {
   }
 }
 
+function renderRemoteTools(references) {
+  elements.remoteTools.replaceChildren();
+  elements.remoteToolCount.textContent = `${references.length} 项`;
+  if (!references.length) {
+    const empty = document.createElement('p');
+    empty.className = 'metadata-port-empty';
+    empty.textContent = '无 Remote Tool 依赖';
+    elements.remoteTools.append(empty);
+    return;
+  }
+  for (const reference of references) {
+    const item = document.createElement('article');
+    item.className = 'workflow-dependency-item';
+    const heading = document.createElement('header');
+    const identity = document.createElement('div');
+    identity.className = 'workflow-dependency-identity';
+    const marker = document.createElement('span');
+    marker.className = 'metadata-port-mark remote-tool';
+    marker.textContent = 'RT';
+    const name = document.createElement('strong');
+    name.textContent = reference.name || '未命名 Remote Tool';
+    identity.append(marker, name);
+    heading.append(identity);
+    const contracts = document.createElement('div');
+    contracts.className = 'dependency-contracts';
+    contracts.append(
+      createDependencyContract('Input', 'input', reference.input_ports),
+      createDependencyContract('Output', 'output', reference.output_ports),
+    );
+    item.append(heading, contracts);
+    elements.remoteTools.append(item);
+  }
+}
+
 function editDependency(item, references, currentName) {
   if (state.saving) return;
   const heading = item.querySelector(':scope > header');
@@ -261,6 +297,8 @@ function renderConfiguration() {
     elements.outputPorts.replaceChildren();
     elements.dependencies.replaceChildren();
     elements.dependencyCount.textContent = '';
+    elements.remoteTools.replaceChildren();
+    elements.remoteToolCount.textContent = '';
     return;
   }
   elements.description.textContent = workflow.description || '暂无描述';
@@ -268,6 +306,7 @@ function renderConfiguration() {
   renderPortList(elements.inputPorts, workflow.input_ports || []);
   renderPortList(elements.outputPorts, workflow.output_ports || []);
   renderDependencies(workflow.workflow_nodes || []);
+  renderRemoteTools(workflow.remote_tools || []);
 }
 
 function selectWorkflow(id) {

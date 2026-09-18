@@ -92,6 +92,9 @@
 .dependency-contract h5 { min-height:42px; margin:0; padding:8px 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid #e7ebe7; background:#f7f9f7; font:700 11px Consolas,monospace; }
 .dependency-contract-ports { min-height:48px; }
 .metadata-port-mark.workflow { background:#785d9b; }
+.metadata-port-mark.remote-tool { background:#a94f36; }
+.workflow-remote-tools .workflow-dependency-item { border-left-color:#a94f36; }
+.workflow-remote-tools .workflow-dependency-item > header { background:#fdf8f7; }
 .workflow-dialog { width:min(440px,calc(100% - 28px)); padding:0; color:var(--ink); border:1px solid var(--line); border-radius:4px; background:var(--surface); box-shadow:0 22px 60px rgba(23,32,29,.2); }
 .workflow-dialog::backdrop { background:rgba(23,32,29,.42); }
 .workflow-dialog form { display:grid; }

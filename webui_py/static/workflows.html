@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 管理</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflows.css?v=6">
+  <link rel="stylesheet" href="/css/workflows.css?v=7">
 </head>
 <body>
   <header class="topbar">
@@ -89,6 +89,13 @@
               </header>
               <div id="workflowDependencies" class="workflow-dependency-list"></div>
             </section>
+            <section class="workflow-dependencies workflow-remote-tools" aria-labelledby="remoteToolsTitle">
+              <header>
+                <div><p>REMOTE TOOLS</p><h3 id="remoteToolsTitle">Remote Tool 依赖与契约</h3></div>
+                <span id="remoteToolCount" class="dependency-count"></span>
+              </header>
+              <div id="remoteTools" class="workflow-dependency-list"></div>
+            </section>
           </section>
         </div>
       </section>
@@ -135,6 +142,6 @@
     </div>
   </template>
 
-  <script type="module" src="/workflows.js?v=19"></script>
+  <script type="module" src="/workflows.js?v=20"></script>
 </body>
 </html>

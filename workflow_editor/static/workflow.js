@@ -320,6 +320,7 @@ function renderRemoteToolSuggestions(row) {
   suggestions.replaceChildren(...matches.map((tool) => {
     const option = document.createElement('button');
     option.type = 'button';
+    option.className = 'remote-tool-suggestion';
     option.dataset.remoteToolSuggestion = tool.name;
     option.setAttribute('role', 'option');
     const name = document.createElement('strong');

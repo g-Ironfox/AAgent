@@ -105,15 +105,17 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .callable-workflow-row { margin:12px; border:1px solid var(--line); background:#fff; }
 .callable-workflow-row > header { padding:10px 12px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:end; gap:8px; border-bottom:1px solid var(--line); background:#fafbf9; }
 .callable-workflow-row > header label { display:grid; gap:5px; color:var(--muted); font-size:10px; }
-.callable-workflow-row > header input,.callable-workflow-row > header select { width:100%; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; }
-.remote-tool-name-field { position:relative; }
-.remote-tool-suggestions { position:absolute; z-index:3; top:100%; right:0; left:0; overflow:hidden; border:1px solid var(--line); background:#fff; box-shadow:0 8px 18px rgba(23,32,29,.12); }
-.remote-tool-suggestions button { width:100%; padding:8px 9px; display:grid; gap:3px; color:var(--ink); border:0; border-bottom:1px solid #e7ebe7; background:#fff; text-align:left; cursor:pointer; }
-.remote-tool-suggestions button:last-child { border-bottom:0; }
-.remote-tool-suggestions button:hover,.remote-tool-suggestions button:focus-visible { background:#e7f1ec; outline:0; }
-.remote-tool-suggestions strong { overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
-.remote-tool-suggestions span { overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
-.callable-workflow-row > header > button,.callable-workflow-row > header > .metadata-row-actions button { color:var(--red); border-color:#dfb8b4; }
+.callable-workflow-row > header input { width:100%; min-width:0; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; }
+.remote-tool-name-field { position:relative; min-width:0; }
+.remote-tool-suggestions { position:absolute; z-index:20; top:calc(100% + 4px); right:0; left:0; max-height:240px; overflow-y:auto; border:1px solid var(--line); background:var(--surface); box-shadow:0 10px 24px rgba(23,32,29,.16); }
+.remote-tool-suggestions[hidden] { display:none; }
+.remote-tool-suggestion { box-sizing:border-box; width:100%; min-width:0; height:auto; padding:9px; display:grid; gap:3px; color:var(--ink); border:0; border-bottom:1px solid #e7ebe7; background:var(--surface); text-align:left; cursor:pointer; }
+.remote-tool-suggestion:last-child { border-bottom:0; }
+.remote-tool-suggestion:hover,.remote-tool-suggestion:focus-visible { background:var(--green-soft); outline:0; }
+.remote-tool-suggestion strong,.remote-tool-suggestion span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.remote-tool-suggestion strong { font-size:11px; }
+.remote-tool-suggestion span { color:var(--muted); font-size:10px; }
+.callable-workflow-row > header > button,.callable-workflow-row > header > .metadata-row-actions button { width:30px; height:30px; padding:0; color:var(--red); border:1px solid #dfb8b4; background:#fff; font-size:20px; }
 .callable-workflow-row > header .metadata-row-actions { display:flex; gap:6px; }
 .callable-workflow-row > header:has(.metadata-row-actions) { grid-template-columns:minmax(0,1fr) auto; }
 .callable-workflow-row > header .metadata-row-actions button:first-child { color:var(--green); border-color:var(--line); }
@@ -126,4 +128,4 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 
 @media (max-width:1180px) { .workflow-shell { grid-template-columns:210px minmax(480px,1fr) 270px; } .workflow-state { display:none; } }
 @media (max-width:900px) { .workflow-main { overflow:auto; } .workflow-shell { min-width:800px; grid-template-columns:190px minmax(420px,1fr) 240px; } .page-nav a { padding:0 8px; } }
-@media (max-width:560px) { .workflow-page .brand { display:none; } .workflow-page .page-nav { right:8px; left:8px; overflow-x:auto; transform:none; } .workflow-page .page-nav a { flex:none; } .workflow-page .top-actions { gap:8px; } .workflow-main { width:calc(100% - 16px); } .toolbar-action-group { gap:4px; } .toolbar-action-group.export-actions { padding-left:8px; } .toolbar-button { width:38px; padding:0; } .toolbar-button span { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; } .metadata-columns,.callable-contract-columns { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section,.callable-contract-columns > section + section { border-left:0; border-top:1px solid var(--line); } .metadata-basics { grid-template-columns:1fr; } }
+@media (max-width:560px) { .workflow-page .brand { display:none; } .workflow-page .page-nav { right:8px; left:8px; overflow-x:auto; transform:none; } .workflow-page .page-nav a { flex:none; } .workflow-page .top-actions { gap:8px; } .workflow-main { width:calc(100% - 16px); } .toolbar-action-group { gap:4px; } .toolbar-action-group.export-actions { padding-left:8px; } .toolbar-button { width:38px; padding:0; } .toolbar-button span { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; } .metadata-columns,.callable-contract-columns { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section,.callable-contract-columns > section + section { border-left:0; border-top:1px solid var(--line); } .metadata-basics { grid-template-columns:1fr; } .callable-workflow-row > header:has(.metadata-row-actions) { grid-template-columns:minmax(0,1fr); } .metadata-row-actions { justify-content:flex-end; } }
