@@ -158,14 +158,26 @@ export function uploadWorkflow(workflowId, workflow) {
   });
 }
 
-export function fetchSettings() {
-  return request('/api/settings');
+export function fetchEventBindings() {
+  return request('/api/event-bindings');
 }
 
-export function updateSettings(workflowId) {
-  return request('/api/settings', {
+export function createEventBinding(binding) {
+  return request('/api/event-bindings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(binding),
+  });
+}
+
+export function updateEventBinding(bindingId, binding) {
+  return request(`/api/event-bindings/${encodeURIComponent(bindingId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workflow_id: workflowId }),
+    body: JSON.stringify(binding),
   });
+}
+
+export function deleteEventBinding(bindingId) {
+  return request(`/api/event-bindings/${encodeURIComponent(bindingId)}`, { method: 'DELETE' });
 }

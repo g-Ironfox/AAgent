@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 事件绑定</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/bindings.css?v=2">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 事件流">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>EVENT BINDINGS</small></span>
+    </a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a>
+        <a href="/workflows.html">Workflows</a>
+        <a href="/terminal.html">终端</a>
+        <a href="/document.html">文档</a>
+        <a class="active" href="/bindings.html" aria-current="page">绑定</a>
+        <a href="/model.html">模型</a>
+      </nav>
+      <div class="binding-page-state" aria-live="polite"><span>绑定数量</span><strong id="bindingCount">读取中</strong></div>
+    </div>
+  </header>
+
+  <main class="bindings-main">
+    <section class="bindings-workspace">
+      <aside class="binding-list-panel">
+        <header class="binding-list-heading">
+          <div><p>EVENT ROUTING</p><h1>事件绑定</h1></div>
+          <button id="newBinding" class="new-binding-button" type="button" title="新建绑定" aria-label="新建绑定">+</button>
+        </header>
+        <div id="bindingList" class="binding-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="binding-configuration">
+        <div id="bindingEmpty" class="binding-empty"><strong>选择一个事件绑定</strong><span>或从左侧新建绑定</span></div>
+        <form id="bindingForm" class="binding-form">
+          <header class="configuration-heading">
+            <div class="configuration-title"><p>CONFIGURATION</p><h2 id="formTitle">新建事件绑定</h2><span id="formState">未保存</span></div>
+            <div class="configuration-actions">
+              <span id="formStatus" class="form-status" aria-live="polite"></span>
+              <button id="cancelEdit" class="secondary-button" type="button">取消</button>
+              <button id="saveBinding" class="primary-button" type="submit">保存绑定</button>
+            </div>
+          </header>
+          <div class="form-body">
+            <section class="route-editor" aria-labelledby="routeEditorTitle">
+              <header class="section-heading">
+                <div><p>ROUTE</p><h3 id="routeEditorTitle">事件路由</h3></div>
+                <span>一种 Event 类型对应一个 Workflow</span>
+              </header>
+              <div class="route-fields">
+                <div class="route-field event-field">
+                  <label for="eventType"><span>EVENT TYPE</span><strong>事件类型</strong></label>
+                  <input id="eventType" name="event_type" type="text" maxlength="80" pattern="[a-z][a-z0-9_.-]*" placeholder="例如 terminal" required>
+                  <small>小写字母开头，可使用数字、点、下划线和短横线</small>
+                </div>
+                <div class="route-direction" aria-hidden="true"><span></span><strong>ROUTES TO</strong><span></span></div>
+                <div class="route-field workflow-field">
+                  <label for="workflowId"><span>WORKFLOW</span><strong>目标工作流</strong></label>
+                  <select id="workflowId" name="workflow_id" required disabled>
+                    <option value="">正在读取 Workflow...</option>
+                  </select>
+                  <small>事件到达时执行该 Workflow</small>
+                </div>
+              </div>
+            </section>
+
+            <section class="contract-preview" aria-labelledby="contractPreviewTitle">
+              <header class="contract-heading">
+                <div><p>DATA CONTRACT</p><h3 id="contractPreviewTitle">Workflow 端口契约</h3></div>
+                <span id="contractWorkflowName">未选择 Workflow</span>
+              </header>
+              <div class="contract-columns">
+                <section class="contract-port-section" aria-labelledby="contractInputTitle">
+                  <header>
+                    <div><span class="contract-port-mark input">IN</span><h4 id="contractInputTitle">Input</h4></div>
+                    <span id="contractInputCount">0 个端口</span>
+                  </header>
+                  <div id="contractInputPorts" class="contract-port-list"></div>
+                </section>
+                <section class="contract-port-section" aria-labelledby="contractOutputTitle">
+                  <header>
+                    <div><span class="contract-port-mark output">OUT</span><h4 id="contractOutputTitle">Output</h4></div>
+                    <span id="contractOutputCount">0 个端口</span>
+                  </header>
+                  <div id="contractOutputPorts" class="contract-port-list"></div>
+                </section>
+              </div>
+            </section>
+
+            <section class="behavior-panel" aria-labelledby="behaviorTitle">
+              <div class="behavior-copy"><p>BEHAVIOR</p><h3 id="behaviorTitle">路由状态</h3><span>停用后保留绑定配置，但不会参与事件路由。</span></div>
+              <label class="toggle-field" for="enabled">
+                <input id="enabled" name="enabled" type="checkbox" checked>
+                <span class="toggle-track" aria-hidden="true"></span>
+                <strong>启用</strong>
+              </label>
+            </section>
+          </div>
+        </form>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/bindings.js?v=2"></script>
+</body>
+</html>

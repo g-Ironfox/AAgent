@@ -13,9 +13,9 @@ from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
 from documents import create_documents_router
+from event_bindings import create_event_bindings_router
 from events import create_events_router
 from models import create_models_router
-from settings import create_settings_router
 from workflows import create_workflows_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -50,7 +50,7 @@ MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
 MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
 MONGO_MODEL_COLLECTION = env("MONGO_MODEL_COLLECTION", "models")
 MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
-MONGO_SETTINGS_COLLECTION = env("MONGO_SETTINGS_COLLECTION", "settings")
+MONGO_EVENT_BINDING_COLLECTION = env("MONGO_EVENT_BINDING_COLLECTION", "event_bindings")
 
 redis_client = redis.Redis.from_url(
     f"redis://{REDIS_ADDRESS}/{REDIS_DB}",
@@ -77,7 +77,7 @@ history: Collection = database[MONGO_HISTORY_COLLECTION]
 documents: Collection = database[MONGO_DOCUMENT_COLLECTION]
 model_configs: Collection = database[MONGO_MODEL_COLLECTION]
 workflows: Collection = database[MONGO_WORKFLOW_COLLECTION]
-settings: Collection = database[MONGO_SETTINGS_COLLECTION]
+event_bindings: Collection = database[MONGO_EVENT_BINDING_COLLECTION]
 
 app = FastAPI(title="AAgent WebUI")
 
@@ -90,6 +90,9 @@ def create_config_indexes():
             workflows.drop_index("unique_workflow_key")
         workflows.update_many({"key": {"$exists": True}}, {"$unset": {"key": ""}})
         workflows.create_index("name", unique=True, name="unique_workflow_name")
+        if "unique_event_binding_route" in event_bindings.index_information():
+            event_bindings.drop_index("unique_event_binding_route")
+        event_bindings.create_index("event_type", unique=True, name="unique_event_binding_type")
     except PyMongoError as error:
         logger.error("failed to create configuration indexes: %s", error)
 
@@ -158,7 +161,7 @@ def health():
 app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
 app.include_router(create_models_router(model_configs))
 app.include_router(create_workflows_router(redis_client, TOOLS_KEY, model_configs, workflows))
-app.include_router(create_settings_router(settings, workflows))
+app.include_router(create_event_bindings_router(event_bindings, workflows))
 app.include_router(create_documents_router(documents))
 
 static_directory = Path(__file__).parent / "static"
@@ -167,7 +170,7 @@ static_directory = Path(__file__).parent / "static"
 class RevalidatingStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: dict[str, Any]):
         response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-cache"
+        response.headers["Cache-Control"] = "no-store" if path.endswith(".html") else "no-cache"
         return response
 
 

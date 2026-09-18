@@ -1,0 +1,113 @@
+.bindings-main { padding:18px 0; }
+  .binding-page-state { min-width:112px; padding-left:14px; display:flex; flex-direction:column; gap:4px; border-left:2px solid var(--green); }
+  .binding-page-state span { color:var(--muted); font-size:9px; }
+  .binding-page-state strong { font-size:12px; }
+  .bindings-workspace { flex:1; min-height:0; display:grid; grid-template-columns:minmax(250px,330px) minmax(0,1fr); border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
+  .binding-list-panel { min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr); border-right:1px solid var(--line); background:#fafbf9; }
+  .binding-list-heading,.configuration-heading { min-height:82px; padding:15px 20px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line); }
+  .binding-list-heading { background:linear-gradient(90deg,#edf5f0 0,#fff 100%); }
+  .binding-list-heading p,.configuration-heading p { margin:0 0 5px; color:var(--green); font:700 9px Consolas,monospace; }
+  .binding-list-heading h1,.configuration-heading h2 { margin:0; font:700 23px Georgia,"Microsoft YaHei",serif; letter-spacing:0; }
+  .new-binding-button { width:36px; height:36px; padding:0; color:var(--muted); border:1px solid #cbd2cd; background:rgba(255,255,255,.9); font-size:22px; line-height:1; }
+  .new-binding-button:hover { color:var(--green); border-color:var(--green); background:#fff; }
+  .binding-list { min-height:0; overflow:auto; }
+  .binding-item { width:100%; min-height:62px; padding:8px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #e7ebe7; background:transparent; }
+  .binding-item:hover { background:#f0f5f1; }
+  .binding-item.selected { background:var(--green-soft); box-shadow:inset 3px 0 var(--green); }
+  .binding-select { min-width:0; flex:1; padding:4px 0; display:grid; gap:5px; color:var(--ink); text-align:left; border:0; background:transparent; }
+  .binding-select strong { overflow:hidden; font:700 12px Consolas,monospace; text-overflow:ellipsis; white-space:nowrap; }
+  .binding-target { min-width:0; display:flex; align-items:center; gap:7px; color:var(--muted); }
+  .binding-arrow { color:#9aa8a0; }
+  .binding-workflow { overflow:hidden; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+  .binding-meta { flex:none; display:flex; align-items:center; gap:8px; }
+  .status-enabled,.status-disabled { font-size:9px; }
+  .status-enabled { color:var(--green); }
+  .status-disabled { color:var(--amber); }
+  .delete-button { padding:3px 0; color:var(--red); border:0; background:transparent; font-size:9px; }
+  .delete-button:hover { text-decoration:underline; }
+  .empty-state { margin:20px 16px; color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+  .binding-configuration { position:relative; min-width:0; min-height:0; overflow:auto; background-color:#fafbf9; background-image:linear-gradient(rgba(23,32,29,.035) 1px,transparent 1px); background-size:100% 28px; }
+  .binding-empty { position:absolute; inset:0; display:grid; place-content:center; gap:7px; color:var(--muted); text-align:center; }
+  .binding-empty[hidden] { display:none; }
+  .binding-empty strong { color:var(--ink); font:700 19px Georgia,"Microsoft YaHei",serif; }
+  .binding-empty span { font-size:11px; }
+  .binding-form { min-height:100%; display:none; grid-template-rows:auto minmax(0,1fr) auto; background:rgba(255,255,255,.92); }
+  .binding-form.open { display:grid; }
+  .configuration-heading { background:#fff; }
+  .configuration-title { min-width:0; }
+  .configuration-title h2 { overflow-wrap:anywhere; }
+  .configuration-title > span { display:block; margin-top:5px; color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+  .configuration-actions { display:flex; align-items:center; gap:7px; }
+  .configuration-actions .form-status { margin:0 5px 0 0; text-align:right; white-space:nowrap; }
+  .form-body { min-height:0; padding:24px; overflow:auto; }
+  .route-editor { width:min(900px,100%); border:1px solid var(--line); background:rgba(255,255,255,.96); box-shadow:0 3px 10px rgba(23,32,29,.04); }
+  .section-heading { min-height:66px; padding:12px 18px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line); background:#fafbf9; }
+  .section-heading p,.behavior-copy p { margin:0 0 4px; color:var(--green); font:700 9px Consolas,monospace; }
+  .section-heading h3,.behavior-copy h3 { margin:0; font:700 17px Georgia,"Microsoft YaHei",serif; }
+  .section-heading > span { color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+  .route-fields { min-height:185px; padding:24px 28px; display:grid; grid-template-columns:minmax(0,1fr) 90px minmax(0,1fr); align-items:center; gap:16px; }
+  .route-field { min-width:0; }
+  .route-field label { display:grid; gap:4px; margin-bottom:9px; }
+  .route-field label span { color:var(--green); font:700 9px Consolas,monospace; }
+  .route-field label strong { color:var(--ink); font-size:12px; }
+  .route-field input,.route-field select { width:100%; height:44px; padding:0 12px; color:var(--ink); border:1px solid #cbd5ce; background:#fff; font-size:13px; }
+  .route-field input:focus,.route-field select:focus { border-color:var(--green); outline:2px solid rgba(19,119,90,.18); outline-offset:1px; }
+  .route-field small { display:block; margin-top:8px; color:var(--muted); font-size:10px; line-height:1.4; }
+  .route-direction { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:7px; color:var(--muted); font:700 8px Consolas,monospace; text-align:center; }
+  .route-direction span { height:1px; background:#cbd5ce; }
+  .contract-preview { width:min(900px,100%); margin-top:14px; border:1px solid var(--line); background:#fff; }
+  .contract-heading { min-height:58px; padding:10px 18px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line); background:#fafbf9; }
+  .contract-heading p { margin:0 0 4px; color:var(--green); font:700 9px Consolas,monospace; }
+  .contract-heading h3 { margin:0; font:700 15px Georgia,"Microsoft YaHei",serif; }
+  .contract-heading > span { max-width:50%; overflow:hidden; color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; text-overflow:ellipsis; white-space:nowrap; }
+  .contract-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .contract-port-section + .contract-port-section { border-left:1px solid var(--line); }
+  .contract-port-section > header { min-height:48px; padding:9px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid var(--line); background:#fcfdfc; }
+  .contract-port-section > header div { display:flex; align-items:center; gap:9px; }
+  .contract-port-section h4 { margin:0; font:700 12px Consolas,monospace; }
+  .contract-port-section > header > span { color:var(--muted); font-size:9px; }
+  .contract-port-mark { min-width:30px; padding:3px 5px; color:#fff; text-align:center; font:700 8px Consolas,monospace; }
+  .contract-port-mark.input { background:#277da1; }
+  .contract-port-mark.output { background:#d26938; }
+  .contract-port-list { min-height:62px; }
+  .contract-port-row { min-height:42px; padding:9px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid #e7ebe7; }
+  .contract-port-row:last-child { border-bottom:0; }
+  .contract-port-row strong { min-width:0; overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+  .contract-port-row code { flex:none; padding:3px 6px; color:var(--green); background:var(--green-soft); font-size:9px; }
+  .contract-port-empty { margin:0; padding:22px 14px; color:var(--muted); text-align:center; font-size:10px; }
+  .behavior-panel { width:min(900px,100%); margin-top:14px; padding:18px 20px; display:flex; align-items:center; justify-content:space-between; gap:20px; border:1px solid var(--line); background:#fff; }
+  .behavior-copy h3 { font-size:15px; }
+  .behavior-copy > span { display:block; margin-top:6px; color:var(--muted); font-size:10px; }
+  .toggle-field { display:flex; align-items:center; gap:8px; flex:none; cursor:pointer; }
+  .toggle-field input { position:absolute; opacity:0; pointer-events:none; }
+  .toggle-track { position:relative; width:36px; height:20px; border-radius:10px; background:#cbd5ce; transition:background .15s ease; }
+  .toggle-track::after { position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(23,32,29,.2); content:""; transition:transform .15s ease; }
+  .toggle-field input:checked + .toggle-track { background:var(--green); }
+  .toggle-field input:checked + .toggle-track::after { transform:translateX(16px); }
+  .toggle-field strong { color:var(--ink); font-size:11px; }
+  .form-status { display:block; min-width:48px; min-height:16px; color:var(--muted); font-size:10px; }
+  .form-status.success { color:var(--green); }
+  .form-status.error { color:var(--red); }
+  .primary-button,.secondary-button { height:34px; padding:0 15px; font-size:11px; }
+  .primary-button { color:#fff; border:1px solid var(--green); background:var(--green); }
+  .primary-button:hover:not(:disabled) { border-color:#0d6048; background:#0d6048; }
+  .primary-button:disabled,.secondary-button:disabled { cursor:not-allowed; opacity:.48; }
+  .secondary-button { color:var(--ink); border:1px solid var(--line); background:#fff; }
+  .secondary-button:hover:not(:disabled) { border-color:#aeb8b1; background:#f4f6f3; }
+  @media (max-width:700px) {
+    .bindings-main { width:100%; padding:0; }
+    .binding-page-state { min-width:0; padding-left:10px; }
+    .binding-page-state span { display:none; }
+    .bindings-workspace { grid-template-columns:1fr; overflow:auto; border-width:0; }
+    .binding-list-panel { min-height:230px; max-height:300px; border-right:0; border-bottom:1px solid var(--line); }
+    .binding-list-heading,.configuration-heading { min-height:70px; padding:11px 14px; }
+    .binding-list-heading h1,.configuration-heading h2 { font-size:20px; }
+    .configuration-actions .form-status { position:absolute; top:73px; right:14px; margin:0; }
+    .binding-configuration { min-height:360px; overflow:visible; }
+    .form-body { padding:14px; }
+    .route-fields { grid-template-columns:1fr; gap:20px; padding:18px 16px; }
+    .route-direction { grid-template-columns:1fr auto 1fr; }
+    .contract-columns { grid-template-columns:1fr; }
+    .contract-port-section + .contract-port-section { border-top:1px solid var(--line); border-left:0; }
+    .behavior-panel { align-items:flex-start; flex-direction:column; padding:16px; }
+  }
