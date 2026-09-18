@@ -61,7 +61,7 @@ provider_thread.start()
 将模块加入 `TOOL_MODULES`，多个模块使用逗号分隔：
 
 ```text
-TOOL_MODULES=tools.echo,tools.search
+TOOL_MODULES=tools.search
 ```
 
 修改工具 Schema 后必须递增 `TOOL_PROVIDER_REVISION`。`TOOL_PROVIDER_CONSUMERS` 控制并发 Consumer 数量，`TOOL_PROVIDER_QUEUE_SIZE` 控制内部有界队列容量。
@@ -75,4 +75,3 @@ TOOL_MODULES=tools.echo,tools.search
 
 取消是协作式的。运行时间较长的工具应在循环或阶段边界调用 `context.cancelled()` 并尽快返回；Python 线程不会被框架强制终止。
 
-默认示例工具为 `system.echo`。启动 `tool_server` 和 `tool_provider` 后，它会自动出现在 Tool Server 工具目录中。

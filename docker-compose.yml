@@ -171,7 +171,7 @@ services:
       TOOL_PROVIDER_CONSUMERS: ${TOOL_PROVIDER_CONSUMERS:-1}
       TOOL_PROVIDER_QUEUE_SIZE: ${TOOL_PROVIDER_QUEUE_SIZE:-128}
       TOOL_PROVIDER_HEARTBEAT_SECONDS: ${TOOL_PROVIDER_HEARTBEAT_SECONDS:-20}
-      TOOL_MODULES: ${TOOL_MODULES:-tools.echo,tools.qq,tools.bilibili}
+      TOOL_MODULES: ${TOOL_MODULES:-tools.qq,tools.bilibili}
     networks:
       - aagent_net
 

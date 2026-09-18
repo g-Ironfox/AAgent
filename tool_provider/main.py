@@ -12,7 +12,7 @@ def env_int(name: str, default: int) -> int:
 
 
 def main() -> None:
-    modules = [name.strip() for name in os.getenv("TOOL_MODULES", "tools.echo").split(",") if name.strip()]
+    modules = [name.strip() for name in os.getenv("TOOL_MODULES", "tools.qq,tools.bilibili").split(",") if name.strip()]
     provider = ToolProvider(
         server_url=os.getenv("TOOL_SERVER_WS_URL", "ws://tool_server:8083/ws/providers"),
         provider_id=os.getenv("TOOL_PROVIDER_ID", "provider-default-01"),
