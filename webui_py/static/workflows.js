@@ -111,7 +111,7 @@ function createContractWarning(reference, referenceName) {
     !inputMatches ? 'Input' : '',
     !outputMatches ? 'Output' : '',
   ].filter(Boolean).join('、');
-  warning.textContent = `契约错误：${mismatches} 端口与对应 Workflow 不一致`;
+  warning.textContent = `契约错误：${mismatches} 端口与对应 Workflows 不一致`;
   return warning;
 }
 
@@ -121,7 +121,7 @@ function renderDependencies(references) {
   if (!references.length) {
     const empty = document.createElement('p');
     empty.className = 'metadata-port-empty';
-    empty.textContent = '无 Workflow 依赖';
+    empty.textContent = '无 Workflows 依赖';
     elements.dependencies.append(empty);
     return;
   }
@@ -136,13 +136,13 @@ function renderDependencies(references) {
     marker.textContent = 'WF';
     const name = document.createElement('strong');
     const referenceName = reference.name || reference.workflow_name || '';
-    name.textContent = referenceName || '未命名 Workflow';
+    name.textContent = referenceName || '未命名 Workflows';
     identity.append(marker, name);
     const editButton = document.createElement('button');
     editButton.type = 'button';
     editButton.className = 'dependency-edit-button';
     editButton.textContent = '修改';
-    editButton.title = '修改依赖 Workflow';
+    editButton.title = '修改依赖 Workflows';
     editButton.addEventListener('click', () => editDependency(item, references, referenceName));
     heading.append(identity, editButton);
     const contracts = document.createElement('div');
@@ -202,7 +202,7 @@ function editDependency(item, references, currentName) {
   input.type = 'text';
   input.value = currentName;
   input.maxLength = 120;
-  input.setAttribute('aria-label', '输入依赖 Workflow 名称');
+  input.setAttribute('aria-label', '输入依赖 Workflows 名称');
   const actions = document.createElement('span');
   actions.className = 'dependency-edit-actions';
   const saveButton = document.createElement('button');
@@ -245,7 +245,7 @@ async function saveDependency(references, previousName, nextName) {
   if (!workflow || state.saving || !nextName || nextName === previousName) return;
   const target = state.workflows.find((item) => item.id !== workflow.id && item.name === nextName);
   if (!target) {
-    elements.state.textContent = '依赖 Workflow 不存在，无法保存';
+    elements.state.textContent = '依赖 Workflows 不存在，无法保存';
     return;
   }
   const nextReferences = references.map((reference) => ({
@@ -255,7 +255,7 @@ async function saveDependency(references, previousName, nextName) {
     ...(reference.name === previousName || reference.workflow_name === previousName ? { previous_name: previousName } : {}),
   }));
   if (new Set(nextReferences.map((reference) => reference.name)).size !== nextReferences.length) {
-    elements.state.textContent = '依赖 Workflow 不能重复';
+    elements.state.textContent = '依赖 Workflows 不能重复';
     return;
   }
   state.saving = true;
@@ -290,7 +290,7 @@ function renderConfiguration() {
   elements.exportButton.hidden = !workflow;
   elements.renameButton.hidden = !workflow;
   elements.deleteButton.hidden = !workflow;
-  elements.title.textContent = workflow?.name || '选择一个 Workflow';
+  elements.title.textContent = workflow?.name || '选择一个 Workflows';
   if (!workflow) {
     elements.description.textContent = '';
     elements.inputPorts.replaceChildren();
@@ -320,7 +320,7 @@ function renderList() {
   if (!state.workflows.length) {
     const empty = document.createElement('p');
     empty.className = 'workflow-list-empty';
-    empty.textContent = state.loading ? '正在读取...' : '还没有 Workflow';
+    empty.textContent = state.loading ? '正在读取...' : '还没有 Workflows';
     elements.list.append(empty);
     return;
   }
@@ -330,7 +330,7 @@ function renderList() {
     button.type = 'button';
 
     const title = document.createElement('strong');
-  title.textContent = workflow.name || '未命名 Workflow';
+  title.textContent = workflow.name || '未命名 Workflows';
     const meta = document.createElement('small');
     meta.textContent = `${workflow.node_count} 节点 / ${workflow.connection_count} 连接`;
 
@@ -378,7 +378,7 @@ function openRenameDialog() {
 function validateWorkflowName(input, error, submit, excludedWorkflowId = null) {
   const name = input.value.trim();
   const duplicate = state.workflows.some((workflow) => workflow.id !== excludedWorkflowId && workflow.name === name);
-  error.textContent = !name ? 'Workflow 名称不能为空' : duplicate ? 'Workflow 名称已存在，可选择覆盖' : '';
+  error.textContent = !name ? 'Workflows 名称不能为空' : duplicate ? 'Workflows 名称已存在，可选择覆盖' : '';
   submit.disabled = !name || duplicate || state.saving;
   return Boolean(name) && !duplicate;
 }
@@ -386,7 +386,7 @@ function validateWorkflowName(input, error, submit, excludedWorkflowId = null) {
 function validateUploadName() {
   const name = elements.uploadName.value.trim();
   const duplicate = state.workflows.some((workflow) => workflow.name === name);
-  elements.uploadError.textContent = !name ? 'Workflow 名称不能为空' : duplicate ? 'Workflow 名称已存在，可选择覆盖' : '';
+  elements.uploadError.textContent = !name ? 'Workflows 名称不能为空' : duplicate ? 'Workflows 名称已存在，可选择覆盖' : '';
   elements.uploadSubmit.disabled = !name || duplicate || state.saving;
   elements.uploadOverwrite.disabled = !name || !duplicate || state.saving;
   state.uploadMode = duplicate ? 'overwrite' : 'create';
@@ -404,7 +404,7 @@ function resolveWorkflowReferences(imported) {
     const referenceName = reference.name || reference.workflow_name || reference.workflow_id;
     const matches = state.workflows.filter((workflow) => workflow.id === reference.workflow_id || workflow.name === referenceName);
     if (matches.length !== 1) {
-      throw new Error(matches.length ? `被调用 Workflow“${referenceName}”名称不唯一` : `找不到被调用 Workflow“${referenceName}”`);
+      throw new Error(matches.length ? `被调用 Workflows“${referenceName}”名称不唯一` : `找不到被调用 Workflows“${referenceName}”`);
     }
     if (reference.workflow_id) resolvedReferences.set(reference.workflow_id, matches[0]);
     resolvedReferences.set(referenceName, matches[0]);
@@ -413,7 +413,7 @@ function resolveWorkflowReferences(imported) {
   const nodes = imported.nodes.map((node) => {
     if (node.type !== 'workflow') return node;
     const resolved = resolvedReferences.get(node.workflow_id) || resolvedReferences.get(node.workflow_name);
-    if (!resolved) throw new Error(`节点“${node.name || node.id}”引用的 Workflow 不存在`);
+    if (!resolved) throw new Error(`节点“${node.name || node.id}”引用的 Workflows 不存在`);
     const { workflow_id, ...nameBasedNode } = node;
     return { ...nameBasedNode, workflow_name: resolved.name };
   });
@@ -422,9 +422,9 @@ function resolveWorkflowReferences(imported) {
 
 function parseWorkflowText(text) {
   const imported = JSON.parse(text);
-  if (!imported || typeof imported !== 'object' || Array.isArray(imported)) throw new Error('内容不是有效的 Workflow JSON');
-  if (typeof imported.name !== 'string' || !imported.name.trim()) throw new Error('Workflow 名称不能为空');
-  if (!Array.isArray(imported.nodes) || !Array.isArray(imported.connections)) throw new Error('Workflow 缺少节点或连接数据');
+  if (!imported || typeof imported !== 'object' || Array.isArray(imported)) throw new Error('内容不是有效的 Workflows JSON');
+  if (typeof imported.name !== 'string' || !imported.name.trim()) throw new Error('Workflows 名称不能为空');
+  if (!Array.isArray(imported.nodes) || !Array.isArray(imported.connections)) throw new Error('Workflows 缺少节点或连接数据');
   return imported;
 }
 
@@ -460,7 +460,7 @@ async function openTextImportDialog() {
       parseWorkflowText(clipboardText);
       if (elements.textImportDialog.open && !elements.textImportValue.value) elements.textImportValue.value = clipboardText;
     } catch (error) {
-      if (error.name !== 'NotAllowedError' && !(error instanceof SyntaxError)) console.debug('剪贴板中没有可导入的 Workflow', error);
+      if (error.name !== 'NotAllowedError' && !(error instanceof SyntaxError)) console.debug('剪贴板中没有可导入的 Workflows', error);
     }
   }
   elements.textImportValue.focus();
@@ -474,7 +474,7 @@ function submitTextImport(event) {
     elements.textImportDialog.close();
     prepareWorkflowUpload(imported);
   } catch (error) {
-    elements.textImportError.textContent = error.message || 'Workflow 文本无效';
+    elements.textImportError.textContent = error.message || 'Workflows 文本无效';
   }
 }
 
@@ -512,7 +512,7 @@ async function confirmWorkflowUpload(event) {
       try {
         await deleteWorkflow(created.id);
       } catch (cleanupError) {
-        console.warn('上传失败后的 Workflow 清理失败', cleanupError);
+        console.warn('上传失败后的 Workflows 清理失败', cleanupError);
       }
     }
     elements.state.textContent = error.name === 'AbortError' ? '上传超时' : (error.message || '上传失败');

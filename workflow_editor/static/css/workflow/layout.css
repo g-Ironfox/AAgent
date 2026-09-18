@@ -1,4 +1,4 @@
-.workflow-page { overflow:auto; }
+.workflow-page { overflow:hidden; }
 .workflow-state { min-width:94px; display:grid; gap:3px; }
 .workflow-state span { color:var(--muted); font-size:9px; }
 .workflow-state strong { font-size:12px; }
@@ -17,7 +17,7 @@
 .toolbar-button.danger { color:var(--red); border-color:#dfb8b4; background:#fff; }
 .toolbar-button:disabled { cursor:not-allowed; opacity:.45; }
 .workflow-main { width:min(1540px,calc(100% - 32px)); padding:12px 0; }
-.workflow-shell { flex:1; min-height:650px; display:grid; grid-template-columns:238px minmax(520px,1fr) 300px; border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); overflow:hidden; }
+.workflow-shell { flex:1; min-height:0; display:grid; grid-template-columns:238px minmax(520px,1fr) 300px; border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); overflow:hidden; }
 .node-library,.node-inspector,.workflow-canvas-panel { min-width:0; min-height:0; }
 .node-library,.node-inspector { display:flex; flex-direction:column; background:#fafbf9; }
 .node-library { border-right:1px solid var(--line); }

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>AAgent Workflow 管理</title>
+  <title>AAgent Workflows 管理</title>
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/workflows.css?v=7">
 </head>
@@ -18,7 +18,7 @@
       <nav class="page-nav" aria-label="页面导航">
         <a href="/">事件流</a>
         <a href="/subagents.html">子 Agent</a>
-        <a class="active" href="/workflows.html" aria-current="page">Workflow</a>
+        <a class="active" href="/workflows.html" aria-current="page">Workflows</a>
         <a href="/terminal.html">终端</a>
         <a href="/document.html">文档</a>
         <a href="/setting.html">设置</a>
@@ -29,11 +29,11 @@
   </header>
 
   <main class="workflow-management-main">
-    <section class="workflow-management-workspace" aria-label="Workflow 管理">
-      <aside class="workflow-management-sidebar" aria-label="Workflow 列表">
+    <section class="workflow-management-workspace" aria-label="Workflows 管理">
+      <aside class="workflow-management-sidebar" aria-label="Workflows 列表">
         <header class="workflow-management-heading">
-          <div><p>WORKFLOWS</p><h1>Workflow</h1></div>
-          <div class="workflow-library-actions" aria-label="导入 Workflow">
+          <div><p>WORKFLOWS</p><h1>Workflows</h1></div>
+          <div class="workflow-library-actions" aria-label="导入 Workflows">
             <input id="uploadFileInput" type="file" accept="application/json,.json" hidden>
             <button id="uploadButton" class="import-workflow-button" type="button" title="从文件导入" aria-label="从文件导入">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v6h6"></path><path d="M12 18v-6"></path><path d="m9 15 3-3 3 3"></path></svg>
@@ -50,11 +50,11 @@
         <header class="configuration-heading">
           <div class="configuration-title">
             <p>CONFIGURATION</p>
-            <h2 id="configurationTitle">选择一个 Workflow</h2>
+            <h2 id="configurationTitle">选择一个 Workflows</h2>
           </div>
           <div class="configuration-actions">
-            <button id="copyButton" class="copy-workflow-button" type="button" title="导出 Workflow JSON 到剪贴板" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>导出到剪贴板</span></button>
-            <button id="exportButton" class="export-workflow-button" type="button" title="导出 Workflow" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v6h6M12 12v6m-3-3 3 3 3-3"></path></svg><span>导出</span></button>
+            <button id="copyButton" class="copy-workflow-button" type="button" title="导出 Workflows JSON 到剪贴板" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>导出到剪贴板</span></button>
+            <button id="exportButton" class="export-workflow-button" type="button" title="导出 Workflows" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v6h6M12 12v6m-3-3 3 3 3-3"></path></svg><span>导出</span></button>
             <button id="renameButton" class="rename-workflow-button" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg><span>重命名</span></button>
             <button id="deleteButton" class="delete-workflow-button" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-1 16H6L5 6"></path><path d="M10 11v6M14 11v6"></path></svg><span>删除</span></button>
           </div>
@@ -84,7 +84,7 @@
             </div>
             <section class="workflow-dependencies" aria-labelledby="workflowDependenciesTitle">
               <header>
-                <div><p>DEPENDENCIES</p><h3 id="workflowDependenciesTitle">Workflow 依赖与契约</h3></div>
+                <div><p>DEPENDENCIES</p><h3 id="workflowDependenciesTitle">Workflows 依赖与契约</h3></div>
                 <span id="dependencyCount" class="dependency-count"></span>
               </header>
               <div id="workflowDependencies" class="workflow-dependency-list"></div>
@@ -104,9 +104,9 @@
 
   <dialog id="textImportDialog" class="workflow-dialog workflow-text-dialog">
     <form id="textImportForm">
-      <header><div><p>IMPORT WORKFLOW</p><h2>从文本导入</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
+      <header><div><p>IMPORT WORKFLOWS</p><h2>从文本导入</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
       <div class="dialog-fields">
-        <label>Workflow JSON<textarea id="textImportValue" rows="14" required spellcheck="false" placeholder="粘贴 Workflow JSON"></textarea></label>
+        <label>Workflows JSON<textarea id="textImportValue" rows="14" required spellcheck="false" placeholder="粘贴 Workflows JSON"></textarea></label>
         <p id="textImportError" class="dialog-error" role="alert"></p>
       </div>
       <footer><button type="button" class="dialog-cancel" data-close-dialog>取消</button><button class="dialog-submit" type="submit">继续</button></footer>
@@ -115,7 +115,7 @@
 
   <dialog id="uploadDialog" class="workflow-dialog">
     <form id="uploadForm">
-      <header><div><p>UPLOAD WORKFLOW</p><h2>确认 Workflow 名称</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
+      <header><div><p>UPLOAD WORKFLOWS</p><h2>确认 Workflows 名称</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
       <div class="dialog-fields">
         <label>名称<input id="uploadName" name="name" maxlength="120" required autocomplete="off"></label>
         <p id="uploadError" class="dialog-error" role="alert"></p>
@@ -126,7 +126,7 @@
 
   <dialog id="renameDialog" class="workflow-dialog">
     <form id="renameForm">
-      <header><div><p>RENAME</p><h2>重命名 Workflow</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
+      <header><div><p>RENAME</p><h2>重命名 Workflows</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button></header>
       <div class="dialog-fields">
         <label>名称<input id="renameName" name="name" maxlength="120" required autocomplete="off"></label>
         <p id="renameError" class="dialog-error" role="alert"></p>
@@ -142,6 +142,6 @@
     </div>
   </template>
 
-  <script type="module" src="/workflows.js?v=20"></script>
+  <script type="module" src="/workflows.js?v=21"></script>
 </body>
 </html>
