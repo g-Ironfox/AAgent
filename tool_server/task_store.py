@@ -5,6 +5,8 @@ from typing import Any
 
 from redis.asyncio import Redis
 
+from task_log_repository import TaskLogRepository
+
 
 TERMINAL_STATUSES = {"completed", "failed"}
 
@@ -54,9 +56,15 @@ def utc_now() -> str:
 
 
 class TaskStore:
-    def __init__(self, redis: Redis, ttl_seconds: int = 86400):
+    def __init__(
+        self,
+        redis: Redis,
+        ttl_seconds: int = 86400,
+        task_logs: TaskLogRepository | None = None,
+    ):
         self.redis = redis
         self.ttl_seconds = ttl_seconds
+        self.task_logs = task_logs
 
     @staticmethod
     def task_key(task_id: str) -> str:
@@ -79,6 +87,8 @@ class TaskStore:
         created_at = datetime.fromisoformat(task["created_at"]).timestamp()
         await self.redis.zadd("tool:tasks:recent", {task["task_id"]: created_at})
         await self.redis.zremrangebyscore("tool:tasks:recent", "-inf", created_at - self.ttl_seconds)
+        if self.task_logs:
+            await self.task_logs.record("created", task)
         return True
 
     async def get(self, task_id: str) -> dict[str, Any] | None:
@@ -123,7 +133,12 @@ class TaskStore:
         )
         changed = bool(result[0])
         payload = result[1]
-        return changed, json.loads(payload) if changed else payload
+        if not changed:
+            return False, payload
+        task = json.loads(payload)
+        if self.task_logs:
+            await self.task_logs.record("transition", task)
+        return True, task
 
     async def wait_for_terminal(self, task_id: str, timeout_seconds: float) -> dict[str, Any] | None:
         loop = asyncio.get_running_loop()

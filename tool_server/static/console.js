@@ -250,7 +250,7 @@ async function refresh() {
     showNotice("");
     setConnection("online", "服务在线");
     render();
-    if (elements.taskDialog.open && state.selectedTaskId) renderTaskDetail(await request(`/api/tasks/${state.selectedTaskId}`));
+    if (elements.taskDialog.open && state.selectedTaskId) renderTaskDetail(await request(`/api/task-logs/${state.selectedTaskId}`));
   } catch (error) {
     setConnection("error", "连接异常");
     elements.lastRefresh.classList.add("sync-error");
@@ -293,7 +293,7 @@ function renderTaskDetail(task) {
 async function openTask(taskId) {
   state.selectedTaskId = taskId;
   try {
-    renderTaskDetail(await request(`/api/tasks/${taskId}`));
+    renderTaskDetail(await request(`/api/task-logs/${taskId}`));
     elements.taskDialog.showModal();
   } catch (error) {
     showNotice(`读取任务失败：${error.message}`);

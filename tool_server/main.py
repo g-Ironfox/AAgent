@@ -12,12 +12,15 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from jsonschema import Draft202012Validator, SchemaError, ValidationError
 from pydantic import ValidationError as PydanticValidationError
+from pymongo import AsyncMongoClient
+from pymongo.errors import PyMongoError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from models import ProviderEvent, RegisterMessage, ToolCallRequest
 from provider_registry import ProviderConnection, ProviderRegistry
 from settings import Settings
+from task_log_repository import TaskLogRepository
 from task_store import TERMINAL_STATUSES, TaskStore, utc_now
 
 
@@ -26,7 +29,22 @@ logger = logging.getLogger("aagent.tool_server")
 
 settings = Settings.from_env()
 redis = Redis.from_url(settings.redis_url, decode_responses=True)
-store = TaskStore(redis, settings.task_ttl_seconds)
+mongo_options: dict[str, Any] = {
+    "host": settings.mongo_host,
+    "port": settings.mongo_port,
+    "tz_aware": True,
+}
+if settings.mongo_user:
+    mongo_options.update(
+        username=settings.mongo_user,
+        password=settings.mongo_password or "",
+        authSource="admin",
+    )
+mongo_client = AsyncMongoClient(**mongo_options)
+task_logs = TaskLogRepository(
+    mongo_client[settings.mongo_database][settings.mongo_task_log_collection]
+)
+store = TaskStore(redis, settings.task_ttl_seconds, task_logs)
 registry = ProviderRegistry()
 CALLBACK_STATUSES = {"working", "completed", "failed"}
 
@@ -133,6 +151,7 @@ async def callback_worker() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await task_logs.create_indexes()
     worker = asyncio.create_task(callback_worker())
     try:
         yield
@@ -141,6 +160,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         with suppress(asyncio.CancelledError):
             await worker
         await redis.aclose()
+        await mongo_client.close()
 
 
 app = FastAPI(title="AAgent Tool Server", lifespan=lifespan)
@@ -160,8 +180,8 @@ async def security_headers(request: Request, call_next):
 @app.get("/api/health")
 async def health():
     try:
-        await redis.ping()
-    except RedisError as error:
+        await asyncio.gather(redis.ping(), mongo_client.admin.command("ping"))
+    except (RedisError, PyMongoError) as error:
         return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(error)})
     return {"status": "ok"}
 
@@ -177,7 +197,7 @@ async def overview(limit: int = 100):
     providers, tools, tasks = await asyncio.gather(
         registry.list_providers(),
         registry.list_tools(),
-        store.list_recent(bounded_limit),
+        task_logs.list_recent(bounded_limit),
     )
     status_counts = {status: 0 for status in ["pending", "working", "completed", "failed"]}
     for task in tasks:
@@ -258,6 +278,14 @@ async def call_tool(tool_name: str, request: ToolCallRequest):
     timeout_ms = min(request.timeout_ms, settings.max_wait_ms)
     final = await store.wait_for_terminal(task_id, timeout_ms / 1000)
     return JSONResponse(status_code=200 if final and final["status"] in TERMINAL_STATUSES else 202, content=final)
+
+
+@app.get("/api/task-logs/{task_id}")
+async def get_task_log(task_id: str):
+    task = await task_logs.get_latest(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task log not found")
+    return task
 
 
 @app.get("/api/tasks/{task_id}")
