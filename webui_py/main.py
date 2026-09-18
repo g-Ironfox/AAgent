@@ -15,7 +15,6 @@ from pymongo.errors import PyMongoError
 from documents import create_documents_router
 from events import create_events_router
 from models import create_models_router
-from subagents import SubagentSpec, create_subagents_router
 from settings import create_settings_router
 from workflows import create_workflows_router
 
@@ -52,17 +51,6 @@ MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
 MONGO_MODEL_COLLECTION = env("MONGO_MODEL_COLLECTION", "models")
 MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
 MONGO_SETTINGS_COLLECTION = env("MONGO_SETTINGS_COLLECTION", "settings")
-
-SUBAGENTS: dict[str, SubagentSpec] = {
-    "qq": SubagentSpec(
-        id="qq",
-        name="QQ Agent",
-        description="处理 QQ 消息与会话事件",
-        queue=env("QQ_AGENT_QUEUE_NAME", "subagent:qq:tasks"),
-        history_collection=env("QQ_AGENT_HISTORY_COLLECTION", "subagent_qq_history"),
-        worker_status_key=env("QQ_AGENT_WORKER_STATUS_KEY", "subagent:qq:worker:status"),
-    ),
-}
 
 redis_client = redis.Redis.from_url(
     f"redis://{REDIS_ADDRESS}/{REDIS_DB}",
@@ -171,7 +159,6 @@ app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKE
 app.include_router(create_models_router(model_configs))
 app.include_router(create_workflows_router(redis_client, TOOLS_KEY, model_configs, workflows))
 app.include_router(create_settings_router(settings, workflows))
-app.include_router(create_subagents_router(redis_client, database, documents, SUBAGENTS))
 app.include_router(create_documents_router(documents))
 
 static_directory = Path(__file__).parent / "static"

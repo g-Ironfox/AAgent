@@ -5,10 +5,9 @@ import redis
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-QQ_AGENT_QUEUE_NAME = os.getenv("QQ_AGENT_QUEUE_NAME", "subagent:qq:tasks")
+QQ_QUEUE_NAME = os.getenv("QQ_QUEUE_NAME", "qq:events")
 MAIN_AGENT_QUEUE_NAME = os.getenv("MAIN_AGENT_QUEUE_NAME", "main_agent_queue")
-QQ_WORKER_STATUS_KEY = os.getenv("QQ_AGENT_WORKER_STATUS_KEY", "subagent:qq:worker:status")
-QQ_AGENT_SETTINGS_KEY = os.getenv("QQ_AGENT_SETTINGS_KEY", "subagent:qq:settings")
+QQ_WORKER_STATUS_KEY = os.getenv("QQ_WORKER_STATUS_KEY", "qq:worker:status")
 
 
 def get_connection():
@@ -33,11 +32,3 @@ def pop_from_queue(queue_name: str, timeout: int = 5):
 def set_worker_status(status: dict):
     client = get_connection()
     client.set(QQ_WORKER_STATUS_KEY, json.dumps(status, ensure_ascii=False))
-
-
-def get_agent_settings():
-    raw = get_connection().get(QQ_AGENT_SETTINGS_KEY)
-    if not raw:
-        return {"document_ids": []}
-    settings = json.loads(raw)
-    return settings if isinstance(settings, dict) else {"document_ids": []}

@@ -13,16 +13,6 @@ AGENT_WORKER_STATUS_KEY = os.getenv(
     "AGENT_WORKER_STATUS_KEY",
     "aagent:worker:status",
 )
-# 整个设置以一个 JSON 对象存在单个 Key 下,运行时以 Redis 为唯一真源
-AGENT_SETTINGS_KEY = os.getenv(
-    "AGENT_SETTINGS_KEY",
-    "aagent:settings",
-)
-# 旧版扁平 Key(仅首次启动迁移用,不写入)
-AGENT_SYSTEM_PROMPT_KEY = os.getenv(
-    "AGENT_SYSTEM_PROMPT_KEY",
-    "aagent:settings:system_prompt",
-)
 AGENT_TOOLS_KEY = os.getenv(
     "AGENT_TOOLS_KEY",
     "aagent:tools",
@@ -54,22 +44,6 @@ def set_worker_status(status: dict):
         AGENT_WORKER_STATUS_KEY,
         json.dumps(status, ensure_ascii=False),
     )
-    return True
-
-def get_settings() -> dict:
-    client = get_connection()
-    raw = client.get(AGENT_SETTINGS_KEY)
-    if raw is None:
-        return {}
-    try:
-        settings = json.loads(raw)
-    except (TypeError, ValueError):
-        return {}
-    return settings if isinstance(settings, dict) else {}
-
-def set_settings(settings: dict) -> bool:
-    client = get_connection()
-    client.set(AGENT_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False))
     return True
 
 def redis_reset_tools() -> bool:
