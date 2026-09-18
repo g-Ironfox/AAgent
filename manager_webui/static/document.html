@@ -43,7 +43,10 @@
           <div class="editor-title-wrap">
             <label for="documentTitle" class="sr-only">文档标题</label>
             <input id="documentTitle" class="document-title" maxlength="200" placeholder="未命名文档" disabled>
-            <span id="updatedAt" class="updated-at"></span>
+            <div class="document-metadata">
+              <span id="documentId" class="document-id"></span>
+              <span id="updatedAt" class="updated-at"></span>
+            </div>
           </div>
           <div class="document-actions">
             <button id="pinButton" class="pin-button" type="button" disabled aria-pressed="false" title="钉住文档">钉住</button>
@@ -67,6 +70,6 @@
     </section>
   </main>
 
-  <script type="module" src="/document.js?v=documents-3"></script>
+  <script type="module" src="/document.js?v=documents-4"></script>
 </body>
 </html>

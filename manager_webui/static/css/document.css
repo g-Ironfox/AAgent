@@ -33,7 +33,8 @@
 .document-title:not(:disabled) { border-bottom:2px solid var(--green); }
 .document-title:focus { outline:0; border-bottom:2px solid var(--green); }
 .document-title:disabled { color:var(--ink); }
-.updated-at { color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+.document-metadata { min-width:0; display:flex; align-items:center; gap:12px; color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+.document-id { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .edit-button,.cancel-button,.delete-button { height:34px; padding:0 16px; font-size:11px; }
 .edit-button,.cancel-button { color:var(--ink); border:1px solid var(--line); background:#fafbf9; }
 .edit-button:hover,.cancel-button:hover { border-color:var(--ink); background:#fff; }

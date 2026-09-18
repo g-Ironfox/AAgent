@@ -1,4 +1,4 @@
-import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDocument, updateDocumentPin } from './api.js?v=documents-3';
+import { createDocument, deleteDocument, fetchDocument, fetchDocuments, updateDocument, updateDocumentPin } from './api.js?v=documents-4';
 
 const state = { documents: [], current: null, saved: null, loading: false, saving: false, mode: 'preview' };
 const elements = {
@@ -18,6 +18,7 @@ const elements = {
   documentState: document.querySelector('#documentState'),
   saveStatus: document.querySelector('#saveStatus'),
   characterCount: document.querySelector('#characterCount'),
+  documentId: document.querySelector('#documentId'),
   updatedAt: document.querySelector('#updatedAt'),
 };
 
@@ -164,6 +165,7 @@ function applyDocument(documentItem) {
   elements.content.value = documentItem.content;
   state.saved = currentInput();
   elements.preview.textContent = documentItem.content;
+  elements.documentId.textContent = `_id ${documentItem.id}`;
   elements.updatedAt.textContent = formatDate(documentItem.created_at, '创建于');
   renderList();
   updateControls();
@@ -307,6 +309,7 @@ async function removeCurrentDocument() {
     elements.title.value = '';
     elements.content.value = '';
     elements.preview.textContent = '';
+    elements.documentId.textContent = '';
     elements.updatedAt.textContent = '';
     renderList();
     elements.documentState.textContent = '已同步';
