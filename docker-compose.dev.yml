@@ -48,6 +48,15 @@ services:
       mongodb:
         condition: service_started
 
+  manager_webui:
+    volumes:
+      - ./manager_webui:/app
+    depends_on:
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+
   workflow_editor:
     volumes:
       - ./workflow_editor:/app

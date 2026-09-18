@@ -21,7 +21,7 @@ docker compose up --build -d
 docker compose logs -f agent qqbot
 ```
 
-WebUI 地址:`http://localhost:8081`。完整变量说明、端口和安全检查见[配置与部署](docs/04-配置与部署.md)。
+WebUI 地址:`http://localhost:8081`;管理 WebUI 地址:`http://localhost:8084`。完整变量说明、端口和安全检查见[配置与部署](docs/04-配置与部署.md)。
 
 ## 安全
 

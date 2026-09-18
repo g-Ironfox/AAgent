@@ -2,7 +2,7 @@ import {
   createEventBinding,
   deleteEventBinding,
   fetchEventBindings,
-  fetchWorkflows,
+  fetchEventBindingWorkflowOptions,
   updateEventBinding,
 } from './api.js';
 
@@ -179,7 +179,10 @@ async function removeBinding(binding) {
 
 async function load() {
   try {
-    const [bindingResponse, workflowResponse] = await Promise.all([fetchEventBindings(), fetchWorkflows()]);
+    const [bindingResponse, workflowResponse] = await Promise.all([
+      fetchEventBindings(),
+      fetchEventBindingWorkflowOptions(),
+    ]);
     bindings = bindingResponse.items || [];
     renderWorkflows(workflowResponse.items || []);
     renderList();

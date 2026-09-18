@@ -37,6 +37,24 @@ def _binding_response(document: dict[str, Any]) -> dict[str, Any]:
 def create_event_bindings_router(bindings: Collection, workflows: Collection) -> APIRouter:
     router = APIRouter()
 
+    @router.get("/api/event-bindings/workflow-options")
+    def list_workflow_options():
+        try:
+            items = workflows.find({}, {"name": 1, "input_ports": 1, "output_ports": 1}).sort("name", 1)
+            return {
+                "items": [
+                    {
+                        "id": str(item["_id"]),
+                        "name": item.get("name", ""),
+                        "input_ports": item.get("input_ports", []),
+                        "output_ports": item.get("output_ports", []),
+                    }
+                    for item in items
+                ]
+            }
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "Workflow 选项暂时不可用"})
+
     def parse_request(payload: EventBindingRequest) -> tuple[dict[str, Any] | None, JSONResponse | None]:
         event_type = payload.event_type.strip().lower()
         if not EVENT_TYPE_PATTERN.fullmatch(event_type):

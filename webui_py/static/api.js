@@ -50,116 +50,12 @@ export function submitTerminal(message) {
   });
 }
 
-export function fetchDocuments() {
-  return request('/api/documents');
-}
-
-export function fetchDocument(documentId) {
-  return request(`/api/documents/${encodeURIComponent(documentId)}`);
-}
-
-export function createDocument(title, content = '') {
-  return request('/api/documents', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, content }),
-  });
-}
-
-export function updateDocument(documentId, title, content) {
-  return request(`/api/documents/${encodeURIComponent(documentId)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, content }),
-  });
-}
-
-export function updateDocumentPin(documentId, pinned) {
-  return request(`/api/documents/${encodeURIComponent(documentId)}/pin`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pinned }),
-  });
-}
-
-export function deleteDocument(documentId) {
-  return request(`/api/documents/${encodeURIComponent(documentId)}`, { method: 'DELETE' });
-}
-
-export function fetchModels() {
-  return request('/api/models');
-}
-
-export function fetchTools() {
-  return request('/api/tools/local');
-}
-
-export function fetchWorkflows() {
-  return request('/api/workflows');
-}
-
-export function fetchWorkflow(workflowId) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}`);
-}
-
-export function createWorkflow(name) {
-  return request('/api/workflows', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-}
-
-export function renameWorkflow(workflowId, name) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-}
-
-export function updateWorkflowMetadata(workflowId, inputPorts, outputPorts, workflowNodes = [], remoteTools = []) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}/metadata`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input_ports: inputPorts, output_ports: outputPorts, workflow_nodes: workflowNodes, remote_tools: remoteTools }),
-  });
-}
-
-export function deleteWorkflow(workflowId) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' });
-}
-
-export function createModel(model) {
-  return request('/api/models', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(model),
-  });
-}
-
-export function updateModel(modelId, model) {
-  return request(`/api/models/${encodeURIComponent(modelId)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(model),
-  });
-}
-
-export function deleteModel(modelId) {
-  return request(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
-}
-
-export function uploadWorkflow(workflowId, workflow) {
-  return request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(workflow),
-  });
-}
-
 export function fetchEventBindings() {
   return request('/api/event-bindings');
+}
+
+export function fetchEventBindingWorkflowOptions() {
+  return request('/api/event-bindings/workflow-options');
 }
 
 export function createEventBinding(binding) {

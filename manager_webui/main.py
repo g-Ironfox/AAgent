@@ -6,20 +6,22 @@ from typing import Any
 
 import redis
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
-from event_bindings import create_event_bindings_router
-from events import create_events_router
+from documents import create_documents_router
+from models import create_models_router
+from workflows import create_workflows_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("aagent.webui")
+logger = logging.getLogger("aagent.manager_webui")
 
-MAX_TERMINAL_BODY_BYTES = 16 * 1024
-MAX_EVENT_BODY_BYTES = 256 * 1024
+MAX_MODEL_BODY_BYTES = 16 * 1024
+MAX_DOCUMENT_BODY_BYTES = 1024 * 1024
+MAX_WORKFLOW_BODY_BYTES = 512 * 1024
 
 
 def env(name: str, fallback: str) -> str:
@@ -35,14 +37,13 @@ def redis_address() -> str:
 
 REDIS_ADDRESS = redis_address()
 REDIS_DB = int(env("REDIS_DB", "0"))
-QUEUE_NAME = env("MAIN_AGENT_QUEUE_NAME", "main_agent_queue")
-WORKER_STATUS_KEY = env("AGENT_WORKER_STATUS_KEY", "aagent:worker:status")
+TOOLS_KEY = env("AGENT_TOOLS_KEY", "aagent:tools")
 MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
-MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
+MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
+MONGO_MODEL_COLLECTION = env("MONGO_MODEL_COLLECTION", "models")
 MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
-MONGO_EVENT_BINDING_COLLECTION = env("MONGO_EVENT_BINDING_COLLECTION", "event_bindings")
 
 redis_client = redis.Redis.from_url(
     f"redis://{REDIS_ADDRESS}/{REDIS_DB}",
@@ -65,21 +66,23 @@ if os.getenv("MONGO_USER"):
     )
 mongo_client = MongoClient(**mongo_kwargs)
 database = mongo_client[MONGO_DATABASE]
-history: Collection = database[MONGO_HISTORY_COLLECTION]
+documents: Collection = database[MONGO_DOCUMENT_COLLECTION]
+model_configs: Collection = database[MONGO_MODEL_COLLECTION]
 workflows: Collection = database[MONGO_WORKFLOW_COLLECTION]
-event_bindings: Collection = database[MONGO_EVENT_BINDING_COLLECTION]
 
-app = FastAPI(title="AAgent WebUI")
+app = FastAPI(title="AAgent Manager WebUI")
 
 
 @app.on_event("startup")
 def create_config_indexes():
     try:
-        if "unique_event_binding_route" in event_bindings.index_information():
-            event_bindings.drop_index("unique_event_binding_route")
-        event_bindings.create_index("event_type", unique=True, name="unique_event_binding_type")
+        model_configs.create_index("name", unique=True, name="unique_model_name")
+        if "unique_workflow_key" in workflows.index_information():
+            workflows.drop_index("unique_workflow_key")
+        workflows.update_many({"key": {"$exists": True}}, {"$unset": {"key": ""}})
+        workflows.create_index("name", unique=True, name="unique_workflow_name")
     except PyMongoError as error:
-        logger.error("failed to create configuration indexes: %s", error)
+        logger.error("failed to create manager indexes: %s", error)
 
 
 @app.middleware("http")
@@ -108,11 +111,17 @@ async def request_logger(request: Request, call_next):
 
 @app.middleware("http")
 async def request_body_guard(request: Request, call_next):
-    body_limits = {
-        ("POST", "/api/terminal"): (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
-        ("PUT", "/api/events"): (MAX_EVENT_BODY_BYTES, "请求体不能超过 256 KB"),
-    }
-    body_limit = body_limits.get((request.method, request.url.path))
+    body_limit = None
+    if request.method in {"POST", "PUT"} and (
+        request.url.path == "/api/documents" or request.url.path.startswith("/api/documents/")
+    ):
+        body_limit = (MAX_DOCUMENT_BODY_BYTES, "文档请求体不能超过 1 MB")
+    if request.method in {"POST", "PUT"} and (
+        request.url.path == "/api/models" or request.url.path.startswith("/api/models/")
+    ):
+        body_limit = (MAX_MODEL_BODY_BYTES, "模型配置请求体不能超过 16 KB")
+    if request.method == "PUT" and request.url.path.startswith("/api/workflows/"):
+        body_limit = (MAX_WORKFLOW_BODY_BYTES, "Workflow 请求体不能超过 512 KB")
     if body_limit:
         content_length = request.headers.get("content-length")
         if content_length:
@@ -129,15 +138,22 @@ async def request_body_guard(request: Request, call_next):
 def health():
     try:
         redis_client.ping()
-    except redis.RedisError as error:
+        mongo_client.admin.command("ping")
+    except (redis.RedisError, PyMongoError) as error:
         return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(error)})
     return {"status": "ok"}
 
 
-app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
-app.include_router(create_event_bindings_router(event_bindings, workflows))
+app.include_router(create_models_router(model_configs))
+app.include_router(create_workflows_router(redis_client, TOOLS_KEY, model_configs, workflows))
+app.include_router(create_documents_router(documents))
 
 static_directory = Path(__file__).parent / "static"
+
+
+@app.get("/", include_in_schema=False)
+def manager_home():
+    return FileResponse(static_directory / "workflows.html")
 
 
 class RevalidatingStaticFiles(StaticFiles):

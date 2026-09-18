@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -20,8 +19,6 @@ MAX_WORKFLOW_METADATA_PORTS = 50
 MAX_WORKFLOW_NODE_REFERENCES = 50
 MAX_REMOTE_TOOL_REFERENCES = 100
 MAX_WORKFLOW_DESCRIPTION_LENGTH = 2000
-
-logger = logging.getLogger("aagent.webui")
 
 NODE_BASE_FIELDS = {"id", "type", "name", "x", "y", "arguments"}
 NODE_SHARED_FIELDS = {"workflowPorts", "dataInputPorts", "input_ports", "output_ports"}
@@ -483,35 +480,6 @@ def create_workflows_router(
             return JSONResponse(status_code=503, content={"error": "暂时无法创建 Workflow"})
         document["_id"] = result.inserted_id
         return workflow_response(document)
-
-    @router.get("/api/tools/local")
-    def list_tools():
-        try:
-            schemas = redis_client.hgetall(tools_key)
-        except redis.RedisError:
-            return JSONResponse(status_code=503, content={"error": "Tool 注册表暂时不可用"})
-
-        items = []
-        for tool_name, raw_schema in schemas.items():
-            try:
-                schema = json.loads(raw_schema)
-            except (TypeError, ValueError):
-                logger.warning("ignored invalid tool schema name=%s", tool_name)
-                continue
-            function_schema = schema.get("function", {}) if isinstance(schema, dict) else {}
-            if function_schema.get("name") != tool_name:
-                logger.warning("ignored mismatched tool schema name=%s", tool_name)
-                continue
-            items.append(
-                {
-                    "name": tool_name,
-                    "description": function_schema.get("description", ""),
-                    "inputSchema": function_schema.get("parameters", {}),
-                    "outputSchema": None,
-                }
-            )
-        items.sort(key=lambda item: item["name"])
-        return {"items": items}
 
     def workflow_object_id(workflow_id: str) -> ObjectId | JSONResponse:
         try:
