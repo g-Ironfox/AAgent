@@ -1,6 +1,7 @@
 import { createWorkflow, deleteWorkflow, fetchWorkflow, fetchWorkflows, renameWorkflow, updateWorkflowMetadata, uploadWorkflow } from './api.js';
+import { workflowCanvasFilename, workflowCanvasSvg } from './workflow_canvas.mjs';
 
-const state = { workflows: [], selectedId: null, loading: false, saving: false, pendingUpload: null, uploadMode: 'create' };
+const state = { workflows: [], selectedId: null, loading: false, saving: false, pendingUpload: null, uploadMode: 'create', workflowDetails: new Map() };
 const elements = {
   state: document.querySelector('#workflowState'),
   list: document.querySelector('#workflowList'),
@@ -18,6 +19,7 @@ const elements = {
   uploadSubmit: document.querySelector('#uploadSubmit'),
   uploadOverwrite: document.querySelector('#uploadOverwrite'),
   copyButton: document.querySelector('#copyButton'),
+  canvasExportButton: document.querySelector('#canvasExportButton'),
   exportButton: document.querySelector('#exportButton'),
   renameButton: document.querySelector('#renameButton'),
   deleteButton: document.querySelector('#deleteButton'),
@@ -25,6 +27,8 @@ const elements = {
   description: document.querySelector('#workflowDescription'),
   empty: document.querySelector('#workflowEmpty'),
   metadataPanel: document.querySelector('#metadataPanel'),
+  canvasPreview: document.querySelector('#workflowCanvasPreview'),
+  canvasMeta: document.querySelector('#workflowCanvasMeta'),
   inputPorts: document.querySelector('#inputPorts'),
   outputPorts: document.querySelector('#outputPorts'),
   dependencies: document.querySelector('#workflowDependencies'),
@@ -57,6 +61,7 @@ function updateControls() {
   elements.uploadButton.disabled = busy;
   elements.textImportButton.disabled = busy;
   elements.copyButton.disabled = busy || !selected;
+  elements.canvasExportButton.disabled = busy || !selected;
   elements.exportButton.disabled = busy || !selected;
   elements.renameButton.disabled = busy || !selected;
   elements.deleteButton.disabled = busy || !selected;
@@ -271,6 +276,7 @@ async function saveDependency(references, previousName, nextName) {
     ));
     const index = state.workflows.findIndex((item) => item.id === workflow.id);
     state.workflows[index] = { ...state.workflows[index], ...updated };
+    state.workflowDetails.delete(workflow.id);
     elements.state.textContent = '依赖已更新';
     renderList();
     renderConfiguration();
@@ -287,12 +293,15 @@ function renderConfiguration() {
   elements.empty.hidden = Boolean(workflow);
   elements.metadataPanel.hidden = !workflow;
   elements.copyButton.hidden = !workflow;
+  elements.canvasExportButton.hidden = !workflow;
   elements.exportButton.hidden = !workflow;
   elements.renameButton.hidden = !workflow;
   elements.deleteButton.hidden = !workflow;
   elements.title.textContent = workflow?.name || '选择一个 Workflows';
   if (!workflow) {
     elements.description.textContent = '';
+    elements.canvasPreview.replaceChildren();
+    elements.canvasMeta.textContent = '';
     elements.inputPorts.replaceChildren();
     elements.outputPorts.replaceChildren();
     elements.dependencies.replaceChildren();
@@ -307,6 +316,51 @@ function renderConfiguration() {
   renderPortList(elements.outputPorts, workflow.output_ports || []);
   renderDependencies(workflow.workflow_nodes || []);
   renderRemoteTools(workflow.remote_tools || []);
+  renderCanvasPreview(workflow.id);
+}
+
+function parseCanvasSvg(workflow) {
+  const documentNode = new DOMParser().parseFromString(workflowCanvasSvg(workflow), 'image/svg+xml');
+  const svg = documentNode.documentElement;
+  if (svg.nodeName === 'parsererror') throw new Error('画布 SVG 生成失败');
+  svg.querySelectorAll('style').forEach((stylesheet) => stylesheet.remove());
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  return document.importNode(svg, true);
+}
+
+async function workflowDetail(workflowId) {
+  if (!state.workflowDetails.has(workflowId)) {
+    state.workflowDetails.set(workflowId, fetchWorkflow(workflowId).catch((error) => {
+      state.workflowDetails.delete(workflowId);
+      throw error;
+    }));
+  }
+  return state.workflowDetails.get(workflowId);
+}
+
+async function renderCanvasPreview(workflowId) {
+  elements.canvasMeta.textContent = '读取中';
+  const loading = document.createElement('p');
+  loading.className = 'workflow-canvas-preview-empty';
+  loading.textContent = '正在生成完整画布...';
+  elements.canvasPreview.replaceChildren(loading);
+  try {
+    const detail = await workflowDetail(workflowId);
+    if (state.selectedId !== workflowId) return;
+    const svg = parseCanvasSvg(detail);
+    const viewBox = svg.viewBox.baseVal;
+    const previewHeight = Math.max(1, viewBox.height - 54);
+    const ratio = viewBox.width > 0 ? viewBox.width / previewHeight : 1.6;
+    svg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y + 54} ${viewBox.width} ${previewHeight}`);
+    elements.canvasPreview.style.setProperty('--preview-width', `${Math.min(760, 420 * ratio)}px`);
+    elements.canvasPreview.style.setProperty('--preview-ratio', String(ratio));
+    elements.canvasPreview.replaceChildren(svg);
+    elements.canvasMeta.textContent = `${detail.nodes?.length || 0} 节点 / ${detail.connections?.length || 0} 连接`;
+  } catch (error) {
+    if (state.selectedId !== workflowId) return;
+    loading.textContent = error.name === 'AbortError' ? '画布读取超时' : (error.message || '画布读取失败');
+    elements.canvasMeta.textContent = '不可用';
+  }
 }
 
 function selectWorkflow(id) {
@@ -550,6 +604,7 @@ async function overwriteWorkflow() {
     }));
     const index = state.workflows.findIndex((workflow) => workflow.id === existing.id);
     state.workflows[index] = uploaded;
+    state.workflowDetails.delete(existing.id);
     state.selectedId = uploaded.id;
     state.pendingUpload = null;
     elements.uploadDialog.close();
@@ -577,6 +632,7 @@ async function submitRename(event) {
     const renamed = workflowSummary(await renameWorkflow(workflow.id, elements.renameName.value.trim()));
     const index = state.workflows.findIndex((item) => item.id === workflow.id);
     state.workflows[index] = renamed;
+    state.workflowDetails.delete(workflow.id);
     elements.renameDialog.close();
     renderList();
     renderConfiguration();
@@ -664,6 +720,30 @@ async function exportSelectedWorkflow() {
   }
 }
 
+async function exportSelectedCanvas() {
+  const workflow = selectedWorkflow();
+  if (!workflow || state.saving) return;
+  state.saving = true;
+  elements.state.textContent = '生成画布中';
+  updateControls();
+  try {
+    const detail = await workflowDetail(workflow.id);
+    const blob = new Blob([workflowCanvasSvg(detail)], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = workflowCanvasFilename(detail.name);
+    link.click();
+    URL.revokeObjectURL(url);
+    elements.state.textContent = '画布已导出';
+  } catch (error) {
+    elements.state.textContent = error.name === 'AbortError' ? '画布导出超时' : (error.message || '画布导出失败');
+  } finally {
+    state.saving = false;
+    updateControls();
+  }
+}
+
 async function removeSelectedWorkflow() {
   const workflow = selectedWorkflow();
   if (!workflow || state.saving || !window.confirm(`确定删除“${workflow.name}”吗？此操作无法撤销。`)) return;
@@ -672,6 +752,7 @@ async function removeSelectedWorkflow() {
   try {
     await deleteWorkflow(workflow.id);
     state.workflows = state.workflows.filter((item) => item.id !== workflow.id);
+    state.workflowDetails.delete(workflow.id);
     localStorage.removeItem(`aagent.workflow.draft.v1.${workflow.id}`);
     state.selectedId = state.workflows[0]?.id || null;
     elements.state.textContent = `共 ${state.workflows.length} 个`;
@@ -701,6 +782,7 @@ elements.uploadDialog.addEventListener('close', () => {
 });
 elements.renameButton.addEventListener('click', openRenameDialog);
 elements.copyButton.addEventListener('click', copySelectedWorkflow);
+elements.canvasExportButton.addEventListener('click', exportSelectedCanvas);
 elements.exportButton.addEventListener('click', exportSelectedWorkflow);
 elements.deleteButton.addEventListener('click', removeSelectedWorkflow);
 elements.renameForm.addEventListener('submit', submitRename);
