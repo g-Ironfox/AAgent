@@ -221,8 +221,38 @@ def _validate_node(node: Any, index: int) -> None:
             raise WorkflowValidationError(
                 f"nodes[{index}].branches contains duplicate names"
             )
+    elif node_type == "construct_message":
+        if node_argument(node, "role_source", "fixed") not in {"fixed", "port"}:
+            raise WorkflowValidationError(
+                "construct_message node role_source must be 'fixed' or 'port'"
+            )
+        if node_argument(node, "role", "user") not in {
+            "system",
+            "user",
+            "assistant",
+            "tool",
+        }:
+            raise WorkflowValidationError(
+                "construct_message node role must be a supported message role"
+            )
     elif node_type == "construct_content":
         _validate_construct_content(node)
+    elif node_type == "content_map":
+        mappings = node_argument(node, "mappings")
+        if not isinstance(mappings, list) or not mappings or any(
+            not isinstance(item, dict)
+            or set(item) != {"key", "value"}
+            or not isinstance(item.get("key"), str)
+            or not item["key"]
+            or not isinstance(item.get("value"), str)
+            for item in mappings
+        ):
+            raise WorkflowValidationError(
+                "content_map mappings must contain non-empty string keys and string values"
+            )
+        keys = [item["key"] for item in mappings]
+        if len(keys) != len(set(keys)):
+            raise WorkflowValidationError("content_map mappings contains duplicate keys")
     elif node_type == "deserialize_json":
         outputs = node_argument(node, "outputs")
         if not isinstance(outputs, list) or not outputs or any(
@@ -615,6 +645,22 @@ def _validate_data_connection(
 
     source_type = source_node["type"]
     target_type = target_node["type"]
+    if target_type == "content_map" and connection_type != "content":
+        raise WorkflowValidationError(
+            f"content_map content-in requires content data: connection {connection_index}"
+        )
+    if source_type == "content_map" and connection_type != "content":
+        raise WorkflowValidationError(
+            f"content_map content-out requires content data: connection {connection_index}"
+        )
+    if target_type == "construct_message" and connection_type != "content":
+        raise WorkflowValidationError(
+            f"construct_message {to_port} requires content data: connection {connection_index}"
+        )
+    if source_type == "construct_message" and connection_type != "message":
+        raise WorkflowValidationError(
+            f"construct_message message-out requires message data: connection {connection_index}"
+        )
     if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):
         raise WorkflowValidationError(
             f"construct_list input requires {node_argument(target_node, 'item_type')} data: connection {connection_index}"

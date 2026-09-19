@@ -205,7 +205,7 @@ export function createWorkflowEditor(elements, markChanged) {
     const ports = portsForNode(node);
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
-    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', deserialize_json: 'J/', split_event: 'E/', construct_list: 'L', list_append: 'L+', foreach: 'FE', history: 'H', local_tool: 'LT', remote_sync_tool: 'RS', remote_async_tool: 'RA', context_create: 'C+', context_read: 'CR', context_write: 'CW', workflow: 'WF' };
+    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', content_map: 'M=', deserialize_json: 'J/', split_event: 'E/', construct_list: 'L', list_append: 'L+', foreach: 'FE', history: 'H', local_tool: 'LT', remote_sync_tool: 'RS', remote_async_tool: 'RA', context_create: 'C+', context_read: 'CR', context_write: 'CW', workflow: 'WF' };
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === editorState.selectedId ? ' selected' : ''}`;
     element.style.left = `${node.x}px`;

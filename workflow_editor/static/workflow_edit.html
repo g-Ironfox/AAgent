@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=11">
+  <link rel="stylesheet" href="/css/workflow.css?v=13">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -73,6 +73,11 @@
           <button class="library-item" type="button" data-add-node="construct_content">
             <span class="node-symbol construct_content-symbol" aria-hidden="true">C</span>
             <div><strong>构造 Content</strong><small>按顺序组合输入或固定内容</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="content_map">
+            <span class="node-symbol content_map-symbol" aria-hidden="true">M=</span>
+            <div><strong>Content 映射</strong><small>按映射表转换 Content</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="split_event">
@@ -338,7 +343,10 @@
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Role<select data-field="role"><option value="user">user</option><option value="system">system</option><option value="assistant">assistant</option></select></label>
+      <div class="section-label"><strong>Role 来源</strong></div>
+      <label class="checkbox-field"><input type="radio" name="role-source" value="fixed" data-role-source><span><strong>固定值</strong></span></label>
+      <label class="checkbox-field"><input type="radio" name="role-source" value="port" data-role-source><span><strong>从 Port 导入</strong></span></label>
+      <label>Role<select data-field="role"><option value="user">user</option><option value="system">system</option><option value="assistant">assistant</option><option value="tool">tool</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -347,6 +355,19 @@
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="content_mapInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>映射表</strong><span>输入 → 输出</span></div>
+      <div class="json-output-list" data-content-mappings></div>
+      <button class="add-branch-button" type="button" data-add-content-mapping>+ 添加映射</button>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -499,6 +520,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=18"></script>
+  <script type="module" src="/workflow.js?v=20"></script>
 </body>
 </html>

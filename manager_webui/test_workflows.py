@@ -4,6 +4,75 @@ from workflows import filter_invalid_connections, node_format_error
 
 
 class WorkflowConnectionFilterTest(unittest.TestCase):
+    def test_preserves_content_map_connections(self):
+        nodes = [
+            {
+                "id": "input",
+                "type": "input",
+                "workflowPorts": [
+                    {"id": "workflow:value", "name": "value", "type": "content"}
+                ],
+            },
+            {
+                "id": "map",
+                "type": "content_map",
+                "arguments": {"mappings": [{"key": "a", "value": "b"}]},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [
+                    {"id": "workflow:result", "name": "result", "type": "content"}
+                ],
+            },
+        ]
+        connections = [
+            {"id": "input-map", "fromId": "input", "fromPortId": "workflow:value", "toId": "map", "toPortId": "content-in", "type": "content"},
+            {"id": "map-output", "fromId": "map", "fromPortId": "content-out", "toId": "output", "toPortId": "workflow:result", "type": "content"},
+        ]
+
+        _, filtered = filter_invalid_connections(
+            nodes,
+            connections,
+            [{"name": "value", "type": "content"}],
+            [{"name": "result", "type": "content"}],
+        )
+
+        self.assertEqual(filtered, connections)
+
+    def test_preserves_construct_message_role_port_connection(self):
+        nodes = [
+            {
+                "id": "input",
+                "type": "input",
+                "workflowPorts": [
+                    {"id": "workflow:role", "name": "role", "type": "content"}
+                ],
+            },
+            {
+                "id": "message",
+                "type": "construct_message",
+                "arguments": {"role_source": "port", "role": "user"},
+            },
+        ]
+        connection = {
+            "id": "role-to-message",
+            "fromId": "input",
+            "fromPortId": "workflow:role",
+            "toId": "message",
+            "toPortId": "role-in",
+            "type": "content",
+        }
+
+        _, connections = filter_invalid_connections(
+            nodes,
+            [connection],
+            [{"name": "role", "type": "content"}],
+            [],
+        )
+
+        self.assertEqual(connections, [connection])
+
     def test_preserves_history_to_event_foreach_connection(self):
         nodes = [
             {

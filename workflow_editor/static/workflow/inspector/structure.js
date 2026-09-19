@@ -5,6 +5,7 @@ import { state } from '../domain/serialization.js';
 export function bindStructureInspector(node, context) {
   if (node.type === 'router') bindBranches(node, context);
   if (node.type === 'construct_content') bindConstructContent(node, context);
+  if (node.type === 'content_map') bindContentMap(node, context);
   if (node.type === 'deserialize_json') bindDeserializeJson(node, context);
   if (node.type === 'construct_list') bindConstructList(node, context);
   if (node.type === 'list_append') bindListAppend(node, context);
@@ -216,6 +217,45 @@ function bindDeserializeJson(node, context) {
     let suffix = node.outputs.length + 1;
     while (node.outputs.some((output) => output.key === `value${suffix}`)) suffix += 1;
     node.outputs.push({ key: `value${suffix}`, type: 'content' });
+    commitStructureChange(node, context);
+  });
+}
+
+function bindContentMap(node, context) {
+  const container = context.elements.inspectorContent.querySelector('[data-content-mappings]');
+  node.mappings.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'json-output-row';
+    row.innerHTML = '<span class="route-index"></span><input data-map-key maxlength="1000" aria-label="映射键" placeholder="输入"><input data-map-value maxlength="100000" aria-label="映射值" placeholder="输出"><button type="button" class="branch-delete" title="删除映射">×</button>';
+    row.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
+    const keyField = row.querySelector('[data-map-key]');
+    const valueField = row.querySelector('[data-map-value]');
+    keyField.value = item.key;
+    valueField.value = item.value;
+    keyField.addEventListener('change', () => {
+      const key = keyField.value;
+      if (!key || node.mappings.some((mapping, mappingIndex) => mappingIndex !== index && mapping.key === key)) {
+        keyField.value = item.key;
+        return;
+      }
+      item.key = key;
+      context.markChanged();
+    });
+    valueField.addEventListener('input', () => {
+      item.value = valueField.value;
+      context.markChanged();
+    });
+    row.querySelector('button').addEventListener('click', () => {
+      if (node.mappings.length <= 1) return;
+      node.mappings.splice(index, 1);
+      commitStructureChange(node, context);
+    });
+    container.append(row);
+  });
+  context.elements.inspectorContent.querySelector('[data-add-content-mapping]').addEventListener('click', () => {
+    let suffix = node.mappings.length + 1;
+    while (node.mappings.some((item) => item.key === `key${suffix}`)) suffix += 1;
+    node.mappings.push({ key: `key${suffix}`, value: '' });
     commitStructureChange(node, context);
   });
 }

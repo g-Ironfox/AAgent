@@ -24,7 +24,7 @@
 .checkbox-field span { display:grid; flex:1; gap:3px; }
 .checkbox-field small { color:var(--muted); font-size:8px; }
 .form-section input:not([type="checkbox"]),.form-section textarea,.form-section select { width:100%; padding:9px; color:var(--ink); border:1px solid var(--line); background:var(--surface); font-size:11px; resize:vertical; }
-.checkbox-field input[type="checkbox"],.tool-options input[type="checkbox"] { width:15px; height:15px; margin:0; padding:0; flex:none; accent-color:var(--green); }
+.checkbox-field input[type="checkbox"],.checkbox-field input[type="radio"],.tool-options input[type="checkbox"] { width:15px; height:15px; margin:0; padding:0; flex:none; accent-color:var(--green); }
 .form-section select { height:36px; }
 .callback-options { padding:10px; display:grid; gap:10px; border:1px solid var(--line); background:var(--surface); }
 .callback-options[hidden] { display:none; }

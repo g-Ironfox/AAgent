@@ -15,8 +15,9 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   input: new Set(),
   output: new Set(),
   router: new Set(['branches']),
-  construct_message: new Set(['role']),
+  construct_message: new Set(['role', 'role_source']),
   construct_content: new Set(['append_items']),
+  content_map: new Set(['mappings']),
   deserialize_json: new Set(['outputs']),
   split_event: new Set(),
   construct_list: new Set(['item_type', 'initial_value_count']),
@@ -181,7 +182,10 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.tool_calls = node.tool_calls === true;
     normalized.tools = normalized.tool_calls && Array.isArray(node.tools) ? [...new Set(node.tools.filter((tool) => typeof tool === 'string' && tool))] : [];
   }
-  if (node.type === 'construct_message') normalized.role = ['user', 'system', 'assistant'].includes(node.role) ? node.role : 'user';
+  if (node.type === 'construct_message') {
+    normalized.role_source = ['fixed', 'port'].includes(node.role_source) ? node.role_source : 'fixed';
+    normalized.role = ['user', 'system', 'assistant', 'tool'].includes(node.role) ? node.role : 'user';
+  }
   if (node.type === 'construct_content') {
     normalized.append_items = Array.isArray(node.append_items) && node.append_items.length
       ? node.append_items.flatMap((item, index) => item?.type === 'port'
@@ -189,6 +193,16 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
         : item?.type === 'fixed' ? [{ type: 'fixed', value: typeof item.value === 'string' ? item.value.slice(0, 100000) : '' }] : [])
       : [{ type: 'port', port_id: 'append-in-0' }];
     normalized.dataInputPorts = normalized.append_items.filter((item) => item.type === 'port').map((item) => item.port_id);
+  }
+  if (node.type === 'content_map') {
+    if (!Array.isArray(node.mappings) || !node.mappings.length) return null;
+    const keys = new Set();
+    normalized.mappings = [];
+    for (const item of node.mappings) {
+      if (!item || typeof item.key !== 'string' || !item.key || keys.has(item.key) || typeof item.value !== 'string') return null;
+      keys.add(item.key);
+      normalized.mappings.push({ key: item.key, value: item.value });
+    }
   }
   if (node.type === 'deserialize_json') {
     if (!Array.isArray(node.outputs) || !node.outputs.length) return null;

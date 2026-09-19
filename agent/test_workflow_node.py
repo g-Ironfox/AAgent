@@ -5,7 +5,9 @@ from workflow_contract import is_valid_connection
 from workflow_parser import parse_workflow
 from workflow_nodes import (
     run_workflow_map,
+    workflow_content_map,
     workflow_construct_list,
+    workflow_construct_message,
     workflow_deserialize_json,
     workflow_llm,
     workflow_split_event,
@@ -49,6 +51,38 @@ def callable_workflow_fixture() -> dict:
 
 
 class CallableWorkflowNodeTest(unittest.TestCase):
+    def test_construct_message_role_port_requires_content_connection(self):
+        nodes_by_id = {
+            "input": {
+                "id": "input",
+                "type": "input",
+                "workflowPorts": [
+                    {"id": "workflow:role", "name": "role", "type": "message"}
+                ],
+            },
+            "message": {
+                "id": "message",
+                "type": "construct_message",
+                "arguments": {"role_source": "port", "role": "user"},
+            },
+        }
+        connection = {
+            "fromId": "input",
+            "fromPortId": "workflow:role",
+            "toId": "message",
+            "toPortId": "role-in",
+            "type": "message",
+        }
+
+        self.assertFalse(
+            is_valid_connection(
+                connection,
+                nodes_by_id,
+                [{"name": "role", "type": "message"}],
+                [],
+            )
+        )
+
     def test_validator_reads_construct_list_item_type_from_arguments(self):
         workflow = {
             "input_ports": [{"name": "value", "type": "content"}],
@@ -554,6 +588,83 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
 
 class WorkflowExecutionTest(unittest.TestCase):
+    def test_content_map_outputs_mapped_value(self):
+        workflow_map = [
+            {
+                "id": "map",
+                "type": "content_map",
+                "arguments": {
+                    "mappings": [
+                        {"key": "pending", "value": "处理中"},
+                        {"key": "done", "value": "已完成"},
+                    ]
+                },
+                "successors": {"next": 1},
+                "data_inputs": {"content-in": [None, None, "done"]},
+                "data_outputs": {"content-out": [[1, "result"]]},
+            },
+            {"data_inputs": {"result": [0, "content-out", None]}},
+        ]
+
+        workflow_content_map(0, workflow_map)
+
+        self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "已完成")
+
+    def test_content_map_rejects_unmapped_key(self):
+        workflow_map = [
+            {
+                "id": "map",
+                "type": "content_map",
+                "arguments": {"mappings": [{"key": "done", "value": "已完成"}]},
+                "successors": {"next": 1},
+                "data_inputs": {"content-in": [None, None, "missing"]},
+                "data_outputs": {"content-out": []},
+            },
+            {},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "key is not mapped"):
+            workflow_content_map(0, workflow_map)
+
+    def test_construct_message_reads_role_from_port(self):
+        workflow_map = [
+            {
+                "id": "message",
+                "type": "construct_message",
+                "arguments": {"role_source": "port", "role": "user"},
+                "successors": {"next": 1},
+                "data_inputs": {
+                    "content-in": [None, None, "hello"],
+                    "role-in": [None, None, "assistant"],
+                },
+                "data_outputs": {"message-out": [[1, "message-in"]]},
+            },
+            {"data_inputs": {"message-in": [0, "message-out", None]}},
+        ]
+
+        workflow_construct_message(0, workflow_map)
+
+        self.assertEqual(
+            workflow_map[1]["data_inputs"]["message-in"][2],
+            {"role": "assistant", "content": "hello"},
+        )
+
+    def test_construct_message_rejects_missing_port_role(self):
+        workflow_map = [
+            {
+                "id": "message",
+                "type": "construct_message",
+                "arguments": {"role_source": "port", "role": "user"},
+                "successors": {"next": 1},
+                "data_inputs": {"content-in": [None, None, "hello"]},
+                "data_outputs": {"message-out": []},
+            },
+            {},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "role input is missing"):
+            workflow_construct_message(0, workflow_map)
+
     def test_construct_list_preserves_declared_port_order(self):
         workflow_map = [
             {

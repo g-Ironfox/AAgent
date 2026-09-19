@@ -27,8 +27,9 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "input": set(),
     "output": set(),
     "router": {"branches"},
-    "construct_message": {"role"},
+    "construct_message": {"role", "role_source"},
     "construct_content": {"append_items"},
+    "content_map": {"mappings"},
     "deserialize_json": {"outputs"},
     "split_event": set(),
     "construct_list": {"item_type", "initial_value_count"},
@@ -179,6 +180,20 @@ def node_format_error(node: dict[str, Any], index: int) -> str | None:
         output_keys = [output["key"] for output in outputs]
         if len(output_keys) != len(set(output_keys)):
             return f"nodes[{index}].arguments.outputs 的 key 不能重复"
+    if node_type == "content_map":
+        mappings = arguments.get("mappings")
+        if not isinstance(mappings, list) or not mappings or any(
+            not isinstance(item, dict)
+            or set(item) != {"key", "value"}
+            or not isinstance(item.get("key"), str)
+            or not item["key"]
+            or not isinstance(item.get("value"), str)
+            for item in mappings
+        ):
+            return f"nodes[{index}].arguments.mappings 必须包含非空字符串 key 和字符串 value"
+        keys = [item["key"] for item in mappings]
+        if len(keys) != len(set(keys)):
+            return f"nodes[{index}].arguments.mappings 的 key 不能重复"
     if node_type in {"context_create", "context_read", "context_write"}:
         if arguments.get("value_type") not in DATA_TYPES:
             return f"nodes[{index}].arguments.value_type 必须是受支持的数据类型"
@@ -332,6 +347,8 @@ def filter_invalid_connections(
                 return "message"
             if node_type == "construct_content" and from_port == "content-out":
                 return "content"
+            if node_type == "content_map" and from_port == "content-out":
+                return "content"
             if node_type == "split_event" and from_port in {"type-out", "payload-out"}:
                 return "content"
             if node_type == "deserialize_json":
@@ -377,7 +394,15 @@ def filter_invalid_connections(
                 return output_types.get(to_port)
             if node_type == "llm" and to_port == "messages-in":
                 return "list-message"
-            if node_type == "construct_message" and to_port == "content-in":
+            if node_type == "construct_message" and (
+                to_port == "content-in"
+                or (
+                    to_port == "role-in"
+                    and node_arguments(target).get("role_source", "fixed") == "port"
+                )
+            ):
+                return "content"
+            if node_type == "content_map" and to_port == "content-in":
                 return "content"
             if node_type == "split_event" and to_port == "event-in":
                 return "event"

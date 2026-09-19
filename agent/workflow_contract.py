@@ -19,6 +19,7 @@ SUPPORTED_NODE_TYPES = {
     "router",
     "construct_message",
     "construct_content",
+    "content_map",
     "split_event",
     "deserialize_json",
     "construct_list",
@@ -46,8 +47,9 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "input": set(),
     "output": set(),
     "router": {"branches"},
-    "construct_message": {"role"},
+    "construct_message": {"role", "role_source"},
     "construct_content": {"append_items"},
+    "content_map": {"mappings"},
     "split_event": set(),
     "deserialize_json": {"outputs"},
     "construct_list": {"item_type", "initial_value_count"},
@@ -156,9 +158,14 @@ def data_ports_for_node(
             outputs.add("tool_calls")
         return {"messages-in"}, outputs
     if node_type == "construct_message":
-        return declared_inputs | {"content-in"}, {"message-out"}
+        inputs = declared_inputs | {"content-in"}
+        if node_argument(node, "role_source", "fixed") == "port":
+            inputs.add("role-in")
+        return inputs, {"message-out"}
     if node_type == "construct_content":
         return declared_inputs, {"content-out"}
+    if node_type == "content_map":
+        return {"content-in"}, {"content-out"}
     if node_type == "split_event":
         return declared_inputs | {"event-in"}, {"type-out", "payload-out"}
     if node_type == "deserialize_json":
@@ -284,6 +291,14 @@ def is_valid_connection(
             to_port != "content-in" or connection_type != "content"
         ):
             return False
+        if target_node["type"] == "content_map" and (
+            to_port != "content-in" or connection_type != "content"
+        ):
+            return False
+        if source_node["type"] == "content_map" and (
+            from_port != "content-out" or connection_type != "content"
+        ):
+            return False
         if source_node["type"] == "deserialize_json":
             output_type = next(
                 (
@@ -297,6 +312,10 @@ def is_valid_connection(
                 return False
         source_type = source_node["type"]
         target_type = target_node["type"]
+        if target_type == "construct_message" and connection_type != "content":
+            return False
+        if source_type == "construct_message" and connection_type != "message":
+            return False
         if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):
             return False
         if source_type == "construct_list" and connection_type != list_type_for_item(node_argument(source_node, "item_type")):

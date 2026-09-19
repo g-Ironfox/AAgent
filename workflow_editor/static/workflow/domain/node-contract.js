@@ -6,6 +6,7 @@ export const NODE_TYPES = new Set([
   'router',
   'construct_message',
   'construct_content',
+  'content_map',
   'deserialize_json',
   'split_event',
   'construct_list',
@@ -64,6 +65,9 @@ export function portsForNode(node) {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       { id: 'content-in', direction: 'input', type: 'content', label: 'Content', title: 'Message content', multiple: false },
+      ...(node.role_source === 'port'
+        ? [{ id: 'role-in', direction: 'input', type: 'content', label: 'Role', title: 'Message role', multiple: false }]
+        : []),
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'message-out', direction: 'output', type: 'message', label: 'Message', title: '构造后的 Message', multiple: true },
     ];
@@ -77,6 +81,14 @@ export function portsForNode(node) {
       ...inputPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '构造后的 Content', multiple: true },
+    ];
+  }
+  if (node.type === 'content_map') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发映射', multiple: false },
+      { id: 'content-in', direction: 'input', type: 'content', label: '输入', title: '映射键', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'content-out', direction: 'output', type: 'content', label: '输出', title: '映射值', multiple: true },
     ];
   }
   if (node.type === 'split_event') {
@@ -229,8 +241,9 @@ export function createNode(type, nodes, configuration = null) {
   const position = nextNodePosition(nodes);
   if (type === 'router') return { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position };
   if (type === 'output') return { id: createWorkflowId('output'), type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
-  if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role: 'user', ...position };
+  if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
   if (type === 'construct_content') return { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
+  if (type === 'content_map') return { id: createWorkflowId('content-map'), type, name: `Content 映射 ${number}`, mappings: [{ key: 'key1', value: '' }], ...position };
   if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
   if (type === 'split_event') return { id: createWorkflowId('split-event'), type, name: `拆分 Event ${number}`, ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };

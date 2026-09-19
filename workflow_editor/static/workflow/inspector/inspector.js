@@ -1,4 +1,5 @@
 import { portsForNode } from '../domain/node-contract.js';
+import { reconcileConnections } from '../domain/connection-rules.js';
 import { deleteNode, nodeById, state } from '../domain/serialization.js';
 import { createIntegrationInspector } from './integrations.js';
 import { bindStructureInspector } from './structure.js';
@@ -33,6 +34,26 @@ export function createInspector(elements, editor, markChanged) {
     }
     bindStructureInspector(node, context);
     integrations.bind(node);
+    if (node.type === 'construct_message') {
+      const roleFields = elements.inspectorContent.querySelectorAll('[data-role-source]');
+      const roleSelect = elements.inspectorContent.querySelector('[data-field="role"]');
+      const updateRoleSource = () => {
+        roleSelect.hidden = node.role_source === 'port';
+        roleSelect.closest('label').hidden = node.role_source === 'port';
+      };
+      for (const field of roleFields) {
+        field.checked = field.value === node.role_source;
+        field.addEventListener('change', () => {
+          if (!field.checked) return;
+          node.role_source = field.value;
+          reconcileConnections(state);
+          markChanged();
+          editor.renderNodes();
+          renderInspector();
+        });
+      }
+      updateRoleSource();
+    }
     elements.inspectorContent.querySelector('[data-delete-node]')?.addEventListener('click', () => {
       deleteNode(node.id);
       editor.ensureSelection();

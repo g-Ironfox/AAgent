@@ -139,7 +139,14 @@ def workflow_construct_message(current_id: int, workflow_map: WorkflowMap) -> in
     has_content, content = read_workflow_input(node, "content-in")
     if not has_content:
         raise ValueError(f"construct_message input is missing: node {node.get('id')}")
-    message = {"role": node_argument(node, "role", "user"), "content": content}
+    role = node_argument(node, "role", "user")
+    if node_argument(node, "role_source", "fixed") == "port":
+        has_role, role = read_workflow_input(node, "role-in")
+        if not has_role:
+            raise ValueError(f"construct_message role input is missing: node {node.get('id')}")
+    if role not in {"system", "user", "assistant", "tool"}:
+        raise ValueError(f"construct_message role is invalid: node {node.get('id')}")
+    message = {"role": role, "content": content}
     propagate_workflow_output(workflow_map, node, "message-out", message)
     return next_successor(node)
 
@@ -155,6 +162,23 @@ def workflow_construct_content(current_id: int, workflow_map: WorkflowMap) -> in
         if has_value:
             parts.append(value if isinstance(value, str) else str(value))
     propagate_workflow_output(workflow_map, node, "content-out", "".join(parts))
+    return next_successor(node)
+
+
+def workflow_content_map(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    has_content, content = read_workflow_input(node, "content-in")
+    if not has_content:
+        raise ValueError(f"content_map input is missing: node {node.get('id')}")
+    if not isinstance(content, str):
+        raise ValueError(f"content_map input must be content: node {node.get('id')}")
+    mappings = {
+        item["key"]: item["value"]
+        for item in node_argument(node, "mappings", [])
+    }
+    if content not in mappings:
+        raise ValueError(f"content_map key is not mapped: node {node.get('id')}")
+    propagate_workflow_output(workflow_map, node, "content-out", mappings[content])
     return next_successor(node)
 
 
@@ -497,6 +521,7 @@ nodes_map: dict[str, NodeHandler] = {
     "router": workflow_router,
     "construct_message": workflow_construct_message,
     "construct_content": workflow_construct_content,
+    "content_map": workflow_content_map,
     "split_event": workflow_split_event,
     "deserialize_json": workflow_deserialize_json,
     "construct_list": workflow_construct_list,

@@ -39,6 +39,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .llm-symbol { background:var(--blue); }
 .construct_message-symbol { background:#b75b18; }
 .construct_content-symbol { background:#2f6f8f; }
+.content_map-symbol { background:#46713f; }
 .deserialize_json-symbol { background:#61568a; }
 .split_event-symbol { background:#147d78; }
 .construct_list-symbol { background:#176f73; }
