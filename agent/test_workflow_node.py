@@ -582,6 +582,174 @@ class WorkflowExecutionTest(unittest.TestCase):
 
         self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "done"})
 
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("workflow_context_repository.create_context")
+    def test_run_workflow_map_cleans_created_contexts_on_success(
+        self, create_context, delete_contexts
+    ):
+        create_context.return_value = "ctx-parent"
+        workflow_map = [
+            {
+                "id": "create",
+                "type": "context_create",
+                "arguments": {"value_type": "content"},
+                "successors": {"next": 1},
+                "data_inputs": {"initial-value": [None, None, "value"]},
+                "data_outputs": {"context-id": []},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_workflow_map(workflow_map, 0), {})
+
+        invocation_id = create_context.call_args.args[0]
+        self.assertIsInstance(invocation_id, str)
+        self.assertTrue(invocation_id)
+        delete_contexts.assert_called_once_with({"ctx-parent"})
+        self.assertNotIn("_workflow_invocation_id", workflow_map[0])
+        self.assertNotIn("_workflow_context_ids", workflow_map[0])
+
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("workflow_context_repository.create_context")
+    def test_run_workflow_map_cleans_created_contexts_on_failure(
+        self, create_context, delete_contexts
+    ):
+        create_context.return_value = "ctx-failed"
+        workflow_map = [
+            {
+                "id": "create",
+                "type": "context_create",
+                "arguments": {"value_type": "content"},
+                "successors": {},
+                "data_inputs": {"initial-value": [None, None, "value"]},
+                "data_outputs": {"context-id": []},
+            }
+        ]
+
+        with self.assertRaisesRegex(ValueError, "workflow successor is not connected"):
+            run_workflow_map(workflow_map, 0)
+
+        delete_contexts.assert_called_once_with({"ctx-failed"})
+
+    @patch("workflow_context_repository.delete_contexts")
+    def test_cleanup_failure_does_not_replace_workflow_result(self, delete_contexts):
+        from workflow_context_repository import WorkflowContextError
+
+        delete_contexts.side_effect = WorkflowContextError("cleanup failed")
+        workflow_map = [
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            }
+        ]
+
+        with self.assertLogs("aagent.workflow", level="ERROR"):
+            self.assertEqual(run_workflow_map(workflow_map, 0), {})
+
+    @patch("workflow_context_repository.delete_contexts")
+    def test_cleanup_failure_does_not_replace_workflow_error(self, delete_contexts):
+        from workflow_context_repository import WorkflowContextError
+
+        delete_contexts.side_effect = WorkflowContextError("cleanup failed")
+        workflow_map = [{"id": "broken", "type": "missing"}]
+
+        with self.assertLogs("aagent.workflow", level="ERROR"):
+            with self.assertRaisesRegex(ValueError, "unsupported workflow node type"):
+                run_workflow_map(workflow_map, 0)
+
+    @patch("workflow_parser.parse_workflow")
+    @patch("workflow_parser._read_workflow")
+    @patch("workflow_validator.validate_workflow")
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("workflow_context_repository.create_context")
+    def test_child_workflow_uses_and_cleans_independent_context_scope(
+        self,
+        create_context,
+        delete_contexts,
+        validate_workflow,
+        read_workflow,
+        parse_workflow,
+    ):
+        create_context.side_effect = ["ctx-parent", "ctx-child"]
+        child_document = {"input_ports": [], "output_ports": []}
+        read_workflow.return_value = child_document
+        parse_workflow.return_value = [
+            {
+                "id": "child-input",
+                "type": "input",
+                "workflowPorts": [],
+                "successors": {"next": 1},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+            {
+                "id": "child-create",
+                "type": "context_create",
+                "arguments": {"value_type": "content"},
+                "successors": {"next": 2},
+                "data_inputs": {"initial-value": [None, None, "child"]},
+                "data_outputs": {"context-id": []},
+            },
+            {
+                "id": "child-output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+        ]
+        parent_map = [
+            {
+                "id": "parent-create",
+                "type": "context_create",
+                "arguments": {"value_type": "content"},
+                "successors": {"next": 1},
+                "data_inputs": {"initial-value": [None, None, "parent"]},
+                "data_outputs": {"context-id": []},
+            },
+            {
+                "id": "child-call",
+                "type": "workflow",
+                "arguments": {"workflow_name": "Child"},
+                "input_ports": [],
+                "output_ports": [],
+                "successors": {"next": 2},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+            {
+                "id": "parent-output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_workflow_map(parent_map, 0), {})
+
+        parent_invocation = create_context.call_args_list[0].args[0]
+        child_invocation = create_context.call_args_list[1].args[0]
+        self.assertNotEqual(parent_invocation, child_invocation)
+        self.assertEqual(
+            [call.args[0] for call in delete_contexts.call_args_list],
+            [{"ctx-child"}, {"ctx-parent"}],
+        )
+        validate_workflow.assert_called_once_with(child_document)
+
     def test_run_workflow_map_completes_foreach_in_one_call(self):
         input_items = ["first", "second", "third"]
         workflow_map = [

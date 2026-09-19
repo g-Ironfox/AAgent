@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=10">
+  <link rel="stylesheet" href="/css/workflow.css?v=11">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -93,6 +93,21 @@
           <button class="library-item" type="button" data-add-node="history">
             <span class="node-symbol history-symbol" aria-hidden="true">H</span>
             <div><strong>召回 History</strong><small>按事件类型读取最近记录</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="context_create">
+            <span class="node-symbol context_create-symbol" aria-hidden="true">C+</span>
+            <div><strong>创建 Context</strong><small>创建本次 Workflow 内的局部状态</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="context_read">
+            <span class="node-symbol context_read-symbol" aria-hidden="true">CR</span>
+            <div><strong>读取 Context</strong><small>读取本次 Workflow 创建的状态</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="context_write">
+            <span class="node-symbol context_write-symbol" aria-hidden="true">CW</span>
+            <div><strong>修改 Context</strong><small>覆盖本次 Workflow Context 的值</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="local_tool">
@@ -363,6 +378,33 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="context_createInspectorTemplate">
+    <div data-interface-contract data-contract-status="Workflow 内局部状态"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="context_readInspectorTemplate">
+    <div data-interface-contract data-contract-status="仅限当前 Workflow 执行"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="context_writeInspectorTemplate">
+    <div data-interface-contract data-contract-status="完整覆盖"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
   <template id="construct_contentInspectorTemplate">
     <div data-interface-contract data-contract-status="按内容项顺序执行"></div>
     <section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section>
@@ -426,6 +468,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=17"></script>
+  <script type="module" src="/workflow.js?v=18"></script>
 </body>
 </html>

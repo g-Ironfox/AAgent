@@ -20,6 +20,9 @@ SUPPORTED_NODE_TYPES = {
     "local_tool",
     "remote_sync_tool",
     "remote_async_tool",
+    "context_create",
+    "context_read",
+    "context_write",
     "workflow",
 }
 
@@ -44,6 +47,9 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
     "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
+    "context_create": {"value_type"},
+    "context_read": {"value_type"},
+    "context_write": {"value_type"},
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
@@ -154,6 +160,12 @@ def data_ports_for_node(
         }
     if node_type == "remote_async_tool":
         return declared_inputs | set(tool_parameter_names(node)), {"task_id"}
+    if node_type == "context_create":
+        return {"initial-value"}, {"context-id"}
+    if node_type == "context_read":
+        return {"context-id"}, {"value-out"}
+    if node_type == "context_write":
+        return {"context-id", "value-in"}, {"context-id", "value-out"}
     if node_type == "workflow":
         return (
             {f"workflow:{port['name']}" for port in node.get("input_ports", [])},
@@ -227,6 +239,19 @@ def is_valid_connection(
             return False
         if source_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_output_type(source_node, from_port):
             return False
+        if target_node["type"] in {"context_create", "context_write"}:
+            value_port = "initial-value" if target_node["type"] == "context_create" else "value-in"
+            expected_type = node_argument(target_node, "value_type") if to_port == value_port else "content"
+            if connection_type != expected_type:
+                return False
+        if target_node["type"] == "context_read" and connection_type != "content":
+            return False
+        if source_node["type"] == "context_create" and connection_type != "content":
+            return False
+        if source_node["type"] in {"context_read", "context_write"}:
+            expected_type = "content" if from_port == "context-id" else node_argument(source_node, "value_type")
+            if connection_type != expected_type:
+                return False
         if source_node["type"] == "history" and (from_port != "events" or connection_type != "list-content"):
             return False
         source_type = source_node["type"]

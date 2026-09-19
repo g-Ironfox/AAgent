@@ -14,6 +14,9 @@ export const NODE_TYPES = new Set([
   'local_tool',
   'remote_sync_tool',
   'remote_async_tool',
+  'context_create',
+  'context_read',
+  'context_write',
   'workflow',
 ]);
 
@@ -112,6 +115,32 @@ export function portsForNode(node) {
       { id: 'events', direction: 'output', type: 'list-content', label: '事件', title: '最近的事件 JSON 列表', multiple: true },
     ];
   }
+  if (node.type === 'context_create') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '创建 Workflow Context', multiple: false },
+      { id: 'initial-value', direction: 'input', type: node.value_type, label: '初始值', title: node.value_type, multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'context-id', direction: 'output', type: 'content', label: 'Context ID', title: 'Workflow Context ID', multiple: true },
+    ];
+  }
+  if (node.type === 'context_read') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '读取 Workflow Context', multiple: false },
+      { id: 'context-id', direction: 'input', type: 'content', label: 'Context ID', title: 'Workflow Context ID', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'value-out', direction: 'output', type: node.value_type, label: '值', title: node.value_type, multiple: true },
+    ];
+  }
+  if (node.type === 'context_write') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '修改 Workflow Context', multiple: false },
+      { id: 'context-id', direction: 'input', type: 'content', label: 'Context ID', title: 'Workflow Context ID', multiple: false },
+      { id: 'value-in', direction: 'input', type: node.value_type, label: '新值', title: node.value_type, multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'context-id', direction: 'output', type: 'content', label: 'Context ID', title: 'Workflow Context ID', multiple: true },
+      { id: 'value-out', direction: 'output', type: node.value_type, label: '新值', title: node.value_type, multiple: true },
+    ];
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     const isRemote = node.type !== 'local_tool';
     const parameterPorts = (node.parameters || []).map((parameter) => ({
@@ -183,6 +212,9 @@ export function createNode(type, nodes, configuration = null) {
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
   if (type === 'history') return { id: createWorkflowId('history'), type, name: `召回 History ${number}`, event_types: ['terminal', 'response'], limit: 10, ...position };
+  if (type === 'context_create') return { id: createWorkflowId('context-create'), type, name: `创建 Context ${number}`, value_type: 'content', ...position };
+  if (type === 'context_read') return { id: createWorkflowId('context-read'), type, name: `读取 Context ${number}`, value_type: 'content', ...position };
+  if (type === 'context_write') return { id: createWorkflowId('context-write'), type, name: `修改 Context ${number}`, value_type: 'content', ...position };
   if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
   if (type === 'local_tool') return { id: createWorkflowId('local-tool'), type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
   if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };

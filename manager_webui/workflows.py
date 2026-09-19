@@ -36,6 +36,9 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
     "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
+    "context_create": {"value_type"},
+    "context_read": {"value_type"},
+    "context_write": {"value_type"},
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
@@ -154,6 +157,9 @@ def node_format_error(node: dict[str, Any], index: int) -> str | None:
             return f"nodes[{index}].arguments.item_type 必须是 content 或 message"
         if arguments.get("position") not in {"start", "end"}:
             return f"nodes[{index}].arguments.position 必须是 start 或 end"
+    if node_type in {"context_create", "context_read", "context_write"}:
+        if arguments.get("value_type") not in {"content", "message", "list-content", "list-message"}:
+            return f"nodes[{index}].arguments.value_type 必须是受支持的数据类型"
     return None
 
 
@@ -325,6 +331,13 @@ def filter_invalid_connections(
                 return f"list-{node_arguments(source).get('item_type')}"
             if node_type == "foreach" and from_port == "item-out":
                 return node_arguments(source).get("item_type")
+            if node_type == "context_create" and from_port == "context-id":
+                return "content"
+            if node_type in {"context_read", "context_write"}:
+                if from_port == "context-id":
+                    return "content"
+                if from_port == "value-out":
+                    return node_arguments(source).get("value_type")
             if node_type == "workflow":
                 return next((port.get("type") for port in source.get("output_ports", []) if f"workflow:{port.get('name')}" == from_port), None)
             return None
@@ -356,6 +369,15 @@ def filter_invalid_connections(
                     return item_type
             if node_type == "foreach" and to_port == "list-in":
                 return f"list-{node_arguments(target).get('item_type')}"
+            if node_type == "context_create" and to_port == "initial-value":
+                return node_arguments(target).get("value_type")
+            if node_type == "context_read" and to_port == "context-id":
+                return "content"
+            if node_type == "context_write":
+                if to_port == "context-id":
+                    return "content"
+                if to_port == "value-in":
+                    return node_arguments(target).get("value_type")
             if node_type == "workflow":
                 return next((port.get("type") for port in target.get("input_ports", []) if f"workflow:{port.get('name')}" == to_port), None)
             return None

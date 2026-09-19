@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from typing import Any, Callable
+from uuid import uuid4
 
 from workflow_contract import node_argument, tool_parameter_names
 
@@ -45,19 +46,38 @@ def next_successor(node: dict[str, Any], key: str = "next") -> int:
     return successor
 
 
-def run_workflow_map(workflow_map: WorkflowMap, start: int) -> dict[str, Any]:
-    current_id = start
-    result: dict[str, Any] | None = None
-    while current_id != WORKFLOW_END:
-        node = workflow_map[current_id]
-        handler = nodes_map.get(node.get("type"))
-        if handler is None:
-            raise ValueError(f"unsupported workflow node type: {node.get('type')}")
-        current_id = handler(current_id, workflow_map)
-        node_result = node.pop("_workflow_result", None)
-        if isinstance(node_result, dict):
-            result = node_result
-    return result or {}
+def run_workflow_map(
+    workflow_map: WorkflowMap,
+    start: int,
+) -> dict[str, Any]:
+    from workflow_context_repository import WorkflowContextError, delete_contexts
+
+    invocation_id = uuid4().hex
+    context_ids: set[str] = set()
+    for node in workflow_map:
+        node["_workflow_invocation_id"] = invocation_id
+        node["_workflow_context_ids"] = context_ids
+    try:
+        current_id = start
+        result: dict[str, Any] | None = None
+        while current_id != WORKFLOW_END:
+            node = workflow_map[current_id]
+            handler = nodes_map.get(node.get("type"))
+            if handler is None:
+                raise ValueError(f"unsupported workflow node type: {node.get('type')}")
+            current_id = handler(current_id, workflow_map)
+            node_result = node.pop("_workflow_result", None)
+            if isinstance(node_result, dict):
+                result = node_result
+        return result or {}
+    finally:
+        try:
+            delete_contexts(context_ids)
+        except WorkflowContextError:
+            logger.exception("failed to clean up Workflow Contexts")
+        for node in workflow_map:
+            node.pop("_workflow_invocation_id", None)
+            node.pop("_workflow_context_ids", None)
 
 
 def workflow_input(current_id: int, workflow_map: WorkflowMap) -> int:
@@ -288,6 +308,55 @@ def workflow_remote_async_tool(current_id: int, workflow_map: WorkflowMap) -> in
     return next_successor(node)
 
 
+def _context_input(node: dict[str, Any], port_id: str, label: str) -> Any:
+    has_value, value = read_workflow_input(node, port_id)
+    if not has_value:
+        raise ValueError(f"{label}: node {node.get('id')}")
+    return value
+
+
+def workflow_context_create(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_context_repository import create_context
+
+    node = workflow_map[current_id]
+    value = _context_input(node, "initial-value", "Context Value 输入缺失")
+    context_id = create_context(
+        node["_workflow_invocation_id"], node_argument(node, "value_type"), value
+    )
+    node["_workflow_context_ids"].add(context_id)
+    propagate_workflow_output(workflow_map, node, "context-id", context_id)
+    return next_successor(node)
+
+
+def workflow_context_read(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_context_repository import read_context
+
+    node = workflow_map[current_id]
+    context_id = _context_input(node, "context-id", "Context ID 输入无效")
+    value = read_context(
+        context_id, node["_workflow_invocation_id"], node_argument(node, "value_type")
+    )
+    propagate_workflow_output(workflow_map, node, "value-out", value)
+    return next_successor(node)
+
+
+def workflow_context_write(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_context_repository import write_context
+
+    node = workflow_map[current_id]
+    context_id = _context_input(node, "context-id", "Context ID 输入无效")
+    value = _context_input(node, "value-in", "Context Value 输入缺失")
+    write_context(
+        context_id,
+        node["_workflow_invocation_id"],
+        node_argument(node, "value_type"),
+        value,
+    )
+    propagate_workflow_output(workflow_map, node, "context-id", context_id)
+    propagate_workflow_output(workflow_map, node, "value-out", value)
+    return next_successor(node)
+
+
 def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
     from workflow_parser import _read_workflow, parse_workflow
     from workflow_validator import validate_workflow
@@ -353,5 +422,8 @@ nodes_map: dict[str, NodeHandler] = {
     "local_tool": workflow_local_tool,
     "remote_sync_tool": workflow_remote_sync_tool,
     "remote_async_tool": workflow_remote_async_tool,
+    "context_create": workflow_context_create,
+    "context_read": workflow_context_read,
+    "context_write": workflow_context_write,
     "workflow": workflow_workflow,
 }

@@ -46,6 +46,9 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .local_tool-symbol { background:var(--green); }
 .remote_sync_tool-symbol { background:#a94f36; }
 .remote_async_tool-symbol { background:#b47a22; }
+.context_create-symbol { background:#326b4b; }
+.context_read-symbol { background:#376c78; }
+.context_write-symbol { background:#8a5b2d; }
 .workflow-node-library { padding-top:8px; display:grid; gap:8px; border-top:1px solid var(--line); }
 .workflow-node-library[hidden] { display:none; }
 .workflow-symbol { background:#785d9b; }

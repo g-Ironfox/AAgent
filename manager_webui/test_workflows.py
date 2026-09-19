@@ -1,9 +1,24 @@
 import unittest
 
-from workflows import filter_invalid_connections
+from workflows import filter_invalid_connections, node_format_error
 
 
 class WorkflowConnectionFilterTest(unittest.TestCase):
+    def test_rejects_invalid_context_value_type(self):
+        error = node_format_error(
+            {
+                "id": "context",
+                "type": "context_create",
+                "arguments": {"value_type": "number"},
+            },
+            0,
+        )
+
+        self.assertEqual(
+            error,
+            "nodes[0].arguments.value_type 必须是受支持的数据类型",
+        )
+
     def test_preserves_construct_list_to_llm_messages_connection(self):
         nodes = [
             {
@@ -38,6 +53,80 @@ class WorkflowConnectionFilterTest(unittest.TestCase):
         _, connections = filter_invalid_connections(nodes, [connection], [], [])
 
         self.assertEqual(connections, [connection])
+
+    def test_preserves_context_connections_for_matching_value_type(self):
+        for value_type in ("content", "message", "list-content", "list-message"):
+            with self.subTest(value_type=value_type):
+                nodes = [
+                    {
+                        "id": "create",
+                        "type": "context_create",
+                        "arguments": {"value_type": value_type},
+                    },
+                    {
+                        "id": "write",
+                        "type": "context_write",
+                        "arguments": {"value_type": value_type},
+                    },
+                    {
+                        "id": "read",
+                        "type": "context_read",
+                        "arguments": {"value_type": value_type},
+                    },
+                    {
+                        "id": "output",
+                        "type": "output",
+                        "workflowPorts": [
+                            {"id": "workflow:value", "name": "value", "type": value_type}
+                        ],
+                    },
+                ]
+                connections = [
+                    {"fromId": "create", "fromPortId": "context-id", "toId": "write", "toPortId": "context-id", "type": "content"},
+                    {"fromId": "write", "fromPortId": "context-id", "toId": "read", "toPortId": "context-id", "type": "content"},
+                    {"fromId": "write", "fromPortId": "value-out", "toId": "output", "toPortId": "workflow:value", "type": value_type},
+                ]
+
+                _, filtered = filter_invalid_connections(
+                    nodes,
+                    connections,
+                    [],
+                    [{"name": "value", "type": value_type}],
+                )
+
+                self.assertEqual(filtered, connections)
+
+    def test_drops_context_value_connection_after_type_change(self):
+        nodes = [
+            {
+                "id": "write",
+                "type": "context_write",
+                "arguments": {"value_type": "message"},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [
+                    {"id": "workflow:value", "name": "value", "type": "content"}
+                ],
+            },
+        ]
+        connection = {
+            "fromId": "write",
+            "fromPortId": "value-out",
+            "toId": "output",
+            "toPortId": "workflow:value",
+            "type": "content",
+        }
+
+        _, connections = filter_invalid_connections(
+            nodes,
+            [connection],
+            [],
+            [{"name": "value", "type": "content"}],
+        )
+
+        self.assertEqual(connections, [])
 
 
 if __name__ == "__main__":

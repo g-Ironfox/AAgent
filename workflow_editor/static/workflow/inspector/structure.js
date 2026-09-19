@@ -9,6 +9,7 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
   if (node.type === 'history') bindHistory(node, context);
+  if (['context_create', 'context_read', 'context_write'].includes(node.type)) bindContext(node, context);
 }
 
 function commitStructureChange(node, context, renderInspector = true) {
@@ -166,6 +167,15 @@ function bindListAppend(node, context) {
   typeField.value = node.item_type;
   typeField.addEventListener('change', () => {
     node.item_type = typeField.value;
+    commitStructureChange(node, context);
+  });
+}
+
+function bindContext(node, context) {
+  const typeField = context.elements.inspectorContent.querySelector('[data-field="value_type"]');
+  typeField.value = node.value_type;
+  typeField.addEventListener('change', () => {
+    node.value_type = typeField.value;
     commitStructureChange(node, context);
   });
 }
