@@ -325,6 +325,40 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
 
 class WorkflowExecutionTest(unittest.TestCase):
+    def test_list_append_outputs_new_list_without_mutating_input(self):
+        for position, expected in (("start", ["new", "first"]), ("end", ["first", "new"])):
+            with self.subTest(position=position):
+                input_items = ["first"]
+                workflow_map = [
+                    {
+                        "id": "append",
+                        "type": "list_append",
+                        "arguments": {"item_type": "content", "position": position},
+                        "successors": {"next": 1},
+                        "data_inputs": {
+                            "list-in": [None, None, input_items],
+                            "item-in": [None, None, "new"],
+                        },
+                        "data_outputs": {"list-out": [[1, "workflow:result"]]},
+                    },
+                    {
+                        "id": "output",
+                        "type": "output",
+                        "workflowPorts": [
+                            {"id": "workflow:result", "name": "result", "type": "list-content"}
+                        ],
+                        "successors": {},
+                        "data_inputs": {"workflow:result": [0, "list-out", None]},
+                        "data_outputs": {},
+                    },
+                ]
+
+                result = run_workflow_map(workflow_map, 0)["result"]
+
+                self.assertEqual(result, expected)
+                self.assertIsNot(result, input_items)
+                self.assertEqual(input_items, ["first"])
+
     def test_run_workflow_map_traverses_to_output(self):
         workflow_map = [
             {

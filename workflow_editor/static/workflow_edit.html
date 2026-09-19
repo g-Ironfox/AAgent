@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=9">
+  <link rel="stylesheet" href="/css/workflow.css?v=10">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -78,6 +78,11 @@
           <button class="library-item" type="button" data-add-node="construct_list">
             <span class="node-symbol construct_list-symbol" aria-hidden="true">L</span>
             <div><strong>构造列表</strong><small>把同类型输入聚合为列表</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="list_append">
+            <span class="node-symbol list_append-symbol" aria-hidden="true">L+</span>
+            <div><strong>List 追加</strong><small>在列表最前或最后追加同类型项</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="foreach">
@@ -339,6 +344,16 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="list_appendInspectorTemplate">
+    <div data-interface-contract data-contract-status="输出新列表"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option></select></label>
+      <label>插入位置<select data-field="position"><option value="start">最前面</option><option value="end">最后面</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
   <template id="historyInspectorTemplate">
     <div data-interface-contract data-contract-status="按时间倒序"></div>
     <section class="inspector-section form-section">
@@ -418,6 +433,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=16"></script>
+  <script type="module" src="/workflow.js?v=17"></script>
 </body>
 </html>

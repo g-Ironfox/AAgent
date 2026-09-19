@@ -29,6 +29,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_message": {"role"},
     "construct_content": {"append_items"},
     "construct_list": {"item_type", "initial_value_count"},
+    "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
     "history": {"event_types", "limit"},
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
@@ -148,6 +149,11 @@ def node_format_error(node: dict[str, Any], index: int) -> str | None:
             return f"nodes[{index}].arguments.event_types 只能包含不重复的 terminal 或 response"
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
             return f"nodes[{index}].arguments.limit 必须是 1 到 1000 的整数"
+    if node_type == "list_append":
+        if arguments.get("item_type") not in {"content", "message"}:
+            return f"nodes[{index}].arguments.item_type 必须是 content 或 message"
+        if arguments.get("position") not in {"start", "end"}:
+            return f"nodes[{index}].arguments.position 必须是 start 或 end"
     return None
 
 
@@ -315,6 +321,8 @@ def filter_invalid_connections(
                 return "list-content"
             if node_type == "construct_list" and from_port == "list-out":
                 return f"list-{node_arguments(source).get('item_type')}"
+            if node_type == "list_append" and from_port == "list-out":
+                return f"list-{node_arguments(source).get('item_type')}"
             if node_type == "foreach" and from_port == "item-out":
                 return node_arguments(source).get("item_type")
             if node_type == "workflow":
@@ -340,6 +348,12 @@ def filter_invalid_connections(
                 )
             if node_type == "construct_list" and to_port in target.get("dataInputPorts", []):
                 return node_arguments(target).get("item_type")
+            if node_type == "list_append":
+                item_type = node_arguments(target).get("item_type")
+                if to_port == "list-in":
+                    return f"list-{item_type}"
+                if to_port == "item-in":
+                    return item_type
             if node_type == "foreach" and to_port == "list-in":
                 return f"list-{node_arguments(target).get('item_type')}"
             if node_type == "workflow":

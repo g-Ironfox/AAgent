@@ -7,6 +7,7 @@ export const NODE_TYPES = new Set([
   'construct_message',
   'construct_content',
   'construct_list',
+  'list_append',
   'foreach',
   'history',
   'llm',
@@ -83,6 +84,15 @@ export function portsForNode(node) {
       ...itemPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'list-out', direction: 'output', type: `list-${node.item_type}`, label: '列表', title: `list-${node.item_type}`, multiple: true },
+    ];
+  }
+  if (node.type === 'list_append') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+      { id: 'list-in', direction: 'input', type: `list-${node.item_type}`, label: '列表', title: `list-${node.item_type}`, multiple: false },
+      { id: 'item-in', direction: 'input', type: node.item_type, label: '追加项', title: node.item_type, multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'list-out', direction: 'output', type: `list-${node.item_type}`, label: '新列表', title: `list-${node.item_type}`, multiple: true },
     ];
   }
   if (node.type === 'foreach') {
@@ -178,6 +188,7 @@ export function createNode(type, nodes, configuration = null) {
   if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role: 'user', ...position };
   if (type === 'construct_content') return { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
+  if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
   if (type === 'history') return { id: createWorkflowId('history'), type, name: `召回 History ${number}`, event_types: ['terminal', 'response'], limit: 10, ...position };
   if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, ...position };

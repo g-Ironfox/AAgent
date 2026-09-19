@@ -13,6 +13,7 @@ SUPPORTED_NODE_TYPES = {
     "construct_message",
     "construct_content",
     "construct_list",
+    "list_append",
     "foreach",
     "history",
     "llm",
@@ -36,6 +37,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_message": {"role"},
     "construct_content": {"append_items"},
     "construct_list": {"item_type", "initial_value_count"},
+    "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
     "history": {"event_types", "limit"},
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
@@ -138,6 +140,8 @@ def data_ports_for_node(
         return declared_inputs, {"content-out"}
     if node_type == "construct_list":
         return declared_inputs, {"list-out"}
+    if node_type == "list_append":
+        return declared_inputs | {"list-in", "item-in"}, {"list-out"}
     if node_type == "foreach":
         return declared_inputs | {"list-in"}, {"item-out"}
     if node_type == "history":
@@ -230,6 +234,16 @@ def is_valid_connection(
         if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):
             return False
         if source_type == "construct_list" and connection_type != f"list-{node_argument(source_node, 'item_type')}":
+            return False
+        if target_type == "list_append":
+            expected_type = (
+                f"list-{node_argument(target_node, 'item_type')}"
+                if to_port == "list-in"
+                else node_argument(target_node, "item_type")
+            )
+            if connection_type != expected_type:
+                return False
+        if source_type == "list_append" and connection_type != f"list-{node_argument(source_node, 'item_type')}":
             return False
         if target_type == "foreach" and (connection_type != f"list-{node_argument(target_node, 'item_type')}" or to_port != "list-in"):
             return False

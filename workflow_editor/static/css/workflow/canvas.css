@@ -23,6 +23,7 @@
 .flow-node.remote_sync_tool { border-top-color:#a94f36; }
 .flow-node.remote_async_tool { border-top-color:#b47a22; }
 .flow-node.construct_list { border-top-color:#176f73; }
+.flow-node.list_append { border-top-color:#27705b; }
 .flow-node.foreach { border-top-color:#9a5a24; }
 .flow-node.history { border-top-color:#396a87; }
 .flow-node.workflow { border-top-color:#785d9b; }

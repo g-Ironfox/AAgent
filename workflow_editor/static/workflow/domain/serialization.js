@@ -18,6 +18,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   construct_message: new Set(['role']),
   construct_content: new Set(['append_items']),
   construct_list: new Set(['item_type', 'initial_value_count']),
+  list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),
   history: new Set(['event_types', 'limit']),
   llm: new Set(['model', 'prompt', 'think', 'tool_calls', 'tools']),
@@ -193,6 +194,10 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
     normalized.initial_value_count = Number.isInteger(node.initial_value_count) ? Math.min(20, Math.max(0, node.initial_value_count)) : 1;
     normalized.dataInputPorts = Array.from({ length: normalized.initial_value_count }, (_, index) => `${normalized.item_type}-in-${index}`);
+  }
+  if (node.type === 'list_append') {
+    normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
+    normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
   if (node.type === 'foreach') normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
   if (node.type === 'history') {

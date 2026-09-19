@@ -224,6 +224,15 @@ def _validate_node(node: Any, index: int) -> None:
         _validate_construct_content(node)
     elif node_type == "construct_list":
         _validate_construct_list(node)
+    elif node_type == "list_append":
+        if node_argument(node, "item_type") not in {"content", "message"}:
+            raise WorkflowValidationError(
+                "list_append node item_type must be 'content' or 'message'"
+            )
+        if node_argument(node, "position") not in {"start", "end"}:
+            raise WorkflowValidationError(
+                "list_append node position must be 'start' or 'end'"
+            )
     elif node_type == "foreach":
         if node_argument(node, "item_type") not in {"content", "message"}:
             raise WorkflowValidationError(
@@ -588,6 +597,20 @@ def _validate_data_connection(
     if source_type == "construct_list" and connection_type != f"list-{source_node['item_type']}":
         raise WorkflowValidationError(
             f"construct_list output requires list-{source_node['item_type']} data: connection {connection_index}"
+        )
+    if target_type == "list_append":
+        expected_type = (
+            f"list-{node_argument(target_node, 'item_type')}"
+            if to_port == "list-in"
+            else node_argument(target_node, "item_type")
+        )
+        if connection_type != expected_type:
+            raise WorkflowValidationError(
+                f"list_append {to_port} requires {expected_type} data: connection {connection_index}"
+            )
+    if source_type == "list_append" and connection_type != f"list-{node_argument(source_node, 'item_type')}":
+        raise WorkflowValidationError(
+            f"list_append output requires list-{node_argument(source_node, 'item_type')} data: connection {connection_index}"
         )
     if target_type == "foreach" and (
         connection_type != f"list-{target_node['item_type']}" or to_port != "list-in"

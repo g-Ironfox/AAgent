@@ -157,6 +157,21 @@ def workflow_construct_list(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
+def workflow_list_append(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    has_list, input_list = read_workflow_input(node, "list-in")
+    has_item, item = read_workflow_input(node, "item-in")
+    if not has_list:
+        raise ValueError(f"list_append list input is missing: node {node.get('id')}")
+    if not isinstance(input_list, list):
+        raise ValueError(f"list_append input must be a list: node {node.get('id')}")
+    if not has_item:
+        raise ValueError(f"list_append item input is missing: node {node.get('id')}")
+    output = [item, *input_list] if node_argument(node, "position") == "start" else [*input_list, item]
+    propagate_workflow_output(workflow_map, node, "list-out", output)
+    return next_successor(node)
+
+
 def workflow_foreach(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     items = node.get("_foreach_items")
@@ -336,6 +351,7 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_message": workflow_construct_message,
     "construct_content": workflow_construct_content,
     "construct_list": workflow_construct_list,
+    "list_append": workflow_list_append,
     "foreach": workflow_foreach,
     "history": workflow_history,
     "llm": workflow_llm,

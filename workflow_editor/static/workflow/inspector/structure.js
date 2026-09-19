@@ -6,6 +6,7 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'router') bindBranches(node, context);
   if (node.type === 'construct_content') bindConstructContent(node, context);
   if (node.type === 'construct_list') bindConstructList(node, context);
+  if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
   if (node.type === 'history') bindHistory(node, context);
   if (node.type === 'llm') bindLlmInputs(node, context);
@@ -180,6 +181,15 @@ function bindLlmInputs(node, context) {
   context.elements.inspectorContent.querySelector('[data-add-llm-input]').addEventListener('click', () => {
     if (node.dataInputPorts.length >= 20) return;
     node.dataInputPorts.push(`message-in-${node.dataInputPorts.length}`);
+    commitStructureChange(node, context);
+  });
+}
+
+function bindListAppend(node, context) {
+  const typeField = context.elements.inspectorContent.querySelector('[data-field="item_type"]');
+  typeField.value = node.item_type;
+  typeField.addEventListener('change', () => {
+    node.item_type = typeField.value;
     commitStructureChange(node, context);
   });
 }
