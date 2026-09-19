@@ -12,8 +12,10 @@
 .port-swatch.control { background:var(--green); }
 .port-swatch.content { background:var(--blue); }
 .port-swatch.message { background:#b75b18; }
+.port-swatch.event { background:#147d78; }
 .port-swatch.list-content { background:var(--workflow-list-content); }
 .port-swatch.list-message { background:#7a3e88; }
+.port-swatch.event-list { background:#147d78; }
 .port-contract strong { font-size:10px; }
 .port-contract small,.section-help { color:var(--muted); font-size:8px; line-height:1.45; }
 .port-contract code { font-size:8px; }

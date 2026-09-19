@@ -1,4 +1,4 @@
-export const DATA_TYPES = new Set(['content', 'message', 'list-content', 'list-message']);
+export const DATA_TYPES = new Set(['content', 'message', 'event', 'list-content', 'list-message', 'event-list']);
 
 export const NODE_TYPES = new Set([
   'input',
@@ -6,6 +6,7 @@ export const NODE_TYPES = new Set([
   'router',
   'construct_message',
   'construct_content',
+  'split_event',
   'construct_list',
   'list_append',
   'foreach',
@@ -32,6 +33,10 @@ export function boundaryPorts(ports) {
     if (!port || typeof port.name !== 'string' || !DATA_TYPES.has(port.type)) return [];
     return [{ id: `workflow:${port.name}`, name: port.name.slice(0, 80), type: port.type }];
   });
+}
+
+function listTypeForItem(itemType) {
+  return itemType === 'event' ? 'event-list' : `list-${itemType}`;
 }
 
 export function portsForNode(node) {
@@ -73,6 +78,15 @@ export function portsForNode(node) {
       { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '构造后的 Content', multiple: true },
     ];
   }
+  if (node.type === 'split_event') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发拆分', multiple: false },
+      { id: 'event-in', direction: 'input', type: 'event', label: 'Event', title: '待拆分的事件', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'type-out', direction: 'output', type: 'content', label: 'Type', title: '事件类型', multiple: true },
+      { id: 'payload-out', direction: 'output', type: 'content', label: 'Payload', title: '事件 Payload 对象', multiple: true },
+    ];
+  }
   if (node.type === 'construct_list') {
     const itemPorts = (node.dataInputPorts || []).map((portId, index) => ({
       id: portId,
@@ -86,23 +100,23 @@ export function portsForNode(node) {
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       ...itemPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'list-out', direction: 'output', type: `list-${node.item_type}`, label: '列表', title: `list-${node.item_type}`, multiple: true },
+      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
   if (node.type === 'list_append') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-      { id: 'list-in', direction: 'input', type: `list-${node.item_type}`, label: '列表', title: `list-${node.item_type}`, multiple: false },
+      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
       { id: 'item-in', direction: 'input', type: node.item_type, label: '追加项', title: node.item_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'list-out', direction: 'output', type: `list-${node.item_type}`, label: '新列表', title: `list-${node.item_type}`, multiple: true },
+      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
   if (node.type === 'foreach') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发遍历', multiple: false },
       { id: 'loop-in', direction: 'input', type: 'control', label: '循环体结束', title: '循环体完成后返回', multiple: false },
-      { id: 'list-in', direction: 'input', type: `list-${node.item_type}`, label: '列表', title: `list-${node.item_type}`, multiple: false },
+      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '列表遍历完成后继续', multiple: false },
       { id: 'loop-out', direction: 'output', type: 'control', label: '循环体开始', title: '执行当前项的循环体', multiple: false },
       { id: 'item-out', direction: 'output', type: node.item_type, label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
@@ -112,7 +126,7 @@ export function portsForNode(node) {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发查询', multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'events', direction: 'output', type: 'list-content', label: '事件', title: '最近的事件 JSON 列表', multiple: true },
+      { id: 'events', direction: 'output', type: 'event-list', label: '事件', title: '最近的事件列表', multiple: true },
     ];
   }
   if (node.type === 'context_create') {
@@ -208,6 +222,7 @@ export function createNode(type, nodes, configuration = null) {
   if (type === 'output') return { id: createWorkflowId('output'), type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
   if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role: 'user', ...position };
   if (type === 'construct_content') return { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
+  if (type === 'split_event') return { id: createWorkflowId('split-event'), type, name: `拆分 Event ${number}`, ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };

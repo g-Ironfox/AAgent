@@ -274,7 +274,7 @@ function createRemoteToolRow(tool = { name: '', input_ports: [], output_ports: [
     }
     const schemaPorts = (schemaValue, defaultName = null) => {
       if (!schemaValue || typeof schemaValue !== 'object') return [];
-      const workflowType = (value) => ['content', 'message', 'list-content', 'list-message'].includes(value?.['x-workflow-port-type'])
+      const workflowType = (value) => ['content', 'message', 'event', 'list-content', 'list-message', 'event-list'].includes(value?.['x-workflow-port-type'])
         ? value['x-workflow-port-type']
         : value?.type === 'array' ? 'list-content' : 'content';
       if (schemaValue.properties && typeof schemaValue.properties === 'object') {

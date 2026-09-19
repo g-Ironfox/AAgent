@@ -75,6 +75,11 @@
             <div><strong>构造 Content</strong><small>按顺序组合输入或固定内容</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="split_event">
+            <span class="node-symbol split_event-symbol" aria-hidden="true">E/</span>
+            <div><strong>拆分 Event</strong><small>拆出事件类型与 Payload</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="construct_list">
             <span class="node-symbol construct_list-symbol" aria-hidden="true">L</span>
             <div><strong>构造列表</strong><small>把同类型输入聚合为列表</small></div>
@@ -145,7 +150,7 @@
           <div class="canvas-grid" aria-hidden="true"></div>
           <svg id="connectionLayer" class="connection-layer" aria-hidden="true"></svg>
           <div id="nodeLayer" class="node-layer"></div>
-          <div class="canvas-legend" aria-hidden="true"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span></div>
+          <div class="canvas-legend" aria-hidden="true"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="event-dot"></i>EVENT</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span><span><i class="event-list-dot"></i>EVENT-LIST</span></div>
         </div>
       </section>
 
@@ -222,7 +227,7 @@
   <template id="metadataPortTemplate">
     <div class="metadata-port-row">
       <input data-metadata-port-name maxlength="80" required placeholder="port_name" aria-label="端口名称">
-      <select data-metadata-port-type aria-label="端口类型"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select>
+      <select data-metadata-port-type aria-label="端口类型"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="event-list">event-list</option></select>
       <button type="button" data-remove-metadata-port title="删除接口" aria-label="删除接口">×</button>
     </div>
   </template>
@@ -333,11 +338,19 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="split_eventInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
   <template id="construct_listInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option></select></label>
+      <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option></select></label>
       <label>初始值数量<input data-field="initial_value_count" type="number" min="0" max="20" step="1"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
@@ -347,7 +360,7 @@
     <div data-interface-contract data-contract-status="受控循环"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option></select></label>
+      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -356,7 +369,7 @@
     <div data-interface-contract data-contract-status="输出新列表"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option></select></label>
+      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option></select></label>
       <label>插入位置<select data-field="position"><option value="start">最前面</option><option value="end">最后面</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
@@ -382,7 +395,7 @@
     <div data-interface-contract data-contract-status="Workflow 内局部状态"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="event-list">event-list</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -391,7 +404,7 @@
     <div data-interface-contract data-contract-status="仅限当前 Workflow 执行"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="event-list">event-list</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -400,7 +413,7 @@
     <div data-interface-contract data-contract-status="完整覆盖"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="event-list">event-list</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

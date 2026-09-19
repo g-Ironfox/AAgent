@@ -19,6 +19,7 @@ MAX_WORKFLOW_METADATA_PORTS = 50
 MAX_WORKFLOW_NODE_REFERENCES = 50
 MAX_REMOTE_TOOL_REFERENCES = 100
 MAX_WORKFLOW_DESCRIPTION_LENGTH = 2000
+DATA_TYPES = {"content", "message", "event", "list-content", "list-message", "event-list"}
 
 NODE_BASE_FIELDS = {"id", "type", "name", "x", "y", "arguments"}
 NODE_SHARED_FIELDS = {"workflowPorts", "dataInputPorts", "input_ports", "output_ports"}
@@ -28,6 +29,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "router": {"branches"},
     "construct_message": {"role"},
     "construct_content": {"append_items"},
+    "split_event": set(),
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
@@ -47,6 +49,10 @@ NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
 def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
     arguments = node.get("arguments")
     return arguments if isinstance(arguments, dict) else {}
+
+
+def list_type_for_item(item_type: Any) -> str:
+    return "event-list" if item_type == "event" else f"list-{item_type}"
 
 
 def tool_node_error(node: dict[str, Any], max_wait_ms: int, max_async_timeout_ms: int) -> str | None:
@@ -69,7 +75,7 @@ def tool_node_error(node: dict[str, Any], max_wait_ms: int, max_async_timeout_ms
             or not isinstance(parameter.get("name"), str)
             or not parameter["name"]
             or parameter["name"] == "control-in"
-            or parameter.get("type") not in {"content", "message", "list-content", "list-message"}
+            or parameter.get("type") not in DATA_TYPES
             for parameter in parameters
         ):
             return "Remote Tool 参数必须包含有效的 name 和 type"
@@ -84,7 +90,7 @@ def tool_node_error(node: dict[str, Any], max_wait_ms: int, max_async_timeout_ms
                 or not isinstance(output.get("name"), str)
                 or not output["name"]
                 or output["name"] == "control-out"
-                or output.get("type") not in {"content", "message", "list-content", "list-message"}
+                or output.get("type") not in DATA_TYPES
                 for output in outputs
             ):
                 return "Remote Sync Tool 输出必须包含有效的 name 和 type"
@@ -153,12 +159,12 @@ def node_format_error(node: dict[str, Any], index: int) -> str | None:
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
             return f"nodes[{index}].arguments.limit 必须是 1 到 1000 的整数"
     if node_type == "list_append":
-        if arguments.get("item_type") not in {"content", "message"}:
-            return f"nodes[{index}].arguments.item_type 必须是 content 或 message"
+        if arguments.get("item_type") not in {"content", "message", "event"}:
+            return f"nodes[{index}].arguments.item_type 必须是 content、message 或 event"
         if arguments.get("position") not in {"start", "end"}:
             return f"nodes[{index}].arguments.position 必须是 start 或 end"
     if node_type in {"context_create", "context_read", "context_write"}:
-        if arguments.get("value_type") not in {"content", "message", "list-content", "list-message"}:
+        if arguments.get("value_type") not in DATA_TYPES:
             return f"nodes[{index}].arguments.value_type 必须是受支持的数据类型"
     return None
 
@@ -167,7 +173,7 @@ class WorkflowPortMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=80)
-    type: Literal["content", "message", "list-content", "list-message"]
+    type: Literal["content", "message", "event", "list-content", "list-message", "event-list"]
 
 
 class WorkflowRequest(BaseModel):
@@ -297,7 +303,7 @@ def filter_invalid_connections(
             if target.get("type") == "foreach":
                 target_inputs = {"control-in", "loop-in"}
             return from_port in source_outputs and to_port in target_inputs
-        if connection_type not in {"content", "message", "list-content", "list-message"}:
+        if connection_type not in DATA_TYPES:
             return False
 
         def source_type() -> str | None:
@@ -310,6 +316,8 @@ def filter_invalid_connections(
                 return "message"
             if node_type == "construct_content" and from_port == "content-out":
                 return "content"
+            if node_type == "split_event" and from_port in {"type-out", "payload-out"}:
+                return "content"
             if node_type in {"llm", "local_tool"} and from_port == "output":
                 return "content"
             if node_type == "remote_sync_tool":
@@ -320,15 +328,15 @@ def filter_invalid_connections(
             if node_type == "remote_async_tool" and from_port == "task_id":
                 return "content"
             if node_type == "history" and from_port == "events":
-                return "list-content"
+                return "event-list"
             if node_type == "llm" and from_port == "reasoning" and node_arguments(source).get("think") is True:
                 return "content"
             if node_type == "llm" and from_port == "tool_calls" and node_arguments(source).get("tool_calls") is True:
                 return "list-content"
             if node_type == "construct_list" and from_port == "list-out":
-                return f"list-{node_arguments(source).get('item_type')}"
+                return list_type_for_item(node_arguments(source).get("item_type"))
             if node_type == "list_append" and from_port == "list-out":
-                return f"list-{node_arguments(source).get('item_type')}"
+                return list_type_for_item(node_arguments(source).get("item_type"))
             if node_type == "foreach" and from_port == "item-out":
                 return node_arguments(source).get("item_type")
             if node_type == "context_create" and from_port == "context-id":
@@ -350,6 +358,8 @@ def filter_invalid_connections(
                 return "list-message"
             if node_type == "construct_message" and to_port == "content-in":
                 return "content"
+            if node_type == "split_event" and to_port == "event-in":
+                return "event"
             if node_type in {"construct_content", "router"} and to_port in target.get("dataInputPorts", ["content-in"]):
                 return "content"
             if node_type == "local_tool" and to_port in node_arguments(target).get("parameters", []):
@@ -364,11 +374,11 @@ def filter_invalid_connections(
             if node_type == "list_append":
                 item_type = node_arguments(target).get("item_type")
                 if to_port == "list-in":
-                    return f"list-{item_type}"
+                    return list_type_for_item(item_type)
                 if to_port == "item-in":
                     return item_type
             if node_type == "foreach" and to_port == "list-in":
-                return f"list-{node_arguments(target).get('item_type')}"
+                return list_type_for_item(node_arguments(target).get("item_type"))
             if node_type == "context_create" and to_port == "initial-value":
                 return node_arguments(target).get("value_type")
             if node_type == "context_read" and to_port == "context-id":

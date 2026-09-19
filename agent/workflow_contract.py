@@ -5,13 +5,21 @@ from __future__ import annotations
 from typing import Any
 
 
-DATA_CONNECTION_TYPES = {"content", "message", "list-content", "list-message"}
+DATA_CONNECTION_TYPES = {
+    "content",
+    "message",
+    "event",
+    "list-content",
+    "list-message",
+    "event-list",
+}
 SUPPORTED_NODE_TYPES = {
     "input",
     "output",
     "router",
     "construct_message",
     "construct_content",
+    "split_event",
     "construct_list",
     "list_append",
     "foreach",
@@ -39,6 +47,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "router": {"branches"},
     "construct_message": {"role"},
     "construct_content": {"append_items"},
+    "split_event": set(),
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
@@ -62,6 +71,10 @@ def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
 
 def node_argument(node: dict[str, Any], name: str, default: Any = None) -> Any:
     return node_arguments(node).get(name, default)
+
+
+def list_type_for_item(item_type: Any) -> str:
+    return "event-list" if item_type == "event" else f"list-{item_type}"
 
 
 def tool_parameter_names(node: dict[str, Any]) -> list[str]:
@@ -144,6 +157,8 @@ def data_ports_for_node(
         return declared_inputs | {"content-in"}, {"message-out"}
     if node_type == "construct_content":
         return declared_inputs, {"content-out"}
+    if node_type == "split_event":
+        return declared_inputs | {"event-in"}, {"type-out", "payload-out"}
     if node_type == "construct_list":
         return declared_inputs, {"list-out"}
     if node_type == "list_append":
@@ -252,25 +267,30 @@ def is_valid_connection(
             expected_type = "content" if from_port == "context-id" else node_argument(source_node, "value_type")
             if connection_type != expected_type:
                 return False
-        if source_node["type"] == "history" and (from_port != "events" or connection_type != "list-content"):
+        if source_node["type"] == "history" and (from_port != "events" or connection_type != "event-list"):
             return False
+        if target_node["type"] == "split_event" and (to_port != "event-in" or connection_type != "event"):
+            return False
+        if source_node["type"] == "split_event":
+            if from_port not in {"type-out", "payload-out"} or connection_type != "content":
+                return False
         source_type = source_node["type"]
         target_type = target_node["type"]
         if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):
             return False
-        if source_type == "construct_list" and connection_type != f"list-{node_argument(source_node, 'item_type')}":
+        if source_type == "construct_list" and connection_type != list_type_for_item(node_argument(source_node, "item_type")):
             return False
         if target_type == "list_append":
             expected_type = (
-                f"list-{node_argument(target_node, 'item_type')}"
+                list_type_for_item(node_argument(target_node, "item_type"))
                 if to_port == "list-in"
                 else node_argument(target_node, "item_type")
             )
             if connection_type != expected_type:
                 return False
-        if source_type == "list_append" and connection_type != f"list-{node_argument(source_node, 'item_type')}":
+        if source_type == "list_append" and connection_type != list_type_for_item(node_argument(source_node, "item_type")):
             return False
-        if target_type == "foreach" and (connection_type != f"list-{node_argument(target_node, 'item_type')}" or to_port != "list-in"):
+        if target_type == "foreach" and (connection_type != list_type_for_item(node_argument(target_node, "item_type")) or to_port != "list-in"):
             return False
         if source_type == "foreach" and (connection_type != node_argument(source_node, "item_type") or from_port != "item-out"):
             return False

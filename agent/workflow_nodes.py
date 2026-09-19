@@ -158,6 +158,21 @@ def workflow_construct_content(current_id: int, workflow_map: WorkflowMap) -> in
     return next_successor(node)
 
 
+def workflow_split_event(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    has_event, event = read_workflow_input(node, "event-in")
+    if not has_event:
+        raise ValueError(f"split_event input is missing: node {node.get('id')}")
+    if not isinstance(event, dict):
+        raise ValueError(f"split_event input must be an event object: node {node.get('id')}")
+    event_type = event.get("event_type")
+    if not isinstance(event_type, str) or not event_type or "payload" not in event:
+        raise ValueError(f"split_event input contains an invalid event: node {node.get('id')}")
+    propagate_workflow_output(workflow_map, node, "type-out", event_type)
+    propagate_workflow_output(workflow_map, node, "payload-out", event["payload"])
+    return next_successor(node)
+
+
 def workflow_construct_list(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     values = []
@@ -215,10 +230,7 @@ def workflow_history(current_id: int, workflow_map: WorkflowMap) -> int:
         limit=node_argument(node, "limit"),
         event_types=node_argument(node, "event_types"),
     )
-    serialized_events = [
-        json.dumps(event, ensure_ascii=False, default=str) for event in events
-    ]
-    propagate_workflow_output(workflow_map, node, "events", serialized_events)
+    propagate_workflow_output(workflow_map, node, "events", events)
     return next_successor(node)
 
 
@@ -414,6 +426,7 @@ nodes_map: dict[str, NodeHandler] = {
     "router": workflow_router,
     "construct_message": workflow_construct_message,
     "construct_content": workflow_construct_content,
+    "split_event": workflow_split_event,
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,
     "foreach": workflow_foreach,

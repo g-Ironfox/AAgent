@@ -17,6 +17,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   router: new Set(['branches']),
   construct_message: new Set(['role']),
   construct_content: new Set(['append_items']),
+  split_event: new Set(),
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),
@@ -189,15 +190,15 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.dataInputPorts = normalized.append_items.filter((item) => item.type === 'port').map((item) => item.port_id);
   }
   if (node.type === 'construct_list') {
-    normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
+    normalized.item_type = ['content', 'message', 'event'].includes(node.item_type) ? node.item_type : 'content';
     normalized.initial_value_count = Number.isInteger(node.initial_value_count) ? Math.min(20, Math.max(0, node.initial_value_count)) : 1;
     normalized.dataInputPorts = Array.from({ length: normalized.initial_value_count }, (_, index) => `${normalized.item_type}-in-${index}`);
   }
   if (node.type === 'list_append') {
-    normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
+    normalized.item_type = ['content', 'message', 'event'].includes(node.item_type) ? node.item_type : 'content';
     normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
-  if (node.type === 'foreach') normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
+  if (node.type === 'foreach') normalized.item_type = ['content', 'message', 'event'].includes(node.item_type) ? node.item_type : 'content';
   if (node.type === 'history') {
     normalized.event_types = Array.isArray(node.event_types)
       ? [...new Set(node.event_types.filter((eventType) => ['terminal', 'response'].includes(eventType)))]
@@ -206,7 +207,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.limit = Number.isInteger(node.limit) ? Math.min(1000, Math.max(1, node.limit)) : 10;
   }
   if (['context_create', 'context_read', 'context_write'].includes(node.type)) {
-    if (!['content', 'message', 'list-content', 'list-message'].includes(node.value_type)) return null;
+    if (!['content', 'message', 'event', 'list-content', 'list-message', 'event-list'].includes(node.value_type)) return null;
     normalized.value_type = node.value_type;
   }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
@@ -230,7 +231,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
           || !parameter.name
           || parameter.name === 'control-in'
           || parameterNames.has(parameter.name)
-          || !['content', 'message', 'list-content', 'list-message'].includes(parameter.type)
+          || !['content', 'message', 'event', 'list-content', 'list-message', 'event-list'].includes(parameter.type)
         ) return null;
         parameterNames.add(parameter.name);
         normalized.parameters.push({ name: parameter.name, type: parameter.type });
@@ -249,7 +250,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
             || !output.name
             || output.name === 'control-out'
             || outputNames.has(output.name)
-            || !['content', 'message', 'list-content', 'list-message'].includes(output.type)
+            || !['content', 'message', 'event', 'list-content', 'list-message', 'event-list'].includes(output.type)
           ) return null;
           outputNames.add(output.name);
           normalized.outputs.push({ name: output.name, type: output.type });

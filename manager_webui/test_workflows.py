@@ -4,6 +4,69 @@ from workflows import filter_invalid_connections, node_format_error
 
 
 class WorkflowConnectionFilterTest(unittest.TestCase):
+    def test_preserves_history_to_event_foreach_connection(self):
+        nodes = [
+            {
+                "id": "history",
+                "type": "history",
+                "arguments": {"event_types": ["response"], "limit": 10},
+            },
+            {
+                "id": "foreach",
+                "type": "foreach",
+                "arguments": {"item_type": "event"},
+            },
+        ]
+        connection = {
+            "id": "history-to-foreach",
+            "fromId": "history",
+            "fromPortId": "events",
+            "toId": "foreach",
+            "toPortId": "list-in",
+            "type": "event-list",
+        }
+
+        _, connections = filter_invalid_connections(nodes, [connection], [], [])
+
+        self.assertEqual(connections, [connection])
+
+    def test_preserves_split_event_connections(self):
+        nodes = [
+            {
+                "id": "input",
+                "type": "input",
+                "workflowPorts": [
+                    {"id": "workflow:event", "name": "event", "type": "event"}
+                ],
+            },
+            {"id": "split", "type": "split_event", "arguments": {}},
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [
+                    {"id": "workflow:type", "name": "type", "type": "content"},
+                    {"id": "workflow:payload", "name": "payload", "type": "content"},
+                ],
+            },
+        ]
+        connections = [
+            {"fromId": "input", "fromPortId": "workflow:event", "toId": "split", "toPortId": "event-in", "type": "event"},
+            {"fromId": "split", "fromPortId": "type-out", "toId": "output", "toPortId": "workflow:type", "type": "content"},
+            {"fromId": "split", "fromPortId": "payload-out", "toId": "output", "toPortId": "workflow:payload", "type": "content"},
+        ]
+
+        _, filtered = filter_invalid_connections(
+            nodes,
+            connections,
+            [{"name": "event", "type": "event"}],
+            [
+                {"name": "type", "type": "content"},
+                {"name": "payload", "type": "content"},
+            ],
+        )
+
+        self.assertEqual(filtered, connections)
+
     def test_rejects_invalid_context_value_type(self):
         error = node_format_error(
             {
@@ -55,7 +118,7 @@ class WorkflowConnectionFilterTest(unittest.TestCase):
         self.assertEqual(connections, [connection])
 
     def test_preserves_context_connections_for_matching_value_type(self):
-        for value_type in ("content", "message", "list-content", "list-message"):
+        for value_type in ("content", "message", "event", "list-content", "list-message", "event-list"):
             with self.subTest(value_type=value_type):
                 nodes = [
                     {

@@ -13,7 +13,14 @@ import redis
 from queue_client import get_connection
 
 
-CONTEXT_VALUE_TYPES = {"content", "message", "list-content", "list-message"}
+CONTEXT_VALUE_TYPES = {
+    "content",
+    "message",
+    "event",
+    "list-content",
+    "list-message",
+    "event-list",
+}
 
 
 class WorkflowContextError(ValueError):
