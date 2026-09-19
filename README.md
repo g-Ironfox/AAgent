@@ -30,10 +30,10 @@ QQ 和 WebUI Terminal 都只是当前已经实现的事件源,并不是系统入
 
 这些能力可以组合出不少巧妙的模式:
 
-- **ReAct** — 用循环连接 LLM、工具和 Context,让每轮 observation 回到下一轮 reasoning,退出条件由 Router 显式控制。
+- **ReAct** — workflow 单次完成 LLM、工具和 Context, 连续发布事件调用自身实现循环 ; 通过 history召回 让每轮 observation 回到下一轮 reasoning,退出条件由 Router 显式控制。
 - **动态计划** — 根据中间结果选择、跳过或重复步骤,而不是在代码里写死一条执行路径。
 - **能力组合** — 把不同工具和子 Workflow 作为独立能力单元,按任务动态选择和编排。
-- **Multi-Agent** — 未来可以把不同角色建模为可复用的 Agent Workflow,通过事件、共享 Context 和子 Workflow 调用完成委派、协作、复核与交叉验证。
+- **Multi-Agent** — 未来可以把不同角色建模为可复用的 Agent Workflow,通过事件、共享 Context 和子 Workflow 调用完成委派、协作、复核与交叉验证。比如与用户对接和长任务的分工。
 
 更重要的是,事件源和 Workflow 解耦后,一次长任务不必表现为“发出请求,等待最终答案”。未来可以把计划变化、阶段结果、工具进度、Agent 间交接和需要用户决策的节点持续转化为事件,让 Terminal、聊天平台或其他客户端呈现可追踪、可介入、可继续的交互过程。这是 AAgent 希望探索的体验:复杂执行发生在后台,但用户始终看得见进度,并能在恰当的时机参与。
 

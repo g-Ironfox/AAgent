@@ -13,6 +13,7 @@ from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
 from documents import create_documents_router
+from event_catalog import create_event_catalog_router
 from models import create_models_router
 from workflows import create_workflows_router
 
@@ -147,6 +148,7 @@ def health():
 app.include_router(create_models_router(model_configs))
 app.include_router(create_workflows_router(redis_client, TOOLS_KEY, model_configs, workflows))
 app.include_router(create_documents_router(documents))
+app.include_router(create_event_catalog_router())
 
 static_directory = Path(__file__).parent / "static"
 

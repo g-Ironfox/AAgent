@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 事件目录</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/events.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 管理">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>EVENT CATALOG</small></span>
+    </a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/workflows.html">Workflows</a>
+        <a class="active" href="/events.html" aria-current="page">事件</a>
+        <a href="/document.html">文档</a>
+        <a href="/model.html">模型</a>
+      </nav>
+      <div class="catalog-state" aria-live="polite"><span>事件类型</span><strong id="catalogState">读取中</strong></div>
+    </div>
+  </header>
+
+  <main class="event-main">
+    <section class="event-workspace" aria-label="事件类型目录">
+      <aside class="event-sidebar">
+        <header class="event-sidebar-heading">
+          <div><p>EVENT TYPES</p><h1>事件目录</h1></div>
+          <label class="event-search">
+            <span class="sr-only">搜索事件类型</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+            <input id="eventSearch" type="search" placeholder="搜索类型或用途" autocomplete="off">
+          </label>
+        </header>
+        <div id="eventList" class="event-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="schema-panel" aria-labelledby="eventTitle">
+        <header class="schema-heading">
+          <div>
+            <p id="eventScope">SCHEMA</p>
+            <h2 id="eventTitle">选择事件类型</h2>
+          </div>
+          <div class="schema-actions" id="schemaActions" hidden>
+            <div class="view-switch" role="group" aria-label="Schema 显示方式">
+              <button class="active" type="button" data-view="tree" aria-pressed="true">字段</button>
+              <button type="button" data-view="json" aria-pressed="false">JSON</button>
+            </div>
+            <button id="copySchema" class="copy-schema" type="button" title="复制 JSON Schema" aria-label="复制 JSON Schema">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+          </div>
+        </header>
+        <div id="schemaEmpty" class="schema-empty"><strong>正在读取事件目录</strong></div>
+        <div id="schemaContent" class="schema-content" hidden>
+          <section class="event-summary">
+            <p id="eventDescription"></p>
+            <dl>
+              <div><dt>生产者</dt><dd id="eventProducer"></dd></div>
+              <div><dt>消费者</dt><dd id="eventConsumer"></dd></div>
+            </dl>
+          </section>
+          <section id="schemaTree" class="schema-tree" aria-label="Schema 字段"></section>
+          <pre id="schemaJson" class="schema-json" hidden><code></code></pre>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/events.js"></script>
+</body>
+</html>

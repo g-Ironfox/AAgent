@@ -62,6 +62,10 @@ export function fetchWorkflows() {
   return request('/api/workflows');
 }
 
+export function fetchEventCatalog() {
+  return request('/api/event-catalog');
+}
+
 export function fetchWorkflow(workflowId) {
   return request(`/api/workflows/${encodeURIComponent(workflowId)}`);
 }
