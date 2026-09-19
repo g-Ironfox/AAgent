@@ -49,9 +49,9 @@ EVENT_CATALOG = [
                 "time": {"type": "string", "format": "date-time"},
                 "payload": {
                     "type": "object",
-                    "required": ["message", "files"],
+                    "required": ["content", "files"],
                     "properties": {
-                        "message": {"type": "string", "minLength": 1, "maxLength": 4000},
+                        "content": {"type": "string", "minLength": 1, "maxLength": 4000},
                         "files": {"type": "array", "maxItems": 0},
                     },
                     "additionalProperties": False,

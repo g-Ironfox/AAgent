@@ -77,7 +77,7 @@ def handle_task(e: dict):
         e={
             "event_type":"workflow",
             "payload":{
-                "content":e.get("payload",{}).get("message",""),
+                "content":e.get("payload",{}).get("content",""),
                 "source":"terminal",
             }
         }

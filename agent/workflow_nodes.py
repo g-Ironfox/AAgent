@@ -169,7 +169,7 @@ def workflow_split_event(current_id: int, workflow_map: WorkflowMap) -> int:
     if not isinstance(event_type, str) or not event_type or "payload" not in event:
         raise ValueError(f"split_event input contains an invalid event: node {node.get('id')}")
     propagate_workflow_output(workflow_map, node, "type-out", event_type)
-    propagate_workflow_output(workflow_map, node, "payload-out", event["payload"])
+    propagate_workflow_output(workflow_map, node, "payload-out", _json_content(event["payload"]))
     return next_successor(node)
 
 

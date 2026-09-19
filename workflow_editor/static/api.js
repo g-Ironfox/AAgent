@@ -37,11 +37,11 @@ export function fetchTerminalHistory(limit = 150) {
   return request(`/api/terminal/history?limit=${limit}`);
 }
 
-export function submitTerminal(message) {
+export function submitTerminal(content) {
   return request('/api/terminal', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, files: [] }),
+    body: JSON.stringify({ content, files: [] }),
   });
 }
 

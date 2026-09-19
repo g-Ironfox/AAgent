@@ -956,9 +956,9 @@ class WorkflowExecutionTest(unittest.TestCase):
 
         self.assertEqual(workflow_split_event(0, workflow_map), 1)
         self.assertEqual(workflow_map[1]["data_inputs"]["workflow:type"][2], "response")
-        self.assertIs(
+        self.assertEqual(
             workflow_map[1]["data_inputs"]["workflow:payload"][2],
-            event["payload"],
+            '{"content":"hello"}',
         )
 
     def test_deserialize_json_converts_content_and_list_content(self):

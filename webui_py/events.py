@@ -22,7 +22,7 @@ MAX_EVENT_BODY_BYTES = 256 * 1024
 class TerminalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    message: str
+    content: str
     files: list[str] = Field(default_factory=list)
 
 
@@ -376,10 +376,10 @@ def create_events_router(
 
     @router.post("/api/terminal", status_code=201)
     def submit_terminal(payload: TerminalRequest):
-        message = payload.message.strip()
-        if not message:
+        content = payload.content.strip()
+        if not content:
             return JSONResponse(status_code=400, content={"error": "消息不能为空"})
-        if len(message) > MAX_TERMINAL_RUNES:
+        if len(content) > MAX_TERMINAL_RUNES:
             return JSONResponse(status_code=400, content={"error": "消息不能超过 4000 个字符"})
         if payload.files:
             return JSONResponse(status_code=400, content={"error": "暂不支持文件附件"})
@@ -387,7 +387,7 @@ def create_events_router(
         event = {
             "event_type": "terminal",
             "time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "payload": {"message": message, "files": []},
+            "payload": {"content": content, "files": []},
         }
         try:
             redis_client.rpush(queue_name, json.dumps(event, ensure_ascii=False, separators=(",", ":")))

@@ -94,14 +94,14 @@ function appendMessage(item) {
   const content = document.createElement('p');
   content.textContent = type === 'response'
     ? payload.content || (payload.tool_calls?.length ? '[工具调用]' : '[空响应]')
-    : payload.message || '[空命令]';
+    : payload.content || '[空命令]';
   article.append(meta, content);
   elements.messageList.append(article);
 }
 
 async function sendMessage() {
-  const message = elements.input.value.trim();
-  if (!message || state.sending) return;
+  const content = elements.input.value.trim();
+  if (!content || state.sending) return;
 
   state.sending = true;
   elements.sendButton.disabled = true;
@@ -110,7 +110,7 @@ async function sendMessage() {
   elements.sendStatus.textContent = '正在入队…';
 
   try {
-    const result = await submitTerminal(message);
+    const result = await submitTerminal(content);
     elements.queueName.textContent = result.queue;
     elements.input.value = '';
     elements.sendStatus.className = 'send-status success';
