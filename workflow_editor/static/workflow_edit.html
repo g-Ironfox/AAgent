@@ -296,16 +296,9 @@
 
   <template id="llmInspectorTemplate">
     <div data-interface-contract></div>
-    <section class="inspector-section">
-      <div class="section-label"><strong>Message 输入</strong><span>按顺序发送</span></div>
-      <div class="route-options" data-llm-input-options></div>
-      <button class="add-branch-button" type="button" data-add-llm-input>+ 添加 Message</button>
-      <small class="section-help">端口从 message-in-0 开始顺序生成，每个端口接收一条构造后的 Message。</small>
-    </section>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>模型<select data-field="model"><option>加载模型配置中</option></select></label>
-      <label>系统指令<textarea data-field="prompt" rows="5" maxlength="500"></textarea></label>
       <label class="checkbox-field"><input type="checkbox" data-think><span><strong>Think</strong><small>启用推理过程输出</small></span></label>
       <label class="checkbox-field"><input type="checkbox" data-tool-calls><span><strong>Tool Calls</strong><small>启用 OpenAI 格式的工具调用输出</small></span></label>
     </section>

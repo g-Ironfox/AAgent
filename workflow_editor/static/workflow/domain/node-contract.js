@@ -147,17 +147,9 @@ export function portsForNode(node) {
       ...(node.output_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'output', type: port.type, label: port.name, title: port.name, multiple: true })),
     ];
   }
-  const inputPorts = (node.dataInputPorts || ['message-in-0']).map((portId, index) => ({
-    id: portId,
-    direction: 'input',
-    type: 'message',
-    label: `Message ${index}`,
-    title: `Message ${index}`,
-    multiple: false,
-  }));
   const ports = [
     { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-    ...inputPorts,
+    { id: 'messages-in', direction: 'input', type: 'list-message', label: 'Messages', title: 'Message 列表', multiple: false },
     { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
     { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },
   ];
@@ -191,7 +183,7 @@ export function createNode(type, nodes, configuration = null) {
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
   if (type === 'history') return { id: createWorkflowId('history'), type, name: `召回 History ${number}`, event_types: ['terminal', 'response'], limit: 10, ...position };
-  if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', prompt: '处理输入并返回结果。', dataInputPorts: ['message-in-0'], tools: [], think: false, tool_calls: false, ...position };
+  if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
   if (type === 'local_tool') return { id: createWorkflowId('local-tool'), type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
   if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
   if (type === 'remote_async_tool') return { id: createWorkflowId('remote-async-tool'), type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };

@@ -9,7 +9,6 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
   if (node.type === 'history') bindHistory(node, context);
-  if (node.type === 'llm') bindLlmInputs(node, context);
 }
 
 function commitStructureChange(node, context, renderInspector = true) {
@@ -159,29 +158,6 @@ function bindHistory(node, context) {
     node.limit = Math.min(1000, Math.max(1, Number.parseInt(limitField.value, 10) || 1));
     limitField.value = node.limit;
     context.markChanged();
-  });
-}
-
-function bindLlmInputs(node, context) {
-  const options = context.elements.inspectorContent.querySelector('[data-llm-input-options]');
-  node.dataInputPorts.forEach((portId, index) => {
-    const option = document.createElement('div');
-    option.className = 'route-option';
-    option.innerHTML = '<span class="route-index"></span><label><strong></strong><small></small></label><button type="button" class="branch-delete" data-delete-input title="删除最后一个输入">×</button>';
-    option.querySelector('.route-index').textContent = String(index).padStart(2, '0');
-    option.querySelector('strong').textContent = `Message ${index}`;
-    option.querySelector('small').textContent = portId;
-    option.querySelector('[data-delete-input]').addEventListener('click', () => {
-      if (node.dataInputPorts.length <= 1 || index !== node.dataInputPorts.length - 1) return;
-      node.dataInputPorts.pop();
-      commitStructureChange(node, context);
-    });
-    options.append(option);
-  });
-  context.elements.inspectorContent.querySelector('[data-add-llm-input]').addEventListener('click', () => {
-    if (node.dataInputPorts.length >= 20) return;
-    node.dataInputPorts.push(`message-in-${node.dataInputPorts.length}`);
-    commitStructureChange(node, context);
   });
 }
 

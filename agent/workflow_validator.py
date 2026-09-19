@@ -590,13 +590,13 @@ def _validate_data_connection(
 
     source_type = source_node["type"]
     target_type = target_node["type"]
-    if target_type == "construct_list" and connection_type != target_node["item_type"]:
+    if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):
         raise WorkflowValidationError(
-            f"construct_list input requires {target_node['item_type']} data: connection {connection_index}"
+            f"construct_list input requires {node_argument(target_node, 'item_type')} data: connection {connection_index}"
         )
-    if source_type == "construct_list" and connection_type != f"list-{source_node['item_type']}":
+    if source_type == "construct_list" and connection_type != f"list-{node_argument(source_node, 'item_type')}":
         raise WorkflowValidationError(
-            f"construct_list output requires list-{source_node['item_type']} data: connection {connection_index}"
+            f"construct_list output requires list-{node_argument(source_node, 'item_type')} data: connection {connection_index}"
         )
     if target_type == "list_append":
         expected_type = (
@@ -613,16 +613,20 @@ def _validate_data_connection(
             f"list_append output requires list-{node_argument(source_node, 'item_type')} data: connection {connection_index}"
         )
     if target_type == "foreach" and (
-        connection_type != f"list-{target_node['item_type']}" or to_port != "list-in"
+        connection_type != f"list-{node_argument(target_node, 'item_type')}" or to_port != "list-in"
     ):
         raise WorkflowValidationError(
-            f"foreach input requires list-{target_node['item_type']} data: connection {connection_index}"
+            f"foreach input requires list-{node_argument(target_node, 'item_type')} data: connection {connection_index}"
         )
     if source_type == "foreach" and (
-        connection_type != source_node["item_type"] or from_port != "item-out"
+        connection_type != node_argument(source_node, "item_type") or from_port != "item-out"
     ):
         raise WorkflowValidationError(
-            f"foreach output requires {source_node['item_type']} data: connection {connection_index}"
+            f"foreach output requires {node_argument(source_node, 'item_type')} data: connection {connection_index}"
+        )
+    if target_type == "llm" and connection_type != "list-message":
+        raise WorkflowValidationError(
+            f"llm messages-in input requires list-message data: connection {connection_index}"
         )
     if source_type == "llm" and from_port == "tool_calls" and connection_type != "list-content":
         raise WorkflowValidationError(

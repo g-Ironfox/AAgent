@@ -40,7 +40,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
     "history": {"event_types", "limit"},
-    "llm": {"model", "prompt", "think", "tool_calls", "tools"},
+    "llm": {"model", "think", "tool_calls", "tools"},
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
     "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
@@ -133,7 +133,7 @@ def data_ports_for_node(
             outputs.add("reasoning")
         if node_argument(node, "tool_calls") is True:
             outputs.add("tool_calls")
-        return declared_inputs, outputs
+        return {"messages-in"}, outputs
     if node_type == "construct_message":
         return declared_inputs | {"content-in"}, {"message-out"}
     if node_type == "construct_content":

@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from workflow_parser import parse_workflow
-from workflow_nodes import run_workflow_map
+from workflow_nodes import run_workflow_map, workflow_construct_list, workflow_llm
 from workflow_validator import WorkflowValidationError, validate_workflow
 
 
@@ -42,6 +42,147 @@ def callable_workflow_fixture() -> dict:
 
 
 class CallableWorkflowNodeTest(unittest.TestCase):
+    def test_validator_reads_construct_list_item_type_from_arguments(self):
+        workflow = {
+            "input_ports": [{"name": "value", "type": "content"}],
+            "output_ports": [{"name": "values", "type": "list-content"}],
+            "nodes": [
+                {
+                    "id": "input",
+                    "type": "input",
+                    "workflowPorts": [
+                        {
+                            "id": "workflow:value",
+                            "name": "value",
+                            "type": "content",
+                        }
+                    ],
+                },
+                {
+                    "id": "list",
+                    "type": "construct_list",
+                    "arguments": {
+                        "item_type": "content",
+                        "initial_value_count": 1,
+                    },
+                    "dataInputPorts": ["content-in-0"],
+                },
+                {
+                    "id": "output",
+                    "type": "output",
+                    "workflowPorts": [
+                        {
+                            "id": "workflow:values",
+                            "name": "values",
+                            "type": "list-content",
+                        }
+                    ],
+                },
+            ],
+            "connections": [
+                {
+                    "fromId": "input",
+                    "fromPortId": "control-out",
+                    "toId": "list",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "fromId": "list",
+                    "fromPortId": "control-out",
+                    "toId": "output",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "fromId": "input",
+                    "fromPortId": "workflow:value",
+                    "toId": "list",
+                    "toPortId": "content-in-0",
+                    "type": "content",
+                },
+                {
+                    "fromId": "list",
+                    "fromPortId": "list-out",
+                    "toId": "output",
+                    "toPortId": "workflow:values",
+                    "type": "list-content",
+                },
+            ],
+        }
+
+        validate_workflow(workflow)
+
+    def test_llm_accepts_list_message_input(self):
+        workflow = {
+            "input_ports": [{"name": "messages", "type": "list-message"}],
+            "output_ports": [],
+            "nodes": [
+                {
+                    "id": "input",
+                    "type": "input",
+                    "workflowPorts": [
+                        {
+                            "id": "workflow:messages",
+                            "name": "messages",
+                            "type": "list-message",
+                        }
+                    ],
+                },
+                {
+                    "id": "llm",
+                    "type": "llm",
+                    "arguments": {
+                        "model": "",
+                        "think": False,
+                        "tool_calls": False,
+                        "tools": [],
+                    },
+                },
+                {"id": "output", "type": "output", "workflowPorts": []},
+            ],
+            "connections": [
+                {
+                    "fromId": "input",
+                    "fromPortId": "control-out",
+                    "toId": "llm",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "fromId": "llm",
+                    "fromPortId": "control-out",
+                    "toId": "output",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "fromId": "input",
+                    "fromPortId": "workflow:messages",
+                    "toId": "llm",
+                    "toPortId": "messages-in",
+                    "type": "list-message",
+                },
+            ],
+        }
+
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+
+        self.assertEqual(
+            parsed[1]["data_inputs"]["messages-in"],
+            [0, "workflow:messages", None],
+        )
+
+        workflow["input_ports"][0]["type"] = "message"
+        workflow["nodes"][0]["workflowPorts"][0]["type"] = "message"
+        workflow["connections"][2]["type"] = "message"
+        with self.assertRaisesRegex(
+            WorkflowValidationError,
+            "llm messages-in input requires list-message data",
+        ):
+            validate_workflow(workflow)
+
     def test_validator_and_parser_accept_history_node(self):
         workflow = {
             "input_ports": [],
@@ -325,6 +466,57 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
 
 class WorkflowExecutionTest(unittest.TestCase):
+    def test_construct_list_preserves_declared_port_order(self):
+        workflow_map = [
+            {
+                "id": "messages",
+                "type": "construct_list",
+                "arguments": {"item_type": "message", "initial_value_count": 2},
+                "successors": {"next": 1},
+                "data_inputs": {
+                    "message-in-1": [None, None, {"role": "user", "content": "second"}],
+                    "message-in-0": [None, None, {"role": "system", "content": "first"}],
+                },
+                "data_outputs": {"list-out": [[1, "messages-in"]]},
+            },
+            {
+                "id": "llm",
+                "data_inputs": {"messages-in": [0, "list-out", None]},
+            },
+        ]
+
+        workflow_construct_list(0, workflow_map)
+
+        self.assertEqual(
+            workflow_map[1]["data_inputs"]["messages-in"][2],
+            [
+                {"role": "system", "content": "first"},
+                {"role": "user", "content": "second"},
+            ],
+        )
+
+    def test_llm_rejects_missing_or_invalid_messages(self):
+        base_node = {
+            "id": "llm",
+            "type": "llm",
+            "arguments": {"tools": []},
+            "successors": {"next": 1},
+            "data_outputs": {"output": []},
+        }
+        invalid_values = [None, [], [{"role": "user"}], ["not-a-message"]]
+
+        for value in invalid_values:
+            with self.subTest(value=value):
+                workflow_map = [
+                    {
+                        **base_node,
+                        "data_inputs": {"messages-in": [None, None, value]},
+                    },
+                    {},
+                ]
+                with self.assertRaisesRegex(ValueError, "llm messages input"):
+                    workflow_llm(0, workflow_map)
+
     def test_list_append_outputs_new_list_without_mutating_input(self):
         for position, expected in (("start", ["new", "first"]), ("end", ["first", "new"])):
             with self.subTest(position=position):

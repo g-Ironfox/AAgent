@@ -76,31 +76,23 @@ def workflow_output(current_id: int, workflow_map: WorkflowMap) -> int:
 
 
 def workflow_llm(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    has_messages, value = read_workflow_input(node, "messages-in")
+    if not has_messages:
+        raise ValueError(f"llm messages input is missing: node {node.get('id')}")
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"llm messages input must be a non-empty list: node {node.get('id')}")
+    if any(
+        not isinstance(message, dict)
+        or message.get("role") not in {"system", "user", "assistant", "tool"}
+        or not isinstance(message.get("content"), str)
+        for message in value
+    ):
+        raise ValueError(f"llm messages input contains an invalid message: node {node.get('id')}")
+    messages = list(value)
+
     from llm import chat_with_deepseek
     from tools.tool import registered_tools
-
-    node = workflow_map[current_id]
-
-    def message_order(port_id: str) -> int:
-        return int(port_id.removeprefix("message-in-"))
-
-    messages = []
-    input_ports = sorted(
-        (
-            port_id
-            for port_id in node["data_inputs"]
-            if port_id.startswith("message-in-")
-            and port_id.removeprefix("message-in-").isdigit()
-        ),
-        key=message_order,
-    )
-    for port_id in input_ports:
-        has_value, value = read_workflow_input(node, port_id)
-        if has_value:
-            messages.append(value)
-    prompt = node_argument(node, "prompt")
-    if prompt:
-        messages.insert(0, {"role": "system", "content": prompt})
 
     configured_tools = set(node_argument(node, "tools", []))
     tools = [
@@ -149,7 +141,10 @@ def workflow_construct_content(current_id: int, workflow_map: WorkflowMap) -> in
 def workflow_construct_list(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     values = []
-    for port_id in node.get("data_inputs", {}):
+    item_type = node_argument(node, "item_type")
+    initial_value_count = node_argument(node, "initial_value_count", 0)
+    for input_index in range(initial_value_count):
+        port_id = f"{item_type}-in-{input_index}"
         has_value, value = read_workflow_input(node, port_id)
         if has_value:
             values.append(value)

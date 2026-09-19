@@ -32,7 +32,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
     "history": {"event_types", "limit"},
-    "llm": {"model", "prompt", "think", "tool_calls", "tools"},
+    "llm": {"model", "think", "tool_calls", "tools"},
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
     "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
@@ -333,8 +333,8 @@ def filter_invalid_connections(
             node_type = target.get("type")
             if node_type == "output":
                 return output_types.get(to_port)
-            if node_type == "llm" and to_port in target.get("dataInputPorts", []):
-                return "message"
+            if node_type == "llm" and to_port == "messages-in":
+                return "list-message"
             if node_type == "construct_message" and to_port == "content-in":
                 return "content"
             if node_type in {"construct_content", "router"} and to_port in target.get("dataInputPorts", ["content-in"]):

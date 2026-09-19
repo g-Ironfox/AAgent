@@ -21,7 +21,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),
   history: new Set(['event_types', 'limit']),
-  llm: new Set(['model', 'prompt', 'think', 'tool_calls', 'tools']),
+  llm: new Set(['model', 'think', 'tool_calls', 'tools']),
   local_tool: new Set(['tool', 'parameters']),
   remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
   remote_async_tool: new Set(['tool', 'parameters', 'timeout_ms', 'callback']),
@@ -172,11 +172,6 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
   }
   if (node.type === 'llm') {
     normalized.model = typeof node.model === 'string' ? node.model : 'gpt-5';
-    normalized.prompt = typeof node.prompt === 'string' ? node.prompt.slice(0, 500) : '';
-    const declaredCount = Array.isArray(node.dataInputPorts)
-      ? node.dataInputPorts.filter((portId) => typeof portId === 'string' && /^(?:content|message)-in-\d+$/.test(portId)).length
-      : 1;
-    normalized.dataInputPorts = Array.from({ length: Math.min(20, Math.max(1, declaredCount)) }, (_, index) => `message-in-${index}`);
     normalized.think = node.think === true;
     normalized.tool_calls = node.tool_calls === true;
     normalized.tools = normalized.tool_calls && Array.isArray(node.tools) ? [...new Set(node.tools.filter((tool) => typeof tool === 'string' && tool))] : [];
