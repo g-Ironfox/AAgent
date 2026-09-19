@@ -54,16 +54,21 @@ def record_history(e: dict):
     }
     return get_history_collection().insert_one(document).inserted_id
 
-def get_recent_history(limit: int = 10, query: dict = {}, event_type: str | None = None) -> list[dict]:
+def get_recent_history(
+    limit: int = 10,
+    query: dict | None = None,
+    event_types: list[str] | None = None,
+) -> list[dict]:
     if limit <= 0:
         return []
 
-    if event_type is not None:
-        query["event_type"] = event_type
+    history_query = dict(query or {})
+    if event_types is not None:
+        history_query["event_type"] = {"$in": event_types}
 
     cursor = (
         get_history_collection()
-        .find(query, {"_id": 0})
+        .find(history_query, {"_id": 0})
         .sort("_id", DESCENDING)
         .limit(limit)
     )

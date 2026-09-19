@@ -85,6 +85,11 @@
             <div><strong>遍历列表</strong><small>逐项执行循环体控制流</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="history">
+            <span class="node-symbol history-symbol" aria-hidden="true">H</span>
+            <div><strong>召回 History</strong><small>按事件类型读取最近记录</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="local_tool">
             <span class="node-symbol local_tool-symbol" aria-hidden="true">LT</span>
             <div><strong>Local Tool</strong><small>调用 Agent 进程内工具</small></div>
@@ -334,6 +339,22 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="historyInspectorTemplate">
+    <div data-interface-contract data-contract-status="按时间倒序"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>召回数量<input data-field="limit" type="number" min="1" max="1000" step="1"></label>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>事件类型</strong><span>可多选</span></div>
+      <div class="tool-options">
+        <label class="checkbox-field"><input data-history-event-type type="checkbox" value="terminal"><span><strong>terminal</strong></span></label>
+        <label class="checkbox-field"><input data-history-event-type type="checkbox" value="response"><span><strong>response</strong></span></label>
+      </div>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
   <template id="construct_contentInspectorTemplate">
     <div data-interface-contract data-contract-status="按内容项顺序执行"></div>
     <section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section>
@@ -397,6 +418,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=14"></script>
+  <script type="module" src="/workflow.js?v=16"></script>
 </body>
 </html>

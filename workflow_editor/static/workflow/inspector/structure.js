@@ -7,6 +7,7 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'construct_content') bindConstructContent(node, context);
   if (node.type === 'construct_list') bindConstructList(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
+  if (node.type === 'history') bindHistory(node, context);
   if (node.type === 'llm') bindLlmInputs(node, context);
 }
 
@@ -134,6 +135,29 @@ function bindForeach(node, context) {
   typeField.addEventListener('change', () => {
     node.item_type = typeField.value;
     commitStructureChange(node, context);
+  });
+}
+
+function bindHistory(node, context) {
+  const eventTypeFields = context.elements.inspectorContent.querySelectorAll('[data-history-event-type]');
+  const limitField = context.elements.inspectorContent.querySelector('[data-field="limit"]');
+  for (const field of eventTypeFields) {
+    field.checked = node.event_types.includes(field.value);
+    field.addEventListener('change', () => {
+      const selected = [...eventTypeFields].filter((option) => option.checked).map((option) => option.value);
+      if (!selected.length) {
+        field.checked = true;
+        return;
+      }
+      node.event_types = selected;
+      context.markChanged();
+    });
+  }
+  limitField.value = node.limit;
+  limitField.addEventListener('change', () => {
+    node.limit = Math.min(1000, Math.max(1, Number.parseInt(limitField.value, 10) || 1));
+    limitField.value = node.limit;
+    context.markChanged();
   });
 }
 

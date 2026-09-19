@@ -19,6 +19,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   construct_content: new Set(['append_items']),
   construct_list: new Set(['item_type', 'initial_value_count']),
   foreach: new Set(['item_type']),
+  history: new Set(['event_types', 'limit']),
   llm: new Set(['model', 'prompt', 'think', 'tool_calls', 'tools']),
   local_tool: new Set(['tool', 'parameters']),
   remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
@@ -194,6 +195,13 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.dataInputPorts = Array.from({ length: normalized.initial_value_count }, (_, index) => `${normalized.item_type}-in-${index}`);
   }
   if (node.type === 'foreach') normalized.item_type = ['content', 'message'].includes(node.item_type) ? node.item_type : 'content';
+  if (node.type === 'history') {
+    normalized.event_types = Array.isArray(node.event_types)
+      ? [...new Set(node.event_types.filter((eventType) => ['terminal', 'response'].includes(eventType)))]
+      : [];
+    if (!normalized.event_types.length) return null;
+    normalized.limit = Number.isInteger(node.limit) ? Math.min(1000, Math.max(1, node.limit)) : 10;
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     normalized.tool = typeof node.tool === 'string' ? node.tool : '';
     if (node.type === 'local_tool') {

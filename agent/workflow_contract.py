@@ -14,6 +14,7 @@ SUPPORTED_NODE_TYPES = {
     "construct_content",
     "construct_list",
     "foreach",
+    "history",
     "llm",
     "local_tool",
     "remote_sync_tool",
@@ -36,6 +37,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_content": {"append_items"},
     "construct_list": {"item_type", "initial_value_count"},
     "foreach": {"item_type"},
+    "history": {"event_types", "limit"},
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
@@ -138,6 +140,8 @@ def data_ports_for_node(
         return declared_inputs, {"list-out"}
     if node_type == "foreach":
         return declared_inputs | {"list-in"}, {"item-out"}
+    if node_type == "history":
+        return declared_inputs, {"events"}
     if node_type == "local_tool":
         return declared_inputs | set(tool_parameter_names(node)), {"output"}
     if node_type == "remote_sync_tool":
@@ -218,6 +222,8 @@ def is_valid_connection(
         if target_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_parameter_type(target_node, to_port):
             return False
         if source_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_output_type(source_node, from_port):
+            return False
+        if source_node["type"] == "history" and (from_port != "events" or connection_type != "list-content"):
             return False
         source_type = source_node["type"]
         target_type = target_node["type"]

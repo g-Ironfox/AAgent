@@ -41,6 +41,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .construct_content-symbol { background:#2f6f8f; }
 .construct_list-symbol { background:#176f73; }
 .foreach-symbol { background:#9a5a24; }
+.history-symbol { background:#396a87; }
 .local_tool-symbol { background:var(--green); }
 .remote_sync_tool-symbol { background:#a94f36; }
 .remote_async_tool-symbol { background:#b47a22; }

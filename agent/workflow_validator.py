@@ -229,6 +229,22 @@ def _validate_node(node: Any, index: int) -> None:
             raise WorkflowValidationError(
                 "foreach node item_type must be 'content' or 'message'"
             )
+    elif node_type == "history":
+        event_types = node_argument(node, "event_types")
+        if (
+            not isinstance(event_types, list)
+            or not event_types
+            or any(event_type not in {"terminal", "response"} for event_type in event_types)
+            or len(event_types) != len(set(event_types))
+        ):
+            raise WorkflowValidationError(
+                "history node event_types must contain unique terminal or response values"
+            )
+        limit = node_argument(node, "limit")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+            raise WorkflowValidationError(
+                "history node limit must be an integer from 1 to 1000"
+            )
     elif node_type == "local_tool":
         parameters = node_argument(node, "parameters", [])
         if not isinstance(parameters, list) or any(

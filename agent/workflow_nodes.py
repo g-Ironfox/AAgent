@@ -177,6 +177,21 @@ def workflow_foreach(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node, "item")
 
 
+def workflow_history(current_id: int, workflow_map: WorkflowMap) -> int:
+    from history_repository import get_recent_history
+
+    node = workflow_map[current_id]
+    events = get_recent_history(
+        limit=node_argument(node, "limit"),
+        event_types=node_argument(node, "event_types"),
+    )
+    serialized_events = [
+        json.dumps(event, ensure_ascii=False, default=str) for event in events
+    ]
+    propagate_workflow_output(workflow_map, node, "events", serialized_events)
+    return next_successor(node)
+
+
 def workflow_router(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     has_key, key = read_workflow_input(node, "content-in")
@@ -322,6 +337,7 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_content": workflow_construct_content,
     "construct_list": workflow_construct_list,
     "foreach": workflow_foreach,
+    "history": workflow_history,
     "llm": workflow_llm,
     "local_tool": workflow_local_tool,
     "remote_sync_tool": workflow_remote_sync_tool,

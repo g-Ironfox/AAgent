@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from workflow_parser import parse_workflow
 from workflow_nodes import run_workflow_map
@@ -41,6 +42,68 @@ def callable_workflow_fixture() -> dict:
 
 
 class CallableWorkflowNodeTest(unittest.TestCase):
+    def test_validator_and_parser_accept_history_node(self):
+        workflow = {
+            "input_ports": [],
+            "output_ports": [{"name": "events", "type": "list-content"}],
+            "nodes": [
+                {"id": "input", "type": "input", "workflowPorts": []},
+                {
+                    "id": "history",
+                    "type": "history",
+                    "arguments": {"event_types": ["terminal", "response"], "limit": 5},
+                },
+                {
+                    "id": "output",
+                    "type": "output",
+                    "workflowPorts": [
+                        {"id": "workflow:events", "name": "events", "type": "list-content"}
+                    ],
+                },
+            ],
+            "connections": [
+                {"fromId": "input", "fromPortId": "control-out", "toId": "history", "toPortId": "control-in", "type": "control"},
+                {"fromId": "history", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
+                {"fromId": "history", "fromPortId": "events", "toId": "output", "toPortId": "workflow:events", "type": "list-content"},
+            ],
+        }
+
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+
+        self.assertEqual(
+            parsed[1]["arguments"],
+            {"event_types": ["terminal", "response"], "limit": 5},
+        )
+        self.assertEqual(parsed[1]["data_outputs"]["events"], [[2, "workflow:events"]])
+
+    def test_validator_rejects_history_limit_out_of_range(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][1] = {
+            "id": "history",
+            "type": "history",
+            "arguments": {"event_types": ["response"], "limit": 0},
+        }
+
+        with self.assertRaisesRegex(WorkflowValidationError, "limit must be an integer from 1 to 1000"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_invalid_history_event_types(self):
+        for event_types in ([], ["workflow"], ["response", "response"]):
+            with self.subTest(event_types=event_types):
+                workflow = callable_workflow_fixture()
+                workflow["nodes"][1] = {
+                    "id": "history",
+                    "type": "history",
+                    "arguments": {"event_types": event_types, "limit": 10},
+                }
+
+                with self.assertRaisesRegex(
+                    WorkflowValidationError,
+                    "event_types must contain unique terminal or response values",
+                ):
+                    validate_workflow(workflow)
+
     def test_parser_uses_named_control_flow_dictionaries(self):
         workflow = {
             "input_ports": [],
@@ -335,6 +398,47 @@ class WorkflowExecutionTest(unittest.TestCase):
         self.assertEqual(len(workflow_map[2]["data_inputs"]["content-in"]), 3)
         self.assertEqual(input_items, ["first", "second", "third"])
         self.assertNotIn("_foreach_items", workflow_map[1])
+
+    @patch("history_repository.get_recent_history")
+    def test_history_node_returns_filtered_events_as_json_content(self, get_recent_history):
+        get_recent_history.return_value = [
+            {"event_type": "response", "payload": {"content": "first"}},
+            {"event_type": "response", "payload": {"content": "second"}},
+        ]
+        workflow_map = [
+            {
+                "id": "history",
+                "type": "history",
+                "arguments": {"event_types": ["terminal", "response"], "limit": 2},
+                "successors": {"next": 1},
+                "data_inputs": {},
+                "data_outputs": {"events": [[1, "workflow:events"]]},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [
+                    {"id": "workflow:events", "name": "events", "type": "list-content"}
+                ],
+                "successors": {},
+                "data_inputs": {"workflow:events": [0, "events", None]},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(
+            run_workflow_map(workflow_map, 0),
+            {
+                "events": [
+                    '{"event_type": "response", "payload": {"content": "first"}}',
+                    '{"event_type": "response", "payload": {"content": "second"}}',
+                ]
+            },
+        )
+        get_recent_history.assert_called_once_with(
+            limit=2,
+            event_types=["terminal", "response"],
+        )
 
 
 if __name__ == "__main__":

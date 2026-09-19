@@ -30,6 +30,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_content": {"append_items"},
     "construct_list": {"item_type", "initial_value_count"},
     "foreach": {"item_type"},
+    "history": {"event_types", "limit"},
     "llm": {"model", "prompt", "think", "tool_calls", "tools"},
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
@@ -135,6 +136,18 @@ def node_format_error(node: dict[str, Any], index: int) -> str | None:
     unsupported_fields = set(node) - NODE_BASE_FIELDS - NODE_SHARED_FIELDS
     if unsupported_fields:
         return f"nodes[{index}] 包含不支持的一级字段: {', '.join(sorted(unsupported_fields))}"
+    if node_type == "history":
+        event_types = arguments.get("event_types")
+        limit = arguments.get("limit")
+        if (
+            not isinstance(event_types, list)
+            or not event_types
+            or any(event_type not in {"terminal", "response"} for event_type in event_types)
+            or len(event_types) != len(set(event_types))
+        ):
+            return f"nodes[{index}].arguments.event_types 只能包含不重复的 terminal 或 response"
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+            return f"nodes[{index}].arguments.limit 必须是 1 到 1000 的整数"
     return None
 
 
@@ -294,6 +307,8 @@ def filter_invalid_connections(
                 )
             if node_type == "remote_async_tool" and from_port == "task_id":
                 return "content"
+            if node_type == "history" and from_port == "events":
+                return "list-content"
             if node_type == "llm" and from_port == "reasoning" and node_arguments(source).get("think") is True:
                 return "content"
             if node_type == "llm" and from_port == "tool_calls" and node_arguments(source).get("tool_calls") is True:
