@@ -3,7 +3,13 @@ from unittest.mock import patch
 
 from workflow_contract import is_valid_connection
 from workflow_parser import parse_workflow
-from workflow_nodes import run_workflow_map, workflow_construct_list, workflow_llm, workflow_split_event
+from workflow_nodes import (
+    run_workflow_map,
+    workflow_construct_list,
+    workflow_deserialize_json,
+    workflow_llm,
+    workflow_split_event,
+)
 from workflow_validator import WorkflowValidationError, validate_workflow
 
 
@@ -954,6 +960,63 @@ class WorkflowExecutionTest(unittest.TestCase):
             workflow_map[1]["data_inputs"]["workflow:payload"][2],
             event["payload"],
         )
+
+    def test_deserialize_json_converts_content_and_list_content(self):
+        workflow_map = [
+            {
+                "id": "deserialize",
+                "type": "deserialize_json",
+                "arguments": {
+                    "outputs": [
+                        {"key": "meta", "type": "content"},
+                        {"key": "items", "type": "list-content"},
+                    ]
+                },
+                "successors": {"next": 1},
+                "data_inputs": {
+                    "content-in": [2, "content-out", '{"meta":{"ok":true},"items":["plain",7,{"id":1},null]}']
+                },
+                "data_outputs": {
+                    "meta": [[1, "meta-in"]],
+                    "items": [[1, "items-in"]],
+                },
+            },
+            {
+                "data_inputs": {
+                    "meta-in": [0, "meta", None],
+                    "items-in": [0, "items", None],
+                }
+            },
+        ]
+
+        self.assertEqual(workflow_deserialize_json(0, workflow_map), 1)
+        self.assertEqual(workflow_map[1]["data_inputs"]["meta-in"][2], '{"ok":true}')
+        self.assertEqual(
+            workflow_map[1]["data_inputs"]["items-in"][2],
+            ["plain", "7", '{"id":1}', "null"],
+        )
+
+    def test_deserialize_json_does_not_propagate_partial_outputs(self):
+        workflow_map = [
+            {
+                "id": "deserialize",
+                "type": "deserialize_json",
+                "arguments": {
+                    "outputs": [
+                        {"key": "first", "type": "content"},
+                        {"key": "missing", "type": "content"},
+                    ]
+                },
+                "successors": {"next": 1},
+                "data_inputs": {"content-in": [2, "content-out", '{"first":"value"}']},
+                "data_outputs": {"first": [[1, "first-in"]]},
+            },
+            {"data_inputs": {"first-in": [0, "first", None]}},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "key is missing"):
+            workflow_deserialize_json(0, workflow_map)
+        self.assertIsNone(workflow_map[1]["data_inputs"]["first-in"][2])
 
 
 if __name__ == "__main__":

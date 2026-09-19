@@ -223,6 +223,25 @@ def _validate_node(node: Any, index: int) -> None:
             )
     elif node_type == "construct_content":
         _validate_construct_content(node)
+    elif node_type == "deserialize_json":
+        outputs = node_argument(node, "outputs")
+        if not isinstance(outputs, list) or not outputs or any(
+            not isinstance(output, dict)
+            or set(output) != {"key", "type"}
+            or not isinstance(output.get("key"), str)
+            or not output["key"]
+            or output["key"] == "control-out"
+            or output.get("type") not in DATA_CONNECTION_TYPES
+            for output in outputs
+        ):
+            raise WorkflowValidationError(
+                "deserialize_json outputs must contain valid key and type fields"
+            )
+        output_keys = [output["key"] for output in outputs]
+        if len(output_keys) != len(set(output_keys)):
+            raise WorkflowValidationError(
+                "deserialize_json outputs contains duplicate keys"
+            )
     elif node_type == "construct_list":
         _validate_construct_list(node)
     elif node_type == "list_append":

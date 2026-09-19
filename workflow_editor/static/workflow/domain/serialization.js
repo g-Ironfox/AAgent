@@ -17,6 +17,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   router: new Set(['branches']),
   construct_message: new Set(['role']),
   construct_content: new Set(['append_items']),
+  deserialize_json: new Set(['outputs']),
   split_event: new Set(),
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
@@ -188,6 +189,25 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
         : item?.type === 'fixed' ? [{ type: 'fixed', value: typeof item.value === 'string' ? item.value.slice(0, 100000) : '' }] : [])
       : [{ type: 'port', port_id: 'append-in-0' }];
     normalized.dataInputPorts = normalized.append_items.filter((item) => item.type === 'port').map((item) => item.port_id);
+  }
+  if (node.type === 'deserialize_json') {
+    if (!Array.isArray(node.outputs) || !node.outputs.length) return null;
+    const outputKeys = new Set();
+    normalized.outputs = [];
+    for (const output of node.outputs) {
+      if (
+        !output
+        || typeof output !== 'object'
+        || Object.keys(output).length !== 2
+        || typeof output.key !== 'string'
+        || !output.key
+        || output.key === 'control-out'
+        || outputKeys.has(output.key)
+        || !['content', 'message', 'event', 'list-content', 'list-message', 'event-list'].includes(output.type)
+      ) return null;
+      outputKeys.add(output.key);
+      normalized.outputs.push({ key: output.key, type: output.type });
+    }
   }
   if (node.type === 'construct_list') {
     normalized.item_type = ['content', 'message', 'event'].includes(node.item_type) ? node.item_type : 'content';

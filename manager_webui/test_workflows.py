@@ -67,6 +67,50 @@ class WorkflowConnectionFilterTest(unittest.TestCase):
 
         self.assertEqual(filtered, connections)
 
+    def test_deserialize_json_filters_changed_output_type_but_preserves_control(self):
+        nodes = [
+            {"id": "input", "type": "input", "workflowPorts": []},
+            {
+                "id": "deserialize",
+                "type": "deserialize_json",
+                "arguments": {"outputs": [{"key": "payload", "type": "message"}]},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [{"id": "workflow:payload", "name": "payload", "type": "content"}],
+            },
+        ]
+        control = {
+            "fromId": "deserialize", "fromPortId": "control-out",
+            "toId": "output", "toPortId": "control-in", "type": "control",
+        }
+        stale_data = {
+            "fromId": "deserialize", "fromPortId": "payload",
+            "toId": "output", "toPortId": "workflow:payload", "type": "content",
+        }
+
+        _, filtered = filter_invalid_connections(
+            nodes,
+            [control, stale_data],
+            [],
+            [{"name": "payload", "type": "content"}],
+        )
+
+        self.assertEqual(filtered, [control])
+
+    def test_rejects_invalid_deserialize_json_outputs(self):
+        error = node_format_error(
+            {
+                "id": "deserialize",
+                "type": "deserialize_json",
+                "arguments": {"outputs": [{"key": "value", "type": "content"}, {"key": "value", "type": "event"}]},
+            },
+            0,
+        )
+
+        self.assertEqual(error, "nodes[0].arguments.outputs 的 key 不能重复")
+
     def test_rejects_invalid_context_value_type(self):
         error = node_format_error(
             {

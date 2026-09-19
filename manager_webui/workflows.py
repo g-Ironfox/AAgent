@@ -29,6 +29,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "router": {"branches"},
     "construct_message": {"role"},
     "construct_content": {"append_items"},
+    "deserialize_json": {"outputs"},
     "split_event": set(),
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
@@ -163,6 +164,21 @@ def node_format_error(node: dict[str, Any], index: int) -> str | None:
             return f"nodes[{index}].arguments.item_type 必须是 content、message 或 event"
         if arguments.get("position") not in {"start", "end"}:
             return f"nodes[{index}].arguments.position 必须是 start 或 end"
+    if node_type == "deserialize_json":
+        outputs = arguments.get("outputs")
+        if not isinstance(outputs, list) or not outputs or any(
+            not isinstance(output, dict)
+            or set(output) != {"key", "type"}
+            or not isinstance(output.get("key"), str)
+            or not output["key"]
+            or output["key"] == "control-out"
+            or output.get("type") not in DATA_TYPES
+            for output in outputs
+        ):
+            return f"nodes[{index}].arguments.outputs 必须包含有效的 key 和 type"
+        output_keys = [output["key"] for output in outputs]
+        if len(output_keys) != len(set(output_keys)):
+            return f"nodes[{index}].arguments.outputs 的 key 不能重复"
     if node_type in {"context_create", "context_read", "context_write"}:
         if arguments.get("value_type") not in DATA_TYPES:
             return f"nodes[{index}].arguments.value_type 必须是受支持的数据类型"
@@ -318,6 +334,11 @@ def filter_invalid_connections(
                 return "content"
             if node_type == "split_event" and from_port in {"type-out", "payload-out"}:
                 return "content"
+            if node_type == "deserialize_json":
+                return next(
+                    (output.get("type") for output in node_arguments(source).get("outputs", []) if output.get("key") == from_port),
+                    None,
+                )
             if node_type in {"llm", "local_tool"} and from_port == "output":
                 return "content"
             if node_type == "remote_sync_tool":
@@ -360,6 +381,8 @@ def filter_invalid_connections(
                 return "content"
             if node_type == "split_event" and to_port == "event-in":
                 return "event"
+            if node_type == "deserialize_json" and to_port == "content-in":
+                return "content"
             if node_type in {"construct_content", "router"} and to_port in target.get("dataInputPorts", ["content-in"]):
                 return "content"
             if node_type == "local_tool" and to_port in node_arguments(target).get("parameters", []):

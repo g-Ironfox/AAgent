@@ -42,6 +42,10 @@
 .remote-tool-candidate strong { font-size:10px; }
 .remote-tool-candidate small { color:var(--muted); font-size:8px; }
 .route-options,.tool-options { display:grid; gap:6px; }
+.json-output-list { display:grid; gap:6px; }
+.json-output-row { min-width:0; padding:8px; display:grid; grid-template-columns:20px minmax(0,1fr) minmax(0,1fr) 22px; align-items:center; gap:7px; border:1px solid var(--line); background:var(--surface); }
+.json-output-row input,.json-output-row select { min-width:0; height:30px; padding:0 7px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:9px; }
+.json-output-row input:focus,.json-output-row select:focus { outline:1px solid var(--green); border-color:var(--green); }
 .parameter-row { display:grid; grid-template-columns:minmax(0,1fr) 94px 32px; gap:6px; margin-bottom:6px; }
 .parameter-row input { box-sizing:border-box; width:100%; min-width:0; height:34px; padding:0 9px; color:var(--ink); border:1px solid var(--line); background:var(--surface); font-size:10px; }
 .parameter-row input:focus { outline:1px solid var(--green); border-color:var(--green); }

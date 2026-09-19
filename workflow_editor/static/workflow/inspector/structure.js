@@ -5,6 +5,7 @@ import { state } from '../domain/serialization.js';
 export function bindStructureInspector(node, context) {
   if (node.type === 'router') bindBranches(node, context);
   if (node.type === 'construct_content') bindConstructContent(node, context);
+  if (node.type === 'deserialize_json') bindDeserializeJson(node, context);
   if (node.type === 'construct_list') bindConstructList(node, context);
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
@@ -176,6 +177,45 @@ function bindContext(node, context) {
   typeField.value = node.value_type;
   typeField.addEventListener('change', () => {
     node.value_type = typeField.value;
+    commitStructureChange(node, context);
+  });
+}
+
+function bindDeserializeJson(node, context) {
+  const container = context.elements.inspectorContent.querySelector('[data-json-outputs]');
+  node.outputs.forEach((output, index) => {
+    const row = document.createElement('div');
+    row.className = 'json-output-row';
+    row.innerHTML = '<span class="route-index"></span><input data-output-key maxlength="80" aria-label="JSON 键"><select data-output-type aria-label="输出类型"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="event-list">event-list</option></select><button type="button" class="branch-delete" title="删除输出">×</button>';
+    row.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
+    const keyField = row.querySelector('[data-output-key]');
+    const typeField = row.querySelector('[data-output-type]');
+    keyField.value = output.key;
+    typeField.value = output.type;
+    keyField.addEventListener('change', () => {
+      const key = keyField.value.trim();
+      if (!key || key === 'control-out' || node.outputs.some((item, itemIndex) => itemIndex !== index && item.key === key)) {
+        keyField.value = output.key;
+        return;
+      }
+      output.key = key;
+      commitStructureChange(node, context);
+    });
+    typeField.addEventListener('change', () => {
+      output.type = typeField.value;
+      commitStructureChange(node, context);
+    });
+    row.querySelector('button').addEventListener('click', () => {
+      if (node.outputs.length <= 1) return;
+      node.outputs.splice(index, 1);
+      commitStructureChange(node, context);
+    });
+    container.append(row);
+  });
+  context.elements.inspectorContent.querySelector('[data-add-json-output]').addEventListener('click', () => {
+    let suffix = node.outputs.length + 1;
+    while (node.outputs.some((output) => output.key === `value${suffix}`)) suffix += 1;
+    node.outputs.push({ key: `value${suffix}`, type: 'content' });
     commitStructureChange(node, context);
   });
 }

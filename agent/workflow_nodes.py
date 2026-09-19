@@ -173,6 +173,77 @@ def workflow_split_event(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
+def _json_content(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _is_message(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"role", "content"}
+        and value.get("role") in {"system", "user", "assistant", "tool"}
+        and isinstance(value.get("content"), str)
+    )
+
+
+def _is_event(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("event_type"), str)
+        and bool(value["event_type"])
+        and "payload" in value
+    )
+
+
+def _deserialize_json_value(value: Any, value_type: str) -> Any:
+    if value_type == "content":
+        return _json_content(value)
+    if value_type == "list-content" and isinstance(value, list):
+        return [_json_content(item) for item in value]
+    if value_type == "message" and _is_message(value):
+        return value
+    if value_type == "event" and _is_event(value):
+        return value
+    if value_type == "list-message" and isinstance(value, list) and all(_is_message(item) for item in value):
+        return value
+    if value_type == "event-list" and isinstance(value, list) and all(_is_event(item) for item in value):
+        return value
+    raise ValueError(f"value does not match declared type {value_type}")
+
+
+def workflow_deserialize_json(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    has_content, content = read_workflow_input(node, "content-in")
+    if not has_content:
+        raise ValueError(f"deserialize_json input is missing: node {node.get('id')}")
+    if not isinstance(content, str):
+        raise ValueError(f"deserialize_json input must be content: node {node.get('id')}")
+    try:
+        document = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"deserialize_json input is invalid JSON: node {node.get('id')}") from error
+    if not isinstance(document, dict):
+        raise ValueError(f"deserialize_json root must be an object: node {node.get('id')}")
+
+    converted = {}
+    for output in node_argument(node, "outputs", []):
+        key = output["key"]
+        if key not in document:
+            raise ValueError(f"deserialize_json key is missing: node {node.get('id')}, key {key}")
+        try:
+            converted[key] = _deserialize_json_value(document[key], output["type"])
+        except ValueError as error:
+            raise ValueError(
+                f"deserialize_json value type mismatch: node {node.get('id')}, key {key}"
+            ) from error
+
+    for key, value in converted.items():
+        propagate_workflow_output(workflow_map, node, key, value)
+    return next_successor(node)
+
+
 def workflow_construct_list(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     values = []
@@ -427,6 +498,7 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_message": workflow_construct_message,
     "construct_content": workflow_construct_content,
     "split_event": workflow_split_event,
+    "deserialize_json": workflow_deserialize_json,
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,
     "foreach": workflow_foreach,

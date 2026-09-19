@@ -80,6 +80,11 @@
             <div><strong>拆分 Event</strong><small>拆出事件类型与 Payload</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="deserialize_json">
+            <span class="node-symbol deserialize_json-symbol" aria-hidden="true">J/</span>
+            <div><strong>反序列化 JSON</strong><small>按键解析 JSON 对象</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="construct_list">
             <span class="node-symbol construct_list-symbol" aria-hidden="true">L</span>
             <div><strong>构造列表</strong><small>把同类型输入聚合为列表</small></div>
@@ -342,6 +347,19 @@
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="deserialize_jsonInspectorTemplate">
+    <div data-interface-contract data-contract-status="动态输出"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+    </section>
+    <section class="inspector-section">
+      <div class="section-label"><strong>JSON 键</strong><span>键对应输出 Port</span></div>
+      <div class="json-output-list" data-json-outputs></div>
+      <button class="add-branch-button" type="button" data-add-json-output>+ 添加输出</button>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

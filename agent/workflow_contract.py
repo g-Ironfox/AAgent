@@ -20,6 +20,7 @@ SUPPORTED_NODE_TYPES = {
     "construct_message",
     "construct_content",
     "split_event",
+    "deserialize_json",
     "construct_list",
     "list_append",
     "foreach",
@@ -48,6 +49,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_message": {"role"},
     "construct_content": {"append_items"},
     "split_event": set(),
+    "deserialize_json": {"outputs"},
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
@@ -159,6 +161,10 @@ def data_ports_for_node(
         return declared_inputs, {"content-out"}
     if node_type == "split_event":
         return declared_inputs | {"event-in"}, {"type-out", "payload-out"}
+    if node_type == "deserialize_json":
+        return {"content-in"}, {
+            output["key"] for output in node_argument(node, "outputs", [])
+        }
     if node_type == "construct_list":
         return declared_inputs, {"list-out"}
     if node_type == "list_append":
@@ -273,6 +279,21 @@ def is_valid_connection(
             return False
         if source_node["type"] == "split_event":
             if from_port not in {"type-out", "payload-out"} or connection_type != "content":
+                return False
+        if target_node["type"] == "deserialize_json" and (
+            to_port != "content-in" or connection_type != "content"
+        ):
+            return False
+        if source_node["type"] == "deserialize_json":
+            output_type = next(
+                (
+                    output["type"]
+                    for output in node_argument(source_node, "outputs", [])
+                    if output["key"] == from_port
+                ),
+                None,
+            )
+            if connection_type != output_type:
                 return False
         source_type = source_node["type"]
         target_type = target_node["type"]
