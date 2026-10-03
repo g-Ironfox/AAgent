@@ -111,7 +111,7 @@ def workflow_llm(current_id: int, workflow_map: WorkflowMap) -> int:
         raise ValueError(f"llm messages input contains an invalid message: node {node.get('id')}")
     messages = list(value)
 
-    from llm import chat_with_deepseek
+    from llm import chat_with_model
     from tools.tool import registered_tools
 
     configured_tools = set(node_argument(node, "tools", []))
@@ -120,7 +120,9 @@ def workflow_llm(current_id: int, workflow_map: WorkflowMap) -> int:
         for schema in registered_tools
         if schema["function"]["name"] in configured_tools
     ]
-    content, reasoning, tool_calls = chat_with_deepseek(messages, tools=tools)
+    content, reasoning, tool_calls = chat_with_model(
+        messages, node_argument(node, "model"), tools=tools
+    )
     propagate_workflow_output(workflow_map, node, "output", content)
     if "reasoning" in node.get("data_outputs", {}):
         propagate_workflow_output(workflow_map, node, "reasoning", reasoning)
