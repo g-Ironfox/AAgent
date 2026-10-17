@@ -21,7 +21,7 @@ MAX_WORKFLOW_METADATA_PORTS = 50
 MAX_WORKFLOW_NODE_REFERENCES = 50
 MAX_REMOTE_TOOL_REFERENCES = 100
 MAX_WORKFLOW_DESCRIPTION_LENGTH = 2000
-WORKFLOW_SCHEMA_VERSION = "1.1"
+WORKFLOW_SCHEMA_VERSION = "1.2"
 
 
 def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
@@ -45,7 +45,7 @@ class WorkflowRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=MAX_WORKFLOW_DESCRIPTION_LENGTH)
-    schema_version: Literal["1.1"]  # 只接受version=1.1的workflow
+    schema_version: Literal["1.2"]  # 只接受version=1.2的workflow
     input_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
     output_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
     nodes: list[dict[str, Any]] = Field(min_length=1, max_length=MAX_WORKFLOW_NODES)

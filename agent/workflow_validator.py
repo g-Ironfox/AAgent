@@ -29,7 +29,7 @@ class WorkflowValidationError(ValueError):
 
 
 _WORKFLOW_SCHEMA = json.loads(
-    Path(__file__).with_name("workflow_1_1.schema.json").read_text(encoding="utf-8")
+    Path(__file__).with_name("workflow_1_2.schema.json").read_text(encoding="utf-8")
 )
 _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 

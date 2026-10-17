@@ -12,6 +12,7 @@ from workflow_nodes import (
     workflow_construct_message,
     workflow_deserialize_json,
     workflow_llm,
+    workflow_publish_event,
     workflow_split_event,
 )
 from workflow_validator import WorkflowValidationError, validate_workflow
@@ -55,6 +56,45 @@ def callable_workflow_fixture() -> dict:
 
 
 class CallableWorkflowNodeTest(unittest.TestCase):
+    @patch("queue_client.publish_to_queue")
+    def test_publish_event_publishes_to_main_queue_and_continues(self, publish):
+        node = {
+            "id": "publish",
+            "type": "publish_event",
+            "successors": {"next": 3},
+            "data_inputs": {"event-in": [1, "event", {"event_type": "tick", "payload": {"n": 2}}]},
+        }
+
+        self.assertEqual(workflow_publish_event(0, [node]), 3)
+        publish.assert_called_once_with(
+            "main_agent_queue", {"event_type": "tick", "payload": {"n": 2}}
+        )
+
+    def test_publish_event_rejects_non_object_payload(self):
+        node = {
+            "id": "publish",
+            "type": "publish_event",
+            "data_inputs": {"event-in": [1, "event", {"event_type": "tick", "payload": "bad"}]},
+        }
+
+        with self.assertRaisesRegex(ValueError, "invalid event"):
+            workflow_publish_event(0, [node])
+
+    def test_publish_event_requires_event_connection(self):
+        nodes = {
+            "input": {"id": "input", "type": "input"},
+            "publish": {"id": "publish", "type": "publish_event"},
+        }
+        connection = {
+            "fromId": "input",
+            "fromPortId": "workflow:value",
+            "toId": "publish",
+            "toPortId": "event-in",
+            "type": "content",
+        }
+
+        self.assertFalse(is_valid_connection(connection, nodes, [{"name": "value", "type": "content"}], []))
+
     def test_validator_rejects_workflow_without_schema_version(self):
         workflow = callable_workflow_fixture()
         del workflow["schema_version"]
@@ -73,7 +113,7 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
     def test_validator_rejects_workflow_with_different_schema_version(self):
         # 升级 Workflow 协议时，同步更新旧版和未来版样例，确保两者都不是当前版本。
-        for version in ("1.0", "1.2"):
+        for version in ("1.0", "1.1"):
             with self.subTest(version=version):
                 workflow = callable_workflow_fixture()
                 workflow["schema_version"] = version

@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=16">
+  <link rel="stylesheet" href="/css/workflow.css?v=17">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -88,6 +88,11 @@
           <button class="library-item" type="button" data-add-node="split_event">
             <span class="node-symbol split_event-symbol" aria-hidden="true">E/</span>
             <div><strong>拆分 Event</strong><small>拆出事件类型与 Payload</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="publish_event">
+            <span class="node-symbol publish_event-symbol" aria-hidden="true">E!</span>
+            <div><strong>发布 Event</strong><small>投递至主 Agent 队列</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="deserialize_json">
@@ -379,6 +384,14 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="publish_eventInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
   <template id="construct_map_contentInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
@@ -575,6 +588,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=23"></script>
+  <script type="module" src="/workflow.js?v=24"></script>
 </body>
 </html>

@@ -13,6 +13,9 @@ from workflow_node_remap import remap_workflow_node_names
 
 
 class WorkflowSchemaVersionTest(unittest.TestCase):
+    def test_current_workflow_schema_version_is_1_2(self):
+        self.assertEqual(WORKFLOW_SCHEMA_VERSION, "1.2")
+
     def test_workflow_names_reject_empty_but_preserve_whitespace(self):
         with self.assertRaises(ValidationError):
             WorkflowRequest.model_validate({"name": "", "schema_version": WORKFLOW_SCHEMA_VERSION})
@@ -46,7 +49,7 @@ class WorkflowSchemaVersionTest(unittest.TestCase):
         self.assertEqual(raised.exception.errors()[0]["loc"], ("schema_version",))
 
         # 升级 Workflow 协议时，更新两侧样例，确保它们都不是当前版本。
-        for version in ("1.0", "1.2"):
+        for version in ("1.0", "1.1"):
             with self.subTest(version=version):
                 with self.assertRaises(ValidationError) as raised:
                     WorkflowRequest.model_validate({**payload, "schema_version": version})

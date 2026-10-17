@@ -1,7 +1,7 @@
 import { boundaryPorts, createNode, createWorkflowId, NODE_TYPES } from './node-contract.js';
 import { filterValidConnections } from './connection-rules.js';
 
-export const WORKFLOW_SCHEMA_VERSION = '1.1';
+export const WORKFLOW_SCHEMA_VERSION = '1.2';
 
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
@@ -23,6 +23,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   map_content_get: new Set(),
   deserialize_json: new Set(['outputs']),
   split_event: new Set(),
+  publish_event: new Set(),
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),

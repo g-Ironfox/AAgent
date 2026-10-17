@@ -69,6 +69,25 @@ def valid_workflow(node: dict) -> dict:
 
 
 class ToolNodeExecutionTest(unittest.TestCase):
+    def test_publish_event_is_registered_without_arguments(self):
+        self.assertIn("publish_event", SUPPORTED_NODE_TYPES)
+        self.assertEqual(NODE_ARGUMENT_FIELDS_BY_TYPE["publish_event"], set())
+        self.assertIn("publish_event", nodes_map)
+
+    def test_validator_accepts_publish_event_node(self):
+        workflow = valid_workflow({"id": "publish", "type": "publish_event"})
+        workflow["connections"].append({
+            "fromId": "input",
+            "fromPortId": "workflow:event",
+            "toId": "publish",
+            "toPortId": "event-in",
+            "type": "event",
+        })
+        workflow["input_ports"] = [{"name": "event", "type": "event"}]
+        workflow["nodes"][0]["workflowPorts"] = [{"id": "workflow:event", "name": "event", "type": "event"}]
+
+        validate_workflow(workflow)
+
     def test_local_tool_serializes_result(self):
         execute_tool = Mock()
         execute_tool.return_value = {"ok": True}
