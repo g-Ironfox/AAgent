@@ -10,6 +10,7 @@ export const NODE_TYPES = new Set([
   'map_content_get',
   'deserialize_json',
   'split_event',
+  'construct_event',
   'publish_event',
   'construct_list',
   'list_append',
@@ -118,6 +119,14 @@ export function portsForNode(node) {
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '发布 Event', multiple: false },
       { id: 'event-in', direction: 'input', type: 'event', label: 'Event', title: '待发布的事件', multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '发布后继续', multiple: false },
+    ];
+  }
+  if (node.type === 'construct_event') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '构造 Event', multiple: false },
+      { id: 'payload-in', direction: 'input', type: 'content', label: 'Payload JSON', title: 'JSON 对象字符串', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'event-out', direction: 'output', type: 'event', label: 'Event', title: '构造后的 Event', multiple: true },
     ];
   }
   if (node.type === 'deserialize_json') {
@@ -277,6 +286,7 @@ export function createNode(type, nodes, configuration = null) {
   if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
   if (type === 'split_event') return { id: createWorkflowId('split-event'), type, name: `拆分 Event ${number}`, ...position };
   if (type === 'publish_event') return { id: createWorkflowId('publish-event'), type, name: `发布 Event ${number}`, ...position };
+  if (type === 'construct_event') return { id: createWorkflowId('construct-event'), type, name: `构造 Event ${number}`, event_type: 'event_type', ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };

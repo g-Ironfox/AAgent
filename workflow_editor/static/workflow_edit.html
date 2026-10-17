@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=17">
+  <link rel="stylesheet" href="/css/workflow.css?v=18">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -93,6 +93,11 @@
           <button class="library-item" type="button" data-add-node="publish_event">
             <span class="node-symbol publish_event-symbol" aria-hidden="true">E!</span>
             <div><strong>发布 Event</strong><small>投递至主 Agent 队列</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="construct_event">
+            <span class="node-symbol construct_event-symbol" aria-hidden="true">E+</span>
+            <div><strong>构造 Event</strong><small>组合事件类型与 JSON Payload</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="deserialize_json">
@@ -392,6 +397,15 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="construct_eventInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>事件类型<input data-field="event_type" maxlength="120" placeholder="event_type"></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
   <template id="construct_map_contentInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
@@ -588,6 +602,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=24"></script>
+  <script type="module" src="/workflow.js?v=25"></script>
 </body>
 </html>

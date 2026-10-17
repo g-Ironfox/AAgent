@@ -44,6 +44,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .deserialize_json-symbol { background:#61568a; }
 .split_event-symbol { background:#147d78; }
 .publish_event-symbol { background:#b8483d; }
+.construct_event-symbol { background:#147d78; }
 .construct_list-symbol { background:#176f73; }
 .list_append-symbol { background:#27705b; }
 .foreach-symbol { background:#9a5a24; }

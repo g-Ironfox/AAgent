@@ -25,6 +25,7 @@
 .flow-node.deserialize_json { border-top-color:#61568a; }
 .flow-node.split_event { border-top-color:#147d78; }
 .flow-node.publish_event { border-top-color:#b8483d; }
+.flow-node.construct_event { border-top-color:#147d78; }
 .flow-node.llm { border-top-color:var(--blue); }
 .flow-node.local_tool { border-top-color:var(--green); }
 .flow-node.remote_sync_tool { border-top-color:#a94f36; }

@@ -258,6 +258,10 @@ def _validate_node(node: Any, index: int) -> None:
             raise WorkflowValidationError(
                 "construct_message node role must be a supported message role"
             )
+    elif node_type == "construct_event":
+        event_type = node_argument(node, "event_type")
+        if not isinstance(event_type, str) or not event_type.strip():
+            raise WorkflowValidationError("construct_event event_type must be a non-empty string")
     elif node_type == "construct_content":
         _validate_construct_content(node)
     elif node_type == "construct_map_content":

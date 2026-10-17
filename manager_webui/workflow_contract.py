@@ -23,6 +23,7 @@ SUPPORTED_NODE_TYPES = {
     "construct_map_content",
     "map_content_get",
     "split_event",
+    "construct_event",
     "publish_event",
     "deserialize_json",
     "construct_list",
@@ -58,6 +59,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_map_content": {"mappings"},
     "map_content_get": set(),
     "split_event": set(),
+    "construct_event": {"event_type"},
     "publish_event": set(),
     "deserialize_json": {"outputs"},
     "construct_list": {"item_type", "initial_value_count"},
@@ -183,6 +185,8 @@ def data_ports_for_node(
         return declared_inputs | {"event-in"}, {"type-out", "payload-out"}
     if node_type == "publish_event":
         return declared_inputs | {"event-in"}, set()
+    if node_type == "construct_event":
+        return {"payload-in"}, {"event-out"}
     if node_type == "deserialize_json":
         return {"content-in"}, {
             output["key"] for output in node_argument(node, "outputs", [])
@@ -305,6 +309,10 @@ def is_valid_connection(
         if source_node["type"] == "split_event":
             if from_port not in {"type-out", "payload-out"} or connection_type != "content":
                 return False
+        if target_node["type"] == "construct_event" and connection_type != "content":
+            return False
+        if source_node["type"] == "construct_event" and connection_type != "event":
+            return False
         if target_node["type"] == "deserialize_json" and (
             to_port != "content-in" or connection_type != "content"
         ):

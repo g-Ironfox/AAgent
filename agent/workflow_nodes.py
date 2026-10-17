@@ -202,6 +202,26 @@ def workflow_map_content_get(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
+def workflow_construct_event(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    event_type = node_argument(node, "event_type")
+    if not isinstance(event_type, str) or not event_type.strip():
+        raise ValueError(f"construct_event event_type is invalid: node {node.get('id')}")
+    has_payload, payload_content = read_workflow_input(node, "payload-in")
+    if not has_payload or not isinstance(payload_content, str):
+        raise ValueError(f"construct_event payload input must be content: node {node.get('id')}")
+    try:
+        payload = json.loads(payload_content)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"construct_event payload is invalid JSON: node {node.get('id')}") from error
+    if not isinstance(payload, dict):
+        raise ValueError(f"construct_event payload must be an object: node {node.get('id')}")
+    propagate_workflow_output(
+        workflow_map, node, "event-out", {"event_type": event_type, "payload": payload}
+    )
+    return next_successor(node)
+
+
 def workflow_split_event(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     has_event, event = read_workflow_input(node, "event-in")
@@ -600,6 +620,7 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_content": workflow_construct_content,
     "construct_map_content": workflow_construct_map_content,
     "map_content_get": workflow_map_content_get,
+    "construct_event": workflow_construct_event,
     "split_event": workflow_split_event,
     "publish_event": workflow_publish_event,
     "deserialize_json": workflow_deserialize_json,

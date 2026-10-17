@@ -6,6 +6,7 @@ from workflow_parser import parse_workflow
 from workflow_parser import WORKFLOW_SCHEMA_VERSION, WorkflowParseError
 from workflow_nodes import (
     run_workflow_map,
+    workflow_construct_event,
     workflow_construct_map_content,
     workflow_map_content_get,
     workflow_construct_list,
@@ -56,6 +57,36 @@ def callable_workflow_fixture() -> dict:
 
 
 class CallableWorkflowNodeTest(unittest.TestCase):
+    def test_construct_event_outputs_object_and_continues(self):
+        node = {
+            "id": "construct", "type": "construct_event",
+            "arguments": {"event_type": "tick"},
+            "successors": {"next": 1},
+            "data_inputs": {"payload-in": [2, "payload-out", '{"n":2,"nested":{"items":[true]}}']},
+            "data_outputs": {"event-out": [[1, "event-in"]]},
+        }
+        target = {"data_inputs": {"event-in": [0, "event-out", None]}}
+        self.assertEqual(workflow_construct_event(0, [node, target]), 1)
+        self.assertEqual(target["data_inputs"]["event-in"][2], {
+            "event_type": "tick", "payload": {"n": 2, "nested": {"items": [True]}},
+        })
+
+    def test_construct_event_rejects_invalid_payload(self):
+        for payload in (None, {}, "broken", "[]", '"text"', "null", "1"):
+            with self.subTest(payload=payload):
+                node = {
+                    "arguments": {"event_type": "tick"},
+                    "data_inputs": {"payload-in": [1, "output", payload]},
+                }
+                with self.assertRaisesRegex(ValueError, "payload"):
+                    workflow_construct_event(0, [node])
+
+    def test_construct_event_rejects_invalid_type(self):
+        for event_type in (None, "", "   ", 1):
+            with self.subTest(event_type=event_type):
+                with self.assertRaisesRegex(ValueError, "event_type"):
+                    workflow_construct_event(0, [{"arguments": {"event_type": event_type}}])
+
     @patch("queue_client.publish_to_queue")
     def test_publish_event_publishes_to_main_queue_and_continues(self, publish):
         node = {
