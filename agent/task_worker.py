@@ -59,7 +59,7 @@ def handle_task(e: dict):
         if workflow_name is not None:
             publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
                 "event_type": "workflow",
-                "payload": {**e["payload"], "workflow_name": workflow_name},
+                "payload": {**e["payload"], "workflow_name": workflow_name, "origin": e},
             })
         return
 
@@ -92,9 +92,11 @@ def handle_task(e: dict):
 
     input_node = workflow_map[start]
     workflow_ports = input_node.get('workflowPorts', [])
+    origin = e['payload'].get('origin', e)
     for port in workflow_ports:
+        value = origin if port['name'] == 'origin' else e['payload'].get(port['name'])
         propagate_workflow_output(
-            workflow_map, input_node, port['id'], e['payload'].get(port['name'])
+            workflow_map, input_node, port['id'], value
         )
 
     output = run_workflow_map(workflow_map, start)
