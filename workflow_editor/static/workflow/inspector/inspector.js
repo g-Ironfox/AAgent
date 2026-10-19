@@ -1,6 +1,6 @@
 import { portsForNode } from '../domain/node-contract.js';
 import { reconcileConnections } from '../domain/connection-rules.js';
-import { deleteNode, nodeById, state } from '../domain/serialization.js';
+import { nodeById, state } from '../domain/serialization.js';
 import { createIntegrationInspector } from './integrations.js';
 import { bindStructureInspector } from './structure.js';
 
@@ -55,11 +55,7 @@ export function createInspector(elements, editor, markChanged) {
       updateRoleSource();
     }
     elements.inspectorContent.querySelector('[data-delete-node]')?.addEventListener('click', () => {
-      deleteNode(node.id);
-      editor.ensureSelection();
-      markChanged();
-      editor.renderNodes();
-      renderInspector();
+      editor.deleteSelectedNode();
     });
   }
 
