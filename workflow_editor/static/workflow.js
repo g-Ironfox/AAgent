@@ -62,6 +62,15 @@ function renderWorkflow() {
   editor.renderWorkflow();
 }
 
+function currentCanvasViewport() {
+  return {
+    left: elements.canvas.scrollLeft,
+    top: elements.canvas.scrollTop,
+    width: elements.canvas.clientWidth,
+    height: elements.canvas.clientHeight,
+  };
+}
+
 function importWorkflowText(text, source = '已导入') {
   const workflow = parseWorkflowText(text);
   if (!loadSnapshot(workflow)) throw new Error('内容不是有效的 Workflow JSON');
@@ -478,7 +487,7 @@ document.querySelector('#workflowNodeLibrary').addEventListener('click', (event)
   if (!button) return;
   const reference = workflowReferences().find((workflow) => workflow.name === button.dataset.addWorkflowNode);
   if (!reference) return;
-  const node = addNode('workflow', reference);
+  const node = addNode('workflow', reference, currentCanvasViewport());
   if (!node) return;
   markChanged();
   editor.selectNode(node.id);
@@ -487,7 +496,7 @@ document.querySelector('#workflowNodeLibrary').addEventListener('click', (event)
 for (const button of document.querySelectorAll('[data-add-node]')) {
   button.addEventListener('click', () => {
     const nodeType = button.dataset.addNode;
-    const node = addNode(nodeType, nodeType === 'output' ? { output_ports: state.output_ports } : null);
+    const node = addNode(nodeType, nodeType === 'output' ? { output_ports: state.output_ports } : null, currentCanvasViewport());
     if (!node) return;
     markChanged();
     editor.selectNode(node.id);
