@@ -260,23 +260,39 @@ export function portsForNode(node) {
   return ports;
 }
 
-function nextNodePosition(nodes) {
+function nextNodePosition(nodes, viewport) {
+  const left = Math.max(12, viewport?.left ?? 52);
+  const top = Math.max(12, viewport?.top ?? 72);
+  const width = Math.max(210, viewport?.width ?? 900);
+  const height = Math.max(125, viewport?.height ?? 600);
+  const columns = Math.max(1, Math.floor((width - 24) / 258));
+  const rows = Math.max(1, Math.floor((height - 24) / 150));
   const positions = [];
-  for (let row = 0; row < 4; row += 1) {
-    for (let column = 0; column < 3; column += 1) {
-      positions.push({ x: 52 + column * 258, y: 72 + row * 150 });
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      positions.push({ x: left + column * 258, y: top + row * 150 });
     }
   }
   const available = positions.find((position) => nodes.every((node) => Math.abs(node.x - position.x) >= 210 || Math.abs(node.y - position.y) >= 125));
   if (available) return available;
-  const overflowIndex = nodes.length - positions.length;
-  return { x: 52 + (overflowIndex % 6) * 258, y: 72 + (Math.floor(overflowIndex / 6) + 4) * 150 };
+  const stackIndex = nodes.filter((node) => node.x >= left && node.x < left + width && node.y >= top && node.y < top + height).length;
+  const maxOffsetX = Math.max(0, width - 202);
+  const maxOffsetY = Math.max(0, height - 132);
+  const offsetSteps = Math.max(1, Math.floor(Math.min(maxOffsetX, maxOffsetY) / 18) + 1);
+  const stackLayer = Math.floor(stackIndex / offsetSteps);
+  const stackOffset = (stackIndex % offsetSteps) * 18;
+  const alternateX = Math.max(0, width - 202 - stackOffset);
+  const alternateY = Math.max(0, height - 132 - stackOffset);
+  return {
+    x: left + (stackLayer % 2 === 0 ? stackOffset : alternateX),
+    y: top + (stackLayer % 2 === 0 ? stackOffset : alternateY),
+  };
 }
 
-export function createNode(type, nodes, configuration = null) {
+export function createNode(type, nodes, configuration = null, viewport = null) {
   if (!NODE_TYPES.has(type) || type === 'input') return null;
   const number = nodes.filter((node) => node.type === type).length + 1;
-  const position = nextNodePosition(nodes);
+  const position = nextNodePosition(nodes, viewport);
   if (type === 'router') return { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position };
   if (type === 'output') return { id: createWorkflowId('output'), type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
   if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };

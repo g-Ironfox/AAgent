@@ -1,5 +1,5 @@
 import { portsForNode } from './domain/node-contract.js';
-import { state } from './domain/serialization.js';
+import { deleteNode, state } from './domain/serialization.js';
 
 export function createWorkflowEditor(elements, markChanged) {
   const editorState = { selectedId: 'input', connectionDrag: null };
@@ -302,6 +302,17 @@ export function createWorkflowEditor(elements, markChanged) {
     return editorState.selectedId;
   }
 
+  function deleteSelectedNode() {
+    const selectedIndex = state.nodes.findIndex((node) => node.id === editorState.selectedId);
+    if (selectedIndex <= 0 || !deleteNode(editorState.selectedId)) return false;
+    editorState.selectedId = state.nodes[Math.max(0, selectedIndex - 1)]?.id;
+    ensureSelection();
+    markChanged();
+    renderNodes();
+    renderInspector();
+    return true;
+  }
+
   function bindCanvasPan() {
     let pan = null;
     elements.canvas.addEventListener('pointerdown', (event) => {
@@ -325,6 +336,19 @@ export function createWorkflowEditor(elements, markChanged) {
     elements.canvas.addEventListener('pointercancel', finishPan);
   }
 
+  function bindDeleteKey() {
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Delete') return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (
+        target.isContentEditable
+        || target.closest('input, textarea, select, [contenteditable="true"], .inspector')
+      )) return;
+      if (!deleteSelectedNode()) return;
+      event.preventDefault();
+    });
+  }
+
   function renderWorkflow() {
     ensureSelection();
     renderNodes();
@@ -333,8 +357,10 @@ export function createWorkflowEditor(elements, markChanged) {
   }
 
   bindCanvasPan();
+  bindDeleteKey();
   return {
     editorState,
+    deleteSelectedNode,
     ensureSelection,
     renderConnections,
     renderNodes,

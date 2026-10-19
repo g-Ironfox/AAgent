@@ -87,8 +87,8 @@ export function nodeById(id) {
   return state.nodes.find((node) => node.id === id);
 }
 
-export function addNode(type, configuration = null) {
-  const node = createNode(type, state.nodes, configuration);
+export function addNode(type, configuration = null, viewport = null) {
+  const node = createNode(type, state.nodes, configuration, viewport);
   if (!node) return null;
   state.nodes.push(node);
   return node;
