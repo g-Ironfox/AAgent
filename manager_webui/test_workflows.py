@@ -13,8 +13,8 @@ from workflow_node_remap import remap_workflow_node_names
 
 
 class WorkflowSchemaVersionTest(unittest.TestCase):
-    def test_current_workflow_schema_version_is_1_3(self):
-        self.assertEqual(WORKFLOW_SCHEMA_VERSION, "1.3")
+    def test_current_workflow_schema_version_is_1_4(self):
+        self.assertEqual(WORKFLOW_SCHEMA_VERSION, "1.4")
 
     def test_workflow_names_reject_empty_but_preserve_whitespace(self):
         with self.assertRaises(ValidationError):

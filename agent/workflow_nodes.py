@@ -497,7 +497,10 @@ def workflow_context_create(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     value = _context_input(node, "initial-value", "Context Value 输入缺失")
     context_id = create_context(
-        node["_workflow_invocation_id"], node_argument(node, "value_type"), value
+        node["_workflow_invocation_id"],
+        node_argument(node, "value_type"),
+        value,
+        node_argument(node, "context_id") or None,
     )
     node["_workflow_context_ids"].add(context_id)
     propagate_workflow_output(workflow_map, node, "context-id", context_id)

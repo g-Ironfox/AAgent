@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aagent.local/protocol/workflow/1.1/schema.json",
-  "title": "AAgent Workflow 1.1",
+  "$id": "https://aagent.local/protocol/workflow/1.4/schema.json",
+  "title": "AAgent Workflow 1.4",
   "type": "object",
   "required": ["schema_version", "name", "input_ports", "output_ports", "nodes", "connections"],
   "properties": {
-    "schema_version": { "const": "1.1" },
+    "schema_version": { "const": "1.4" },
     "name": { "type": "string" },
     "description": { "type": "string" },
     "input_ports": { "$ref": "#/$defs/ports" },
@@ -41,11 +41,14 @@
       "required": ["id", "type"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "type": { "enum": ["input", "output", "router", "construct_message", "construct_content", "construct_map_content", "map_content_get", "split_event", "deserialize_json", "construct_list", "list_append", "foreach", "history", "llm", "local_tool", "remote_sync_tool", "remote_async_tool", "context_create", "context_read", "context_write", "session_create", "session_read", "session_write", "workflow"] },
+        "type": { "enum": ["input", "output", "router", "construct_message", "construct_content", "construct_map_content", "map_content_get", "split_event", "construct_event", "publish_event", "deserialize_json", "construct_list", "list_append", "foreach", "history", "llm", "local_tool", "remote_sync_tool", "remote_async_tool", "context_create", "context_read", "context_write", "session_create", "session_read", "session_write", "workflow"] },
         "name": { "type": "string" },
         "x": { "type": "number" },
         "y": { "type": "number" },
-        "arguments": { "type": "object" },
+        "arguments": {
+          "type": "object",
+          "properties": { "context_id": { "type": "string", "minLength": 1 } }
+        },
         "workflowPorts": {
           "type": "array",
           "items": {

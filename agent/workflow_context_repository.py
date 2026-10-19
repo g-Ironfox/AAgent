@@ -103,26 +103,35 @@ def delete_contexts(context_ids: set[str]) -> None:
         raise WorkflowContextError("Context 存储操作失败") from error
 
 
-def create_context(invocation_id: str, value_type: str, value: Any) -> str:
+def create_context(
+    invocation_id: str, value_type: str, value: Any, context_id: str | None = None
+) -> str:
     serialized = _serialize(value_type, value)
-    context_id = f"ctx_{uuid4().hex}"
+    context_id = context_id or f"ctx_{uuid4().hex}"
+    context_id = _validate_context_id(context_id)
     key = _key(context_id)
     now = datetime.now(timezone.utc).isoformat()
+    mapping = {
+        "version": "1",
+        "value_type": value_type,
+        "value": serialized,
+        "invocation_id": invocation_id,
+        "created_at": now,
+        "updated_at": now,
+    }
     try:
-        pipeline = get_connection().pipeline(transaction=True)
-        pipeline.hset(
+        created = get_connection().eval(
+            "if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end "
+            "redis.call('HSET', KEYS[1], unpack(ARGV, 1, #ARGV - 1)) "
+            "redis.call('EXPIRE', KEYS[1], ARGV[#ARGV]) "
+            "return 1",
+            1,
             key,
-            mapping={
-                "version": "1",
-                "value_type": value_type,
-                "value": serialized,
-                "invocation_id": invocation_id,
-                "created_at": now,
-                "updated_at": now,
-            },
+            *(argument for field_value in mapping.items() for argument in field_value),
+            str(_ttl_seconds()),
         )
-        pipeline.expire(key, _ttl_seconds())
-        pipeline.execute()
+        if not created:
+            raise WorkflowContextError("Context ID 已存在")
     except redis.RedisError as error:
         raise WorkflowContextError("Context 存储操作失败") from error
     return context_id

@@ -70,7 +70,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
     "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
-    "context_create": {"value_type"},
+    "context_create": {"value_type", "context_id"},
     "context_read": {"value_type"},
     "context_write": {"value_type"},
     "session_create": {"value_type"},

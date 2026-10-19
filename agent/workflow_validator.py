@@ -29,7 +29,7 @@ class WorkflowValidationError(ValueError):
 
 
 _WORKFLOW_SCHEMA = json.loads(
-    Path(__file__).with_name("workflow_1_3.schema.json").read_text(encoding="utf-8")
+    Path(__file__).with_name("workflow_1_4.schema.json").read_text(encoding="utf-8")
 )
 _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
@@ -323,6 +323,14 @@ def _validate_node(node: Any, index: int) -> None:
             raise WorkflowValidationError(
                 "context node value_type must be a supported data type"
             )
+        if node_type == "context_create":
+            context_id = node_argument(node, "context_id")
+            if context_id is not None and (
+                not isinstance(context_id, str) or not context_id.strip()
+            ):
+                raise WorkflowValidationError(
+                    "context_create context_id must be a non-empty string"
+                )
     elif node_type == "history":
         event_types = node_argument(node, "event_types")
         if (

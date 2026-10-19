@@ -14,28 +14,41 @@ from workflow_context_repository import (
 class WorkflowContextRepositoryTest(unittest.TestCase):
     @patch("workflow_context_repository.get_connection")
     def test_create_stores_owner_type_value_and_ttl(self, get_connection):
-        pipeline = MagicMock()
-        get_connection.return_value.pipeline.return_value = pipeline
+        get_connection.return_value.eval.return_value = 1
 
         with patch("workflow_context_repository._ttl_seconds", return_value=60):
             context_id = create_context("invocation-1", "list-content", ["a", "b"])
 
         self.assertTrue(context_id.startswith("ctx_"))
         key = f"workflow-context:{context_id}"
-        mapping = pipeline.hset.call_args.kwargs["mapping"]
+        eval_args = get_connection.return_value.eval.call_args.args
+        mapping = dict(zip(eval_args[3:-1:2], eval_args[4:-1:2]))
+        self.assertEqual(eval_args[1:3], (1, key))
         self.assertEqual(mapping["value_type"], "list-content")
         self.assertEqual(json.loads(mapping["value"]), ["a", "b"])
         self.assertEqual(mapping["invocation_id"], "invocation-1")
-        pipeline.expire.assert_called_once_with(key, 60)
-        pipeline.execute.assert_called_once_with()
+        self.assertEqual(eval_args[-1], "60")
+
+    @patch("workflow_context_repository.get_connection")
+    def test_create_uses_custom_id_and_rejects_existing_id(self, get_connection):
+        get_connection.return_value.eval.return_value = 1
+        with patch("workflow_context_repository._ttl_seconds", return_value=60):
+            self.assertEqual(
+                create_context("invocation-1", "content", "value", "custom-id"),
+                "custom-id",
+            )
+        get_connection.return_value.eval.return_value = 0
+        with patch("workflow_context_repository._ttl_seconds", return_value=60):
+            with self.assertRaisesRegex(WorkflowContextError, "Context ID 已存在"):
+                create_context("invocation-1", "content", "value", "custom-id")
 
     @patch("workflow_context_repository.get_connection")
     def test_map_content_is_validated_and_stored(self, get_connection):
-        pipeline = MagicMock()
-        get_connection.return_value.pipeline.return_value = pipeline
+        get_connection.return_value.eval.return_value = 1
         with patch("workflow_context_repository._ttl_seconds", return_value=60):
             create_context("invocation-1", "map-content", {"done": "finished"})
-        mapping = pipeline.hset.call_args.kwargs["mapping"]
+        eval_args = get_connection.return_value.eval.call_args.args
+        mapping = dict(zip(eval_args[3:-1:2], eval_args[4:-1:2]))
         self.assertEqual(mapping["value_type"], "map-content")
         self.assertEqual(json.loads(mapping["value"]), {"done": "finished"})
         for invalid in [{"": "empty"}, {"valid": 1}]:

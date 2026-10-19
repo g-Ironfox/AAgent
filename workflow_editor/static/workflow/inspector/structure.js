@@ -180,6 +180,14 @@ function bindContext(node, context) {
     node.value_type = typeField.value;
     commitStructureChange(node, context);
   });
+  if (node.type === 'context_create') {
+    const idField = context.elements.inspectorContent.querySelector('[data-field="context_id"]');
+    idField.value = node.context_id || '';
+    idField.addEventListener('change', () => {
+      node.context_id = idField.value.trim();
+      commitStructureChange(node, context, false);
+    });
+  }
 }
 
 function bindDeserializeJson(node, context) {
