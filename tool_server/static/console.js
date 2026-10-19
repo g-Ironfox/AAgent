@@ -280,6 +280,7 @@ function openInvoke(tool) {
 }
 
 function renderTaskDetail(task) {
+  const jsonScrollTop = elements.taskDetailBody.querySelector(".json-block")?.scrollTop ?? 0;
   elements.detailTitle.textContent = task.tool;
   const details = [
     ["task_id", task.task_id], ["status", statusNames[task.status] || task.status], ["provider", task.provider_id || "未派发"],
@@ -288,6 +289,7 @@ function renderTaskDetail(task) {
   const list = details.map(([key, value]) => `<dt>${key}</dt><dd>${escapeHtml(value)}</dd>`).join("");
   const payload = task.result !== null ? task.result : task.error;
   elements.taskDetailBody.innerHTML = `<dl class="detail-grid">${list}</dl><pre class="json-block">${escapeHtml(JSON.stringify(payload, null, 2) || "暂无结果")}</pre>`;
+  elements.taskDetailBody.querySelector(".json-block").scrollTop = jsonScrollTop;
 }
 
 async function openTask(taskId) {
