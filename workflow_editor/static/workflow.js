@@ -47,8 +47,20 @@ const elements = {
   resourceState: document.querySelector('#resourceState'),
 };
 let hasUnsavedChanges = false;
+const undoHistory = [];
+let lastUndoSnapshot = null;
+
+function resetUndoHistory(snapshot = workflowSnapshot()) {
+  undoHistory.length = 0;
+  lastUndoSnapshot = structuredClone(snapshot);
+}
 
 function markChanged() {
+  if (lastUndoSnapshot) {
+    undoHistory.push(lastUndoSnapshot);
+    if (undoHistory.length > 100) undoHistory.shift();
+  }
+  lastUndoSnapshot = workflowSnapshot();
   hasUnsavedChanges = true;
   elements.workflowState.textContent = '未保存';
   elements.workflowState.classList.remove('saved');
@@ -76,6 +88,7 @@ function importWorkflowText(text, source = '已导入') {
   if (!loadSnapshot(workflow)) throw new Error('内容不是有效的 Workflow JSON');
   inspector.setWorkflowNodes(workflowReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
+  resetUndoHistory();
   hasUnsavedChanges = true;
   elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();
@@ -132,6 +145,28 @@ loadSnapshot(workflowSnapshot());
 inspector.setWorkflowNodes(workflowReferences());
 inspector.setRemoteToolReferences(remoteToolReferences());
 elements.workflowNameDisplay.textContent = state.name;
+resetUndoHistory();
+
+document.addEventListener('keydown', (event) => {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' || event.shiftKey) return;
+  const target = event.target;
+  if (target instanceof HTMLElement && (
+    target.isContentEditable
+    || target.closest('input, textarea, select, [contenteditable="true"], dialog')
+  )) return;
+  const snapshot = undoHistory.pop();
+  if (!snapshot || !loadSnapshot(snapshot)) return;
+  event.preventDefault();
+  lastUndoSnapshot = workflowSnapshot();
+  hasUnsavedChanges = true;
+  elements.workflowState.textContent = '未保存';
+  elements.workflowState.classList.remove('saved');
+  elements.workflowNameDisplay.textContent = state.name;
+  inspector.setWorkflowNodes(workflowReferences());
+  inspector.setRemoteToolReferences(remoteToolReferences());
+  editor.ensureSelection();
+  renderWorkflow();
+});
 
 const resourceCounts = { models: null, localTools: null, remoteTools: null };
 const resourceErrors = {};
