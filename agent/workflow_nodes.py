@@ -217,7 +217,10 @@ def workflow_construct_event(current_id: int, workflow_map: WorkflowMap) -> int:
     if not isinstance(payload, dict):
         raise ValueError(f"construct_event payload must be an object: node {node.get('id')}")
     propagate_workflow_output(
-        workflow_map, node, "event-out", {"event_type": event_type, "payload": payload}
+        workflow_map,
+        node,
+        "event-out",
+        {"version": "1.1", "event_type": event_type, "payload": payload},
     )
     return next_successor(node)
 
@@ -244,6 +247,7 @@ def workflow_publish_event(current_id: int, workflow_map: WorkflowMap) -> int:
         raise ValueError(f"publish_event input is missing: node {node.get('id')}")
     if (
         not isinstance(event, dict)
+        or event.get("version") != "1.1"
         or not isinstance(event.get("event_type"), str)
         or not event["event_type"]
         or not isinstance(event.get("payload"), dict)

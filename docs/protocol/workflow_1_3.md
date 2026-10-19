@@ -116,8 +116,8 @@ Input 节点必须恰好一个，Output 节点至少一个。Input/Output 的 `w
 - `construct_message.role` 缺省为 `user`，允许 `system`、`user`、`assistant`、`tool`；`role_source` 缺省为 `fixed`，允许 `fixed` 或 `port`。
 - `construct_content.append_items` 是非空数组。每项为 `{type:"fixed", value:string}` 或 `{type:"port", port_id:string}`。port ID 不重复，且与 `dataInputPorts` 集合相同。按配置顺序拼接；非字符串 port 值转成字符串。
 - `split_event` 要求对象含非空字符串 `event_type` 和 `payload` 字段；payload 输出为 JSON 文本。
-- `construct_event` 的 payload 输入必须可解析为 JSON object，输出 `{event_type, payload}`。
-- `publish_event` 要求对象含非空字符串 `event_type` 和 object 类型 `payload`，发布到主 Agent 队列后继续控制流。
+- `construct_event` 的 payload 输入必须可解析为 JSON object，输出 Event 1.1 对象 `{version: "1.1", event_type, payload}`。
+- `publish_event` 要求对象的 `version` 固定为 `"1.1"`，且含非空字符串 `event_type` 和 object 类型 `payload`；发布到主 Agent 队列后继续控制流。
 - `deserialize_json` 要求根对象包含配置中每个 key，且值符合对应目标类型；不匹配会使执行失败。支持类型为第 3.1 节七种类型。
 - `history` 从历史存储读取指定类型的最近记录。
 - `llm.tools` 选择已注册的本地工具；`tool_calls` 输出为 JSON 文本组成的 list-content。
@@ -150,7 +150,7 @@ Agent 校验 Workflow 后将节点和连线编译为内部执行图。控制连�
 
 ## 8. Event 对象
 
-`event` 是 Workflow 数据类型。`construct_event` 输出 `{event_type, payload}`，不会自动补充队列信封字段。`publish_event` 将输入对象发布至 Agent 队列；作为队列事件使用时，该对象还必须满足 Agent Event 消费端的信封要求。
+`event` 是 Workflow 数据类型，格式固定为 Event 1.1：`{version: "1.1", event_type, payload}`。`construct_event` 输出完整格式；`publish_event` 仅接受该版本并发布至 Agent 队列。队列发布器也会将信封版本设置为 `"1.1"`。
 
 `origin` 是 Workflow 输入值，通常保存完整触发 Event，而不是只保存 `payload`。绑定事件生成的内部 Workflow 调度事件与 `origin` 中的原始触发事件是两个不同对象：前者用于选择 Workflow 和映射普通输入，后者保留原始事件供 Workflow 使用。直接触发方也可以通过 `payload.origin` 提供该输入值，Agent 不区分两种来源。
 

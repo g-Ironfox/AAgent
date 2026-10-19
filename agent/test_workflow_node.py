@@ -68,7 +68,7 @@ class CallableWorkflowNodeTest(unittest.TestCase):
         target = {"data_inputs": {"event-in": [0, "event-out", None]}}
         self.assertEqual(workflow_construct_event(0, [node, target]), 1)
         self.assertEqual(target["data_inputs"]["event-in"][2], {
-            "event_type": "tick", "payload": {"n": 2, "nested": {"items": [True]}},
+            "version": "1.1", "event_type": "tick", "payload": {"n": 2, "nested": {"items": [True]}},
         })
 
     def test_construct_event_rejects_invalid_payload(self):
@@ -93,19 +93,29 @@ class CallableWorkflowNodeTest(unittest.TestCase):
             "id": "publish",
             "type": "publish_event",
             "successors": {"next": 3},
-            "data_inputs": {"event-in": [1, "event", {"event_type": "tick", "payload": {"n": 2}}]},
+            "data_inputs": {"event-in": [1, "event", {"version": "1.1", "event_type": "tick", "payload": {"n": 2}}]},
         }
 
         self.assertEqual(workflow_publish_event(0, [node]), 3)
         publish.assert_called_once_with(
-            "main_agent_queue", {"event_type": "tick", "payload": {"n": 2}}
+            "main_agent_queue", {"version": "1.1", "event_type": "tick", "payload": {"n": 2}}
         )
 
     def test_publish_event_rejects_non_object_payload(self):
         node = {
             "id": "publish",
             "type": "publish_event",
-            "data_inputs": {"event-in": [1, "event", {"event_type": "tick", "payload": "bad"}]},
+            "data_inputs": {"event-in": [1, "event", {"version": "1.1", "event_type": "tick", "payload": "bad"}]},
+        }
+
+        with self.assertRaisesRegex(ValueError, "invalid event"):
+            workflow_publish_event(0, [node])
+
+    def test_publish_event_rejects_unsupported_version(self):
+        node = {
+            "id": "publish",
+            "type": "publish_event",
+            "data_inputs": {"event-in": [1, "event", {"version": "1.0", "event_type": "tick", "payload": {}}]},
         }
 
         with self.assertRaisesRegex(ValueError, "invalid event"):
