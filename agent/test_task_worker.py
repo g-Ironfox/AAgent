@@ -70,6 +70,18 @@ class WorkerRoutingTest(unittest.TestCase):
         })
         self.assertEqual(event["payload"]["workflow_name"], "untrusted")
 
+    @patch("task_worker.read_bound_workflow_name", return_value="bound workflow")
+    @patch("task_worker.publish_to_queue")
+    @patch("task_worker.record_history")
+    def test_bound_event_replaces_payload_origin_with_source_event(self, record_history, publish, read_bound):
+        event = {
+            "version": "1.1",
+            "event_type": "custom.event",
+            "payload": {"origin": "untrusted", "value": 1},
+        }
+        task_worker.handle_task(event)
+        self.assertEqual(publish.call_args.args[1]["payload"]["origin"], event)
+
     @patch("task_worker.read_bound_workflow_name", return_value=None)
     @patch("task_worker.publish_to_queue")
     @patch("task_worker.record_history")
@@ -122,6 +134,28 @@ class WorkerRoutingTest(unittest.TestCase):
         self.assertEqual(propagate.call_args_list[1].args[3], 42)
         self.assertEqual(propagate.call_args_list[2].args[3], event)
         self.assertEqual(publish.call_args.args[1]["event_type"], "response")
+
+    @patch("task_worker._read_workflow", return_value={"name": "workflow"})
+    @patch("task_worker.validate_workflow")
+    @patch("task_worker.parse_workflow")
+    @patch("task_worker.propagate_workflow_output")
+    @patch("task_worker.run_workflow_map", return_value={"content": "done"})
+    @patch("task_worker.publish_to_queue")
+    @patch("task_worker.record_history")
+    def test_workflow_event_uses_explicit_origin(
+        self, record_history, publish, run, propagate, parse, validate, read_workflow
+    ):
+        read_workflow.return_value = {"name": "new workflow"}
+        parse.return_value = [{"type": "input", "workflowPorts": [
+            {"id": "workflow:origin", "name": "origin"},
+        ]}]
+        origin = {"version": "1.1", "event_type": "source", "payload": {}}
+        task_worker.handle_task({
+            "version": "1.1",
+            "event_type": "workflow",
+            "payload": {"workflow_name": "selected", "origin": origin},
+        })
+        self.assertEqual(propagate.call_args.args[3], origin)
 
     @patch("task_worker._read_workflow", return_value={"name": "workflow"})
     @patch("task_worker.validate_workflow")

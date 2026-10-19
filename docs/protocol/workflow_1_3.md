@@ -51,9 +51,9 @@ JSON Schema 文件 [workflow_1_3.schema.json](workflow_1_3.schema.json) 定义 J
 
 `origin` 是 Workflow 输入接口中的保留名称。该端口可选；一旦声明，其类型必须为 `event`。Input 节点对应的输出端口 ID 为 `workflow:origin`。
 
-外部事件通过事件绑定触发 Workflow 时，内部 Workflow 事件的 `payload.origin` 是触发绑定的完整原始 Event 对象；其他 Workflow 输入端口仍按端口名称从内部事件的 `payload` 读取。绑定解析出的 Workflow 名称用于调度，不会改变保存在 `origin` 中的原始事件。
+外部事件通过事件绑定触发 Workflow 时，绑定生成一个新的 `event_type: "workflow"` 事件，并将触发绑定的完整原始 Event 放入该事件的 `payload.origin`。其他 Workflow 输入端口仍按端口名称从内部事件的 `payload` 读取；绑定解析出的 Workflow 名称用于调度。
 
-`payload.origin` 是事件绑定转发使用的保留字段。直接发送 `event_type: "workflow"` 的事件时，不应在 `payload` 中提供 `origin`；若 Workflow 声明了 `origin` 输入端口，它接收当前完整 Workflow 事件。未声明该端口时不要求接收 origin。编辑器新建 Workflow 默认声明 `origin`。
+`payload.origin` 是 Workflow 事件的保留字段，语义是提供 Workflow 的 `origin` 输入值。事件绑定生成的 Workflow 事件会把触发绑定的完整原始 Event 写入该字段；绑定源事件的 payload 若也含有 `origin`，该字段由真实原始 Event 替换。直接发送 `event_type: "workflow"` 的事件也可以提供 `origin`；只要该字段存在，Workflow 就使用它作为 `origin` 输入，否则使用当前完整 Workflow Event。未声明该端口时不要求接收 origin。编辑器新建 Workflow 默认声明 `origin`。
 
 ### 3.3 依赖接口
 
@@ -152,7 +152,7 @@ Agent 校验 Workflow 后将节点和连线编译为内部执行图。控制连�
 
 `event` 是 Workflow 数据类型。`construct_event` 输出 `{event_type, payload}`，不会自动补充队列信封字段。`publish_event` 将输入对象发布至 Agent 队列；作为队列事件使用时，该对象还必须满足 Agent Event 消费端的信封要求。
 
-`origin` 保存完整触发 Event，而不是只保存 `payload`。绑定事件生成的内部 Workflow 调度事件与 `origin` 中的原始触发事件是两个不同对象：前者用于选择 Workflow 和映射普通输入，后者保留原始事件供 Workflow 使用。`payload.origin` 仅供该绑定转发约定使用；直接触发方不应使用这一字段承载自定义数据。
+`origin` 是 Workflow 输入值，通常保存完整触发 Event，而不是只保存 `payload`。绑定事件生成的内部 Workflow 调度事件与 `origin` 中的原始触发事件是两个不同对象：前者用于选择 Workflow 和映射普通输入，后者保留原始事件供 Workflow 使用。直接触发方也可以通过 `payload.origin` 提供该输入值，Agent 不区分两种来源。
 
 ## 9. 校验职责
 

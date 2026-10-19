@@ -57,9 +57,15 @@ def handle_task(e: dict):
     if event_type != "workflow":
         workflow_name = read_bound_workflow_name(event_type)
         if workflow_name is not None:
+            payload = {
+                key: value
+                for key, value in e["payload"].items()
+                if key != "origin"
+            }
+            payload.update(workflow_name=workflow_name, origin=e)
             publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
                 "event_type": "workflow",
-                "payload": {**e["payload"], "workflow_name": workflow_name, "origin": e},
+                "payload": payload,
             })
         return
 
