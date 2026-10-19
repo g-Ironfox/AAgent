@@ -2,6 +2,6 @@
   "platform": "4.0.6",
   "protocol": {
     "event": "1.0",
-    "workflow": "1.1"
+    "workflow": "1.3"
   }
 }

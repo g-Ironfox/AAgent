@@ -29,7 +29,7 @@ class WorkflowValidationError(ValueError):
 
 
 _WORKFLOW_SCHEMA = json.loads(
-    Path(__file__).with_name("workflow_1_1.schema.json").read_text(encoding="utf-8")
+    Path(__file__).with_name("workflow_1_3.schema.json").read_text(encoding="utf-8")
 )
 _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
@@ -48,6 +48,9 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         raise WorkflowValidationError("workflow.connections must be a list")
     input_ports = _validate_boundary_metadata(workflow, "input_ports")
     output_ports = _validate_boundary_metadata(workflow, "output_ports")
+    origin_ports = [port for port in input_ports if port["name"] == "origin"]
+    if origin_ports and origin_ports[0]["type"] != "event":
+        raise WorkflowValidationError("workflow.input_ports origin must have type event")
     remote_tools = _validate_remote_tool_metadata(workflow)
 
     node_by_id: dict[str, dict[str, Any]] = {}
@@ -258,6 +261,10 @@ def _validate_node(node: Any, index: int) -> None:
             raise WorkflowValidationError(
                 "construct_message node role must be a supported message role"
             )
+    elif node_type == "construct_event":
+        event_type = node_argument(node, "event_type")
+        if not isinstance(event_type, str) or not event_type.strip():
+            raise WorkflowValidationError("construct_event event_type must be a non-empty string")
     elif node_type == "construct_content":
         _validate_construct_content(node)
     elif node_type == "construct_map_content":

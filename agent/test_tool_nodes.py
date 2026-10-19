@@ -69,6 +69,51 @@ def valid_workflow(node: dict) -> dict:
 
 
 class ToolNodeExecutionTest(unittest.TestCase):
+    def test_construct_event_is_registered_with_event_type_argument(self):
+        self.assertIn("construct_event", SUPPORTED_NODE_TYPES)
+        self.assertEqual(NODE_ARGUMENT_FIELDS_BY_TYPE["construct_event"], {"event_type"})
+        self.assertIn("construct_event", nodes_map)
+
+    def test_validator_accepts_construct_event_and_rejects_empty_type(self):
+        node = {"id": "construct", "type": "construct_event", "arguments": {"event_type": "tick"}}
+        workflow = valid_workflow(node)
+        workflow["connections"].append({
+            "fromId": "input", "fromPortId": "workflow:payload", "toId": "construct",
+            "toPortId": "payload-in", "type": "content",
+        })
+        workflow["connections"].append({
+            "fromId": "construct", "fromPortId": "event-out", "toId": "output",
+            "toPortId": "workflow:event", "type": "event",
+        })
+        workflow["input_ports"] = [{"name": "payload", "type": "content"}]
+        workflow["output_ports"] = [{"name": "event", "type": "event"}]
+        workflow["nodes"][0]["workflowPorts"] = [{"id": "workflow:payload", "name": "payload", "type": "content"}]
+        workflow["nodes"][2]["workflowPorts"] = [{"id": "workflow:event", "name": "event", "type": "event"}]
+        validate_workflow(workflow)
+
+        node["arguments"]["event_type"] = " "
+        with self.assertRaisesRegex(WorkflowValidationError, "event_type"):
+            validate_workflow(workflow)
+
+    def test_publish_event_is_registered_without_arguments(self):
+        self.assertIn("publish_event", SUPPORTED_NODE_TYPES)
+        self.assertEqual(NODE_ARGUMENT_FIELDS_BY_TYPE["publish_event"], set())
+        self.assertIn("publish_event", nodes_map)
+
+    def test_validator_accepts_publish_event_node(self):
+        workflow = valid_workflow({"id": "publish", "type": "publish_event"})
+        workflow["connections"].append({
+            "fromId": "input",
+            "fromPortId": "workflow:event",
+            "toId": "publish",
+            "toPortId": "event-in",
+            "type": "event",
+        })
+        workflow["input_ports"] = [{"name": "event", "type": "event"}]
+        workflow["nodes"][0]["workflowPorts"] = [{"id": "workflow:event", "name": "event", "type": "event"}]
+
+        validate_workflow(workflow)
+
     def test_local_tool_serializes_result(self):
         execute_tool = Mock()
         execute_tool.return_value = {"ok": True}

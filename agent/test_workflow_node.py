@@ -6,12 +6,14 @@ from workflow_parser import parse_workflow
 from workflow_parser import WORKFLOW_SCHEMA_VERSION, WorkflowParseError
 from workflow_nodes import (
     run_workflow_map,
+    workflow_construct_event,
     workflow_construct_map_content,
     workflow_map_content_get,
     workflow_construct_list,
     workflow_construct_message,
     workflow_deserialize_json,
     workflow_llm,
+    workflow_publish_event,
     workflow_split_event,
 )
 from workflow_validator import WorkflowValidationError, validate_workflow
@@ -55,6 +57,85 @@ def callable_workflow_fixture() -> dict:
 
 
 class CallableWorkflowNodeTest(unittest.TestCase):
+    def test_construct_event_outputs_object_and_continues(self):
+        node = {
+            "id": "construct", "type": "construct_event",
+            "arguments": {"event_type": "tick"},
+            "successors": {"next": 1},
+            "data_inputs": {"payload-in": [2, "payload-out", '{"n":2,"nested":{"items":[true]}}']},
+            "data_outputs": {"event-out": [[1, "event-in"]]},
+        }
+        target = {"data_inputs": {"event-in": [0, "event-out", None]}}
+        self.assertEqual(workflow_construct_event(0, [node, target]), 1)
+        self.assertEqual(target["data_inputs"]["event-in"][2], {
+            "version": "1.1", "event_type": "tick", "payload": {"n": 2, "nested": {"items": [True]}},
+        })
+
+    def test_construct_event_rejects_invalid_payload(self):
+        for payload in (None, {}, "broken", "[]", '"text"', "null", "1"):
+            with self.subTest(payload=payload):
+                node = {
+                    "arguments": {"event_type": "tick"},
+                    "data_inputs": {"payload-in": [1, "output", payload]},
+                }
+                with self.assertRaisesRegex(ValueError, "payload"):
+                    workflow_construct_event(0, [node])
+
+    def test_construct_event_rejects_invalid_type(self):
+        for event_type in (None, "", "   ", 1):
+            with self.subTest(event_type=event_type):
+                with self.assertRaisesRegex(ValueError, "event_type"):
+                    workflow_construct_event(0, [{"arguments": {"event_type": event_type}}])
+
+    @patch("queue_client.publish_to_queue")
+    def test_publish_event_publishes_to_main_queue_and_continues(self, publish):
+        node = {
+            "id": "publish",
+            "type": "publish_event",
+            "successors": {"next": 3},
+            "data_inputs": {"event-in": [1, "event", {"version": "1.1", "event_type": "tick", "payload": {"n": 2}}]},
+        }
+
+        self.assertEqual(workflow_publish_event(0, [node]), 3)
+        publish.assert_called_once_with(
+            "main_agent_queue", {"version": "1.1", "event_type": "tick", "payload": {"n": 2}}
+        )
+
+    def test_publish_event_rejects_non_object_payload(self):
+        node = {
+            "id": "publish",
+            "type": "publish_event",
+            "data_inputs": {"event-in": [1, "event", {"version": "1.1", "event_type": "tick", "payload": "bad"}]},
+        }
+
+        with self.assertRaisesRegex(ValueError, "invalid event"):
+            workflow_publish_event(0, [node])
+
+    def test_publish_event_rejects_unsupported_version(self):
+        node = {
+            "id": "publish",
+            "type": "publish_event",
+            "data_inputs": {"event-in": [1, "event", {"version": "1.0", "event_type": "tick", "payload": {}}]},
+        }
+
+        with self.assertRaisesRegex(ValueError, "invalid event"):
+            workflow_publish_event(0, [node])
+
+    def test_publish_event_requires_event_connection(self):
+        nodes = {
+            "input": {"id": "input", "type": "input"},
+            "publish": {"id": "publish", "type": "publish_event"},
+        }
+        connection = {
+            "fromId": "input",
+            "fromPortId": "workflow:value",
+            "toId": "publish",
+            "toPortId": "event-in",
+            "type": "content",
+        }
+
+        self.assertFalse(is_valid_connection(connection, nodes, [{"name": "value", "type": "content"}], []))
+
     def test_validator_rejects_workflow_without_schema_version(self):
         workflow = callable_workflow_fixture()
         del workflow["schema_version"]
@@ -73,7 +154,7 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
     def test_validator_rejects_workflow_with_different_schema_version(self):
         # 升级 Workflow 协议时，同步更新旧版和未来版样例，确保两者都不是当前版本。
-        for version in ("1.0", "1.2"):
+        for version in ("1.0", "1.1"):
             with self.subTest(version=version):
                 workflow = callable_workflow_fixture()
                 workflow["schema_version"] = version

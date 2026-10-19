@@ -1,7 +1,7 @@
 import { boundaryPorts, createNode, createWorkflowId, NODE_TYPES } from './node-contract.js';
 import { filterValidConnections } from './connection-rules.js';
 
-export const WORKFLOW_SCHEMA_VERSION = '1.1';
+export const WORKFLOW_SCHEMA_VERSION = '1.3';
 
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
@@ -23,6 +23,8 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   map_content_get: new Set(),
   deserialize_json: new Set(['outputs']),
   split_event: new Set(),
+  publish_event: new Set(),
+  construct_event: new Set(['event_type']),
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),
@@ -75,7 +77,7 @@ export const state = {
   description: '',
   nodes: structuredClone(initialNodes),
   connections: structuredClone(initialConnections),
-  input_ports: [],
+  input_ports: [{ name: 'origin', type: 'event' }],
   output_ports: [],
   workflow_nodes: [],
   remote_tools: [],
@@ -118,7 +120,7 @@ export function resetWorkflow() {
     schema_version: WORKFLOW_SCHEMA_VERSION,
     name: 'workflow',
     description: '',
-    input_ports: [],
+    input_ports: [{ name: 'origin', type: 'event' }],
     output_ports: [],
     workflow_nodes: [],
     remote_tools: [],
