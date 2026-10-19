@@ -276,8 +276,17 @@ function nextNodePosition(nodes, viewport) {
   const available = positions.find((position) => nodes.every((node) => Math.abs(node.x - position.x) >= 210 || Math.abs(node.y - position.y) >= 125));
   if (available) return available;
   const stackIndex = nodes.filter((node) => node.x >= left && node.x < left + width && node.y >= top && node.y < top + height).length;
-  const stackOffset = (stackIndex % 5) * 18;
-  return { x: left + stackOffset, y: top + stackOffset };
+  const maxOffsetX = Math.max(0, width - 202);
+  const maxOffsetY = Math.max(0, height - 132);
+  const offsetSteps = Math.max(1, Math.floor(Math.min(maxOffsetX, maxOffsetY) / 18) + 1);
+  const stackLayer = Math.floor(stackIndex / offsetSteps);
+  const stackOffset = (stackIndex % offsetSteps) * 18;
+  const alternateX = Math.max(0, width - 202 - stackOffset);
+  const alternateY = Math.max(0, height - 132 - stackOffset);
+  return {
+    x: left + (stackLayer % 2 === 0 ? stackOffset : alternateX),
+    y: top + (stackLayer % 2 === 0 ? stackOffset : alternateY),
+  };
 }
 
 export function createNode(type, nodes, configuration = null, viewport = null) {
