@@ -184,7 +184,7 @@ function bindContext(node, context) {
     const idField = context.elements.inspectorContent.querySelector('[data-field="context_id"]');
     idField.value = node.context_id || '';
     idField.addEventListener('change', () => {
-      node.context_id = idField.value.trim();
+      node.context_id = idField.value;
       commitStructureChange(node, context, false);
     });
   }
@@ -201,7 +201,7 @@ function bindContext(node, context) {
       commitStructureChange(node, context);
     });
     idField.addEventListener('change', () => {
-      node.context_id = idField.value.trim();
+      node.context_id = idField.value;
       commitStructureChange(node, context, false);
     });
   }
