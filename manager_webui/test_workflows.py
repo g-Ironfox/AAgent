@@ -10,6 +10,7 @@ from workflows import (
     workflow_port_values,
 )
 from workflow_node_remap import remap_workflow_node_names
+from workflow_validator import WorkflowValidationError, _validate_node
 
 
 class WorkflowSchemaVersionTest(unittest.TestCase):
@@ -86,6 +87,23 @@ class WorkflowNodeRemapTest(unittest.TestCase):
             workflow_port_values(reference["output_ports"]),
             [{"name": "answer", "type": "content"}],
         )
+
+
+class RouterBranchValidationTest(unittest.TestCase):
+    def test_reserved_branch_id_and_name_must_be_used_together(self):
+        for branch in (
+            {"id": "branch$others", "name": "fallback"},
+            {"id": "route-fallback", "name": "其它"},
+        ):
+            with self.subTest(branch=branch):
+                node = {
+                    "id": "router",
+                    "type": "router",
+                    "arguments": {"branches": [branch]},
+                }
+
+                with self.assertRaisesRegex(WorkflowValidationError, "reserves id"):
+                    _validate_node(node, 0)
 
 if __name__ == "__main__":
     unittest.main()
