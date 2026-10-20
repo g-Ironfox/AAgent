@@ -29,7 +29,7 @@ class WorkflowValidationError(ValueError):
 
 
 _WORKFLOW_SCHEMA = json.loads(
-    Path(__file__).with_name("workflow_1_5.schema.json").read_text(encoding="utf-8")
+    Path(__file__).with_name("workflow_1_6.schema.json").read_text(encoding="utf-8")
 )
 _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
@@ -247,6 +247,19 @@ def _validate_node(node: Any, index: int) -> None:
             raise WorkflowValidationError(
                 f"nodes[{index}].branches contains duplicate names"
             )
+        if any(not isinstance(branch, dict) for branch in branches):
+            raise WorkflowValidationError(
+                f"nodes[{index}].branches items must be objects"
+            )
+        for branch in branches:
+            if set(branch) - {"id", "name"}:
+                raise WorkflowValidationError(
+                    f"nodes[{index}].branches contains unsupported fields"
+                )
+            if (branch["id"] == "branch$others") != (branch["name"] == "其它"):
+                raise WorkflowValidationError(
+                    f"nodes[{index}].branches reserves id 'branch$others' for name '其它'"
+                )
     elif node_type == "construct_message":
         if node_argument(node, "role_source", "fixed") not in {"fixed", "port"}:
             raise WorkflowValidationError(

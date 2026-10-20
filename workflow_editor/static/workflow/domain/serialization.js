@@ -1,7 +1,7 @@
 import { boundaryPorts, createNode, createWorkflowId, NODE_TYPES } from './node-contract.js';
 import { filterValidConnections } from './connection-rules.js';
 
-export const WORKFLOW_SCHEMA_VERSION = '1.5';
+export const WORKFLOW_SCHEMA_VERSION = '1.6';
 
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },

@@ -8,7 +8,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
 QQ_QUEUE_NAME = os.getenv("QQ_QUEUE_NAME", "qq:events")
-
+MAIN_AGENT_QUEUE_NAME = os.getenv("MAIN_AGENT_QUEUE_NAME", "main_agent_queue")
 
 def get_connection():
     return redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)

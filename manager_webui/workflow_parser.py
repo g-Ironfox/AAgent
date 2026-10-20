@@ -22,7 +22,7 @@ class WorkflowParseError(ValueError):
     """Raised when a workflow cannot be loaded or compiled."""
 
 
-WORKFLOW_SCHEMA_VERSION = "1.5"
+WORKFLOW_SCHEMA_VERSION = "1.6"
 
 
 def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
@@ -103,6 +103,8 @@ def _successor_key(node: dict[str, Any], port_id: str) -> str:
             for branch in node_argument(node, "branches", [])
             if branch["id"] == port_id
         )
+        if branch["id"] == "branch$others":
+            return "branch$others"
         return f"branch-{branch['name']}"
     if node.get("type") == "foreach" and port_id == "loop-out":
         return "item"

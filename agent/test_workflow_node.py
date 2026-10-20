@@ -14,6 +14,7 @@ from workflow_nodes import (
     workflow_deserialize_json,
     workflow_llm,
     workflow_publish_event,
+    workflow_router,
     workflow_split_event,
 )
 from workflow_validator import WorkflowValidationError, validate_workflow
@@ -560,6 +561,7 @@ class CallableWorkflowNodeTest(unittest.TestCase):
                         "branches": [
                             {"id": "route-yes", "name": "yes"},
                             {"id": "route-no", "name": "no"},
+                            {"id": "branch$others", "name": "其它"},
                         ],
                     },
                 },
@@ -588,7 +590,12 @@ class CallableWorkflowNodeTest(unittest.TestCase):
             [
                 {"id": "route-yes", "name": "yes"},
                 {"id": "route-no", "name": "no"},
+                {"id": "branch$others", "name": "其它"},
             ],
+        )
+        self.assertEqual(
+            parsed[1]["successors"]["branch$others"],
+            3,
         )
         self.assertEqual(
             parsed[2]["predecessors"], {"last": [1], "continue": [2]}
@@ -614,6 +621,22 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
         with self.assertRaisesRegex(WorkflowValidationError, "duplicate names"):
             validate_workflow(workflow)
+
+    def test_router_uses_otherwise_branch_for_unmatched_value(self):
+        node = {
+            "id": "router",
+            "successors": {"branch-yes": 1, "branch$others": 2},
+            "data_inputs": {"content-in": [0, "content-in", "maybe"]},
+        }
+        self.assertEqual(workflow_router(0, [node, {}, {}]), 2)
+
+    def test_router_prefers_matching_branch_over_otherwise(self):
+        node = {
+            "id": "router",
+            "successors": {"branch-yes": 1, "branch$others": 2},
+            "data_inputs": {"content-in": [0, "content-in", "yes"]},
+        }
+        self.assertEqual(workflow_router(0, [node, {}, {}]), 1)
 
     def test_validator_rejects_flattened_node_arguments(self):
         workflow = callable_workflow_fixture()

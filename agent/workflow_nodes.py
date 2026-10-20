@@ -398,7 +398,10 @@ def workflow_router(current_id: int, workflow_map: WorkflowMap) -> int:
     has_key, key = read_workflow_input(node, "content-in")
     if not has_key:
         raise ValueError(f"router input is missing: node {node.get('id')}")
-    return next_successor(node, f"branch-{key}")
+    branch_key = f"branch-{key}"
+    if branch_key not in node.get("successors", {}):
+        branch_key = "branch$others"
+    return next_successor(node, branch_key)
 
 
 def _tool_arguments(node: dict[str, Any]) -> dict[str, Any]:
