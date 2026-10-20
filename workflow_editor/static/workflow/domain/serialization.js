@@ -258,7 +258,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.context_id_source = node.context_id_source === 'fixed' ? 'fixed' : 'port';
     if (normalized.context_id_source === 'fixed') {
       if (typeof node.context_id !== 'string' || !node.context_id.trim()) return null;
-      normalized.context_id = node.context_id.trim();
+      normalized.context_id = node.context_id;
     }
   }
   if (node.type === 'context_create' && node.context_id) {

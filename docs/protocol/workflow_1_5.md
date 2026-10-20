@@ -120,8 +120,8 @@ Input 节点必须恰好一个，Output 节点至少一个。Input/Output 的 `w
 - `publish_event` 要求对象的 `version` 固定为 `"1.1"`，且含非空字符串 `event_type` 和 object 类型 `payload`；发布到主 Agent 队列后继续控制流。
 - `deserialize_json` 要求根对象包含配置中每个 key，且值符合对应目标类型；不匹配会使执行失败。支持类型为 3.1 节列出的七种类型。
 - `history` 的 `event_types` 与 `limit` 必须提供；event_types 为非空数组，limit 为 1–1000 整数。
-- `context_create.context_id` 未提供或为空字符串时自动生成；提供时去除首尾空白后必须非空。若该 ID 已存在则创建失败，不覆盖已有 Context。Context 仅属于当前 Workflow invocation，并在该次执行结束时清理。
-- `context_read.context_id_source` 和 `context_write.context_id_source` 缺省为 `port`，仅允许 `port` 或 `fixed`。`port` 模式从 `context-id` 输入端口读取 ID，`context_id` 不使用；`fixed` 模式必须提供去除首尾空白后非空的 `context_id` 字符串，且不生成 ID 输入端口。两种模式均按当前 Workflow invocation 校验 Context 所有权。修改 Context 后输出所用的 Context ID 与新值。
+- Context ID 区分所有字符，首尾空格也是 ID 的一部分；实现不得对 ID 执行去除首尾空白或其他规范化。`context_create.context_id` 未提供或为空字符串时自动生成；提供时必须是非空白字符串。若该 ID 已存在则创建失败，不覆盖已有 Context。Context 仅属于当前 Workflow invocation，并在该次执行结束时清理。
+- `context_read.context_id_source` 和 `context_write.context_id_source` 缺省为 `port`，仅允许 `port` 或 `fixed`。`port` 模式从 `context-id` 输入端口读取 ID，`context_id` 不使用；`fixed` 模式必须提供非空白的 `context_id` 字符串，且不生成 ID 输入端口。两种模式均按当前 Workflow invocation 校验 Context 所有权。修改 Context 后输出所用的 Context ID 与新值。
 - `llm.tools` 选择已注册的本地工具；`tool_calls` 输出为 JSON 文本组成的 list-content。
 - 远程工具的 `parameters` 必须与 `remote_tools` 中同名声明的输入接口一致；sync 工具的 `outputs` 必须与声明的输出接口一致。`control-in` 不能作为工具输入名，`control-out` 不能作为 sync 输出名。
 - 远程 `timeout_ms` 必须为正整数。sync 上限由 `TOOL_CLIENT_MAX_WAIT_MS` 控制，缺省 10000 ms；async 上限由 `TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS` 控制，缺省 3600000 ms。
