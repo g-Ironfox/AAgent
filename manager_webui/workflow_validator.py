@@ -29,7 +29,7 @@ class WorkflowValidationError(ValueError):
 
 
 _WORKFLOW_SCHEMA = json.loads(
-    Path(__file__).with_name("workflow_1_4.schema.json").read_text(encoding="utf-8")
+    Path(__file__).with_name("workflow_1_5.schema.json").read_text(encoding="utf-8")
 )
 _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
@@ -330,6 +330,19 @@ def _validate_node(node: Any, index: int) -> None:
             ):
                 raise WorkflowValidationError(
                     "context_create context_id must be a non-empty string"
+                )
+        if node_type in {"context_read", "context_write"}:
+            source = node_argument(node, "context_id_source", "port")
+            context_id = node_argument(node, "context_id")
+            if source not in {"port", "fixed"}:
+                raise WorkflowValidationError(
+                    "context node context_id_source must be 'port' or 'fixed'"
+                )
+            if source == "fixed" and (
+                not isinstance(context_id, str) or not context_id.strip()
+            ):
+                raise WorkflowValidationError(
+                    "context node context_id must be a non-empty string when using a fixed ID"
                 )
     elif node_type == "history":
         event_types = node_argument(node, "event_types")

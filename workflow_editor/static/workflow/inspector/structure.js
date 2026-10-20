@@ -188,6 +188,23 @@ function bindContext(node, context) {
       commitStructureChange(node, context, false);
     });
   }
+  if (node.type === 'context_read' || node.type === 'context_write') {
+    const sourceField = context.elements.inspectorContent.querySelector('[data-field="context_id_source"]');
+    const idField = context.elements.inspectorContent.querySelector('[data-field="context_id"]');
+    const idContainer = context.elements.inspectorContent.querySelector('[data-context-id-field]');
+    sourceField.value = node.context_id_source === 'fixed' ? 'fixed' : 'port';
+    idField.value = node.context_id || '';
+    idContainer.hidden = sourceField.value !== 'fixed';
+    sourceField.addEventListener('change', () => {
+      node.context_id_source = sourceField.value;
+      idContainer.hidden = sourceField.value !== 'fixed';
+      commitStructureChange(node, context);
+    });
+    idField.addEventListener('change', () => {
+      node.context_id = idField.value.trim();
+      context.markChanged();
+    });
+  }
 }
 
 function bindDeserializeJson(node, context) {

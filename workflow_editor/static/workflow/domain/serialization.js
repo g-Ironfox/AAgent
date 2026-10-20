@@ -1,7 +1,7 @@
 import { boundaryPorts, createNode, createWorkflowId, NODE_TYPES } from './node-contract.js';
 import { filterValidConnections } from './connection-rules.js';
 
-export const WORKFLOW_SCHEMA_VERSION = '1.4';
+export const WORKFLOW_SCHEMA_VERSION = '1.5';
 
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
@@ -34,8 +34,8 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
   remote_async_tool: new Set(['tool', 'parameters', 'timeout_ms', 'callback']),
   context_create: new Set(['value_type', 'context_id']),
-  context_read: new Set(['value_type']),
-  context_write: new Set(['value_type']),
+  context_read: new Set(['value_type', 'context_id_source', 'context_id']),
+  context_write: new Set(['value_type', 'context_id_source', 'context_id']),
   session_create: new Set(['value_type']),
   session_read: new Set(['value_type']),
   session_write: new Set(['value_type']),
@@ -253,6 +253,13 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) {
     if (!['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(node.value_type)) return null;
     normalized.value_type = node.value_type;
+  }
+  if (node.type === 'context_read' || node.type === 'context_write') {
+    normalized.context_id_source = node.context_id_source === 'fixed' ? 'fixed' : 'port';
+    if (normalized.context_id_source === 'fixed') {
+      if (typeof node.context_id !== 'string' || !node.context_id.trim()) return null;
+      normalized.context_id = node.context_id.trim();
+    }
   }
   if (node.type === 'context_create' && node.context_id) {
     if (typeof node.context_id !== 'string' || !node.context_id.trim()) return null;

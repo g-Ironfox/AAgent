@@ -71,8 +71,8 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
     "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
     "context_create": {"value_type", "context_id"},
-    "context_read": {"value_type"},
-    "context_write": {"value_type"},
+    "context_read": {"value_type", "context_id_source", "context_id"},
+    "context_write": {"value_type", "context_id_source", "context_id"},
     "session_create": {"value_type"},
     "session_read": {"value_type"},
     "session_write": {"value_type"},
@@ -210,10 +210,12 @@ def data_ports_for_node(
     if node_type in {"context_create", "session_create"}:
         return {"initial-value"}, {"context-id" if node_type == "context_create" else "session-id"}
     if node_type in {"context_read", "session_read"}:
-        return {"context-id" if node_type == "context_read" else "session-id"}, {"value-out"}
+        input_ports = {"context-id"} if node_type == "context_read" and node_argument(node, "context_id_source", "port") == "port" else ({"session-id"} if node_type == "session_read" else set())
+        return input_ports, {"value-out"}
     if node_type in {"context_write", "session_write"}:
         id_port = "context-id" if node_type == "context_write" else "session-id"
-        return {id_port, "value-in"}, {id_port, "value-out"}
+        id_inputs = {id_port} if node_type == "session_write" or node_argument(node, "context_id_source", "port") == "port" else set()
+        return id_inputs | {"value-in"}, {id_port, "value-out"}
     if node_type == "workflow":
         return (
             {f"workflow:{port['name']}" for port in node.get("input_ports", [])},

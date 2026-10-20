@@ -194,25 +194,31 @@ export function portsForNode(node) {
     const isSession = node.type === 'session_read';
     const idPort = isSession ? 'session-id' : 'context-id';
     const label = isSession ? 'Session' : 'Context';
-    return [
+    const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: `读取 ${label}`, multiple: false },
-      { id: idPort, direction: 'input', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'value-out', direction: 'output', type: node.value_type, label: '值', title: node.value_type, multiple: true },
     ];
+    if (node.type === 'session_read' || (node.context_id_source || 'port') === 'port') {
+      ports.splice(1, 0, { id: idPort, direction: 'input', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: false });
+    }
+    return ports;
   }
   if (node.type === 'context_write' || node.type === 'session_write') {
     const isSession = node.type === 'session_write';
     const idPort = isSession ? 'session-id' : 'context-id';
     const label = isSession ? 'Session' : 'Context';
-    return [
+    const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: `修改 ${label}`, multiple: false },
-      { id: idPort, direction: 'input', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: false },
       { id: 'value-in', direction: 'input', type: node.value_type, label: '新值', title: node.value_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: idPort, direction: 'output', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: true },
       { id: 'value-out', direction: 'output', type: node.value_type, label: '新值', title: node.value_type, multiple: true },
     ];
+    if (node.type === 'session_write' || (node.context_id_source || 'port') === 'port') {
+      ports.splice(1, 0, { id: idPort, direction: 'input', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: false });
+    }
+    return ports;
   }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     const isRemote = node.type !== 'local_tool';
@@ -308,8 +314,8 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
   if (type === 'history') return { id: createWorkflowId('history'), type, name: `召回 History ${number}`, event_types: ['terminal', 'response'], limit: 10, ...position };
   if (type === 'context_create') return { id: createWorkflowId('context-create'), type, name: `创建 Context ${number}`, value_type: 'content', ...position };
-  if (type === 'context_read') return { id: createWorkflowId('context-read'), type, name: `读取 Context ${number}`, value_type: 'content', ...position };
-  if (type === 'context_write') return { id: createWorkflowId('context-write'), type, name: `修改 Context ${number}`, value_type: 'content', ...position };
+  if (type === 'context_read') return { id: createWorkflowId('context-read'), type, name: `读取 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
+  if (type === 'context_write') return { id: createWorkflowId('context-write'), type, name: `修改 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
   if (type === 'session_create') return { id: createWorkflowId('session-create'), type, name: `创建 Session ${number}`, value_type: 'content', ...position };
   if (type === 'session_read') return { id: createWorkflowId('session-read'), type, name: `读取 Session ${number}`, value_type: 'content', ...position };
   if (type === 'session_write') return { id: createWorkflowId('session-write'), type, name: `修改 Session ${number}`, value_type: 'content', ...position };

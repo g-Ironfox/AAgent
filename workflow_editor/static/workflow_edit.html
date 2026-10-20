@@ -500,6 +500,8 @@
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>Context ID 来源<select data-field="context_id_source"><option value="port">通过端口输入</option><option value="fixed">固定文本</option></select></label>
+      <label data-context-id-field>Context ID<input data-field="context_id" maxlength="200" placeholder="输入 Context ID"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -509,6 +511,8 @@
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>Context ID 来源<select data-field="context_id_source"><option value="port">通过端口输入</option><option value="fixed">固定文本</option></select></label>
+      <label data-context-id-field>Context ID<input data-field="context_id" maxlength="200" placeholder="输入 Context ID"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
