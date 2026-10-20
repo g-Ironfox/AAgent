@@ -202,7 +202,7 @@ function bindContext(node, context) {
     });
     idField.addEventListener('change', () => {
       node.context_id = idField.value.trim();
-      context.markChanged();
+      commitStructureChange(node, context, false);
     });
   }
 }
