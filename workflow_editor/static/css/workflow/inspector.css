@@ -20,6 +20,7 @@
 .port-contract small,.section-help { color:var(--muted); font-size:8px; line-height:1.45; }
 .port-contract code { font-size:8px; }
 .form-section label { display:grid; gap:6px; color:var(--muted); font-size:9px; }
+.form-section label[hidden] { display:none; }
 .form-section .checkbox-field { display:flex; align-items:center; gap:9px; }
 .checkbox-field span { display:grid; flex:1; gap:3px; }
 .checkbox-field small { color:var(--muted); font-size:8px; }

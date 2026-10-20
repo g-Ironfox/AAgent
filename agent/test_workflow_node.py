@@ -970,7 +970,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             {
                 "id": "create",
                 "type": "context_create",
-                "arguments": {"value_type": "content"},
+                "arguments": {"value_type": "content", "context_id": "custom-context"},
                 "successors": {"next": 1},
                 "data_inputs": {"initial-value": [None, None, "value"]},
                 "data_outputs": {"context-id": []},
@@ -990,6 +990,7 @@ class WorkflowExecutionTest(unittest.TestCase):
         invocation_id = create_context.call_args.args[0]
         self.assertIsInstance(invocation_id, str)
         self.assertTrue(invocation_id)
+        self.assertEqual(create_context.call_args.args[3], "custom-context")
         delete_contexts.assert_called_once_with({"ctx-parent"})
         self.assertNotIn("_workflow_invocation_id", workflow_map[0])
         self.assertNotIn("_workflow_context_ids", workflow_map[0])

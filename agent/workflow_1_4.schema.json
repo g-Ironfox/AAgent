@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aagent.local/protocol/workflow/1.2/schema.json",
-  "title": "AAgent Workflow 1.2",
+  "$id": "https://aagent.local/protocol/workflow/1.4/schema.json",
+  "title": "AAgent Workflow 1.4",
   "type": "object",
   "required": ["schema_version", "name", "input_ports", "output_ports", "nodes", "connections"],
   "properties": {
-    "schema_version": { "const": "1.2" },
+    "schema_version": { "const": "1.4" },
     "name": { "type": "string" },
     "description": { "type": "string" },
     "input_ports": { "$ref": "#/$defs/ports" },
@@ -45,7 +45,10 @@
         "name": { "type": "string" },
         "x": { "type": "number" },
         "y": { "type": "number" },
-        "arguments": { "type": "object" },
+        "arguments": {
+          "type": "object",
+          "properties": { "context_id": { "type": "string", "minLength": 1 } }
+        },
         "workflowPorts": {
           "type": "array",
           "items": {

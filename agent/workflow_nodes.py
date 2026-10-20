@@ -497,7 +497,10 @@ def workflow_context_create(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     value = _context_input(node, "initial-value", "Context Value 输入缺失")
     context_id = create_context(
-        node["_workflow_invocation_id"], node_argument(node, "value_type"), value
+        node["_workflow_invocation_id"],
+        node_argument(node, "value_type"),
+        value,
+        node_argument(node, "context_id") or None,
     )
     node["_workflow_context_ids"].add(context_id)
     propagate_workflow_output(workflow_map, node, "context-id", context_id)
@@ -508,7 +511,7 @@ def workflow_context_read(current_id: int, workflow_map: WorkflowMap) -> int:
     from workflow_context_repository import read_context
 
     node = workflow_map[current_id]
-    context_id = _context_input(node, "context-id", "Context ID 输入无效")
+    context_id = node_argument(node, "context_id") if node_argument(node, "context_id_source", "port") == "fixed" else _context_input(node, "context-id", "Context ID 输入无效")
     value = read_context(
         context_id, node["_workflow_invocation_id"], node_argument(node, "value_type")
     )
@@ -520,7 +523,7 @@ def workflow_context_write(current_id: int, workflow_map: WorkflowMap) -> int:
     from workflow_context_repository import write_context
 
     node = workflow_map[current_id]
-    context_id = _context_input(node, "context-id", "Context ID 输入无效")
+    context_id = node_argument(node, "context_id") if node_argument(node, "context_id_source", "port") == "fixed" else _context_input(node, "context-id", "Context ID 输入无效")
     value = _context_input(node, "value-in", "Context Value 输入缺失")
     write_context(
         context_id,

@@ -103,7 +103,7 @@ Input 节点必须恰好一个，Output 节点至少一个。Input/Output 的 `w
 | `local_tool` | `tool`: 非空 string；`parameters`: 无重复的非空 string 数组 | 每个 parameter 名称一个 content 输入 | `output: content` |
 | `remote_sync_tool` | `tool`、`parameters: {name,type}[]`、`outputs: {name,type}[]`、可选 `timeout_ms` | 每个 parameter 名称及类型 | 每个 output 名称及类型 |
 | `remote_async_tool` | `tool`、`parameters: {name,type}[]`、可选 `timeout_ms`、可选 `callback` | 每个 parameter 名称及类型 | `task_id: content` |
-| `context_create` | `value_type`: 支持的数据类型 | `initial-value: value_type` | `context-id: content` |
+| `context_create` | `value_type`: 支持的数据类型；可选 `context_id`: 非空字符串 | `initial-value: value_type` | `context-id: content` |
 | `context_read` | `value_type`: 支持的数据类型 | `context-id: content` | `value-out: value_type` |
 | `context_write` | `value_type`: 支持的数据类型 | `context-id: content`, `value-in: value_type` | `context-id: content`, `value-out: value_type` |
 | `session_create` | `value_type`: 支持的数据类型 | `initial-value: value_type` | `session-id: content` |
@@ -120,6 +120,7 @@ Input 节点必须恰好一个，Output 节点至少一个。Input/Output 的 `w
 - `publish_event` 要求对象的 `version` 固定为 `"1.1"`，且含非空字符串 `event_type` 和 object 类型 `payload`；发布到主 Agent 队列后继续控制流。
 - `deserialize_json` 要求根对象包含配置中每个 key，且值符合对应目标类型；不匹配会使执行失败。支持类型为第 3.1 节七种类型。
 - `history` 从历史存储读取指定类型的最近记录。
+- `context_create.context_id` 未提供时自动生成；提供时作为 Context 标识使用，若当前 ID 已存在则创建失败，不覆盖已有 Context。
 - `llm.tools` 选择已注册的本地工具；`tool_calls` 输出为 JSON 文本组成的 list-content。
 - 远程工具的 `parameters` 必须与 `remote_tools` 中同名声明的输入接口一致；sync 工具的 `outputs` 必须与声明的输出接口一致。`control-in` 不能作为工具输入名，`control-out` 不能作为 sync 输出名。
 - 远程 `timeout_ms` 必须为正整数。sync 上限由 `TOOL_CLIENT_MAX_WAIT_MS` 控制，缺省 10000 ms；async 上限由 `TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS` 控制，缺省 3600000 ms。
