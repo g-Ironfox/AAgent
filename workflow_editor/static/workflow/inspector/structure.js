@@ -31,7 +31,12 @@ function bindBranches(node, context) {
     const input = option.querySelector('[data-branch-name]');
     input.value = branch.name;
     input.addEventListener('input', () => {
-      branch.name = input.value || `分支 ${index + 1}`;
+      const name = input.value || `分支 ${index + 1}`;
+      if (node.branches.some((candidate) => candidate !== branch && candidate.name === name)) {
+        input.value = branch.name;
+        return;
+      }
+      branch.name = name;
       input.value = branch.name;
       context.renderInterfaceContract(node);
       context.markChanged();

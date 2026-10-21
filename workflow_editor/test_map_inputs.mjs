@@ -27,10 +27,16 @@ function fixture() {
 
 function inspectorHarness() {
   const container = { rows: [], append(row) { this.rows.push(row); } };
+  const routeOptions = { rows: [], append(row) { this.rows.push(row); } };
   const addButton = element();
+  let changes = 0;
   const context = {
-    elements: { inspectorContent: { querySelector: (selector) => selector === '[data-content-mappings]' ? container : addButton } },
-    markChanged() {}, editor: { renderNodes() {} }, renderInspector() {}, renderInterfaceContract() {},
+    elements: { inspectorContent: { querySelector: (selector) => ({
+      '[data-content-mappings]': container,
+      '[data-route-options]': routeOptions,
+      '[data-add-branch]': addButton,
+    })[selector] || addButton } },
+    markChanged() { changes += 1; }, editor: { renderNodes() {} }, renderInspector() {}, renderInterfaceContract() {},
   };
   function element() {
     return { value: '', hidden: false, handlers: {}, addEventListener(event, callback) { this.handlers[event] = callback; } };
@@ -42,10 +48,11 @@ function inspectorHarness() {
       return fields.get(selector);
     } };
   } };
-  return { addButton, bind(node) {
+  return { addButton, get changes() { return changes; }, bind(node) {
     container.rows = [];
+    routeOptions.rows = [];
     bindStructureInspector(node, context);
-    return container.rows;
+    return node.type === 'router' ? routeOptions.rows : container.rows;
   } };
 }
 
@@ -106,4 +113,48 @@ test('switching value source creates and removes only its input port', () => {
   } finally {
     delete globalThis.document;
   }
+});
+
+test('branch name input rejects duplicates without recording a change', () => {
+  const workflow = {
+    schema_version: '1.7', name: 'duplicate_branches',
+    nodes: [
+      { id: 'input', type: 'input' },
+      { id: 'router', type: 'router', arguments: { branches: [
+        { id: 'branch-one', name: 'First' },
+        { id: 'branch-two', name: 'Second' },
+      ] } },
+      { id: 'output', type: 'output' },
+    ],
+    connections: [],
+  };
+  assert.equal(loadSnapshot(workflow), true);
+  const harness = inspectorHarness();
+  try {
+    const rows = harness.bind(state.nodes[1]);
+    const input = rows[0].querySelector('[data-branch-name]');
+    input.value = 'Second';
+    input.handlers.input();
+    assert.equal(input.value, 'First');
+    assert.equal(state.nodes[1].branches[0].name, 'First');
+    assert.equal(harness.changes, 0);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('workflow validation rejects duplicate branch names', () => {
+  const workflow = {
+    schema_version: '1.7', name: 'duplicate_branches',
+    nodes: [
+      { id: 'input', type: 'input' },
+      { id: 'router', type: 'router', arguments: { branches: [
+        { id: 'branch-one', name: 'Same' },
+        { id: 'branch-two', name: 'Same' },
+      ] } },
+      { id: 'output', type: 'output' },
+    ],
+    connections: [],
+  };
+  assert.equal(loadSnapshot(workflow), false);
 });
