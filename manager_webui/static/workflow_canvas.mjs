@@ -65,6 +65,12 @@ function contractPortIds(node, direction, workflow) {
       .map((item) => item.port_id);
     return direction === 'input' ? ['control-in', ...inputs] : ['control-out', 'content-out'];
   }
+  if (node.type === 'construct_map_content') {
+    const inputs = (Array.isArray(args.mappings) ? args.mappings : [])
+      .filter((item) => item?.value_source === 'port')
+      .map((item) => item.port_id);
+    return direction === 'input' ? ['control-in', ...inputs] : ['control-out', 'map-out'];
+  }
   if (node.type === 'split_event') return direction === 'input' ? ['control-in', 'event-in'] : ['control-out', 'type-out', 'payload-out'];
   if (node.type === 'construct_list') {
     const count = Number.isInteger(args.initial_value_count) ? args.initial_value_count : 1;

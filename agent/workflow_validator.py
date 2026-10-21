@@ -281,21 +281,7 @@ def _validate_node(node: Any, index: int) -> None:
     elif node_type == "construct_content":
         _validate_construct_content(node)
     elif node_type == "construct_map_content":
-        mappings = node_argument(node, "mappings")
-        if not isinstance(mappings, list) or not mappings or any(
-            not isinstance(item, dict)
-            or set(item) != {"key", "value"}
-            or not isinstance(item.get("key"), str)
-            or not item["key"]
-            or not isinstance(item.get("value"), str)
-            for item in mappings
-        ):
-            raise WorkflowValidationError(
-                "construct_map_content mappings must contain non-empty string keys and string values"
-            )
-        keys = [item["key"] for item in mappings]
-        if len(keys) != len(set(keys)):
-            raise WorkflowValidationError("construct_map_content mappings contains duplicate keys")
+        _validate_construct_map_content(node)
     elif node_type == "deserialize_json":
         outputs = node_argument(node, "outputs")
         if not isinstance(outputs, list) or not outputs or any(
@@ -601,6 +587,48 @@ def _validate_construct_content(node: dict[str, Any]) -> None:
     if len(port_ids) != len(set(port_ids)):
         raise WorkflowValidationError(
             "construct_content node port append_items must have unique port_id values"
+        )
+
+
+def _validate_construct_map_content(node: dict[str, Any]) -> None:
+    mappings = node_argument(node, "mappings")
+    if not isinstance(mappings, list) or not mappings:
+        raise WorkflowValidationError("construct_map_content mappings must be a non-empty list")
+    keys = []
+    port_ids = []
+    for index, item in enumerate(mappings):
+        if not isinstance(item, dict) or not isinstance(item.get("key"), str) or not item["key"]:
+            raise WorkflowValidationError(
+                f"construct_map_content mappings[{index}] must contain a non-empty string key"
+            )
+        keys.append(item["key"])
+        if item.get("value_source", "fixed") == "port":
+            if set(item) != {"key", "value_source", "port_id"}:
+                raise WorkflowValidationError(
+                    f"construct_map_content mappings[{index}] port values require port_id only"
+                )
+            port_id = item.get("port_id")
+            if not isinstance(port_id, str) or not port_id or port_id in {"control-in", "control-out"}:
+                raise WorkflowValidationError(
+                    f"construct_map_content mappings[{index}].port_id must be a non-empty data port ID"
+                )
+            port_ids.append(port_id)
+        elif item.get("value_source", "fixed") == "fixed":
+            if set(item) not in ({"key", "value"}, {"key", "value_source", "value"}) or not isinstance(item.get("value"), str):
+                raise WorkflowValidationError(
+                    f"construct_map_content mappings[{index}] fixed values require a string value"
+                )
+        else:
+            raise WorkflowValidationError(
+                f"construct_map_content mappings[{index}].value_source must be 'fixed' or 'port'"
+            )
+    if len(keys) != len(set(keys)):
+        raise WorkflowValidationError("construct_map_content mappings contains duplicate keys")
+    if len(port_ids) != len(set(port_ids)):
+        raise WorkflowValidationError("construct_map_content port mappings must have unique port_id values")
+    if set(node.get("dataInputPorts", [])) != set(port_ids):
+        raise WorkflowValidationError(
+            "construct_map_content node dataInputPorts must match port mappings"
         )
 
 

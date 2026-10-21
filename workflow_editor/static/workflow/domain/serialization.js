@@ -207,12 +207,23 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
   if (node.type === 'construct_map_content') {
     if (!Array.isArray(node.mappings) || !node.mappings.length) return null;
     const keys = new Set();
+    const portIds = new Set();
     normalized.mappings = [];
     for (const item of node.mappings) {
-      if (!item || typeof item.key !== 'string' || !item.key || keys.has(item.key) || typeof item.value !== 'string') return null;
+      if (!item || typeof item.key !== 'string' || !item.key || keys.has(item.key)) return null;
       keys.add(item.key);
-      normalized.mappings.push({ key: item.key, value: item.value });
+      if (item.value_source === 'port') {
+        if (Object.keys(item).length !== 3 || typeof item.port_id !== 'string' || !item.port_id || ['control-in', 'control-out'].includes(item.port_id) || portIds.has(item.port_id)) return null;
+        portIds.add(item.port_id);
+        normalized.mappings.push({ key: item.key, value_source: 'port', port_id: item.port_id });
+      } else {
+        if (typeof item.value !== 'string' || ![undefined, 'fixed'].includes(item.value_source) || Object.keys(item).some((key) => !['key', 'value', 'value_source'].includes(key))) return null;
+        normalized.mappings.push({ key: item.key, value: item.value });
+      }
     }
+    if (node.dataInputPorts !== undefined && (!Array.isArray(node.dataInputPorts) || node.dataInputPorts.length !== portIds.size || node.dataInputPorts.some((id) => !portIds.has(id)) || new Set(node.dataInputPorts).size !== portIds.size)) return null;
+    if (portIds.size && node.dataInputPorts === undefined) return null;
+    normalized.dataInputPorts = [...portIds];
   }
   if (node.type === 'deserialize_json') {
     if (!Array.isArray(node.outputs) || !node.outputs.length) return null;

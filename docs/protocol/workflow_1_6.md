@@ -89,7 +89,7 @@ Input 节点必须恰好一个，Output 节点至少一个。Input/Output 的 `w
 | `router` | `branches`: 非空数组，每项含唯一非空 `id`、唯一非空 `name` | `content-in: content` | 每个 branch ID 是一个 control 输出；可选一个名称为 `其它` 的兜底分支 |
 | `construct_message` | `role`、`role_source`，均可选 | `content-in: content`；`role_source="port"` 时另有 `role-in: content` | `message-out: message` |
 | `construct_content` | `append_items` | port 项引用的 content 输入 | `content-out: content` |
-| `construct_map_content` | `mappings`: 非空 `{key,value}` 数组，key 非空且唯一，value 为 string | 无 | `map-out: map-content` |
+| `construct_map_content` | `mappings`: 非空条目数组，key 非空且唯一，value 可选固定值或端口 | port 条目的 `port_id: content` | `map-out: map-content` |
 | `map_content_get` | 无 | `map-in: map-content`, `key-in: content` | `content-out: content` |
 | `split_event` | 无 | `event-in: event` | `type-out: content`, `payload-out: content` |
 | `construct_event` | `event_type`: 非空 string | `payload-in: content`，内容为 JSON object 字符串 | `event-out: event` |
@@ -115,6 +115,7 @@ Input 节点必须恰好一个，Output 节点至少一个。Input/Output 的 `w
 
 - `construct_message.role` 缺省为 `user`，允许 `system`、`user`、`assistant`、`tool`；`role_source` 缺省为 `fixed`，允许 `fixed` 或 `port`。
 - `construct_content.append_items` 是非空数组。每项为 `{type:"fixed", value:string}` 或 `{type:"port", port_id:string}`。port ID 不重复，且与 `dataInputPorts` 集合相同。按配置顺序拼接；非字符串 port 值转成字符串。
+- `construct_map_content.mappings` 是非空数组。固定值条目为 `{key:string, value:string}`（可显式指定 `value_source:"fixed"`），兼容现有 1.6 工作流；端口条目为 `{key:string, value_source:"port", port_id:string}`。key 必须是非空字符串且不重复，值可以为空字符串。port ID 非空且不重复，不能使用 `control-in` / `control-out`，并与节点顶层 `dataInputPorts` 集合完全一致（无端口条目时可省略或为空数组）。仅接受 `content` 连线；执行时端口值缺失或不是字符串则失败。按条目顺序输出 `map-content`。
 - `split_event` 要求对象含非空字符串 `event_type` 和 `payload` 字段；payload 输出为 JSON 文本。
 - `construct_event` 的 payload 输入必须可解析为 JSON object，输出 Event 1.1 对象 `{version: "1.1", event_type, payload}`。
 - `publish_event` 要求对象的 `version` 固定为 `"1.1"`，且含非空字符串 `event_type` 和 object 类型 `payload`；发布到主 Agent 队列后继续控制流。

@@ -261,15 +261,48 @@ function bindDeserializeJson(node, context) {
 
 function bindContentMap(node, context) {
   const container = context.elements.inspectorContent.querySelector('[data-content-mappings]');
+  const syncPorts = () => {
+    const usedPorts = new Set();
+    node.mappings.forEach((item, index) => {
+      if (item.value_source !== 'port') return;
+      if (!item.port_id || usedPorts.has(item.port_id)) item.port_id = `map-value-in-${index}`;
+      usedPorts.add(item.port_id);
+    });
+    node.dataInputPorts = node.mappings
+      .filter((item) => item.value_source === 'port')
+      .map((item) => item.port_id);
+  };
   node.mappings.forEach((item, index) => {
     const row = document.createElement('div');
-    row.className = 'json-output-row';
-    row.innerHTML = '<span class="route-index"></span><input data-map-key maxlength="1000" aria-label="映射键" placeholder="输入"><input data-map-value maxlength="100000" aria-label="映射值" placeholder="输出"><button type="button" class="branch-delete" title="删除映射">×</button>';
+    row.className = 'append-item';
+    row.innerHTML = '<div class="append-item-head"><span class="route-index"></span><input data-map-key maxlength="1000" aria-label="映射键" placeholder="键"><button type="button" class="branch-delete" title="删除映射">×</button></div><div class="append-item-body"><select aria-label="映射值来源"><option value="fixed">固定值</option><option value="port">端口输入</option></select><textarea data-map-value rows="3" maxlength="100000" aria-label="映射值"></textarea><code data-map-port></code></div>';
     row.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
     const keyField = row.querySelector('[data-map-key]');
+    const sourceField = row.querySelector('select');
     const valueField = row.querySelector('[data-map-value]');
+    const portName = row.querySelector('[data-map-port]');
+    sourceField.value = item.value_source === 'port' ? 'port' : 'fixed';
     keyField.value = item.key;
-    valueField.value = item.value;
+    valueField.value = sourceField.value === 'fixed' ? item.value : '';
+    portName.textContent = sourceField.value === 'port' ? item.port_id : '';
+    valueField.hidden = sourceField.value !== 'fixed';
+    portName.hidden = sourceField.value !== 'port';
+    sourceField.addEventListener('change', () => {
+      if (sourceField.value === 'port') {
+        const usedPorts = new Set(node.dataInputPorts || []);
+        let suffix = 0;
+        while (usedPorts.has(`map-value-in-${suffix}`)) suffix += 1;
+        item.value_source = 'port';
+        item.port_id = `map-value-in-${suffix}`;
+        delete item.value;
+      } else {
+        item.value = '';
+        delete item.value_source;
+        delete item.port_id;
+      }
+      syncPorts();
+      commitStructureChange(node, context);
+    });
     keyField.addEventListener('change', () => {
       const key = keyField.value;
       if (!key || node.mappings.some((mapping, mappingIndex) => mappingIndex !== index && mapping.key === key)) {
@@ -278,6 +311,8 @@ function bindContentMap(node, context) {
       }
       item.key = key;
       context.markChanged();
+      context.renderInterfaceContract(node);
+      context.editor.renderNodes();
     });
     valueField.addEventListener('input', () => {
       item.value = valueField.value;
@@ -286,6 +321,7 @@ function bindContentMap(node, context) {
     row.querySelector('button').addEventListener('click', () => {
       if (node.mappings.length <= 1) return;
       node.mappings.splice(index, 1);
+      syncPorts();
       commitStructureChange(node, context);
     });
     container.append(row);
@@ -294,6 +330,7 @@ function bindContentMap(node, context) {
     let suffix = node.mappings.length + 1;
     while (node.mappings.some((item) => item.key === `key${suffix}`)) suffix += 1;
     node.mappings.push({ key: `key${suffix}`, value: '' });
+    syncPorts();
     commitStructureChange(node, context);
   });
 }

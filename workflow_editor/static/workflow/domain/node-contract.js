@@ -90,8 +90,12 @@ export function portsForNode(node) {
     ];
   }
   if (node.type === 'construct_map_content') {
+    const inputPorts = (node.mappings || []).filter((item) => item.value_source === 'port').map((item) => ({
+      id: item.port_id, direction: 'input', type: 'content', label: item.key, title: `Map value: ${item.key}`, multiple: false,
+    }));
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '构造 Map', multiple: false },
+      ...inputPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'map-out', direction: 'output', type: 'map-content', label: 'Map', title: 'Map-Content', multiple: true },
     ];
@@ -303,7 +307,7 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'output') return { id: createWorkflowId('output'), type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
   if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
   if (type === 'construct_content') return { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
-  if (type === 'construct_map_content') return { id: createWorkflowId('construct-map-content'), type, name: `构造 Map ${number}`, mappings: [{ key: 'key1', value: '' }], ...position };
+  if (type === 'construct_map_content') return { id: createWorkflowId('construct-map-content'), type, name: `构造 Map ${number}`, mappings: [{ key: 'key1', value: '' }], dataInputPorts: [], ...position };
   if (type === 'map_content_get') return { id: createWorkflowId('map-content-get'), type, name: `Map 查找 ${number}`, ...position };
   if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
   if (type === 'split_event') return { id: createWorkflowId('split-event'), type, name: `拆分 Event ${number}`, ...position };

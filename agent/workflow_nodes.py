@@ -176,7 +176,21 @@ def workflow_construct_content(current_id: int, workflow_map: WorkflowMap) -> in
 
 def workflow_construct_map_content(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
-    mappings = {item["key"]: item["value"] for item in node_argument(node, "mappings", [])}
+    mappings = {}
+    for item in node_argument(node, "mappings", []):
+        if item.get("value_source", "fixed") == "port":
+            has_value, value = read_workflow_input(node, item["port_id"])
+            if not has_value:
+                raise ValueError(
+                    f"construct_map_content value input is missing: node {node.get('id')}, port {item['port_id']}"
+                )
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"construct_map_content value input must be content: node {node.get('id')}, port {item['port_id']}"
+                )
+        else:
+            value = item["value"]
+        mappings[item["key"]] = value
     propagate_workflow_output(workflow_map, node, "map-out", mappings)
     return next_successor(node)
 

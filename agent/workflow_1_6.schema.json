@@ -36,6 +36,30 @@
       },
       "additionalProperties": false
     },
+    "mapMapping": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["key", "value"],
+          "properties": {
+            "key": { "type": "string", "minLength": 1 },
+            "value_source": { "const": "fixed" },
+            "value": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["key", "value_source", "port_id"],
+          "properties": {
+            "key": { "type": "string", "minLength": 1 },
+            "value_source": { "const": "port" },
+            "port_id": { "type": "string", "minLength": 1, "not": { "enum": ["control-in", "control-out"] } }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "node": {
       "type": "object",
       "required": ["id", "type"],
@@ -81,6 +105,22 @@
       },
       "additionalProperties": false,
       "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "construct_map_content" } }, "required": ["type"] },
+          "then": {
+            "required": ["arguments"],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": ["mappings"],
+                "properties": {
+                  "mappings": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/mapMapping" } }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         {
           "if": { "properties": { "type": { "enum": ["context_read", "context_write"] } }, "required": ["type"] },
           "then": {
