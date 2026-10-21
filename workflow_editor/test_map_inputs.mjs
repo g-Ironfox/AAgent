@@ -7,7 +7,7 @@ import { bindStructureInspector } from './static/workflow/inspector/structure.js
 
 function fixture() {
   return {
-    schema_version: '1.6', name: 'map_ports',
+    schema_version: '1.7', name: 'map_ports',
     input_ports: [{ name: 'text', type: 'content' }],
     output_ports: [{ name: 'result', type: 'map-content' }],
     nodes: [

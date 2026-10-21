@@ -23,8 +23,7 @@ function commitStructureChange(node, context, renderInspector = true) {
 
 function bindBranches(node, context) {
   const container = context.elements.inspectorContent.querySelector('[data-route-options]');
-  const otherwiseBranch = node.branches.find((branch) => branch.id === 'branch$others');
-  node.branches.filter((branch) => branch.id !== 'branch$others').forEach((branch, index) => {
+  node.branches.forEach((branch, index) => {
     const option = document.createElement('div');
     option.className = 'route-option';
     option.innerHTML = '<span class="route-index"></span><label><input data-branch-name maxlength="30"><small>控制流输出分支</small></label><button type="button" class="branch-delete" data-delete-branch title="删除分支">×</button>';
@@ -33,31 +32,21 @@ function bindBranches(node, context) {
     input.value = branch.name;
     input.addEventListener('input', () => {
       branch.name = input.value || `分支 ${index + 1}`;
-      if (branch.name === '其它') branch.name = `分支 ${index + 1}`;
       input.value = branch.name;
       context.renderInterfaceContract(node);
       context.markChanged();
       context.editor.renderNodes();
     });
     option.querySelector('[data-delete-branch]').addEventListener('click', () => {
-      if (node.branches.length <= 1) return;
       node.branches.splice(node.branches.indexOf(branch), 1);
       commitStructureChange(node, context);
     });
     container.append(option);
   });
   context.elements.inspectorContent.querySelector('[data-add-branch]').addEventListener('click', () => {
-    node.branches.push({ id: createWorkflowId('branch'), name: `分支 ${node.branches.length + 1}` });
-    commitStructureChange(node, context);
-  });
-  const otherwiseToggle = context.elements.inspectorContent.querySelector('[data-enable-otherwise]');
-  otherwiseToggle.checked = Boolean(otherwiseBranch);
-  otherwiseToggle.addEventListener('change', () => {
-    if (otherwiseToggle.checked) {
-      node.branches.push({ id: 'branch$others', name: '其它' });
-    } else {
-      node.branches = node.branches.filter((branch) => branch.id !== 'branch$others');
-    }
+    let suffix = node.branches.length + 1;
+    while (node.branches.some((branch) => branch.name === `分支 ${suffix}`)) suffix += 1;
+    node.branches.push({ id: createWorkflowId('branch'), name: `分支 ${suffix}` });
     commitStructureChange(node, context);
   });
 }

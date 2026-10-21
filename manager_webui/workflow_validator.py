@@ -29,7 +29,7 @@ class WorkflowValidationError(ValueError):
 
 
 _WORKFLOW_SCHEMA = json.loads(
-    Path(__file__).with_name("workflow_1_6.schema.json").read_text(encoding="utf-8")
+    Path(__file__).with_name("workflow_1_7.schema.json").read_text(encoding="utf-8")
 )
 _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
@@ -220,8 +220,8 @@ def _validate_node(node: Any, index: int) -> None:
 
     if node_type == "router":
         branches = node_argument(node, "branches")
-        if not isinstance(branches, list) or not branches:
-            raise WorkflowValidationError(f"nodes[{index}].arguments.branches must be a non-empty list")
+        if not isinstance(branches, list):
+            raise WorkflowValidationError(f"nodes[{index}].arguments.branches must be a list")
         branch_ids = [
             branch.get("id") if isinstance(branch, dict) else None
             for branch in branches
@@ -243,6 +243,10 @@ def _validate_node(node: Any, index: int) -> None:
             )
         if len(branch_ids) != len(set(branch_ids)):
             raise WorkflowValidationError(f"nodes[{index}].branches contains duplicate ids")
+        if "branch$others" in branch_ids:
+            raise WorkflowValidationError(
+                f"nodes[{index}].branches reserves id 'branch$others' for the built-in fallback"
+            )
         if len(branch_names) != len(set(branch_names)):
             raise WorkflowValidationError(
                 f"nodes[{index}].branches contains duplicate names"
@@ -255,10 +259,6 @@ def _validate_node(node: Any, index: int) -> None:
             if set(branch) - {"id", "name"}:
                 raise WorkflowValidationError(
                     f"nodes[{index}].branches contains unsupported fields"
-                )
-            if (branch["id"] == "branch$others") != (branch["name"] == "其它"):
-                raise WorkflowValidationError(
-                    f"nodes[{index}].branches reserves id 'branch$others' for name '其它'"
                 )
     elif node_type == "construct_message":
         if node_argument(node, "role_source", "fixed") not in {"fixed", "port"}:

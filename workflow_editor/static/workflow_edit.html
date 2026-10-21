@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=18">
+  <link rel="stylesheet" href="/css/workflow.css?v=20">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -349,7 +349,6 @@
       <div class="section-label"><strong>Switch 分支</strong><span>运行时单选</span></div>
       <div class="route-options" data-route-options></div>
       <button class="add-branch-button" type="button" data-add-branch>+ 添加分支</button>
-        <label class="router-otherwise-toggle"><input type="checkbox" data-enable-otherwise><span><strong>启用其它分支</strong><small>没有分支名称匹配时执行</small></span></label>
       <small class="section-help">每个分支都有独立的控制流输出端点，运行时只会沿一条分支继续。</small>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
@@ -608,6 +607,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=28"></script>
+  <script type="module" src="/workflow.js?v=30"></script>
 </body>
 </html>

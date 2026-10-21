@@ -61,11 +61,6 @@
 .route-option input:focus { outline:0; border-bottom-color:var(--green); }
 .branch-delete { width:22px; height:22px; color:var(--red); border:1px solid #dfb8b3; background:#fff7f6; font-size:15px; line-height:1; }
 .add-branch-button { min-height:32px; color:var(--green); border:1px dashed var(--green); background:transparent; font-size:9px; }
-.router-otherwise-toggle { min-height:38px; margin-top:7px; padding:5px 8px; display:flex; align-items:center; gap:8px; border:1px solid var(--line); background:var(--surface); cursor:pointer; }
-.router-otherwise-toggle input { width:14px; height:14px; margin:0; accent-color:var(--green); }
-.router-otherwise-toggle span { display:grid; gap:2px; }
-.router-otherwise-toggle strong { color:var(--ink); font-size:9px; font-weight:600; }
-.router-otherwise-toggle small { color:var(--muted); font-size:8px; }
 .route-option strong,.tool-options strong { font-size:10px; }
 .route-option small,.tool-options small { color:var(--muted); font-size:8px; }
 .route-index { width:20px; height:20px; display:grid; place-items:center; color:#7a580f; background:var(--amber-soft); font:8px Consolas,monospace; }

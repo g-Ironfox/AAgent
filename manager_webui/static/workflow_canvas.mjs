@@ -57,7 +57,7 @@ function contractPortIds(node, direction, workflow) {
   if (node.type === 'output') return direction === 'input' ? ['control-in', ...workflowPortIds(workflow?.output_ports)] : [];
   if (node.type === 'router') return direction === 'input'
     ? ['control-in', 'content-in']
-    : (Array.isArray(args.branches) ? args.branches.map((branch) => branch.id) : []);
+    : [...(Array.isArray(args.branches) ? args.branches.map((branch) => branch.id).filter((id) => id !== 'branch$others') : []), 'branch$others'];
   if (node.type === 'construct_message') return direction === 'input' ? ['control-in', 'content-in'] : ['control-out', 'message-out'];
   if (node.type === 'construct_content') {
     const inputs = (Array.isArray(args.append_items) ? args.append_items : [])

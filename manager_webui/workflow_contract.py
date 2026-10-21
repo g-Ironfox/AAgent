@@ -233,7 +233,7 @@ def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
     if node_type == "router":
         return {"control-in"}, {
             branch["id"] for branch in node_argument(node, "branches", [])
-        }
+        } | {"branch$others"}
     if node_type == "foreach":
         return {"control-in", "loop-in"}, {"control-out", "loop-out"}
     return {"control-in"}, {"control-out"}

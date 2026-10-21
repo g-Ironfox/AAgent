@@ -1,7 +1,7 @@
-import { boundaryPorts, createNode, createWorkflowId, NODE_TYPES } from './node-contract.js';
+import { boundaryPorts, createNode, NODE_TYPES } from './node-contract.js';
 import { filterValidConnections } from './connection-rules.js';
 
-export const WORKFLOW_SCHEMA_VERSION = '1.6';
+export const WORKFLOW_SCHEMA_VERSION = '1.7';
 
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
@@ -178,13 +178,18 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.workflowPorts = structuredClone(node.type === 'input' ? inputPorts : outputPorts);
   }
   if (node.type === 'router') {
+    if (!Array.isArray(node.branches)) return null;
     const branchIds = new Set();
-    normalized.branches = (Array.isArray(node.branches) ? node.branches : []).flatMap((branch) => {
-      if (!branch || typeof branch.id !== 'string' || branchIds.has(branch.id)) return [];
+    const branchNames = new Set();
+    normalized.branches = [];
+    for (const branch of node.branches) {
+      if (!branch || typeof branch.id !== 'string' || !branch.id || branch.id === 'branch$others'
+        || typeof branch.name !== 'string' || !branch.name || branchIds.has(branch.id) || branchNames.has(branch.name)
+        || Object.keys(branch).some((key) => !['id', 'name'].includes(key))) return null;
       branchIds.add(branch.id);
-      return [{ id: branch.id, name: typeof branch.name === 'string' ? branch.name.slice(0, 30) : '分支' }];
-    });
-    if (!normalized.branches.length) normalized.branches.push({ id: createWorkflowId('branch'), name: '分支 1' });
+      branchNames.add(branch.name);
+      normalized.branches.push({ id: branch.id, name: branch.name });
+    }
   }
   if (node.type === 'llm') {
     normalized.model = typeof node.model === 'string' ? node.model : 'gpt-5';
@@ -368,8 +373,22 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
   return normalized;
 }
 
+export function migrateWorkflowToCurrentVersion(workflow) {
+  if (workflow?.schema_version !== '1.6') return workflow;
+  const migrated = structuredClone(workflow);
+  migrated.schema_version = WORKFLOW_SCHEMA_VERSION;
+  for (const node of migrated.nodes || []) {
+    if (node?.type !== 'router') continue;
+    if (!node.arguments || typeof node.arguments !== 'object' || Array.isArray(node.arguments)
+      || !Array.isArray(node.arguments.branches)) continue;
+    node.arguments.branches = node.arguments.branches.filter((branch) => branch?.id !== 'branch$others');
+  }
+  return migrated;
+}
+
 export function loadSnapshot(saved, metadata = null) {
   try {
+    saved = migrateWorkflowToCurrentVersion(saved);
     if (saved?.schema_version !== WORKFLOW_SCHEMA_VERSION) return false;
     const savedNodes = Array.isArray(saved) ? saved : saved?.nodes;
     if (!Array.isArray(savedNodes)) return false;
@@ -427,7 +446,7 @@ export function normalizeImportedWorkflow(imported) {
 }
 
 export function parseWorkflowText(text) {
-  const workflow = normalizeImportedWorkflow(JSON.parse(text));
+  const workflow = migrateWorkflowToCurrentVersion(normalizeImportedWorkflow(JSON.parse(text)));
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('内容不是有效的 Workflow JSON');
   if (workflow.schema_version !== WORKFLOW_SCHEMA_VERSION) throw new Error(`Workflow schema_version 必须是 ${WORKFLOW_SCHEMA_VERSION}`);
   if (typeof workflow.name !== 'string' || !workflow.name.trim()) throw new Error('Workflow 名称不能为空');

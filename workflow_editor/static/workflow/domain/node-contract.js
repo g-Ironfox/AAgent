@@ -64,7 +64,8 @@ export function portsForNode(node) {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       { id: 'content-in', direction: 'input', type: 'content', label: '输入', title: '输入内容', multiple: false },
-      ...node.branches.map((branch) => ({ id: branch.id, direction: 'output', type: 'control', label: branch.name, title: branch.name, multiple: false })),
+      ...(node.branches || []).map((branch) => ({ id: branch.id, direction: 'output', type: 'control', label: branch.name, title: branch.name, multiple: false })),
+      { id: 'branch$others', direction: 'output', type: 'control', label: '其它', title: '没有分支名称匹配时执行', multiple: false },
     ];
   }
   if (node.type === 'construct_message') {
