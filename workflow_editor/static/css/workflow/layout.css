@@ -40,6 +40,11 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .construct_message-symbol { background:#b75b18; }
 .construct_content-symbol { background:#2f6f8f; }
 .construct_map_content-symbol { background:#46713f; }
+.construct_struct-symbol { background:#326b4b; }
+.struct_get-symbol { background:#326f91; }
+.struct_update-symbol { background:#9a5a24; }
+.struct_to_json-symbol { background:#61568a; }
+.json_to_struct-symbol { background:#147d78; }
 .map_content_get-symbol { background:#326b4b; }
 .deserialize_json-symbol { background:#61568a; }
 .split_event-symbol { background:#147d78; }
@@ -105,6 +110,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .metadata-port-mark { min-width:29px; padding:3px 5px; color:#fff; text-align:center; font:700 8px Consolas,monospace; }
 .metadata-port-mark.input { background:var(--blue); }.metadata-port-mark.output { background:#b75b18; }.metadata-port-mark.workflow { background:#785d9b; }
 .metadata-port-mark.remote-tool { background:#a94f36; }
+.metadata-port-mark.struct { background:#3a7d68; }
 .metadata-port-list { min-height:72px; }
 .metadata-port-row { padding:9px 12px; display:grid; grid-template-columns:minmax(0,1fr) 126px 30px; gap:7px; border-bottom:1px solid #e7ebe7; }
 .metadata-port-row input,.metadata-port-row select { min-width:0; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; font-size:10px; }

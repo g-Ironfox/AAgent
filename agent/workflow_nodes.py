@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import copy
 import logging
 import os
 from typing import Any, Callable
@@ -41,7 +42,85 @@ def propagate_workflow_output(
                 f"workflow target input is not connected: node {target_id}, "
                 f"port {target_port}"
             )
-        target_slot[2] = value.copy() if isinstance(value, dict) else value
+        target_slot[2] = copy.deepcopy(value)
+
+
+def _struct_defs(node: dict[str, Any]) -> dict[str, Any]:
+    return node.get("_struct_definitions", {})
+
+
+def workflow_construct_struct(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+    node = workflow_map[current_id]
+    sid = node_argument(node, "struct_id")
+    value = {}
+    for field in _struct_defs(node)[sid]["fields"]:
+        present, item = read_workflow_input(node, field["name"])
+        if not present:
+            if field["required"]: raise ValueError(f"construct_struct missing required field {field['name']}: node {node.get('id')}")
+            continue
+        value[field["name"]] = item
+    value = validate_value(f"struct:{sid}", value, _struct_defs(node), copy_value=True)
+    propagate_workflow_output(workflow_map, node, "struct-out", value)
+    return next_successor(node)
+
+
+def workflow_struct_get(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+    node = workflow_map[current_id]
+    sid, name = node_argument(node, "struct_id"), node_argument(node, "field")
+    definition = _struct_defs(node)[sid]
+    field = next(f for f in definition["fields"] if f["name"] == name)
+    present, source = read_workflow_input(node, "struct-in")
+    if not present: raise ValueError(f"struct_get input missing: node {node.get('id')}")
+    source = validate_value(f"struct:{sid}", source, _struct_defs(node))
+    if name not in source:
+        if node_argument(node, "missing", "error") != "fallback":
+            raise ValueError(f"struct_get field missing: {name}, node {node.get('id')}")
+        present, result = read_workflow_input(node, "fallback-in")
+        if not present: raise ValueError(f"struct_get fallback missing: node {node.get('id')}")
+        result = validate_value(field["type"], result, _struct_defs(node), "fallback")
+    else: result = source[name]
+    propagate_workflow_output(workflow_map, node, "value-out", copy.deepcopy(result))
+    return next_successor(node)
+
+
+def workflow_struct_update(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+    node = workflow_map[current_id]
+    sid, defs = node_argument(node, "struct_id"), _struct_defs(node)
+    present, original = read_workflow_input(node, "struct-in")
+    if not present: raise ValueError(f"struct_update input missing: node {node.get('id')}")
+    value = validate_value(f"struct:{sid}", original, defs, copy_value=True)
+    for name in node_argument(node, "remove_fields", []): value.pop(name, None)
+    for name in node_argument(node, "updates", []):
+        present, item = read_workflow_input(node, name)
+        if present: value[name] = item
+    value = validate_value(f"struct:{sid}", value, defs, copy_value=True)
+    propagate_workflow_output(workflow_map, node, "struct-out", value)
+    return next_successor(node)
+
+
+def workflow_struct_to_json(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+    node = workflow_map[current_id]
+    present, value = read_workflow_input(node, "value-in")
+    if not present: raise ValueError(f"struct_to_json input missing: node {node.get('id')}")
+    value = validate_value(node_argument(node, "value_type"), value, _struct_defs(node))
+    propagate_workflow_output(workflow_map, node, "content-out", json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+    return next_successor(node)
+
+
+def workflow_json_to_struct(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+    node = workflow_map[current_id]
+    present, content = read_workflow_input(node, "content-in")
+    if not present or not isinstance(content, str): raise ValueError(f"json_to_struct content input invalid: node {node.get('id')}")
+    try: value = json.loads(content)
+    except json.JSONDecodeError as error: raise ValueError(f"json_to_struct invalid JSON: node {node.get('id')}") from error
+    value = validate_value(node_argument(node, "value_type"), value, _struct_defs(node), copy_value=True)
+    propagate_workflow_output(workflow_map, node, "value-out", value)
+    return next_successor(node)
 
 
 def next_successor(node: dict[str, Any], key: str = "next") -> int:
@@ -518,6 +597,7 @@ def workflow_context_create(current_id: int, workflow_map: WorkflowMap) -> int:
         node_argument(node, "value_type"),
         value,
         node_argument(node, "context_id") or None,
+        _struct_defs(node),
     )
     node["_workflow_context_ids"].add(context_id)
     propagate_workflow_output(workflow_map, node, "context-id", context_id)
@@ -530,7 +610,7 @@ def workflow_context_read(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     context_id = node_argument(node, "context_id") if node_argument(node, "context_id_source", "port") == "fixed" else _context_input(node, "context-id", "Context ID 输入无效")
     value = read_context(
-        context_id, node["_workflow_invocation_id"], node_argument(node, "value_type")
+        context_id, node["_workflow_invocation_id"], node_argument(node, "value_type"), _struct_defs(node)
     )
     propagate_workflow_output(workflow_map, node, "value-out", value)
     return next_successor(node)
@@ -547,6 +627,7 @@ def workflow_context_write(current_id: int, workflow_map: WorkflowMap) -> int:
         node["_workflow_invocation_id"],
         node_argument(node, "value_type"),
         value,
+        _struct_defs(node),
     )
     propagate_workflow_output(workflow_map, node, "context-id", context_id)
     propagate_workflow_output(workflow_map, node, "value-out", value)
@@ -643,6 +724,11 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_message": workflow_construct_message,
     "construct_content": workflow_construct_content,
     "construct_map_content": workflow_construct_map_content,
+    "construct_struct": workflow_construct_struct,
+    "struct_get": workflow_struct_get,
+    "struct_update": workflow_struct_update,
+    "struct_to_json": workflow_struct_to_json,
+    "json_to_struct": workflow_json_to_struct,
     "map_content_get": workflow_map_content_get,
     "construct_event": workflow_construct_event,
     "split_event": workflow_split_event,

@@ -27,3 +27,22 @@ test('Map input ports render in mapping order rather than connection order', () 
     .map((match) => match[1]);
   assert.deepEqual(mapInputLabels, ['control-in', 'map-value-in-0', 'map-value-in-1']);
 });
+
+test('Workflow-local Struct connections use declared colors and node accents stay fixed', () => {
+  const svg = workflowCanvasSvg({
+    name: 'struct_colors',
+    metadata: { structs: [{ id: 'profile', name: 'Profile', color: '#3A7D68', fields: [] }] },
+    input_ports: [],
+    output_ports: [],
+    nodes: [
+      { id: 'make', type: 'construct_struct', name: 'Profile', x: 0, y: 0, arguments: { struct_id: 'profile' } },
+      { id: 'serialize', type: 'struct_to_json', name: 'Serialize', x: 300, y: 0, arguments: { value_type: 'struct:profile' } },
+    ],
+    connections: [
+      { fromId: 'make', fromPortId: 'struct-out', toId: 'serialize', toPortId: 'value-in', type: 'struct:profile' },
+    ],
+  });
+  assert.match(svg, /stroke="#3A7D68"/);
+  assert.match(svg, /fill="#326b4b"/);
+  assert.doesNotMatch(svg, /<rect width="190" height="4" fill="#3A7D68"/);
+});

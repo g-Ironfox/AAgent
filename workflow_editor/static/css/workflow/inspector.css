@@ -75,3 +75,21 @@
 .append-item [hidden] { display:none; }
 .empty-options { padding:13px; color:var(--muted); border:1px dashed var(--line); font-size:9px; text-align:center; }
 .delete-node-button { width:calc(100% - 30px); height:36px; margin:15px; color:var(--red); border:1px solid #dfb8b3; background:#fff7f6; font-size:10px; }
+
+.struct-update-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(100px,42%); align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:10px; }
+.struct-update-row select { min-width:0; height:30px; border:1px solid var(--line); background:#fff; }
+.struct-definition-list { display:grid; gap:8px; padding:10px 14px; }
+.struct-definition { border:1px solid var(--line); background:#fff; }
+.struct-definition-head { display:grid; grid-template-columns:minmax(110px,1fr) 48px auto; align-items:center; gap:8px; padding:8px; background:#f8faf8; border-bottom:1px solid var(--line); }
+.struct-definition-head input[type="text"],.struct-field input[type="text"],.struct-field select { min-width:0; height:30px; padding:0 7px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:10px; }
+.struct-definition-head input[type="color"] { width:42px; height:30px; padding:2px; border:1px solid var(--line); background:#fff; }
+.struct-definition-id { grid-column:1 / -1; color:var(--muted); font:9px Consolas,monospace; }
+.struct-definition-fields { display:grid; gap:6px; padding:8px; }
+.struct-field { display:grid; grid-template-columns:minmax(90px,1fr) minmax(140px,1.2fr) auto auto; align-items:center; gap:7px; }
+.struct-field-required { display:flex; align-items:center; gap:4px; color:var(--muted); font-size:9px; white-space:nowrap; }
+.struct-field-required input { margin:0; accent-color:var(--green); }
+.struct-editor-actions { display:flex; justify-content:flex-end; padding:0 8px 8px; }
+.struct-editor-actions button,.struct-field-remove,.struct-definition-remove { min-width:30px; height:30px; color:var(--red); border:1px solid #dfb8b4; background:#fff; }
+.struct-editor-actions button { min-width:unset; padding:0 9px; color:var(--green); border-color:var(--line); }
+.struct-definition-empty { margin:0; padding:12px 14px; color:var(--muted); font-size:10px; }
+@media (max-width:560px) { .struct-field { grid-template-columns:minmax(80px,1fr) minmax(110px,1.2fr) auto; } .struct-field-required { grid-column:1 / 3; } }

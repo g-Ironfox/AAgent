@@ -14,8 +14,8 @@ from workflow_validator import WorkflowValidationError, _validate_node
 
 
 class WorkflowSchemaVersionTest(unittest.TestCase):
-    def test_current_workflow_schema_version_is_1_7(self):
-        self.assertEqual(WORKFLOW_SCHEMA_VERSION, "1.7")
+    def test_current_workflow_schema_version_is_2_0(self):
+        self.assertEqual(WORKFLOW_SCHEMA_VERSION, "2.0")
 
     def test_workflow_names_reject_empty_but_preserve_whitespace(self):
         with self.assertRaises(ValidationError):

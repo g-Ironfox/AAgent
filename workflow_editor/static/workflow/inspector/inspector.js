@@ -3,6 +3,7 @@ import { reconcileConnections } from '../domain/connection-rules.js';
 import { nodeById, state } from '../domain/serialization.js';
 import { createIntegrationInspector } from './integrations.js';
 import { bindStructureInspector } from './structure.js';
+import { setRuntimeStyles } from '../domain/runtime-styles.js';
 
 export function createInspector(elements, editor, markChanged) {
   const context = { elements, editor, markChanged, renderInspector, renderInterfaceContract };
@@ -70,6 +71,7 @@ export function createInspector(elements, editor, markChanged) {
       const portElements = ports.filter((port) => port.direction === direction).map((port) => {
         const contract = document.querySelector('#portContractTemplate').content.firstElementChild.cloneNode(true);
         contract.querySelector('.port-swatch').classList.add(port.type);
+        if (port.color) setRuntimeStyles(contract.querySelector('.port-swatch'), `inspector-port:${node.id}:${port.direction}:${port.id}`, { backgroundColor: port.color });
         contract.querySelector('strong').textContent = port.label;
         contract.querySelector('code').textContent = port.contract || port.type;
         contract.title = port.title;
