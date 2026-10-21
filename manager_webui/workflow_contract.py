@@ -233,7 +233,7 @@ def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
     if node_type == "router":
         return {"control-in"}, {
             branch["id"] for branch in node_argument(node, "branches", [])
-        }
+        } | {"branch$others"}
     if node_type == "foreach":
         return {"control-in", "loop-in"}, {"control-out", "loop-out"}
     return {"control-in"}, {"control-out"}
@@ -323,6 +323,8 @@ def is_valid_connection(
             expected_type = "map-content" if to_port == "map-in" else "content"
             if to_port not in {"map-in", "key-in"} or connection_type != expected_type:
                 return False
+        if target_node["type"] == "construct_map_content" and connection_type != "content":
+            return False
         if source_node["type"] == "construct_map_content" and (
             from_port != "map-out" or connection_type != "map-content"
         ):

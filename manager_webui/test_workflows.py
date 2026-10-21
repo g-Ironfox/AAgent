@@ -10,11 +10,12 @@ from workflows import (
     workflow_port_values,
 )
 from workflow_node_remap import remap_workflow_node_names
+from workflow_validator import WorkflowValidationError, _validate_node
 
 
 class WorkflowSchemaVersionTest(unittest.TestCase):
-    def test_current_workflow_schema_version_is_1_5(self):
-        self.assertEqual(WORKFLOW_SCHEMA_VERSION, "1.5")
+    def test_current_workflow_schema_version_is_1_7(self):
+        self.assertEqual(WORKFLOW_SCHEMA_VERSION, "1.7")
 
     def test_workflow_names_reject_empty_but_preserve_whitespace(self):
         with self.assertRaises(ValidationError):
@@ -48,7 +49,7 @@ class WorkflowSchemaVersionTest(unittest.TestCase):
             WorkflowRequest.model_validate(without_version)
         self.assertEqual(raised.exception.errors()[0]["loc"], ("schema_version",))
 
-        for version in ("1.0", "1.1", "1.4", "1.6"):
+        for version in ("1.0", "1.1", "1.4", "1.5", "1.6", "1.8"):
             with self.subTest(version=version):
                 with self.assertRaises(ValidationError) as raised:
                     WorkflowRequest.model_validate({**payload, "schema_version": version})
@@ -86,6 +87,28 @@ class WorkflowNodeRemapTest(unittest.TestCase):
             workflow_port_values(reference["output_ports"]),
             [{"name": "answer", "type": "content"}],
         )
+
+
+class RouterBranchValidationTest(unittest.TestCase):
+    def test_router_fallback_is_not_a_user_branch(self):
+        for name in ("fallback", "其它"):
+            node = {
+                "id": "router", "type": "router",
+                "arguments": {"branches": [{"id": "branch$others", "name": name}]},
+            }
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(WorkflowValidationError, "reserves id"):
+                    _validate_node(node, 0)
+
+    def test_router_allows_no_user_branches(self):
+        _validate_node({"id": "router", "type": "router", "arguments": {"branches": []}}, 0)
+
+    def test_router_allows_user_branch_named_other(self):
+        _validate_node({
+            "id": "router", "type": "router", "arguments": {"branches": [
+                {"id": "route-other", "name": "其它"},
+            ]},
+        }, 0)
 
 if __name__ == "__main__":
     unittest.main()

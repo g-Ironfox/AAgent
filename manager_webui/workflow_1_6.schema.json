@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aagent.local/protocol/workflow/1.6/schema.json",
+  "title": "AAgent Workflow 1.6",
+  "type": "object",
+  "required": ["schema_version", "name", "input_ports", "output_ports", "nodes", "connections"],
+  "properties": {
+    "schema_version": { "const": "1.6" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "input_ports": { "$ref": "#/$defs/ports" },
+    "output_ports": { "$ref": "#/$defs/ports" },
+    "workflow_nodes": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+    "remote_tools": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "connections": { "type": "array", "items": { "$ref": "#/$defs/connection" } }
+  },
+  "$defs": {
+    "port": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["content", "message", "event", "list-content", "list-message", "list-event", "map-content"] }
+      },
+      "additionalProperties": false
+    },
+    "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+    "dependency": {
+      "type": "object",
+      "required": ["name", "input_ports", "output_ports"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "input_ports": { "$ref": "#/$defs/ports" },
+        "output_ports": { "$ref": "#/$defs/ports" }
+      },
+      "additionalProperties": false
+    },
+    "mapMapping": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["key", "value"],
+          "properties": {
+            "key": { "type": "string", "minLength": 1 },
+            "value_source": { "const": "fixed" },
+            "value": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["key", "value_source", "port_id"],
+          "properties": {
+            "key": { "type": "string", "minLength": 1 },
+            "value_source": { "const": "port" },
+            "port_id": { "type": "string", "minLength": 1, "not": { "enum": ["control-in", "control-out"] } }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["input", "output", "router", "construct_message", "construct_content", "construct_map_content", "map_content_get", "split_event", "construct_event", "publish_event", "deserialize_json", "construct_list", "list_append", "foreach", "history", "llm", "local_tool", "remote_sync_tool", "remote_async_tool", "context_create", "context_read", "context_write", "session_create", "session_read", "session_write", "workflow"] },
+        "name": { "type": "string" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "arguments": {
+          "type": "object",
+          "properties": {
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "name"],
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "name": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "workflowPorts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "type"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "type": { "$ref": "#/$defs/port/properties/type" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "dataInputPorts": { "type": "array", "items": { "type": "string" } },
+        "input_ports": { "$ref": "#/$defs/ports" },
+        "output_ports": { "$ref": "#/$defs/ports" }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "construct_map_content" } }, "required": ["type"] },
+          "then": {
+            "required": ["arguments"],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": ["mappings"],
+                "properties": {
+                  "mappings": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/mapMapping" } }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["context_read", "context_write"] } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "properties": {
+                  "value_type": { "enum": ["content", "message", "event", "map-content", "list-content", "list-message", "list-event"] },
+                  "context_id_source": { "enum": ["port", "fixed"] },
+                  "context_id": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "properties": {
+                  "value_type": { "enum": ["content", "message", "event", "map-content", "list-content", "list-message", "list-event"] }
+                }
+              }
+            }
+          }
+        },
+        {
+          "not": {
+            "properties": {
+              "type": { "not": { "enum": ["context_read", "context_write"] } },
+              "arguments": { "required": ["context_id_source"] }
+            },
+            "required": ["type", "arguments"]
+          }
+        }
+      ]
+    },
+    "connection": {
+      "type": "object",
+      "required": ["fromId", "fromPortId", "toId", "toPortId", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "fromId": { "type": "string", "minLength": 1 },
+        "fromPortId": { "type": "string", "minLength": 1 },
+        "toId": { "type": "string", "minLength": 1 },
+        "toPortId": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["control", "content", "message", "event", "list-content", "list-message", "list-event", "map-content"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

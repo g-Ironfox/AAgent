@@ -154,8 +154,9 @@ document.addEventListener('keydown', (event) => {
     target.isContentEditable
     || target.closest('input, textarea, select, [contenteditable="true"], dialog')
   )) return;
-  const snapshot = undoHistory.pop();
+  const snapshot = undoHistory.at(-1);
   if (!snapshot || !loadSnapshot(snapshot)) return;
+  undoHistory.pop();
   event.preventDefault();
   lastUndoSnapshot = workflowSnapshot();
   hasUnsavedChanges = true;

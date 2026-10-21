@@ -176,7 +176,21 @@ def workflow_construct_content(current_id: int, workflow_map: WorkflowMap) -> in
 
 def workflow_construct_map_content(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
-    mappings = {item["key"]: item["value"] for item in node_argument(node, "mappings", [])}
+    mappings = {}
+    for item in node_argument(node, "mappings", []):
+        if item.get("value_source", "fixed") == "port":
+            has_value, value = read_workflow_input(node, item["port_id"])
+            if not has_value:
+                raise ValueError(
+                    f"construct_map_content value input is missing: node {node.get('id')}, port {item['port_id']}"
+                )
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"construct_map_content value input must be content: node {node.get('id')}, port {item['port_id']}"
+                )
+        else:
+            value = item["value"]
+        mappings[item["key"]] = value
     propagate_workflow_output(workflow_map, node, "map-out", mappings)
     return next_successor(node)
 
@@ -398,7 +412,10 @@ def workflow_router(current_id: int, workflow_map: WorkflowMap) -> int:
     has_key, key = read_workflow_input(node, "content-in")
     if not has_key:
         raise ValueError(f"router input is missing: node {node.get('id')}")
-    return next_successor(node, f"branch-{key}")
+    branch_key = f"branch-{key}"
+    if branch_key not in node.get("successors", {}):
+        branch_key = "branch$others"
+    return next_successor(node, branch_key)
 
 
 def _tool_arguments(node: dict[str, Any]) -> dict[str, Any]:

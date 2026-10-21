@@ -14,6 +14,7 @@ from workflow_nodes import (
     workflow_deserialize_json,
     workflow_llm,
     workflow_publish_event,
+    workflow_router,
     workflow_split_event,
 )
 from workflow_validator import WorkflowValidationError, validate_workflow
@@ -154,7 +155,7 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
     def test_validator_rejects_workflow_with_different_schema_version(self):
         # 升级 Workflow 协议时，同步更新旧版和未来版样例，确保两者都不是当前版本。
-        for version in ("1.0", "1.1"):
+        for version in ("1.0", "1.1", "1.6", "1.8"):
             with self.subTest(version=version):
                 workflow = callable_workflow_fixture()
                 workflow["schema_version"] = version
@@ -570,6 +571,7 @@ class CallableWorkflowNodeTest(unittest.TestCase):
                 {"fromId": "input", "fromPortId": "control-out", "toId": "router", "toPortId": "control-in", "type": "control"},
                 {"fromId": "router", "fromPortId": "route-yes", "toId": "foreach", "toPortId": "control-in", "type": "control"},
                 {"fromId": "router", "fromPortId": "route-no", "toId": "output", "toPortId": "control-in", "type": "control"},
+                {"fromId": "router", "fromPortId": "branch$others", "toId": "output", "toPortId": "control-in", "type": "control"},
                 {"fromId": "foreach", "fromPortId": "loop-out", "toId": "foreach", "toPortId": "loop-in", "type": "control"},
                 {"fromId": "foreach", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
             ],
@@ -580,7 +582,8 @@ class CallableWorkflowNodeTest(unittest.TestCase):
         self.assertEqual(parsed[0]["successors"], {"next": 1})
         self.assertEqual(parsed[1]["predecessors"], {"last": [0]})
         self.assertEqual(
-            parsed[1]["successors"], {"branch-yes": 2, "branch-no": 3}
+            parsed[1]["successors"],
+            {"branch-yes": 2, "branch-no": 3, "branch$others": 3},
         )
         self.assertNotIn("branches", parsed[1])
         self.assertEqual(
@@ -591,10 +594,14 @@ class CallableWorkflowNodeTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
+            parsed[1]["successors"]["branch$others"],
+            3,
+        )
+        self.assertEqual(
             parsed[2]["predecessors"], {"last": [1], "continue": [2]}
         )
         self.assertEqual(parsed[2]["successors"], {"item": 2, "next": 3})
-        self.assertEqual(parsed[3]["predecessors"], {"last": [1, 2]})
+        self.assertEqual(parsed[3]["predecessors"], {"last": [1, 1, 2]})
 
     def test_validator_rejects_duplicate_router_branch_names(self):
         workflow = callable_workflow_fixture()
@@ -614,6 +621,97 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
         with self.assertRaisesRegex(WorkflowValidationError, "duplicate names"):
             validate_workflow(workflow)
+
+    def test_validator_requires_builtin_router_fallback_connection(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].insert(1, {
+            "id": "router", "type": "router", "arguments": {"branches": []},
+        })
+        workflow["connections"][0]["toId"] = "router"
+        with self.assertRaisesRegex(WorkflowValidationError, r"output:branch\$others"):
+            validate_workflow(workflow)
+
+    def test_router_with_only_builtin_fallback_compiles_and_executes(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].insert(1, {
+            "id": "router", "type": "router", "arguments": {"branches": []},
+        })
+        workflow["connections"][0]["toId"] = "router"
+        workflow["connections"].append({
+            "fromId": "router", "fromPortId": "branch$others", "toId": "call-summary",
+            "toPortId": "control-in", "type": "control",
+        })
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+        parsed[1]["data_inputs"]["content-in"][2] = "unmatched"
+        self.assertEqual(parsed[1]["successors"], {"branch$others": 2})
+        self.assertEqual(workflow_router(1, parsed), 2)
+
+    def test_validator_rejects_builtin_fallback_in_user_branches(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].insert(1, {
+            "id": "router", "type": "router", "arguments": {"branches": [
+                {"id": "branch$others", "name": "fallback"},
+            ]},
+        })
+        with self.assertRaises(WorkflowValidationError):
+            validate_workflow(workflow)
+
+    def test_router_allows_regular_branch_named_other(self):
+        workflow = callable_workflow_fixture()
+        router = {
+            "id": "router",
+            "type": "router",
+            "arguments": {"branches": [
+                {"id": "route-other", "name": "其它"},
+            ]},
+        }
+        workflow["nodes"].insert(1, router)
+        workflow["connections"][0]["toId"] = "router"
+        workflow["connections"].extend([
+            {"fromId": "router", "fromPortId": "route-other", "toId": "call-summary", "toPortId": "control-in", "type": "control"},
+            {"fromId": "router", "fromPortId": "branch$others", "toId": "output", "toPortId": "control-in", "type": "control"},
+        ])
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+        self.assertEqual(parsed[1]["successors"], {"branch-其它": 2, "branch$others": 3})
+        parsed[1]["data_inputs"]["content-in"][2] = "其它"
+        self.assertEqual(workflow_router(1, parsed), 2)
+        parsed[1]["data_inputs"]["content-in"][2] = "unmatched"
+        self.assertEqual(workflow_router(1, parsed), 3)
+
+    def test_router_requires_input_even_with_builtin_fallback(self):
+        node = {
+            "id": "router", "successors": {"branch$others": 1},
+            "data_inputs": {"content-in": [None, None, None]},
+        }
+        with self.assertRaisesRegex(ValueError, "router input is missing"):
+            workflow_router(0, [node, {}])
+
+    def test_router_named_branch_cannot_collide_with_fallback_key(self):
+        for name in ("others", "branch$others"):
+            with self.subTest(name=name):
+                node = {
+                    "id": "router", "successors": {f"branch-{name}": 1, "branch$others": 2},
+                    "data_inputs": {"content-in": [0, "content-in", name]},
+                }
+                self.assertEqual(workflow_router(0, [node, {}, {}]), 1)
+
+    def test_router_uses_otherwise_branch_for_unmatched_value(self):
+        node = {
+            "id": "router",
+            "successors": {"branch-yes": 1, "branch$others": 2},
+            "data_inputs": {"content-in": [0, "content-in", "maybe"]},
+        }
+        self.assertEqual(workflow_router(0, [node, {}, {}]), 2)
+
+    def test_router_prefers_matching_branch_over_otherwise(self):
+        node = {
+            "id": "router",
+            "successors": {"branch-yes": 1, "branch$others": 2},
+            "data_inputs": {"content-in": [0, "content-in", "yes"]},
+        }
+        self.assertEqual(workflow_router(0, [node, {}, {}]), 1)
 
     def test_validator_rejects_flattened_node_arguments(self):
         workflow = callable_workflow_fixture()

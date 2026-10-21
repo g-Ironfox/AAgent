@@ -57,13 +57,19 @@ function contractPortIds(node, direction, workflow) {
   if (node.type === 'output') return direction === 'input' ? ['control-in', ...workflowPortIds(workflow?.output_ports)] : [];
   if (node.type === 'router') return direction === 'input'
     ? ['control-in', 'content-in']
-    : (Array.isArray(args.branches) ? args.branches.map((branch) => branch.id) : []);
+    : [...(Array.isArray(args.branches) ? args.branches.map((branch) => branch.id).filter((id) => id !== 'branch$others') : []), 'branch$others'];
   if (node.type === 'construct_message') return direction === 'input' ? ['control-in', 'content-in'] : ['control-out', 'message-out'];
   if (node.type === 'construct_content') {
     const inputs = (Array.isArray(args.append_items) ? args.append_items : [])
       .filter((item) => item?.type === 'port')
       .map((item) => item.port_id);
     return direction === 'input' ? ['control-in', ...inputs] : ['control-out', 'content-out'];
+  }
+  if (node.type === 'construct_map_content') {
+    const inputs = (Array.isArray(args.mappings) ? args.mappings : [])
+      .filter((item) => item?.value_source === 'port')
+      .map((item) => item.port_id);
+    return direction === 'input' ? ['control-in', ...inputs] : ['control-out', 'map-out'];
   }
   if (node.type === 'split_event') return direction === 'input' ? ['control-in', 'event-in'] : ['control-out', 'type-out', 'payload-out'];
   if (node.type === 'construct_list') {
