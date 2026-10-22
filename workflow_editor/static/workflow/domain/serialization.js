@@ -306,6 +306,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
       normalized.missing = node.missing === 'fallback' ? 'fallback' : 'error';
       normalized.has_fallback = normalized.missing === 'fallback';
       if (normalized.has_fallback && (!fieldName || fields.get(fieldName).required)) return null;
+      normalized.dataInputPorts = normalized.has_fallback ? ['struct-in', 'fallback-in'] : ['struct-in'];
     }
     if (node.type === 'struct_update') {
       if (!Array.isArray(node.updates) || !Array.isArray(node.remove_fields)
@@ -315,7 +316,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
         || node.updates.some((name) => node.remove_fields.includes(name))) return null;
       normalized.updates = [...node.updates];
       normalized.remove_fields = [...node.remove_fields];
-      normalized.dataInputPorts = [...node.updates];
+      normalized.dataInputPorts = ['struct-in', ...node.updates];
     }
     }
   }

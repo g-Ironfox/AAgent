@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { prepareStructDefinitions, remapStructReferences } from './static/workflow/domain/struct-editing.js';
 import { loadSnapshot, state, workflowSnapshot } from './static/workflow/domain/serialization.js';
 import { isValidConnection } from './static/workflow/domain/connection-rules.js';
@@ -89,4 +91,84 @@ test('renaming preserves connected Struct, list, JSON and Context nodes through 
   assert.equal(state.connections.length, workflow.connections.length);
   assert.ok(state.connections.every((connection) => isValidConnection(connection, state.nodes)));
   assert.equal(JSON.stringify(workflowSnapshot()).includes(old), false);
+});
+
+
+function structPortRoundTripWorkflow(missing, updates) {
+  const connect = (fromId, fromPortId, toId, toPortId, type) => ({
+    id: `${fromId}:${fromPortId}:${toId}:${toPortId}`, fromId, fromPortId, toId, toPortId, type,
+  });
+  const inputPorts = [{ name: 'text', type: 'content' }];
+  const outputPorts = [{ name: 'result', type: 'content' }];
+  const workflow = {
+    schema_version: '2.0', name: `struct_ports_${missing}_${updates.length}`,
+    metadata: { structs: [definition('Profile', 'Profile', [
+      field('name', 'content'), { name: 'nickname', type: 'content', required: false },
+    ])] },
+    input_ports: inputPorts, output_ports: outputPorts,
+    nodes: [
+      { id: 'input', type: 'input', workflowPorts: inputPorts.map((port) => ({ id: `workflow:${port.name}`, ...port })) },
+      { id: 'make', type: 'construct_struct', arguments: { struct_id: 'Profile' }, dataInputPorts: ['name', 'nickname'] },
+      { id: 'update', type: 'struct_update', arguments: { struct_id: 'Profile', updates, remove_fields: [] }, dataInputPorts: ['struct-in', ...updates] },
+      { id: 'get', type: 'struct_get', arguments: { struct_id: 'Profile', field: missing === 'fallback' ? 'nickname' : 'name', missing, has_fallback: missing === 'fallback' }, dataInputPorts: missing === 'fallback' ? ['struct-in', 'fallback-in'] : ['struct-in'] },
+      { id: 'output', type: 'output', workflowPorts: outputPorts.map((port) => ({ id: `workflow:${port.name}`, ...port })) },
+    ],
+    connections: [
+      connect('input', 'workflow:text', 'make', 'name', 'content'),
+      connect('make', 'struct-out', 'update', 'struct-in', 'struct:Profile'),
+      connect('update', 'struct-out', 'get', 'struct-in', 'struct:Profile'),
+      connect('get', 'value-out', 'output', 'workflow:result', 'content'),
+      ...updates.map((name) => connect('input', 'workflow:text', 'update', name, 'content')),
+      ...(missing === 'fallback' ? [connect('input', 'workflow:text', 'get', 'fallback-in', 'content')] : []),
+    ],
+  };
+  for (let index = 1; index < workflow.nodes.length; index += 1) {
+    workflow.connections.push(connect(workflow.nodes[index - 1].id, 'control-out', workflow.nodes[index].id, 'control-in', 'control'));
+  }
+  return workflow;
+}
+
+test('Struct get and update snapshots retain port contracts accepted by both backends', () => {
+  const workflows = [];
+  for (const missing of ['error', 'fallback']) {
+    for (const updates of [[], ['name', 'nickname']]) {
+      const original = structPortRoundTripWorkflow(missing, updates);
+      assert.equal(loadSnapshot(original), true);
+      const snapshot = workflowSnapshot();
+      for (const id of ['get', 'update']) {
+        assert.deepEqual(
+          snapshot.nodes.find((node) => node.id === id).dataInputPorts,
+          original.nodes.find((node) => node.id === id).dataInputPorts,
+          `${original.name}: ${id}`,
+        );
+      }
+      assert.deepEqual(snapshot.connections, original.connections);
+      assert.equal(loadSnapshot(snapshot), true);
+      assert.deepEqual(workflowSnapshot(), snapshot);
+      workflows.push(original, snapshot);
+    }
+  }
+  // Use separate processes because the backends have identically named Python modules.
+  const validationScript = `
+import json
+import sys
+sys.path.insert(0, sys.argv[1])
+from workflow_validator import validate_workflow
+for workflow in json.load(sys.stdin):
+    validate_workflow(workflow)
+    if sys.argv[1] == "agent":
+        from workflow_parser import parse_workflow
+        from workflow_nodes import propagate_workflow_output, run_workflow_map
+        graph = parse_workflow(workflow)
+        propagate_workflow_output(graph, graph[0], "workflow:text", "Ada")
+        assert run_workflow_map(graph, 0) == {"result": "Ada"}
+`;
+  for (const backend of ['agent', 'manager_webui']) {
+    const result = spawnSync(process.env.PYTHON || 'python', ['-c', validationScript, backend], {
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
+      input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
+  }
 });
