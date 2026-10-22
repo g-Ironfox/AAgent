@@ -275,10 +275,24 @@ function renderMetadataDialog() {
 
 function renderStructDefinitions() {
   const mount = elements.structDefinitions;
+  mount.classList.toggle('is-empty', !structDraft.length);
   if (!structDraft.length) {
-    const empty = document.createElement('p');
+    const empty = document.createElement('div');
     empty.className = 'struct-definition-empty';
-    empty.textContent = '尚未声明 Struct';
+    empty.innerHTML = `
+      <span class="struct-empty-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="3" width="16" height="18" rx="2"/>
+          <path d="M8 8h8M11 12h5M11 16h5M8 12h.01M8 16h.01"/>
+        </svg>
+      </span>
+      <div class="struct-empty-copy">
+        <h4>创建第一个 Struct</h4>
+        <p>将相关字段组合为可复用的数据类型，仅在当前 Workflow 内有效。</p>
+      </div>
+      <button class="struct-empty-create" type="button"><span aria-hidden="true">+</span> 创建 Struct</button>
+    `;
+    empty.querySelector('button').addEventListener('click', addStructDefinition);
     mount.replaceChildren(empty);
     return;
   }
@@ -319,6 +333,16 @@ function renderStructDefinitions() {
 
     const fields = document.createElement('div');
     fields.className = 'struct-definition-fields';
+    const fieldHeading = document.createElement('div');
+    fieldHeading.className = 'struct-field-heading';
+    fieldHeading.innerHTML = '<span>字段名</span><span>字段类型</span><span>必需</span><span>操作</span>';
+    fields.append(fieldHeading);
+    if (!definition.fields.length) {
+      const empty = document.createElement('p');
+      empty.className = 'struct-fields-empty';
+      empty.textContent = '暂无字段，添加字段后即可定义该 Struct 的数据结构。';
+      fields.append(empty);
+    }
     for (const field of definition.fields) {
       const row = document.createElement('div');
       row.className = 'struct-field';
@@ -369,16 +393,20 @@ function renderStructDefinitions() {
 
     const actions = document.createElement('div');
     actions.className = 'struct-editor-actions';
+    const fieldCount = document.createElement('span');
+    fieldCount.className = 'struct-field-count';
+    fieldCount.textContent = `${definition.fields.length} 个字段`;
     const addField = document.createElement('button');
     addField.type = 'button';
-    addField.textContent = '添加字段';
+    addField.className = 'struct-add-field';
+    addField.innerHTML = '<span aria-hidden="true">+</span> 添加字段';
     addField.addEventListener('click', () => {
       let index = definition.fields.length + 1;
       while (definition.fields.some((field) => field.name === `field_${index}`)) index += 1;
       definition.fields.push({ name: `field_${index}`, type: 'content', required: true });
       renderStructDefinitions();
     });
-    actions.append(addField);
+    actions.append(fieldCount, addField);
     card.append(header, fields, actions);
     return card;
   }));
@@ -397,6 +425,9 @@ function addStructDefinition() {
   });
   elements.structDefinitionsError.textContent = '';
   renderStructDefinitions();
+  const nameInput = elements.structDefinitions.lastElementChild.querySelector('input[type="text"]');
+  nameInput.focus();
+  nameInput.select();
 }
 
 function readMetadataPorts(collection) {
