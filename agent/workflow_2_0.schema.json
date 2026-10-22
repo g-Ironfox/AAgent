@@ -403,7 +403,9 @@
                 "enum": [
                   "context_create",
                   "context_read",
-                  "context_write"
+                  "context_write",
+                  "struct_to_json",
+                  "json_to_struct"
                 ]
               }
             },

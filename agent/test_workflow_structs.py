@@ -2,7 +2,7 @@ import copy
 import unittest
 
 from workflow_structs import StructValidationError, validate_struct_definitions, validate_value
-from workflow_validator import WorkflowValidationError, _validate_workflow_schema
+from workflow_validator import WorkflowValidationError, _validate_workflow_schema, validate_workflow
 
 
 def definitions():
@@ -53,6 +53,84 @@ class WorkflowStructTest(unittest.TestCase):
         for item in (unknown, cycle):
             with self.assertRaises(StructValidationError):
                 validate_struct_definitions(item)
+
+    def test_declared_struct_json_round_trip_executes_in_validated_workflow(self):
+        workflow = {
+            "schema_version": "2.0",
+            "name": "profile_json_round_trip",
+            "metadata": {"structs": [{
+                "id": "profile",
+                "name": "Profile",
+                "color": "#3A7D68",
+                "fields": [{"name": "display_name", "type": "content", "required": True}],
+            }]},
+            "input_ports": [{"name": "display_name", "type": "content"}],
+            "output_ports": [{"name": "result", "type": "content"}],
+            "nodes": [
+                {"id": "input", "type": "input", "workflowPorts": [{"id": "workflow:display_name", "name": "display_name", "type": "content"}]},
+                {"id": "construct", "type": "construct_struct", "arguments": {"struct_id": "profile"}, "dataInputPorts": ["display_name"]},
+                {"id": "serialize", "type": "struct_to_json", "arguments": {"value_type": "struct:profile"}, "dataInputPorts": ["value-in"]},
+                {"id": "parse", "type": "json_to_struct", "arguments": {"value_type": "struct:profile"}, "dataInputPorts": ["content-in"]},
+                {"id": "get_name", "type": "struct_get", "arguments": {"struct_id": "profile", "field": "display_name", "missing": "error", "has_fallback": False}, "dataInputPorts": ["struct-in"]},
+                {"id": "output", "type": "output", "workflowPorts": [{"id": "workflow:result", "name": "result", "type": "content"}]},
+            ],
+            "connections": [
+                {"fromId": "input", "fromPortId": "control-out", "toId": "construct", "toPortId": "control-in", "type": "control"},
+                {"fromId": "construct", "fromPortId": "control-out", "toId": "serialize", "toPortId": "control-in", "type": "control"},
+                {"fromId": "serialize", "fromPortId": "control-out", "toId": "parse", "toPortId": "control-in", "type": "control"},
+                {"fromId": "parse", "fromPortId": "control-out", "toId": "get_name", "toPortId": "control-in", "type": "control"},
+                {"fromId": "get_name", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
+                {"fromId": "input", "fromPortId": "workflow:display_name", "toId": "construct", "toPortId": "display_name", "type": "content"},
+                {"fromId": "construct", "fromPortId": "struct-out", "toId": "serialize", "toPortId": "value-in", "type": "struct:profile"},
+                {"fromId": "serialize", "fromPortId": "content-out", "toId": "parse", "toPortId": "content-in", "type": "content"},
+                {"fromId": "parse", "fromPortId": "value-out", "toId": "get_name", "toPortId": "struct-in", "type": "struct:profile"},
+                {"fromId": "get_name", "fromPortId": "value-out", "toId": "output", "toPortId": "workflow:result", "type": "content"},
+            ],
+        }
+        validate_workflow(workflow)
+
+        from workflow_nodes import propagate_workflow_output, run_workflow_map
+        from workflow_parser import parse_workflow
+
+        workflow_map = parse_workflow(workflow)
+        propagate_workflow_output(workflow_map, workflow_map[0], "workflow:display_name", "Ada Lovelace")
+        self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "Ada Lovelace"})
+    def test_json_conversion_schema_accepts_declared_struct_types(self):
+        workflow = {
+            "schema_version": "2.0",
+            "name": "struct_json_conversion",
+            "metadata": {"structs": []},
+            "input_ports": [],
+            "output_ports": [],
+            "connections": [],
+            "nodes": [],
+        }
+        for node_type in ("struct_to_json", "json_to_struct"):
+            for value_type in ("struct:profile", "list-struct:profile"):
+                with self.subTest(node_type=node_type, value_type=value_type):
+                    workflow["nodes"] = [{
+                        "id": "convert",
+                        "type": node_type,
+                        "arguments": {"value_type": value_type},
+                    }]
+                    _validate_workflow_schema(workflow)
+
+    def test_session_schema_still_rejects_struct_types(self):
+        workflow = {
+            "schema_version": "2.0",
+            "name": "session_struct_rejected",
+            "metadata": {"structs": []},
+            "input_ports": [],
+            "output_ports": [],
+            "connections": [],
+            "nodes": [{
+                "id": "session",
+                "type": "session_create",
+                "arguments": {"value_type": "struct:profile"},
+            }],
+        }
+        with self.assertRaises(WorkflowValidationError):
+            _validate_workflow_schema(workflow)
 
     def test_context_schema_accepts_local_types_but_session_schema_rejects_them(self):
         workflow = {
