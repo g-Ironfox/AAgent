@@ -27,10 +27,10 @@ function addTypeOptions(select, { includeBuiltin = false, includeStructLists = f
   }
   for (const definition of localStructs()) {
     const type = `struct:${definition.id}`;
-    if (!existing.has(type)) select.add(new Option(`${definition.name} (${type})`, type));
+    if (!existing.has(type)) select.add(new Option(definition.name, type));
     if (includeStructLists) {
       const listType = `list-struct:${definition.id}`;
-      if (!existing.has(listType)) select.add(new Option(`List<${definition.name}> (${listType})`, listType));
+      if (!existing.has(listType)) select.add(new Option(`List<${definition.name}>`, listType));
     }
   }
 }
@@ -58,7 +58,7 @@ function bindStructNodes(node, context) {
   const structSelect = context.elements.inspectorContent.querySelector('[data-struct-id]');
   if (structSelect) {
     structSelect.add(new Option(definitions.length ? '选择 Struct 类型' : '尚无 Struct 声明', ''));
-    for (const definition of definitions) structSelect.add(new Option(`${definition.name} (${definition.id})`, definition.id));
+    for (const definition of definitions) structSelect.add(new Option(definition.name, definition.id));
     structSelect.value = node.struct_id || '';
     structSelect.addEventListener('change', () => {
       const previous = structuredClone(node); const connections = structuredClone(state.connections);

@@ -37,10 +37,12 @@
             "properties": {
               "id": {
                 "type": "string",
+                "description": "Struct type identifier. The editor saves the user-entered name as both id and name; legacy definitions with a separate name remain supported.",
                 "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
               },
               "name": {
                 "type": "string",
+                "description": "The editor saves the same value as id. Receivers preserve a different legacy display name and resolve type references using id.",
                 "minLength": 1
               },
               "color": {

@@ -2,6 +2,7 @@ import { fetchLocalTools, fetchModels, fetchRemoteTools } from './api.js';
 import { createWorkflowEditor } from './workflow/editor.js';
 import { createInspector } from './workflow/inspector/inspector.js';
 import { setRuntimeStyles } from './workflow/domain/runtime-styles.js';
+import { prepareStructDefinitions, remapStructReferences } from './workflow/domain/struct-editing.js';
 import {
   addNode,
   loadSnapshot,
@@ -9,7 +10,6 @@ import {
   resetWorkflow,
   state,
   workflowSnapshot,
-  validateStructDefinitions,
 } from './workflow/domain/serialization.js';
 
 const elements = {
@@ -76,7 +76,6 @@ const editor = createWorkflowEditor(elements, markChanged);
 const inspector = createInspector(elements, editor, markChanged);
 let remoteToolSchemas = [];
 let structDraft = [];
-let structIdSequence = 0;
 const structColors = ['#3A7D68', '#D97706', '#3976A8', '#B94E42', '#7A5AA6', '#56813B'];
 
 function renderWorkflow() {
@@ -92,7 +91,7 @@ function renderStructLegend() {
     const swatch = document.createElement('i');
     setRuntimeStyles(swatch, `struct-legend:${definition.id}`, { backgroundColor: definition.color });
     const name = document.createElement('span');
-    name.textContent = `${definition.name} / ${definition.id}`;
+    name.textContent = definition.name;
     item.append(swatch, name);
     return item;
   }));
@@ -308,9 +307,18 @@ function renderStructDefinitions() {
     name.maxLength = 80;
     name.required = true;
     name.value = definition.name;
-    name.placeholder = '显示名称';
-    name.setAttribute('aria-label', 'Struct 显示名称');
-    name.addEventListener('input', () => { definition.name = name.value; });
+    name.placeholder = 'Struct 名称，如 workflow_payload';
+    name.pattern = '[A-Za-z_][A-Za-z0-9_]*';
+    name.title = '名称即类型 ID，须唯一；仅包含字母、数字和下划线，不能以数字开头';
+    name.setAttribute('aria-label', 'Struct 名称');
+    name.addEventListener('input', () => {
+      definition.name = name.value;
+      validateStructNames();
+      for (const option of mount.querySelectorAll('.struct-field select option')) {
+        if (option.value === `struct:${definition.id}`) option.textContent = name.value;
+        if (option.value === `list-struct:${definition.id}`) option.textContent = `List<${name.value}>`;
+      }
+    });
     const color = document.createElement('input');
     color.type = 'color';
     color.value = definition.color;
@@ -326,10 +334,7 @@ function renderStructDefinitions() {
       structDraft = structDraft.filter((item) => item !== definition);
       renderStructDefinitions();
     });
-    const id = document.createElement('code');
-    id.className = 'struct-definition-id';
-    id.textContent = `ID: ${definition.id}`;
-    header.append(name, color, remove, id);
+    header.append(name, color, remove);
 
     const fields = document.createElement('div');
     fields.className = 'struct-definition-fields';
@@ -361,7 +366,7 @@ function renderStructDefinitions() {
         type.add(new Option(builtin, builtin));
       }
       for (const target of structDraft) {
-        type.add(new Option(`${target.name} (${target.id})`, `struct:${target.id}`));
+        type.add(new Option(target.name, `struct:${target.id}`));
         type.add(new Option(`List<${target.name}>`, `list-struct:${target.id}`));
       }
       if (![...type.options].some((option) => option.value === field.type)) type.add(new Option(field.type, field.type));
@@ -410,16 +415,24 @@ function renderStructDefinitions() {
     card.append(header, fields, actions);
     return card;
   }));
+  validateStructNames();
+}
+
+function validateStructNames() {
+  for (const [index, input] of [...elements.structDefinitions.querySelectorAll('.struct-definition-head input[type="text"]')].entries()) {
+    const name = structDraft[index].name.trim().toLowerCase();
+    const duplicate = structDraft.some((item, otherIndex) => otherIndex !== index && item.name.trim().toLowerCase() === name);
+    input.setCustomValidity(duplicate ? 'Struct 名称不能重复' : '');
+  }
 }
 
 function addStructDefinition() {
-  structIdSequence += 1;
-  const id = `struct_${Date.now().toString(36)}_${structIdSequence.toString(36)}`;
   let index = structDraft.length + 1;
-  while (structDraft.some((definition) => definition.name === `Struct ${index}`)) index += 1;
+  while (structDraft.some((definition) => definition.id === `struct_${index}` || definition.name.trim().toLowerCase() === `struct_${index}`)) index += 1;
+  const name = `struct_${index}`;
   structDraft.push({
-    id,
-    name: `Struct ${index}`,
+    id: name,
+    name,
     color: structColors[(structDraft.length) % structColors.length],
     fields: [{ name: 'field_1', type: 'content', required: true }],
   });
@@ -657,8 +670,9 @@ elements.metadataForm.addEventListener('submit', (event) => {
   event.preventDefault();
   if (!elements.metadataForm.reportValidity()) return;
   let structs;
+  let structIdMap;
   try {
-    structs = validateStructDefinitions(structDraft);
+    ({ structs, idMap: structIdMap } = prepareStructDefinitions(structDraft));
     elements.structDefinitionsError.textContent = '';
   } catch (error) {
     elements.structDefinitionsError.textContent = error.message;
@@ -703,6 +717,7 @@ elements.metadataForm.addEventListener('submit', (event) => {
   state.output_ports = outputPorts;
   state.workflow_nodes = callableWorkflows.map(({ previous_name, ...workflow }) => workflow);
   state.remote_tools = remoteTools.map(({ previous_name, ...tool }) => tool);
+  remapStructReferences(state, structIdMap);
   const snapshot = workflowSnapshot();
   if (!loadSnapshot(snapshot)) {
     loadSnapshot(previousSnapshot);

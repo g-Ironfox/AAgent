@@ -11,7 +11,7 @@ from workflows import (
 )
 from workflow_node_remap import remap_workflow_node_names
 from workflow_validator import WorkflowValidationError, _validate_node, _validate_workflow_schema, validate_workflow
-from workflow_structs import validate_struct_definitions
+from workflow_structs import StructValidationError, validate_struct_definitions
 
 
 class WorkflowSchemaVersionTest(unittest.TestCase):
@@ -91,6 +91,13 @@ class WorkflowNodeRemapTest(unittest.TestCase):
 
 
 class StructJsonConversionValidationTest(unittest.TestCase):
+    def test_struct_names_are_unique_case_insensitively(self):
+        first = {"id": "profile", "name": "profile", "color": "#3A7D68", "fields": []}
+        for duplicate in (first, {**first, "id": "PROFILE", "name": "PROFILE"}):
+            with self.subTest(duplicate=duplicate):
+                with self.assertRaises(StructValidationError):
+                    validate_struct_definitions([first, duplicate])
+
     def test_manager_schema_accepts_struct_value_types_for_conversion_nodes(self):
         workflow = {
             "schema_version": "2.0",
@@ -161,7 +168,13 @@ class StructJsonConversionValidationTest(unittest.TestCase):
                 {"fromId": "get_name", "fromPortId": "value-out", "toId": "output", "toPortId": "workflow:result", "type": "content"},
             ],
         }
-        validate_workflow(workflow)
+        for name in ("profile", "Legacy display name"):
+            with self.subTest(struct_name=name):
+                workflow["metadata"]["structs"][0]["name"] = name
+                saved = WorkflowRequest.model_validate(workflow).model_dump()
+                validate_workflow(saved)
+                self.assertEqual(saved["metadata"], workflow["metadata"])
+
     def test_conversion_nodes_reject_undeclared_struct_type(self):
         for node_type in ("struct_to_json", "json_to_struct"):
             with self.subTest(node_type=node_type):

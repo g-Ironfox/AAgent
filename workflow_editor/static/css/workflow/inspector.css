@@ -88,7 +88,6 @@
 .struct-definition-head { display:grid; grid-template-columns:minmax(120px,1fr) 42px 32px; align-items:center; gap:8px; padding:10px; background:#f8faf8; border-bottom:1px solid var(--line); }
 .struct-definition-head input[type="text"],.struct-field input[type="text"],.struct-field select { min-width:0; height:30px; padding:0 7px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:10px; }
 .struct-definition-head input[type="color"] { width:42px; height:30px; padding:2px; border:1px solid var(--line); background:#fff; }
-.struct-definition-id { grid-column:1 / -1; padding:6px 8px; overflow:hidden; color:var(--muted); background:#eef1ee; font:9px Consolas,monospace; text-overflow:ellipsis; white-space:nowrap; }
 .struct-definition-fields { display:grid; gap:6px; padding:10px; }
 .struct-field-heading,.struct-field { display:grid; grid-template-columns:minmax(100px,1fr) minmax(150px,1.2fr) auto 30px; align-items:center; gap:8px; }
 .struct-field-heading { padding:0 2px 3px; color:var(--muted); font-size:9px; }

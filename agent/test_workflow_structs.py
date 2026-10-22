@@ -19,6 +19,13 @@ def definitions():
 
 
 class WorkflowStructTest(unittest.TestCase):
+    def test_struct_names_are_unique_case_insensitively(self):
+        first = {"id": "profile", "name": "profile", "color": "#3A7D68", "fields": []}
+        for duplicate in (first, {**first, "id": "PROFILE", "name": "PROFILE"}):
+            with self.subTest(duplicate=duplicate):
+                with self.assertRaises(StructValidationError):
+                    validate_struct_definitions([first, duplicate])
+
     def test_nested_struct_and_struct_list_validate(self):
         defs = definitions()
         value = {"owner": {"name": "Ada"}, "reviewers": [{"name": "Lin", "tags": ["review"]}]}
@@ -87,14 +94,18 @@ class WorkflowStructTest(unittest.TestCase):
                 {"fromId": "get_name", "fromPortId": "value-out", "toId": "output", "toPortId": "workflow:result", "type": "content"},
             ],
         }
-        validate_workflow(workflow)
-
         from workflow_nodes import propagate_workflow_output, run_workflow_map
         from workflow_parser import parse_workflow
 
-        workflow_map = parse_workflow(workflow)
-        propagate_workflow_output(workflow_map, workflow_map[0], "workflow:display_name", "Ada Lovelace")
-        self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "Ada Lovelace"})
+        for name in ("profile", "Legacy display name"):
+            with self.subTest(struct_name=name):
+                workflow["metadata"]["structs"][0]["name"] = name
+                validate_workflow(workflow)
+                workflow_map = parse_workflow(workflow)
+                self.assertEqual(workflow_map[0]["_struct_definitions"]["profile"]["name"], name)
+                propagate_workflow_output(workflow_map, workflow_map[0], "workflow:display_name", "Ada Lovelace")
+                self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "Ada Lovelace"})
+
     def test_json_conversion_schema_accepts_declared_struct_types(self):
         workflow = {
             "schema_version": "2.0",
