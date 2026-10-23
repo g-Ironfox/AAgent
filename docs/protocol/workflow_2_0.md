@@ -46,7 +46,7 @@ Struct 类型可用于 Workflow 内部数据端口、节点参数和 Context；�
 
 ### 3.2 声明格式
 
-`metadata.structs` 是 Struct 定义数组。每项必须恰含 `id`、`name`、`color`、`fields`；每个字段必须恰含 `name`、`type`、`required`。
+`metadata.structs` 是 Struct 定义数组。每项必须包含 `id`、`name`、`color`、`fields`，可选包含 `list_color`；每个字段必须恰含 `name`、`type`、`required`。`color` 设置 `struct:<id>` 类型的颜色，`list_color` 独立设置 `list-struct:<id>` 类型的颜色；省略 `list_color` 时沿用 `color`，以兼容已有 Workflow 2.0 文件。
 
 编辑器将用户输入的 Struct 名称同时保存为 `id` 和 `name`，不再生成额外的随机 ID，也不提供独立的显示名称输入。编辑器输入的名称遵循标识规则，在当前 Workflow 内不区分大小写唯一，最多 80 个字符。应用元数据修改时，同步更新嵌套字段、节点参数、列表动态端口与连线中的类型引用；取消编辑不影响原始 Workflow。
 

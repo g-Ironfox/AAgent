@@ -60,7 +60,8 @@ function workflowPortIds(ports) {
 function structColorForType(type, workflow) {
   const match = /^(?:list-)?struct:(.+)$/.exec(type || '');
   if (!match) return null;
-  return (workflow?.metadata?.structs || []).find((item) => item.id === match[1])?.color || null;
+  const definition = (workflow?.metadata?.structs || []).find((item) => item.id === match[1]);
+  return type.startsWith('list-struct:') ? (definition?.list_color || definition?.color || null) : (definition?.color || null);
 }
 
 function connectionColor(type, workflow) {

@@ -19,6 +19,15 @@ def definitions():
 
 
 class WorkflowStructTest(unittest.TestCase):
+    def test_list_color_is_independent_and_legacy_definitions_fall_back(self):
+        legacy = {"id": "profile", "name": "Profile", "color": "#3A7D68", "fields": []}
+        definitions = validate_struct_definitions([legacy, {**legacy, "id": "task", "name": "Task", "list_color": "#3976A8"}])
+        self.assertEqual(definitions["profile"]["list_color"], "#3A7D68")
+        self.assertEqual(definitions["task"]["list_color"], "#3976A8")
+
+        with self.assertRaises(StructValidationError):
+            validate_struct_definitions([{**legacy, "list_color": "green"}])
+
     def test_struct_names_are_unique_case_insensitively(self):
         first = {"id": "profile", "name": "profile", "color": "#3A7D68", "fields": []}
         for duplicate in (first, {**first, "id": "PROFILE", "name": "PROFILE"}):

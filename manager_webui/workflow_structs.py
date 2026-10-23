@@ -22,15 +22,18 @@ def validate_struct_definitions(value: Any) -> dict[str, dict[str, Any]]:
     names: set[str] = set()
     for i, item in enumerate(value):
         path = f"metadata.structs[{i}]"
-        if not isinstance(item, dict) or set(item) != {"id", "name", "color", "fields"}:
-            raise StructValidationError(f"{path} must contain id, name, color, and fields")
+        if not isinstance(item, dict) or not {"id", "name", "color", "fields"}.issubset(item) or set(item) - {"id", "name", "color", "list_color", "fields"}:
+            raise StructValidationError(f"{path} must contain id, name, color, and fields; list_color is optional")
         sid, name, color, fields = (item[k] for k in ("id", "name", "color", "fields"))
+        list_color = item.get("list_color", color)
         if not isinstance(sid, str) or not STRUCT_ID.fullmatch(sid) or sid in result:
             raise StructValidationError(f"{path}.id is invalid or duplicated")
         if not isinstance(name, str) or not name.strip() or name.casefold() in names:
             raise StructValidationError(f"{path}.name must be non-empty and unique")
         if not isinstance(color, str) or not COLOR.fullmatch(color):
             raise StructValidationError(f"{path}.color must use #RRGGBB")
+        if not isinstance(list_color, str) or not COLOR.fullmatch(list_color):
+            raise StructValidationError(f"{path}.list_color must use #RRGGBB")
         if not isinstance(fields, list):
             raise StructValidationError(f"{path}.fields must be a list")
         seen: set[str] = set()
@@ -49,7 +52,7 @@ def validate_struct_definitions(value: Any) -> dict[str, dict[str, Any]]:
             seen.add(fn)
             clean_fields.append({"name": fn, "type": ft, "required": req})
         names.add(name.casefold())
-        result[sid] = {"id": sid, "name": name, "color": color, "fields": clean_fields}
+        result[sid] = {"id": sid, "name": name, "color": color, "list_color": list_color, "fields": clean_fields}
     for sid, definition in result.items():
         for field in definition["fields"]:
             for ref in _refs(field["type"]):

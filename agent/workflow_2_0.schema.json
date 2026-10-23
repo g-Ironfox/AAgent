@@ -49,6 +49,11 @@
                 "type": "string",
                 "pattern": "^#[0-9A-Fa-f]{6}$"
               },
+              "list_color": {
+                "type": "string",
+                "description": "Optional color for list-struct:<id>; defaults to color for older workflows.",
+                "pattern": "^#[0-9A-Fa-f]{6}$"
+              },
               "fields": {
                 "type": "array",
                 "items": {

@@ -66,7 +66,9 @@ function structDefinition(node, id) {
 
 function structColor(node, type) {
   const match = /^(?:list-)?struct:(.+)$/.exec(type || '');
-  return match ? structDefinition(node, match[1])?.color : null;
+  if (!match) return null;
+  const definition = structDefinition(node, match[1]);
+  return type.startsWith('list-struct:') ? (definition?.list_color || definition?.color) : definition?.color;
 }
 
 export function portsForNode(node) {
@@ -226,6 +228,7 @@ export function portsForNode(node) {
       id: portId,
       direction: 'input',
       type: node.item_type,
+      color: structColor(node, node.item_type),
       label: `${node.item_type} ${index}`,
       title: `列表初始值 ${index}`,
       multiple: false,
@@ -234,26 +237,26 @@ export function portsForNode(node) {
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       ...itemPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: true },
+      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
   if (node.type === 'list_append') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
+      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
       { id: 'item-in', direction: 'input', type: node.item_type, label: '追加项', title: node.item_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
+      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
   if (node.type === 'foreach') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发遍历', multiple: false },
       { id: 'loop-in', direction: 'input', type: 'control', label: '循环体结束', title: '循环体完成后返回', multiple: false },
-      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
+      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '列表遍历完成后继续', multiple: false },
       { id: 'loop-out', direction: 'output', type: 'control', label: '循环体开始', title: '执行当前项的循环体', multiple: false },
-      { id: 'item-out', direction: 'output', type: node.item_type, label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
+      { id: 'item-out', direction: 'output', type: node.item_type, color: structColor(node, node.item_type), label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
     ];
   }
   if (node.type === 'history') {

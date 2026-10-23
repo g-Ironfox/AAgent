@@ -54,10 +54,11 @@ export function validateStructDefinitions(value) {
   const names = new Set();
   const definitions = new Map();
   for (const [index, item] of value.entries()) {
-    if (!item || Object.keys(item).sort().join(',') !== 'color,fields,id,name'
+    if (!item || !['color,fields,id,name', 'color,fields,id,list_color,name'].includes(Object.keys(item).sort().join(','))
       || typeof item.id !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(item.id) || ids.has(item.id)
       || typeof item.name !== 'string' || !item.name.trim() || names.has(item.name.toLocaleLowerCase())
       || typeof item.color !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(item.color)
+      || (item.list_color !== undefined && (typeof item.list_color !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(item.list_color)))
       || !Array.isArray(item.fields)) throw new Error(`metadata.structs[${index}] 无效`);
     ids.add(item.id);
     names.add(item.name.toLocaleLowerCase());

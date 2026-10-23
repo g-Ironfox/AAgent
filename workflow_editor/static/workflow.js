@@ -86,14 +86,20 @@ function renderWorkflow() {
 function renderStructLegend() {
   const mount = elements.canvasLegend?.querySelector('[data-struct-legend]');
   if (!mount) return;
-  mount.replaceChildren(...(state.metadata?.structs || []).map((definition) => {
+  mount.replaceChildren(...(state.metadata?.structs || []).flatMap((definition) => {
     const item = document.createElement('span');
     const swatch = document.createElement('i');
     setRuntimeStyles(swatch, `struct-legend:${definition.id}`, { 'background-color': definition.color });
     const name = document.createElement('span');
-    name.textContent = definition.name;
+    name.textContent = `STRUCT:${definition.name}`;
     item.append(swatch, name);
-    return item;
+    const listItem = document.createElement('span');
+    const listSwatch = document.createElement('i');
+    setRuntimeStyles(listSwatch, `list-struct-legend:${definition.id}`, { 'background-color': definition.list_color || definition.color });
+    const listName = document.createElement('span');
+    listName.textContent = `LIST<${definition.name}>`;
+    listItem.append(listSwatch, listName);
+    return [item, listItem];
   }));
 }
 
@@ -266,6 +272,7 @@ function renderMetadataDialog() {
   renderMetadataPortList('input_ports');
   renderMetadataPortList('output_ports');
   structDraft = structuredClone(state.metadata?.structs || []);
+  for (const definition of structDraft) definition.list_color ||= definition.color;
   renderStructDefinitions();
   elements.structDefinitionsError.textContent = '';
   renderCallableWorkflowList();
@@ -324,6 +331,11 @@ function renderStructDefinitions() {
     color.value = definition.color;
     color.setAttribute('aria-label', 'Struct 类型颜色');
     color.addEventListener('input', () => { definition.color = color.value.toUpperCase(); });
+    const listColor = document.createElement('input');
+    listColor.type = 'color';
+    listColor.value = definition.list_color || definition.color;
+    listColor.setAttribute('aria-label', 'Struct 列表类型颜色');
+    listColor.addEventListener('input', () => { definition.list_color = listColor.value.toUpperCase(); });
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'struct-definition-remove';
@@ -334,7 +346,17 @@ function renderStructDefinitions() {
       structDraft = structDraft.filter((item) => item !== definition);
       renderStructDefinitions();
     });
-    header.append(name, color, remove);
+    const colors = document.createElement('div');
+    colors.className = 'struct-definition-colors';
+    for (const [label, picker] of [['Struct', color], ['List', listColor]]) {
+      const colorField = document.createElement('label');
+      colorField.className = 'struct-definition-color';
+      const colorName = document.createElement('span');
+      colorName.textContent = label;
+      colorField.append(colorName, picker);
+      colors.append(colorField);
+    }
+    header.append(name, colors, remove);
 
     const fields = document.createElement('div');
     fields.className = 'struct-definition-fields';
@@ -434,6 +456,7 @@ function addStructDefinition() {
     id: name,
     name,
     color: structColors[(structDraft.length) % structColors.length],
+    list_color: '#3976A8',
     fields: [{ name: 'field_1', type: 'content', required: true }],
   });
   elements.structDefinitionsError.textContent = '';

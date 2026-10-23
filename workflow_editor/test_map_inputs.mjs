@@ -179,6 +179,27 @@ test('workflow-local Struct declarations survive load and expose colored typed p
   assert.equal(port.color, '#3A7D68');
 });
 
+test('Struct lists have a distinct declared color on list node ports', () => {
+  const structs = [{ id: 'profile', name: 'Profile', color: '#3A7D68', list_color: '#3976A8', fields: [] }];
+  assert.equal(loadSnapshot({
+    schema_version: '2.0', name: 'struct_list_colors', metadata: { structs },
+    input_ports: [], output_ports: [],
+    nodes: [
+      { id: 'input', type: 'input' },
+      { id: 'list', type: 'construct_list', arguments: { item_type: 'struct:profile', initial_value_count: 0 }, dataInputPorts: [] },
+      { id: 'output', type: 'output' },
+    ], connections: [],
+  }), true);
+  const output = portsForNode(state.nodes.find((node) => node.id === 'list')).find((port) => port.id === 'list-out');
+  assert.equal(output.type, 'list-struct:profile');
+  assert.equal(output.color, '#3976A8');
+
+  const legacy = structuredClone(structs);
+  delete legacy[0].list_color;
+  assert.equal(loadSnapshot({ schema_version: '2.0', name: 'legacy_struct_list_colors', metadata: { structs: legacy }, input_ports: [], output_ports: [], nodes: [{ id: 'input', type: 'input' }, { id: 'list', type: 'construct_list', arguments: { item_type: 'struct:profile', initial_value_count: 0 }, dataInputPorts: [] }, { id: 'output', type: 'output' }], connections: [] }), true);
+  assert.equal(portsForNode(state.nodes.find((node) => node.id === 'list')).find((port) => port.id === 'list-out').color, '#3A7D68');
+});
+
 test('all five Struct node types can be created and round-trip before any type is selected', () => {
   assert.equal(loadSnapshot({
     schema_version: '2.0', name: 'unbound_struct_nodes',
