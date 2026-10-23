@@ -272,7 +272,7 @@ export function portsForNode(node) {
     const label = isSession ? 'Session' : 'Context';
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: `创建 ${label}`, multiple: false },
-      { id: 'initial-value', direction: 'input', type: node.value_type, label: '初始值', title: node.value_type, multiple: false },
+      { id: 'initial-value', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '初始值', title: node.value_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: idPort, direction: 'output', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: true },
     ];
@@ -284,7 +284,7 @@ export function portsForNode(node) {
     const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: `读取 ${label}`, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'value-out', direction: 'output', type: node.value_type, label: '值', title: node.value_type, multiple: true },
+      { id: 'value-out', direction: 'output', type: node.value_type, color: structColor(node, node.value_type), label: '值', title: node.value_type, multiple: true },
     ];
     if (node.type === 'session_read' || (node.context_id_source || 'port') === 'port') {
       ports.splice(1, 0, { id: idPort, direction: 'input', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: false });
@@ -297,10 +297,10 @@ export function portsForNode(node) {
     const label = isSession ? 'Session' : 'Context';
     const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: `修改 ${label}`, multiple: false },
-      { id: 'value-in', direction: 'input', type: node.value_type, label: '新值', title: node.value_type, multiple: false },
+      { id: 'value-in', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '新值', title: node.value_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: idPort, direction: 'output', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: true },
-      { id: 'value-out', direction: 'output', type: node.value_type, label: '新值', title: node.value_type, multiple: true },
+      { id: 'value-out', direction: 'output', type: node.value_type, color: structColor(node, node.value_type), label: '新值', title: node.value_type, multiple: true },
     ];
     if (node.type === 'session_write' || (node.context_id_source || 'port') === 'port') {
       ports.splice(1, 0, { id: idPort, direction: 'input', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: false });

@@ -200,6 +200,36 @@ test('Struct lists have a distinct declared color on list node ports', () => {
   assert.equal(portsForNode(state.nodes.find((node) => node.id === 'list')).find((port) => port.id === 'list-out').color, '#3A7D68');
 });
 
+
+test('Context value ports follow Struct and list colors with legacy fallback', () => {
+  for (const listColor of ['#3976A8', undefined]) {
+    const definition = { id: 'profile', name: 'Profile', color: '#3A7D68', fields: [] };
+    if (listColor) definition.list_color = listColor;
+    for (const valueType of ['struct:profile', 'list-struct:profile']) {
+      assert.equal(loadSnapshot({
+        schema_version: '2.0', name: 'context_colors', metadata: { structs: [definition] },
+        input_ports: [], output_ports: [],
+        nodes: [
+          { id: 'input', type: 'input' },
+          { id: 'create', type: 'context_create', arguments: { value_type: valueType } },
+          { id: 'read', type: 'context_read', arguments: { value_type: valueType, context_id_source: 'port' } },
+          { id: 'write', type: 'context_write', arguments: { value_type: valueType, context_id_source: 'port' } },
+          { id: 'output', type: 'output' },
+        ], connections: [],
+      }), true);
+      for (const [nodeId, portIds] of Object.entries({ create: ['initial-value'], read: ['value-out'], write: ['value-in', 'value-out'] })) {
+        const ports = portsForNode(state.nodes.find((item) => item.id === nodeId));
+        for (const portId of portIds) {
+          const port = ports.find((item) => item.id === portId);
+          assert.equal(port.type, valueType);
+          assert.equal(port.color, valueType.startsWith('list-') ? (listColor || definition.color) : definition.color, `${nodeId}.${portId}`);
+        }
+        assert.ok(ports.filter((port) => port.type === 'content' || port.type === 'control').every((port) => !port.color));
+      }
+    }
+  }
+});
+
 test('all five Struct node types can be created and round-trip before any type is selected', () => {
   assert.equal(loadSnapshot({
     schema_version: '2.0', name: 'unbound_struct_nodes',
