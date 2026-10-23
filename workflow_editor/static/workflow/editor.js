@@ -253,6 +253,14 @@ export function createWorkflowEditor(elements, markChanged) {
     requestAnimationFrame(renderConnections);
   }
 
+  function setConnectionColor(path, type, key) {
+    const match = /^(?:list-)?struct:(.+)$/.exec(type);
+    if (!match) return;
+    const definition = state.metadata?.structs?.find((item) => item.id === match[1]);
+    const color = type.startsWith('list-struct:') ? (definition?.list_color || definition?.color) : definition?.color;
+    if (color) setRuntimeStyles(path, key, { '--connection-color': color });
+  }
+
   function renderConnections() {
     const canvasRect = elements.canvas.getBoundingClientRect();
     const width = Math.max(elements.nodeLayer.scrollWidth, elements.canvas.clientWidth);
@@ -267,9 +275,7 @@ export function createWorkflowEditor(elements, markChanged) {
       if (!start || !end) continue;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('class', `connection-path ${connection.type}`);
-      const typeId = connection.type.replace(/^list-/, '').replace(/^struct:/, '');
-      const structColor = state.metadata?.structs?.find((item) => item.id === typeId)?.color;
-      if (structColor) setRuntimeStyles(path, `connection-color:${connection.id}`, { '--connection-color': structColor });
+      setConnectionColor(path, connection.type, `connection-color:${connection.id}`);
       path.setAttribute('d', connectionPath(start, end));
       paths.push(path);
     }
@@ -284,6 +290,7 @@ export function createWorkflowEditor(elements, markChanged) {
       if (anchor) {
         const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         preview.setAttribute('class', `connection-path preview ${drag.type}`);
+        setConnectionColor(preview, drag.type, `connection-preview:${drag.type}`);
         preview.setAttribute('d', drag.anchorDirection === 'output' ? connectionPath(anchor, canvasPoint) : connectionPath(canvasPoint, anchor));
         paths.push(preview);
       }
