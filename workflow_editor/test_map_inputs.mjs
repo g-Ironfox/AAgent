@@ -302,7 +302,10 @@ test('runtime colors and layout use external stylesheet rules under strict CSP',
     insertRule(selectorText, index) {
       const declarations = new Map();
       const style = {
-        setProperty(name, value) { declarations.set(name, value); },
+        setProperty(name, value) {
+          assert.match(name, /^(?:--[a-z0-9-]+|[a-z]+(?:-[a-z]+)*)$/, 'setProperty requires a CSS property name');
+          declarations.set(name, value);
+        },
         set cssText(value) { if (value === '') declarations.clear(); },
       };
       rules.splice(index, 0, { selectorText: selectorText.slice(0, selectorText.indexOf('{')).trim(), style, declarations });
@@ -317,11 +320,11 @@ test('runtime colors and layout use external stylesheet rules under strict CSP',
     querySelectorAll: () => [{ href: '/css/workflow.css?v=20', sheet }],
   };
   try {
-    setRuntimeStyles(element, 'struct-color', { backgroundColor: '#3A7D68' });
-    setRuntimeStyles(element, 'struct-color', { backgroundColor: '#D97706' });
+    setRuntimeStyles(element, 'struct-color', { 'background-color': '#3A7D68' });
+    setRuntimeStyles(element, 'struct-color', { 'background-color': '#D97706' });
     assert.equal(rules.length, 1);
     assert.match(rules[0].selectorText, /^\.(workflow-runtime-\d+)\.\1$/);
-    assert.equal(rules[0].declarations.get('backgroundColor'), '#D97706');
+    assert.equal(rules[0].declarations.get('background-color'), '#D97706');
     assert.equal(classes.size, 1);
     assert.equal('style' in element, false);
   } finally {

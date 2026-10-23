@@ -89,7 +89,7 @@ function renderStructLegend() {
   mount.replaceChildren(...(state.metadata?.structs || []).map((definition) => {
     const item = document.createElement('span');
     const swatch = document.createElement('i');
-    setRuntimeStyles(swatch, `struct-legend:${definition.id}`, { backgroundColor: definition.color });
+    setRuntimeStyles(swatch, `struct-legend:${definition.id}`, { 'background-color': definition.color });
     const name = document.createElement('span');
     name.textContent = definition.name;
     item.append(swatch, name);

@@ -71,7 +71,7 @@ export function createInspector(elements, editor, markChanged) {
       const portElements = ports.filter((port) => port.direction === direction).map((port) => {
         const contract = document.querySelector('#portContractTemplate').content.firstElementChild.cloneNode(true);
         contract.querySelector('.port-swatch').classList.add(port.type);
-        if (port.color) setRuntimeStyles(contract.querySelector('.port-swatch'), `inspector-port:${node.id}:${port.direction}:${port.id}`, { backgroundColor: port.color });
+        if (port.color) setRuntimeStyles(contract.querySelector('.port-swatch'), `inspector-port:${node.id}:${port.direction}:${port.id}`, { 'background-color': port.color });
         contract.querySelector('strong').textContent = port.label;
         contract.querySelector('code').textContent = port.contract || port.type;
         contract.title = port.title;
