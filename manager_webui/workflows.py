@@ -21,7 +21,7 @@ MAX_WORKFLOW_METADATA_PORTS = 50
 MAX_WORKFLOW_NODE_REFERENCES = 50
 MAX_REMOTE_TOOL_REFERENCES = 100
 MAX_WORKFLOW_DESCRIPTION_LENGTH = 2000
-WORKFLOW_SCHEMA_VERSION = "1.7"
+WORKFLOW_SCHEMA_VERSION = "2.0"
 
 
 def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
@@ -45,7 +45,8 @@ class WorkflowRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=MAX_WORKFLOW_DESCRIPTION_LENGTH)
-    schema_version: Literal["1.7"]  # 只接受version=1.7的workflow
+    schema_version: Literal["2.0"]
+    metadata: dict[str, Any] = Field(default_factory=dict)
     input_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
     output_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
     nodes: list[dict[str, Any]] = Field(min_length=1, max_length=MAX_WORKFLOW_NODES)
@@ -95,6 +96,7 @@ def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
         "name": document.get("name", ""),
         "description": document.get("description", ""),
         "schema_version": document.get("schema_version"),
+        "metadata": document.get("metadata", {}),
         "nodes": document.get("nodes", []),
         "connections": document.get("connections", []),
         "input_ports": document.get("input_ports", []),
@@ -119,7 +121,7 @@ def create_workflows_router(
         try:
             items = workflows.find(
                 {},
-                {"name": 1, "description": 1, "schema_version": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "workflow_nodes": 1, "remote_tools": 1, "created_at": 1, "updated_at": 1},
+                {"name": 1, "description": 1, "schema_version": 1, "metadata": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "workflow_nodes": 1, "remote_tools": 1, "created_at": 1, "updated_at": 1},
             ).sort("updated_at", DESCENDING)
             return {
                 "items": [
@@ -127,6 +129,7 @@ def create_workflows_router(
                         "name": item.get("name", ""),
                         "description": item.get("description", ""),
                         "schema_version": item.get("schema_version"),
+                        "metadata": item.get("metadata", {}),
                         "node_count": len(item.get("nodes", [])),
                         "connection_count": len(item.get("connections", [])),
                         "input_ports": item.get("input_ports", []),

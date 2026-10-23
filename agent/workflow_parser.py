@@ -22,7 +22,7 @@ class WorkflowParseError(ValueError):
     """Raised when a workflow cannot be loaded or compiled."""
 
 
-WORKFLOW_SCHEMA_VERSION = "1.7"
+WORKFLOW_SCHEMA_VERSION = "2.0"
 
 
 def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
@@ -41,6 +41,8 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     connections = workflow["connections"]
     input_ports = workflow["input_ports"]
     output_ports = workflow["output_ports"]
+    from workflow_structs import validate_struct_definitions
+    struct_definitions = validate_struct_definitions(workflow.get("metadata", {}).get("structs", []))
     node_indexes = {node["id"]: index for index, node in enumerate(nodes)}
     linked_nodes: list[dict[str, Any]] = []
     for node in nodes:
@@ -57,6 +59,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
         linked_nodes.append(
             {
                 **parsed_node,
+                "_struct_definitions": struct_definitions,
                 "predecessors": {},
                 "successors": {},
                 "data_inputs": {

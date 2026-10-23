@@ -1,5 +1,6 @@
 import { portsForNode } from './domain/node-contract.js';
 import { deleteNode, state } from './domain/serialization.js';
+import { setRuntimeStyles } from './domain/runtime-styles.js';
 
 export function createWorkflowEditor(elements, markChanged) {
   const editorState = { selectedId: 'input', connectionDrag: null };
@@ -186,8 +187,7 @@ export function createWorkflowEditor(elements, markChanged) {
       const maxY = Math.max(12, elements.nodeLayer.scrollHeight - element.offsetHeight - 12);
       node.x = Math.min(maxX, Math.max(12, drag.nodeX + deltaX));
       node.y = Math.min(maxY, Math.max(12, drag.nodeY + deltaY));
-      element.style.left = `${node.x}px`;
-      element.style.top = `${node.y}px`;
+      setRuntimeStyles(element, `node-position:${node.id}`, { left: `${node.x}px`, top: `${node.y}px` });
       renderConnections();
     });
     const finishDrag = (event) => {
@@ -205,11 +205,10 @@ export function createWorkflowEditor(elements, markChanged) {
     const ports = portsForNode(node);
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
-    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', construct_map_content: 'MAP', map_content_get: 'GET', deserialize_json: 'J/', split_event: 'E/', construct_event: 'E+', publish_event: 'E!', construct_list: 'L', list_append: 'L+', foreach: 'FE', history: 'H', local_tool: 'LT', remote_sync_tool: 'RS', remote_async_tool: 'RA', context_create: 'C+', context_read: 'CR', context_write: 'CW', session_create: 'S+', session_read: 'SR', session_write: 'SW', workflow: 'WF' };
+    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', construct_map_content: 'MAP', construct_struct: 'S+', struct_get: 'S?', struct_update: 'S±', struct_to_json: 'S→', json_to_struct: '→S', map_content_get: 'GET', deserialize_json: 'J/', split_event: 'E/', construct_event: 'E+', publish_event: 'E!', construct_list: 'L', list_append: 'L+', foreach: 'FE', history: 'H', local_tool: 'LT', remote_sync_tool: 'RS', remote_async_tool: 'RA', context_create: 'C+', context_read: 'CR', context_write: 'CW', session_create: 'S+', session_read: 'SR', session_write: 'SW', workflow: 'WF' };
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === editorState.selectedId ? ' selected' : ''}`;
-    element.style.left = `${node.x}px`;
-    element.style.top = `${node.y}px`;
+    setRuntimeStyles(element, `node-position:${node.id}`, { left: `${node.x}px`, top: `${node.y}px` });
     element.dataset.nodeId = node.id;
     const head = document.createElement('span');
     head.className = 'flow-node-head';
@@ -218,12 +217,12 @@ export function createWorkflowEditor(elements, markChanged) {
     head.querySelector('small').textContent = node.type.toUpperCase();
     const body = document.createElement('span');
     body.className = 'flow-node-body';
-    body.style.height = `${Math.max(70, 8 + Math.max(inputs.length, outputs.length) * 28)}px`;
+    setRuntimeStyles(body, `node-body:${node.id}`, { height: `${Math.max(70, 8 + Math.max(inputs.length, outputs.length) * 28)}px` });
     for (const port of ports) {
       const portElement = document.createElement('span');
       const row = port.direction === 'input' ? inputs.indexOf(port) : outputs.indexOf(port);
       portElement.className = 'node-port';
-      portElement.style.top = `${8 + row * 28}px`;
+      setRuntimeStyles(portElement, `node-port:${node.id}:${port.direction}:${row}`, { top: `${8 + row * 28}px` });
       Object.assign(portElement.dataset, {
         portId: port.id,
         portDirection: port.direction,
@@ -231,6 +230,7 @@ export function createWorkflowEditor(elements, markChanged) {
         portMultiple: String(port.multiple === true),
         portLabel: port.label,
       });
+      if (port.color) setRuntimeStyles(portElement, `node-port-color:${node.id}:${port.direction}:${row}`, { '--port-color': port.color });
       portElement.setAttribute('aria-label', `${port.direction === 'input' ? '输入' : '输出'} ${port.label} (${port.type})`);
       portElement.title = port.title;
       body.append(portElement);
@@ -247,10 +247,8 @@ export function createWorkflowEditor(elements, markChanged) {
     const renderedNodes = Array.from(elements.nodeLayer.querySelectorAll('.flow-node'));
     const maxX = Math.max(1800, ...renderedNodes.map((element) => element.offsetLeft + element.offsetWidth + 20));
     const maxY = Math.max(1200, ...renderedNodes.map((element) => element.offsetTop + element.offsetHeight + 20));
-    elements.nodeLayer.style.width = `${maxX}px`;
-    elements.nodeLayer.style.height = `${maxY}px`;
-    elements.connectionLayer.style.width = `${maxX}px`;
-    elements.connectionLayer.style.height = `${maxY}px`;
+    setRuntimeStyles(elements.nodeLayer, 'node-layer-size', { width: `${maxX}px`, height: `${maxY}px` });
+    setRuntimeStyles(elements.connectionLayer, 'connection-layer-size', { width: `${maxX}px`, height: `${maxY}px` });
     elements.nodeCount.textContent = `${state.nodes.length} 个实例`;
     requestAnimationFrame(renderConnections);
   }
@@ -269,6 +267,9 @@ export function createWorkflowEditor(elements, markChanged) {
       if (!start || !end) continue;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('class', `connection-path ${connection.type}`);
+      const typeId = connection.type.replace(/^list-/, '').replace(/^struct:/, '');
+      const structColor = state.metadata?.structs?.find((item) => item.id === typeId)?.color;
+      if (structColor) setRuntimeStyles(path, `connection-color:${connection.id}`, { '--connection-color': structColor });
       path.setAttribute('d', connectionPath(start, end));
       paths.push(path);
     }

@@ -10,7 +10,7 @@ from workflow_validator import WorkflowValidationError, validate_workflow
 
 def workflow_fixture():
     return {
-        "schema_version": "1.7",
+        "schema_version": "2.0",
         "name": "map_inputs",
         "input_ports": [{"name": "value", "type": "content"}],
         "output_ports": [{"name": "result", "type": "map-content"}],
@@ -27,6 +27,7 @@ def workflow_fixture():
                 {"id": "workflow:result", "name": "result", "type": "map-content"}
             ]},
         ],
+        "metadata": {"structs": []},
         "connections": [
             {"fromId": "input", "fromPortId": "control-out", "toId": "map", "toPortId": "control-in", "type": "control"},
             {"fromId": "map", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},

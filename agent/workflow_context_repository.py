@@ -37,7 +37,14 @@ def _is_message(value: Any) -> bool:
     )
 
 
-def _valid_value(value_type: str, value: Any) -> bool:
+def _valid_value(value_type: str, value: Any, struct_definitions: dict[str, Any] | None = None) -> bool:
+    if value_type.startswith(("struct:", "list-struct:")):
+        try:
+            from workflow_structs import validate_value
+            validate_value(value_type, value, struct_definitions or {})
+            return True
+        except ValueError:
+            return False
     if value_type == "content":
         return isinstance(value, str)
     if value_type == "message":
@@ -79,8 +86,8 @@ def _key(context_id: str) -> str:
     return f"workflow-context:{context_id}"
 
 
-def _serialize(value_type: str, value: Any) -> str:
-    if value_type not in CONTEXT_VALUE_TYPES or not _valid_value(value_type, value):
+def _serialize(value_type: str, value: Any, struct_definitions: dict[str, Any] | None = None) -> str:
+    if (value_type not in CONTEXT_VALUE_TYPES and not value_type.startswith(("struct:", "list-struct:"))) or not _valid_value(value_type, value, struct_definitions):
         raise WorkflowContextError("Workflow Context Value 无效")
     serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     if len(serialized.encode("utf-8")) > _max_value_bytes():
@@ -104,9 +111,10 @@ def delete_contexts(context_ids: set[str]) -> None:
 
 
 def create_context(
-    invocation_id: str, value_type: str, value: Any, context_id: str | None = None
+    invocation_id: str, value_type: str, value: Any, context_id: str | None = None,
+    struct_definitions: dict[str, Any] | None = None,
 ) -> str:
-    serialized = _serialize(value_type, value)
+    serialized = _serialize(value_type, value, struct_definitions)
     context_id = context_id or f"ctx_{uuid4().hex}"
     context_id = _validate_context_id(context_id)
     key = _key(context_id)
@@ -137,7 +145,7 @@ def create_context(
     return context_id
 
 
-def read_context(context_id: Any, invocation_id: str, value_type: str) -> Any:
+def read_context(context_id: Any, invocation_id: str, value_type: str, struct_definitions: dict[str, Any] | None = None) -> Any:
     context_id = _validate_context_id(context_id)
     key = _key(context_id)
     client = get_connection()
@@ -154,7 +162,7 @@ def read_context(context_id: Any, invocation_id: str, value_type: str) -> Any:
                     value = json.loads(stored["value"])
                 except (KeyError, TypeError, json.JSONDecodeError) as error:
                     raise WorkflowContextError("Workflow Context Value 无效") from error
-                if not _valid_value(value_type, value):
+                if not _valid_value(value_type, value, struct_definitions):
                     raise WorkflowContextError("Workflow Context Value 无效")
                 pipeline.multi()
                 pipeline.expire(key, _ttl_seconds())
@@ -171,9 +179,10 @@ def write_context(
     invocation_id: str,
     value_type: str,
     value: Any,
+    struct_definitions: dict[str, Any] | None = None,
 ) -> None:
     context_id = _validate_context_id(context_id)
-    serialized = _serialize(value_type, value)
+    serialized = _serialize(value_type, value, struct_definitions)
     key = _key(context_id)
     client = get_connection()
     while True:

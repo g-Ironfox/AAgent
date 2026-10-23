@@ -80,6 +80,11 @@
             <div><strong>构造 Map-Content</strong><small>固定值或端口输入</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="construct_struct"><span class="node-symbol construct_struct-symbol" aria-hidden="true">S+</span><div><strong>构造 Struct</strong><small>按 Workflow 声明构造具名结构</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
+          <button class="library-item" type="button" data-add-node="struct_get"><span class="node-symbol struct_get-symbol" aria-hidden="true">S?</span><div><strong>读取 Struct 字段</strong><small>读取字段并处理可选值缺失</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
+          <button class="library-item" type="button" data-add-node="struct_update"><span class="node-symbol struct_update-symbol" aria-hidden="true">S±</span><div><strong>更新 Struct</strong><small>复制后替换或移除字段</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
+          <button class="library-item" type="button" data-add-node="struct_to_json"><span class="node-symbol struct_to_json-symbol" aria-hidden="true">S→</span><div><strong>Struct 转 JSON</strong><small>将局部类型序列化为 JSON content</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
+          <button class="library-item" type="button" data-add-node="json_to_struct"><span class="node-symbol json_to_struct-symbol" aria-hidden="true">→S</span><div><strong>JSON 转 Struct</strong><small>校验 JSON 并构造局部类型</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
           <button class="library-item" type="button" data-add-node="map_content_get">
             <span class="node-symbol map_content_get-symbol" aria-hidden="true">GET</span>
             <div><strong>Map-Content 查找</strong><small>按键读取 Content</small></div>
@@ -190,7 +195,7 @@
           <div class="canvas-grid" aria-hidden="true"></div>
           <svg id="connectionLayer" class="connection-layer" aria-hidden="true"></svg>
           <div id="nodeLayer" class="node-layer"></div>
-          <div class="canvas-legend" aria-hidden="true"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="event-dot"></i>EVENT</span><span><i class="map-content-dot"></i>MAP-CONTENT</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span><span><i class="list-event-dot"></i>LIST-EVENT</span></div>
+          <div id="canvasLegend" class="canvas-legend" aria-label="数据类型图例"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="event-dot"></i>EVENT</span><span><i class="map-content-dot"></i>MAP-CONTENT</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span><span><i class="list-event-dot"></i>LIST-EVENT</span><span data-struct-legend class="canvas-legend-structs"></span></div>
         </div>
       </section>
 
@@ -245,6 +250,12 @@
             <div class="metadata-port-list" data-metadata-port-list="output_ports"></div>
           </section>
         </div>
+        <section class="callable-workflow-section struct-metadata-section">
+          <header><div><span class="metadata-port-mark struct">ST</span><h3>Struct 声明</h3></div><button id="addStructButton" type="button" title="添加 Struct 声明" aria-label="添加 Struct 声明">+</button></header>
+          <p class="section-help">每个声明仅在当前 Workflow 内有效；字段类型可引用其他 Struct。</p>
+          <div id="structDefinitions" class="struct-definition-list"></div>
+          <p id="structDefinitionsError" class="text-import-error" role="alert"></p>
+        </section>
         <section class="callable-workflow-section">
           <header>
             <div><span class="metadata-port-mark workflow">WF</span><h3>可调用 Workflow</h3></div>
@@ -331,6 +342,11 @@
     <div class="port-contract"><span class="port-swatch"></span><strong></strong><code></code></div>
   </template>
 
+  <template id="construct_structInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label><label>Struct 类型<select data-struct-id></select></label></section><div class="inspector-section" data-struct-fields></div><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+  <template id="struct_getInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label><label>Struct 类型<select data-struct-id></select></label><label>字段<select data-struct-field></select></label><label>缺失可选字段<select data-struct-missing><option value="error">报错</option><option value="fallback">使用 Fallback</option></select></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+  <template id="struct_updateInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label><label>Struct 类型<select data-struct-id></select></label><div data-struct-update-fields></div></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+  <template id="struct_to_jsonInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label><label>值类型<select data-struct-value-type></select></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+  <template id="json_to_structInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label><label>目标 Struct<select data-struct-value-type></select></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
   <template id="inputInspectorTemplate">
     <div data-interface-contract></div>
   </template>
@@ -444,7 +460,7 @@
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option></select></label>
+      <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="struct:">Struct…</option></select></label>
       <label>初始值数量<input data-field="initial_value_count" type="number" min="0" max="20" step="1"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
@@ -454,7 +470,7 @@
     <div data-interface-contract data-contract-status="受控循环"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option></select></label>
+      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="struct:">Struct…</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -463,7 +479,7 @@
     <div data-interface-contract data-contract-status="输出新列表"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option></select></label>
+      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="struct:">Struct…</option></select></label>
       <label>插入位置<select data-field="position"><option value="start">最前面</option><option value="end">最后面</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>

@@ -7,6 +7,11 @@ export const NODE_TYPES = new Set([
   'construct_message',
   'construct_content',
   'construct_map_content',
+  'construct_struct',
+  'struct_get',
+  'struct_update',
+  'struct_to_json',
+  'json_to_struct',
   'map_content_get',
   'deserialize_json',
   'split_event',
@@ -45,6 +50,25 @@ export function boundaryPorts(ports) {
 
 function listTypeForItem(itemType) {
   return `list-${itemType}`;
+}
+
+function structsFor(node) {
+  return node?._structs || [];
+}
+
+export function setNodeStructs(nodes, structs) {
+  for (const node of nodes) node._structs = structs;
+}
+
+function structDefinition(node, id) {
+  return structsFor(node).find((item) => item.id === id);
+}
+
+function structColor(node, type) {
+  const match = /^(?:list-)?struct:(.+)$/.exec(type || '');
+  if (!match) return null;
+  const definition = structDefinition(node, match[1]);
+  return type.startsWith('list-struct:') ? (definition?.list_color || definition?.color) : definition?.color;
 }
 
 export function portsForNode(node) {
@@ -101,6 +125,63 @@ export function portsForNode(node) {
       { id: 'map-out', direction: 'output', type: 'map-content', label: 'Map', title: 'Map-Content', multiple: true },
     ];
   }
+  if (node.type === 'construct_struct') {
+    const definition = structDefinition(node, node.struct_id);
+    if (!definition) return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '构造 Struct', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+    ];
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '构造 Struct', multiple: false },
+      ...(definition?.fields || []).map((field) => ({ id: field.name, direction: 'input', type: field.type, color: structColor(node, field.type), label: field.name, title: `${field.name}: ${field.type}${field.required ? ' (必需)' : ' (可选)'}`, multiple: false })),
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'struct-out', direction: 'output', type: `struct:${node.struct_id}`, color: structColor(node, `struct:${node.struct_id}`), label: definition?.name || node.struct_id, title: `struct:${node.struct_id}`, multiple: true },
+    ];
+  }
+  if (node.type === 'struct_get') {
+    const definition = structDefinition(node, node.struct_id);
+    if (!definition) return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '读取字段', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+    ];
+    const field = definition?.fields.find((item) => item.name === node.field);
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '读取字段', multiple: false },
+      { id: 'struct-in', direction: 'input', type: `struct:${node.struct_id}`, color: structColor(node, `struct:${node.struct_id}`), label: definition?.name || node.struct_id, title: `struct:${node.struct_id}`, multiple: false },
+      ...(node.has_fallback ? [{ id: 'fallback-in', direction: 'input', type: field?.type || 'content', color: structColor(node, field?.type), label: 'Fallback', title: '字段缺失时的替代值', multiple: false }] : []),
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      ...(field ? [{ id: 'value-out', direction: 'output', type: field.type, color: structColor(node, field.type), label: node.field, title: `${node.field}: ${field.type}`, multiple: true }] : []),
+    ];
+  }
+  if (node.type === 'struct_update') {
+    const definition = structDefinition(node, node.struct_id);
+    if (!definition) return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '更新 Struct', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+    ];
+    const fields = new Map((definition?.fields || []).map((field) => [field.name, field]));
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '更新 Struct', multiple: false },
+      { id: 'struct-in', direction: 'input', type: `struct:${node.struct_id}`, color: structColor(node, `struct:${node.struct_id}`), label: '原值', title: `struct:${node.struct_id}`, multiple: false },
+      ...(node.updates || []).flatMap((name) => fields.has(name) ? [{ id: name, direction: 'input', type: fields.get(name).type, color: structColor(node, fields.get(name).type), label: name, title: `替换字段 ${name}`, multiple: false }] : []),
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'struct-out', direction: 'output', type: `struct:${node.struct_id}`, color: structColor(node, `struct:${node.struct_id}`), label: definition?.name || node.struct_id, title: `struct:${node.struct_id}`, multiple: true },
+    ];
+  }
+  if (node.type === 'struct_to_json' || node.type === 'json_to_struct') {
+    const toJson = node.type === 'struct_to_json';
+    const valueType = node.value_type || 'struct:';
+    if (!structDefinition(node, valueType.replace(/^list-/, '').slice('struct:'.length))) return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: toJson ? '转换为 JSON' : '解析 JSON', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+    ];
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: toJson ? '转换为 JSON' : '解析 JSON', multiple: false },
+      { id: toJson ? 'value-in' : 'content-in', direction: 'input', type: toJson ? valueType : 'content', color: structColor(node, valueType), label: toJson ? valueType : 'JSON', title: toJson ? valueType : 'JSON content', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: toJson ? 'content-out' : 'value-out', direction: 'output', type: toJson ? 'content' : valueType, color: structColor(node, valueType), label: toJson ? 'JSON' : valueType, title: toJson ? 'JSON content' : valueType, multiple: true },
+    ];
+  }
   if (node.type === 'map_content_get') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '查询 Map', multiple: false },
@@ -147,6 +228,7 @@ export function portsForNode(node) {
       id: portId,
       direction: 'input',
       type: node.item_type,
+      color: structColor(node, node.item_type),
       label: `${node.item_type} ${index}`,
       title: `列表初始值 ${index}`,
       multiple: false,
@@ -155,26 +237,26 @@ export function portsForNode(node) {
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       ...itemPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: true },
+      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
   if (node.type === 'list_append') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
+      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
       { id: 'item-in', direction: 'input', type: node.item_type, label: '追加项', title: node.item_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
+      { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
   if (node.type === 'foreach') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发遍历', multiple: false },
       { id: 'loop-in', direction: 'input', type: 'control', label: '循环体结束', title: '循环体完成后返回', multiple: false },
-      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
+      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '列表遍历完成后继续', multiple: false },
       { id: 'loop-out', direction: 'output', type: 'control', label: '循环体开始', title: '执行当前项的循环体', multiple: false },
-      { id: 'item-out', direction: 'output', type: node.item_type, label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
+      { id: 'item-out', direction: 'output', type: node.item_type, color: structColor(node, node.item_type), label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
     ];
   }
   if (node.type === 'history') {
@@ -190,7 +272,7 @@ export function portsForNode(node) {
     const label = isSession ? 'Session' : 'Context';
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: `创建 ${label}`, multiple: false },
-      { id: 'initial-value', direction: 'input', type: node.value_type, label: '初始值', title: node.value_type, multiple: false },
+      { id: 'initial-value', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '初始值', title: node.value_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: idPort, direction: 'output', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: true },
     ];
@@ -202,7 +284,7 @@ export function portsForNode(node) {
     const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: `读取 ${label}`, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'value-out', direction: 'output', type: node.value_type, label: '值', title: node.value_type, multiple: true },
+      { id: 'value-out', direction: 'output', type: node.value_type, color: structColor(node, node.value_type), label: '值', title: node.value_type, multiple: true },
     ];
     if (node.type === 'session_read' || (node.context_id_source || 'port') === 'port') {
       ports.splice(1, 0, { id: idPort, direction: 'input', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: false });
@@ -215,10 +297,10 @@ export function portsForNode(node) {
     const label = isSession ? 'Session' : 'Context';
     const ports = [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: `修改 ${label}`, multiple: false },
-      { id: 'value-in', direction: 'input', type: node.value_type, label: '新值', title: node.value_type, multiple: false },
+      { id: 'value-in', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '新值', title: node.value_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: idPort, direction: 'output', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: true },
-      { id: 'value-out', direction: 'output', type: node.value_type, label: '新值', title: node.value_type, multiple: true },
+      { id: 'value-out', direction: 'output', type: node.value_type, color: structColor(node, node.value_type), label: '新值', title: node.value_type, multiple: true },
     ];
     if (node.type === 'session_write' || (node.context_id_source || 'port') === 'port') {
       ports.splice(1, 0, { id: idPort, direction: 'input', type: 'content', label: `${label} ID`, title: `${label} ID`, multiple: false });
@@ -309,6 +391,18 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
   if (type === 'construct_content') return { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
   if (type === 'construct_map_content') return { id: createWorkflowId('construct-map-content'), type, name: `构造 Map ${number}`, mappings: [{ key: 'key1', value: '' }], dataInputPorts: [], ...position };
+  if (['construct_struct', 'struct_get', 'struct_update'].includes(type)) {
+    const prefix = type.replaceAll('_', '-');
+    const label = type === 'construct_struct' ? '构造 Struct' : type === 'struct_get' ? '读取 Struct 字段' : '更新 Struct';
+    const node = { id: createWorkflowId(prefix), type, name: `${label} ${number}`, struct_id: '', ...position };
+    if (type === 'construct_struct') node.dataInputPorts = [];
+    if (type === 'struct_get') Object.assign(node, { field: '', missing: 'error', has_fallback: false, dataInputPorts: [] });
+    if (type === 'struct_update') Object.assign(node, { updates: [], remove_fields: [], dataInputPorts: [] });
+    return node;
+  }
+  if (type === 'struct_to_json' || type === 'json_to_struct') {
+    return { id: createWorkflowId(type.replaceAll('_', '-')), type, name: type === 'struct_to_json' ? `Struct 转 JSON ${number}` : `JSON 转 Struct ${number}`, value_type: '', ...position };
+  }
   if (type === 'map_content_get') return { id: createWorkflowId('map-content-get'), type, name: `Map 查找 ${number}`, ...position };
   if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
   if (type === 'split_event') return { id: createWorkflowId('split-event'), type, name: `拆分 Event ${number}`, ...position };

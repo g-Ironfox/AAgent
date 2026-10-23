@@ -8,6 +8,12 @@ const TYPE_COLORS = {
   router: '#c18413',
   construct_message: '#b75b18',
   construct_content: '#2f6f8f',
+  construct_map_content: '#46713f',
+  construct_struct: '#326b4b',
+  struct_get: '#326f91',
+  struct_update: '#9a5a24',
+  struct_to_json: '#61568a',
+  json_to_struct: '#147d78',
   split_event: '#147d78',
   construct_list: '#176f73',
   list_append: '#27705b',
@@ -51,6 +57,26 @@ function workflowPortIds(ports) {
   return (Array.isArray(ports) ? ports : []).map((port) => `workflow:${port.name}`);
 }
 
+function structColorForType(type, workflow) {
+  const match = /^(?:list-)?struct:(.+)$/.exec(type || '');
+  if (!match) return null;
+  const definition = (workflow?.metadata?.structs || []).find((item) => item.id === match[1]);
+  return type.startsWith('list-struct:') ? (definition?.list_color || definition?.color || null) : (definition?.color || null);
+}
+
+function connectionColor(type, workflow) {
+  return structColorForType(type, workflow) || CONNECTION_COLORS[type] || CONNECTION_COLORS.control;
+}
+
+function structDefinition(node, workflow) {
+  const id = nodeArguments(node).struct_id;
+  return (workflow?.metadata?.structs || []).find((item) => item.id === id);
+}
+
+function nodeColor(node, workflow) {
+  return TYPE_COLORS[node.type] || '#17201d';
+}
+
 function contractPortIds(node, direction, workflow) {
   const args = nodeArguments(node);
   if (node.type === 'input') return direction === 'output' ? ['control-out', ...workflowPortIds(workflow?.input_ports)] : [];
@@ -71,6 +97,22 @@ function contractPortIds(node, direction, workflow) {
       .map((item) => item.port_id);
     return direction === 'input' ? ['control-in', ...inputs] : ['control-out', 'map-out'];
   }
+  if (node.type === 'construct_struct') {
+    const fields = (structDefinition(node, workflow)?.fields || []).map((field) => field.name);
+    return direction === 'input' ? ['control-in', ...fields] : ['control-out', 'struct-out'];
+  }
+  if (node.type === 'struct_get') {
+    return direction === 'input'
+      ? ['control-in', 'struct-in', ...(args.has_fallback ? ['fallback-in'] : [])]
+      : ['control-out', 'value-out'];
+  }
+  if (node.type === 'struct_update') {
+    return direction === 'input'
+      ? ['control-in', 'struct-in', ...(Array.isArray(args.updates) ? args.updates : [])]
+      : ['control-out', 'struct-out'];
+  }
+  if (node.type === 'struct_to_json') return direction === 'input' ? ['control-in', 'value-in'] : ['control-out', 'content-out'];
+  if (node.type === 'json_to_struct') return direction === 'input' ? ['control-in', 'content-in'] : ['control-out', 'value-out'];
   if (node.type === 'split_event') return direction === 'input' ? ['control-in', 'event-in'] : ['control-out', 'type-out', 'payload-out'];
   if (node.type === 'construct_list') {
     const count = Number.isInteger(args.initial_value_count) ? args.initial_value_count : 1;
@@ -161,7 +203,7 @@ export function workflowCanvasSvg(workflow) {
     if (!source || !target) return [];
     const start = endpointPosition(source, connection.fromPortId, 'output', connections, workflow);
     const end = endpointPosition(target, connection.toPortId, 'input', connections, workflow);
-    const color = CONNECTION_COLORS[connection.type] || CONNECTION_COLORS.control;
+    const color = connectionColor(connection.type, workflow);
     const dash = connection.type === 'control' ? '' : ' stroke-dasharray="6 5"';
     return `<path d="${connectionPath(start, end)}" fill="none" stroke="${color}" stroke-width="2"${dash}/>`;
   }).join('');
@@ -170,17 +212,28 @@ export function workflowCanvasSvg(workflow) {
     const heightValue = nodeHeight(node, connections, workflow);
     const inputPorts = endpointRows(connections, node, 'input', workflow);
     const outputPorts = endpointRows(connections, node, 'output', workflow);
+    const portMarkup = (portId, index, direction) => {
+      const connection = connections.find((item) => direction === 'input'
+        ? item.toId === node.id && item.toPortId === portId
+        : item.fromId === node.id && item.fromPortId === portId);
+      const color = connection ? connectionColor(connection.type, workflow) : nodeColor(node, workflow);
+      const x = direction === 'input' ? 0 : NODE_WIDTH;
+      const labelX = direction === 'input' ? 10 : NODE_WIDTH - 10;
+      const anchor = direction === 'input' ? '' : ' text-anchor="end"';
+      return `<circle cx="${x}" cy="${52 + index * 18}" r="5" fill="${escapeXml(color)}"/><text x="${labelX}" y="${56 + index * 18}"${anchor}>${escapeXml(portId)}</text>`;
+    };
     const ports = [
-      ...inputPorts.map((portId, index) => `<circle cx="0" cy="${52 + index * 18}" r="5"/><text x="10" y="${56 + index * 18}">${escapeXml(portId)}</text>`),
-      ...outputPorts.map((portId, index) => `<circle cx="${NODE_WIDTH}" cy="${52 + index * 18}" r="5"/><text x="${NODE_WIDTH - 10}" y="${56 + index * 18}" text-anchor="end">${escapeXml(portId)}</text>`),
+      ...inputPorts.map((portId, index) => portMarkup(portId, index, 'input')),
+      ...outputPorts.map((portId, index) => portMarkup(portId, index, 'output')),
     ].join('');
+    const accent = nodeColor(node, workflow);
     return `<g transform="translate(${node.renderX} ${node.renderY})">
       <rect width="${NODE_WIDTH}" height="${heightValue}" fill="#fff" stroke="#cbd2cd"/>
-      <rect width="${NODE_WIDTH}" height="4" fill="${TYPE_COLORS[node.type] || '#17201d'}"/>
+      <rect width="${NODE_WIDTH}" height="4" fill="${escapeXml(accent)}"/>
       <line x1="0" y1="40" x2="${NODE_WIDTH}" y2="40" stroke="#d8ddd9"/>
       <text x="12" y="24" class="node-name">${escapeXml(node.name || '未命名节点')}</text>
       <text x="12" y="36" class="node-type">${escapeXml(String(node.type || 'node').toUpperCase())}</text>
-      <g class="ports" fill="${TYPE_COLORS[node.type] || '#17201d'}">${ports}</g>
+      <g class="ports">${ports}</g>
     </g>`;
   }).join('');
 

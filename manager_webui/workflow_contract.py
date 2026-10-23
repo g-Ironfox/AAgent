@@ -21,6 +21,11 @@ SUPPORTED_NODE_TYPES = {
     "construct_message",
     "construct_content",
     "construct_map_content",
+    "construct_struct",
+    "struct_get",
+    "struct_update",
+    "struct_to_json",
+    "json_to_struct",
     "map_content_get",
     "split_event",
     "construct_event",
@@ -57,6 +62,11 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_message": {"role", "role_source"},
     "construct_content": {"append_items"},
     "construct_map_content": {"mappings"},
+    "construct_struct": {"struct_id"},
+    "struct_get": {"struct_id", "field", "missing", "has_fallback"},
+    "struct_update": {"struct_id", "updates", "remove_fields"},
+    "struct_to_json": {"value_type"},
+    "json_to_struct": {"value_type"},
     "map_content_get": set(),
     "split_event": set(),
     "construct_event": {"event_type"},
@@ -179,6 +189,17 @@ def data_ports_for_node(
         return declared_inputs, {"content-out"}
     if node_type == "construct_map_content":
         return declared_inputs, {"map-out"}
+    if node_type == "construct_struct":
+        return declared_inputs, {"struct-out"}
+    if node_type == "struct_get":
+        inputs = declared_inputs | {"struct-in"}
+        if node_argument(node, "has_fallback"):
+            inputs.add("fallback-in")
+        return inputs, {"value-out"}
+    if node_type == "struct_update":
+        return declared_inputs | {"struct-in"}, {"struct-out"}
+    if node_type in {"struct_to_json", "json_to_struct"}:
+        return declared_inputs | ({"value-in"} if node_type == "struct_to_json" else {"content-in"}), {"content-out" if node_type == "struct_to_json" else "value-out"}
     if node_type == "map_content_get":
         return declared_inputs | {"map-in", "key-in"}, {"content-out"}
     if node_type == "split_event":
@@ -224,6 +245,42 @@ def data_ports_for_node(
     return declared_inputs, set()
 
 
+def data_type_for_port(
+    node: dict[str, Any], port_id: str, struct_definitions: dict[str, Any] | None = None
+) -> str | None:
+    definitions = struct_definitions or {}
+    kind = node.get("type")
+    value_type = node_argument(node, "value_type")
+    if kind == "construct_struct":
+        sid = node_argument(node, "struct_id")
+        if port_id == "struct-out": return f"struct:{sid}"
+        return next((f["type"] for f in definitions.get(sid, {}).get("fields", []) if f["name"] == port_id), None)
+    if kind == "struct_get":
+        sid = node_argument(node, "struct_id")
+        field_type = next((f["type"] for f in definitions.get(sid, {}).get("fields", []) if f["name"] == node_argument(node, "field")), None)
+        if port_id == "struct-in": return f"struct:{sid}"
+        if port_id in {"fallback-in", "value-out"}: return field_type
+    if kind == "struct_update":
+        sid = node_argument(node, "struct_id")
+        if port_id in {"struct-in", "struct-out"}: return f"struct:{sid}"
+        return next((f["type"] for f in definitions.get(sid, {}).get("fields", []) if f["name"] == port_id), None)
+    if kind == "struct_to_json":
+        return value_type if port_id == "value-in" else ("content" if port_id == "content-out" else None)
+    if kind == "json_to_struct":
+        return "content" if port_id == "content-in" else (value_type if port_id == "value-out" else None)
+    if kind == "construct_list":
+        return f"list-{node_argument(node, 'item_type')}" if port_id == "list-out" else node_argument(node, "item_type")
+    if kind == "list_append":
+        if port_id in {"list-in", "list-out"}: return f"list-{node_argument(node, 'item_type')}"
+        return node_argument(node, "item_type") if port_id == "item-in" else None
+    if kind == "foreach":
+        return f"list-{node_argument(node, 'item_type')}" if port_id == "list-in" else (node_argument(node, "item_type") if port_id == "item-out" else None)
+    if kind in {"context_create", "context_read", "context_write"}:
+        if port_id in {"initial-value", "value-in", "value-out"}: return value_type
+        if port_id == "context-id": return "content"
+    return None
+
+
 def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
     node_type = node["type"]
     if node_type == "input":
@@ -239,100 +296,115 @@ def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
     return {"control-in"}, {"control-out"}
 
 
-def is_valid_connection(
+def connection_validation_error(
     connection: Any,
     nodes_by_id: dict[str, dict[str, Any]],
     input_ports: list[dict[str, Any]],
     output_ports: list[dict[str, Any]],
-) -> bool:
+    struct_definitions: dict[str, Any] | None = None,
+) -> str | None:
     if not isinstance(connection, dict):
-        return False
+        return "connection must be an object"
     from_id = connection.get("fromId")
     to_id = connection.get("toId")
     from_port = connection.get("fromPortId")
     to_port = connection.get("toPortId")
     connection_type = connection.get("type")
     if not all(isinstance(value, str) and value for value in (from_id, to_id, from_port, to_port)):
-        return False
+        return "connection endpoints must be non-empty strings"
     source_node = nodes_by_id.get(from_id)
     target_node = nodes_by_id.get(to_id)
     if source_node is None or target_node is None:
-        return False
+        return "connection references an unknown node"
     try:
         if connection_type == "control":
             source_inputs, source_outputs = control_ports_for_node(source_node)
             target_inputs, target_outputs = control_ports_for_node(target_node)
-            return from_port in source_outputs and to_port in target_inputs
-        if connection_type not in DATA_CONNECTION_TYPES:
-            return False
+            if from_port not in source_outputs:
+                return f"invalid control output: {from_port}"
+            if to_port not in target_inputs:
+                return f"invalid control input: {to_port}"
+            return None
+        if connection_type not in DATA_CONNECTION_TYPES and not connection_type.startswith(("struct:", "list-struct:")):
+            return "connection type is unsupported"
         _, source_outputs = data_ports_for_node(source_node, input_ports, output_ports)
         target_inputs, _ = data_ports_for_node(target_node, input_ports, output_ports)
         if from_port not in source_outputs or to_port not in target_inputs:
-            return False
+            return "unknown data port"
+        source_expected = data_type_for_port(source_node, from_port, struct_definitions)
+        target_expected = data_type_for_port(target_node, to_port, struct_definitions)
+        if source_expected is not None and connection_type != source_expected:
+            return f"source port {from_port} requires {source_expected} data"
+        if target_expected is not None and connection_type != target_expected:
+            return f"target port {to_port} requires {target_expected} data"
+        if connection_type.startswith(("struct:", "list-struct:")):
+            ref = connection_type.split(":", 1)[1]
+            if struct_definitions is None or ref not in struct_definitions:
+                return "Struct type is not declared in this Workflow"
         if source_node["type"] == "input":
             source_port = next(port for port in boundary_ports(input_ports) if port["id"] == from_port)
             if connection_type != source_port["type"]:
-                return False
+                return f"workflow input port {from_port} requires {source_port['type']} data"
         if target_node["type"] == "output":
             target_port = next(port for port in boundary_ports(output_ports) if port["id"] == to_port)
             if connection_type != target_port["type"]:
-                return False
+                return f"workflow output port {to_port} requires {target_port['type']} data"
         if source_node["type"] == "workflow":
             source_port = next(port for port in source_node.get("output_ports", []) if f"workflow:{port['name']}" == from_port)
             if connection_type != source_port["type"]:
-                return False
+                return f"callable workflow output {from_port} requires {source_port['type']} data"
         if target_node["type"] == "workflow":
             target_port = next(port for port in target_node.get("input_ports", []) if f"workflow:{port['name']}" == to_port)
             if connection_type != target_port["type"]:
-                return False
+                return f"callable workflow input {to_port} requires {target_port['type']} data"
         if target_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_parameter_type(target_node, to_port):
-            return False
+            return f"tool input {to_port} requires {tool_parameter_type(target_node, to_port)} data"
         if source_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_output_type(source_node, from_port):
-            return False
+            return f"tool output {from_port} requires {tool_output_type(source_node, from_port)} data"
         if target_node["type"] in {"context_create", "context_write", "session_create", "session_write"}:
             value_port = "initial-value" if target_node["type"].endswith("create") else "value-in"
             expected_type = node_argument(target_node, "value_type") if to_port == value_port else "content"
             if connection_type != expected_type:
-                return False
+                return f"context/session input {to_port} requires {expected_type} data"
         if target_node["type"] in {"context_read", "session_read"} and connection_type != "content":
-            return False
+            return f"{target_node['type']} output requires content data"
         if source_node["type"] in {"context_create", "session_create"} and connection_type != "content":
-            return False
+            return f"{source_node['type']} output requires content data"
         if source_node["type"] in {"context_read", "context_write", "session_read", "session_write"}:
             expected_type = "content" if from_port in {"context-id", "session-id"} else node_argument(source_node, "value_type")
             if connection_type != expected_type:
-                return False
+                return f"context/session output {from_port} requires {expected_type} data"
         if source_node["type"] == "history" and (from_port != "events" or connection_type != "list-event"):
-            return False
+            return "history events output requires list-event data"
         if target_node["type"] == "split_event" and (to_port != "event-in" or connection_type != "event"):
-            return False
+            return "split_event event-in requires event data"
         if target_node["type"] == "publish_event" and (to_port != "event-in" or connection_type != "event"):
-            return False
+            return "publish_event event-in requires event data"
         if source_node["type"] == "split_event":
             if from_port not in {"type-out", "payload-out"} or connection_type != "content":
-                return False
+                return "split_event output requires content data"
         if target_node["type"] == "construct_event" and connection_type != "content":
-            return False
+            return "construct_event payload-in requires content data"
         if source_node["type"] == "construct_event" and connection_type != "event":
-            return False
+            return "construct_event event-out requires event data"
         if target_node["type"] == "deserialize_json" and (
             to_port != "content-in" or connection_type != "content"
         ):
-            return False
+            return "deserialize_json content-in requires content data"
         if target_node["type"] == "map_content_get":
             expected_type = "map-content" if to_port == "map-in" else "content"
             if to_port not in {"map-in", "key-in"} or connection_type != expected_type:
-                return False
+                return f"map_content_get {to_port} requires {expected_type} data"
         if target_node["type"] == "construct_map_content" and connection_type != "content":
-            return False
+            return "construct_map_content value input requires content data"
         if source_node["type"] == "construct_map_content" and (
             from_port != "map-out" or connection_type != "map-content"
         ):
-            return False
+            return "construct_map_content map-out requires map-content data"
         if source_node["type"] == "map_content_get" and (
             from_port != "content-out" or connection_type != "content"
         ):
-            return False
+            return "map_content_get content-out requires content data"
         if source_node["type"] == "deserialize_json":
             output_type = next(
                 (
@@ -343,19 +415,19 @@ def is_valid_connection(
                 None,
             )
             if connection_type != output_type:
-                return False
+                return f"deserialize_json output {from_port} requires {output_type} data"
         source_type = source_node["type"]
         target_type = target_node["type"]
         if target_type == "llm" and connection_type != "list-message":
-            return False
+            return "llm messages-in input requires list-message data"
         if target_type == "construct_message" and connection_type != "content":
-            return False
+            return f"construct_message {to_port} requires content data"
         if source_type == "construct_message" and connection_type != "message":
-            return False
+            return "construct_message message-out requires message data"
         if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):
-            return False
+            return f"construct_list input requires {node_argument(target_node, 'item_type')} data"
         if source_type == "construct_list" and connection_type != list_type_for_item(node_argument(source_node, "item_type")):
-            return False
+            return f"construct_list output requires {list_type_for_item(node_argument(source_node, 'item_type'))} data"
         if target_type == "list_append":
             expected_type = (
                 list_type_for_item(node_argument(target_node, "item_type"))
@@ -363,27 +435,29 @@ def is_valid_connection(
                 else node_argument(target_node, "item_type")
             )
             if connection_type != expected_type:
-                return False
+                return f"list_append {to_port} requires {expected_type} data"
         if source_type == "list_append" and connection_type != list_type_for_item(node_argument(source_node, "item_type")):
-            return False
+            return f"list_append output requires {list_type_for_item(node_argument(source_node, 'item_type'))} data"
         if target_type == "foreach" and (connection_type != list_type_for_item(node_argument(target_node, "item_type")) or to_port != "list-in"):
-            return False
+            return f"foreach input requires {list_type_for_item(node_argument(target_node, 'item_type'))} data"
         if source_type == "foreach" and (connection_type != node_argument(source_node, "item_type") or from_port != "item-out"):
-            return False
-        return not (source_type == "llm" and from_port == "tool_calls" and connection_type != "list-content")
+            return f"foreach output requires {node_argument(source_node, 'item_type')} data"
+        if source_type == "llm" and from_port == "tool_calls" and connection_type != "list-content":
+            return "llm tool_calls output requires list-content data"
+        return None
     except (KeyError, StopIteration, TypeError):
-        return False
+        return "connection does not match the node contract"
 
 
-def connection_validation_error(
+def is_valid_connection(
     connection: Any,
     nodes_by_id: dict[str, dict[str, Any]],
     input_ports: list[dict[str, Any]],
     output_ports: list[dict[str, Any]],
-) -> str | None:
-    if not is_valid_connection(connection, nodes_by_id, input_ports, output_ports):
-        return "connection does not match the node contract"
-    return None
+) -> bool:
+    return connection_validation_error(
+        connection, nodes_by_id, input_ports, output_ports
+    ) is None
 
 
 def filter_connections(
