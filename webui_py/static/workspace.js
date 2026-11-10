@@ -9,15 +9,32 @@ import {
   updateFile,
   updateFilePin,
 } from './file-api.js';
+import { parseWorkflowFile } from './workflow-file.mjs';
+import { createWorkflowPanel } from './workspace-workflow.js';
 
-const state = { items: [], current: null, saved: null, mode: 'preview', busy: false };
+const state = { view: 'text', items: [], current: null, saved: null, mode: 'preview', busy: false };
 const el = Object.fromEntries([
   'createButton', 'checkpointButton', 'restoreButton', 'searchInput', 'fileList', 'fileCount', 'name', 'fileName',
   'fileContent', 'filePreview', 'fileEmpty', 'fileId', 'updatedAt',
   'pinButton', 'downloadButton', 'deleteButton', 'cancelButton', 'editButton',
-  'saveStatus', 'characterCount',
+  'saveStatus', 'characterCount', 'workflowButton', 'workflowPanel', 'workflowVersion', 'workflowName', 'workflowDescription',
+  'workflowCanvasPreview', 'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts', 'workflowDependencies',
+  'dependencyCount', 'remoteTools', 'remoteToolCount',
 ].map((id) => [id, document.getElementById(id)]));
 el.name = el.fileName;
+const workflowPanel = createWorkflowPanel({
+  onChange(content) {
+    el.fileContent.value = content;
+    el.filePreview.textContent = content;
+    setStatus('');
+    updateControls();
+  },
+  onError(message) { setStatus(message, 'error'); },
+});
+
+function refreshWorkflowPanel() {
+  if (state.view === 'workflow' && !workflowPanel.setContent(el.fileContent.value)) state.view = 'text';
+}
 
 function changed() {
   return Boolean(state.current && state.saved)
@@ -48,8 +65,17 @@ function updateControls() {
   el.cancelButton.hidden = state.mode !== 'edit';
   el.cancelButton.disabled = !active || busy;
   el.fileEmpty.hidden = active;
-  el.filePreview.hidden = !active || state.mode !== 'preview';
-  el.fileContent.hidden = !active || state.mode !== 'edit';
+  const workflowView = active && state.view === 'workflow';
+  const isWorkflow = active && (workflowView || Boolean(parseWorkflowFile(el.fileContent.value)));
+  el.workflowButton.hidden = !isWorkflow;
+  el.workflowButton.disabled = busy;
+  el.workflowButton.textContent = workflowView ? '文本视图' : 'Workflow 视图';
+  el.workflowButton.setAttribute('aria-pressed', String(workflowView));
+  el.workflowPanel.hidden = !workflowView;
+  workflowPanel.setEditing(state.mode === 'edit', busy);
+  el.filePreview.hidden = !active || state.mode !== 'preview' || workflowView;
+  el.fileContent.hidden = !active || state.mode !== 'edit' || workflowView;
+  el.downloadButton.title = isWorkflow ? '下载 Workflow JSON' : '下载 Markdown';
   el.characterCount.textContent = Array.from(el.fileContent.value).length + ' 字';
   renderList();
 }
@@ -95,6 +121,7 @@ function applyFile(item) {
   el.filePreview.textContent = item.content;
   el.fileId.textContent = item.file_id;
   el.updatedAt.textContent = '更新于 ' + formatDate(item.updated_at);
+  refreshWorkflowPanel();
   updateControls();
 }
 
@@ -239,6 +266,10 @@ async function restoreWorkspaceCheckpoint() {
 
 async function saveCurrent() {
   if (!state.current || state.busy || !changed() || !el.name.value.trim()) return;
+  if (state.view === 'workflow') {
+    try { workflowPanel.validate(); }
+    catch (error) { setStatus(error.message, 'error'); return; }
+  }
   state.busy = true;
   setStatus('正在保存…');
   updateControls();
@@ -300,6 +331,13 @@ async function removeCurrent() {
   }
 }
 
+el.workflowButton.addEventListener('click', () => {
+  if (!state.current || state.busy) return;
+  if (state.view === 'workflow') state.view = 'text';
+  else if (workflowPanel.setContent(el.fileContent.value)) state.view = 'workflow';
+  setStatus('');
+  updateControls();
+});
 el.createButton.addEventListener('click', createNew);
 el.checkpointButton.addEventListener('click', createWorkspaceCheckpoint);
 el.restoreButton.addEventListener('click', restoreWorkspaceCheckpoint);
@@ -313,6 +351,7 @@ el.cancelButton.addEventListener('click', () => {
   el.name.value = state.saved.name;
   el.fileContent.value = state.saved.content;
   el.filePreview.textContent = state.saved.content;
+  refreshWorkflowPanel();
   state.mode = 'preview';
   setStatus('');
   updateControls();
@@ -321,11 +360,13 @@ el.pinButton.addEventListener('click', togglePin);
 el.deleteButton.addEventListener('click', removeCurrent);
 el.downloadButton.addEventListener('click', () => {
   if (!state.current) return;
-  const blob = new Blob([state.current.content], { type: 'text/markdown;charset=utf-8' });
+  const isWorkflow = Boolean(parseWorkflowFile(state.current.content));
+  const blob = new Blob([state.current.content], { type: isWorkflow ? 'application/json;charset=utf-8' : 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = (state.current.name || 'file') + '.md';
+  const name = state.current.name || 'file';
+  link.download = isWorkflow ? (name.endsWith('.json') ? name : name + '.json') : name + '.md';
   link.click();
   URL.revokeObjectURL(url);
 });
