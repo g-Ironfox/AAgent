@@ -1,12 +1,10 @@
-const pageSize = 50;
-const state = {
-  checkpoints: [], beforeSeq: null, hasMore: false, busy: false,
-  selectedCheckpoint: null, selectedFile: null, expanded: new Set(), fileId: '',
-};
+import { layoutCheckpointTree } from './checkpoint-layout.mjs';
+
+const state = { checkpoints: [], layout: null, view: {scale: 1, x: 0, y: 0}, requestId: 0, headSeq: 0, selected: null, busy: false };
 const el = Object.fromEntries([
-  'eventCount', 'refreshButton', 'filterForm', 'fileFilter', 'eventList', 'loadMoreButton',
-  'detailEyebrow', 'detailTitle', 'detailSeq', 'detailEmpty', 'detailBody', 'detailFileId',
-  'detailTimestamp', 'detailEventId', 'contentSection', 'contentHeading', 'detailContent', 'detailPayload', 'pageStatus',
+  'eventCount', 'refreshButton', 'eventList', 'detailEyebrow', 'detailTitle', 'detailMeta',
+  'detailSeq', 'checkoutButton', 'detailEmpty', 'diffList', 'pageStatus',
+  'treeScene', 'zoomIn', 'zoomOut', 'zoomValue', 'fitTree',
 ].map((id) => [id, document.getElementById(id)]));
 
 function setStatus(message, error = false) {
@@ -16,184 +14,224 @@ function setStatus(message, error = false) {
 
 function formatTime(value) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value || '未知时间';
-  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium' }).format(date);
+  return Number.isNaN(date.getTime()) ? value || '未知时间' : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
-function renderList() {
-  el.eventList.replaceChildren();
-  if (!state.checkpoints.length) {
-    const empty = document.createElement('p');
-    empty.className = 'event-list-empty';
-    empty.textContent = state.fileId ? '没有包含该文件的 checkpoint' : '还没有 checkpoint';
-    el.eventList.append(empty);
-  }
+function applyViewport() {
+  el.treeScene.style.transform = 'translate(' + state.view.x + 'px,' + state.view.y + 'px) scale(' + state.view.scale + ')';
+  el.zoomValue.textContent = Math.round(state.view.scale * 100) + '%';
+}
 
-  state.checkpoints.forEach((checkpoint, index) => {
-    const group = document.createElement('section');
-    const expanded = state.expanded.has(checkpoint.seq);
-    group.className = 'checkpoint-group'
-      + (index === state.checkpoints.length - 1 && !state.hasMore ? ' last' : '')
-      + (expanded ? ' expanded' : '');
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'checkpoint-row' + (state.selectedCheckpoint?.seq === checkpoint.seq && !state.selectedFile ? ' active' : '');
-    row.setAttribute('aria-expanded', String(state.expanded.has(checkpoint.seq)));
-    row.setAttribute('aria-label', (state.expanded.has(checkpoint.seq) ? '收起' : '展开') + ' ' + (checkpoint.data?.name || 'checkpoint'));
-    const graph = document.createElement('span');
-    graph.className = 'checkpoint-graph';
-    graph.setAttribute('aria-hidden', 'true');
-    const node = document.createElement('span');
-    node.className = 'checkpoint-node';
-    graph.append(node);
-    const chevron = document.createElement('span');
-    chevron.className = 'checkpoint-chevron' + (state.expanded.has(checkpoint.seq) ? ' expanded' : '');
-    chevron.textContent = '›';
-    const summary = document.createElement('span');
-    summary.className = 'checkpoint-summary';
+function fitTree() {
+  if (!state.layout || !el.eventList.clientWidth || !el.eventList.clientHeight) return;
+  const {width} = state.layout;
+  const scale = Math.max(.15, Math.min(1, (el.eventList.clientWidth - 36) / width));
+  state.view = {scale, x: (el.eventList.clientWidth - width * scale) / 2, y: 24};
+  applyViewport();
+}
+
+function zoomTree(factor, x = el.eventList.clientWidth / 2, y = el.eventList.clientHeight / 2) {
+  const previous = state.view.scale;
+  const scale = Math.max(.15, Math.min(2, previous * factor));
+  state.view.x = x - (x - state.view.x) * scale / previous;
+  state.view.y = y - (y - state.view.y) * scale / previous;
+  state.view.scale = scale;
+  applyViewport();
+}
+
+function renderTree() {
+  state.layout = layoutCheckpointTree(state.checkpoints);
+  const positions = new Map(state.layout.nodes.map(node => [node.checkpoint.seq, node]));
+  el.treeScene.replaceChildren();
+  el.treeScene.style.width = state.layout.width + 'px';
+  el.treeScene.style.height = state.layout.height + 'px';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('tree-edges');
+  svg.setAttribute('width', state.layout.width);
+  svg.setAttribute('height', state.layout.height);
+  svg.setAttribute('aria-hidden', 'true');
+  for (const edge of state.layout.edges) {
+    const parent = positions.get(edge.parent), child = positions.get(edge.child);
+    const line = document.createElementNS(svg.namespaceURI, 'line');
+    line.setAttribute('x1', parent.x + parent.width / 2);
+    line.setAttribute('y1', parent.y + parent.height);
+    line.setAttribute('x2', child.x + child.width / 2);
+    line.setAttribute('y2', child.y);
+    svg.append(line);
+  }
+  el.treeScene.append(svg);
+  for (const node of state.layout.nodes) {
+    const checkpoint = node.checkpoint;
+    const button = document.createElement('button');
+    const isHead = checkpoint.seq === state.headSeq;
+    button.type = 'button';
+    button.className = 'graph-node' + (isHead ? ' is-head' : '') + (state.selected?.seq === checkpoint.seq ? ' selected' : '');
+    button.style.left = node.x + 'px';
+    button.style.top = node.y + 'px';
+    button.style.width = node.width + 'px';
+    button.style.height = node.height + 'px';
+    button.setAttribute('aria-pressed', String(state.selected?.seq === checkpoint.seq));
+    button.setAttribute('aria-current', isHead ? 'location' : 'false');
+    button.setAttribute('aria-label', (checkpoint.data?.name || 'Checkpoint') + ' #' + checkpoint.seq + (isHead ? '，当前 HEAD' : ''));
+    button.title = (checkpoint.data?.name || 'Checkpoint') + (checkpoint.seq ? ' · ' + formatTime(checkpoint.timestamp) : '');
     const title = document.createElement('strong');
     title.textContent = checkpoint.data?.name || 'Checkpoint';
-    const seq = document.createElement('code');
-    seq.textContent = '#' + checkpoint.seq;
     const meta = document.createElement('span');
-    meta.className = 'checkpoint-meta';
-    const fileCount = Array.isArray(checkpoint.data?.files) ? checkpoint.data.files.length : 0;
-    meta.textContent = fileCount + ' 个文件 · ' + formatTime(checkpoint.timestamp);
-    const titleLine = document.createElement('span');
-    titleLine.className = 'checkpoint-title-line';
-    titleLine.append(title, seq);
-    summary.append(titleLine, meta);
-    row.append(graph, summary, chevron);
-    row.addEventListener('click', () => {
-      if (state.expanded.has(checkpoint.seq)) state.expanded.delete(checkpoint.seq);
-      else state.expanded.add(checkpoint.seq);
-      selectCheckpoint(checkpoint);
-    });
-    group.append(row);
-
-    if (expanded) {
-      const files = document.createElement('div');
-      files.className = 'checkpoint-files';
-      const snapshot = Array.isArray(checkpoint.data?.files) ? checkpoint.data.files : [];
-      if (!snapshot.length) {
-        const empty = document.createElement('p');
-        empty.className = 'snapshot-empty';
-        empty.textContent = '空工作区';
-        files.append(empty);
-      }
-      for (const file of snapshot) {
-        const fileButton = document.createElement('button');
-        fileButton.type = 'button';
-        fileButton.className = 'snapshot-file' + (state.selectedCheckpoint?.seq === checkpoint.seq && state.selectedFile?.file_id === file.file_id ? ' active' : '');
-        const fileName = document.createElement('span');
-        fileName.className = 'snapshot-file-name';
-        fileName.textContent = file.name || '未命名文件';
-        const fileRevision = document.createElement('code');
-        fileRevision.textContent = '#' + file.revision;
-        fileButton.append(fileName, fileRevision);
-        fileButton.addEventListener('click', () => selectSnapshotFile(checkpoint, file));
-        files.append(fileButton);
-      }
-      group.append(files);
+    meta.className = 'graph-node-meta';
+    const seq = document.createElement('small');
+    const date = new Date(checkpoint.timestamp);
+    const time = checkpoint.seq && !Number.isNaN(date.getTime())
+      ? ' · ' + new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date)
+      : '';
+    seq.textContent = '#' + checkpoint.seq + time;
+    meta.append(seq);
+    if (isHead) {
+      const badge = document.createElement('small');
+      badge.className = 'head-label';
+      badge.textContent = 'HEAD';
+      meta.append(badge);
     }
-    el.eventList.append(group);
-  });
-
-  el.eventCount.textContent = String(state.checkpoints.length) + (state.hasMore ? '+' : '');
-  el.loadMoreButton.hidden = !state.hasMore;
-  el.loadMoreButton.disabled = state.busy;
-  el.refreshButton.disabled = state.busy;
+    button.append(title, meta);
+    button.addEventListener('click', () => selectCheckpoint(checkpoint));
+    el.treeScene.append(button);
+  }
+  el.eventCount.textContent = state.checkpoints.length + ' checkpoints';
+  applyViewport();
 }
 
-function showDetail(title, eyebrow, seq, fileId, timestamp, eventId, contentTitle, content, payload) {
-  el.detailEyebrow.textContent = eyebrow;
-  el.detailTitle.textContent = title;
-  el.detailSeq.textContent = seq ? '#' + seq : '';
-  el.detailFileId.textContent = fileId || '';
-  el.detailTimestamp.textContent = formatTime(timestamp);
-  el.detailEventId.textContent = eventId || '';
-  el.contentSection.hidden = content === null;
-  el.contentHeading.textContent = contentTitle || '';
-  el.detailContent.textContent = content || '';
-  el.detailPayload.textContent = JSON.stringify(payload || {}, null, 2);
+async function selectCheckpoint(checkpoint) {
+  const requestId = ++state.requestId;
+  state.selected = checkpoint;
+  renderTree();
+  el.detailTitle.textContent = checkpoint.data?.name || 'Checkpoint';
+  el.detailSeq.textContent = '#' + checkpoint.seq;
+  el.detailEyebrow.textContent = 'CHECKPOINT DIFF';
+  el.detailMeta.textContent = checkpoint.data?.parent_seq == null
+    ? '根节点'
+    : '父节点 #' + checkpoint.data.parent_seq + ' · ' + formatTime(checkpoint.timestamp);
+  el.checkoutButton.disabled = state.busy || checkpoint.seq === state.headSeq;
   el.detailEmpty.hidden = true;
-  el.detailBody.hidden = false;
-}
-
-function selectCheckpoint(checkpoint) {
-  state.selectedCheckpoint = checkpoint;
-  state.selectedFile = null;
-  const files = checkpoint.data?.files || [];
-  showDetail(
-    checkpoint.data?.name || 'Checkpoint', 'CHECKPOINT', checkpoint.seq, '', checkpoint.timestamp,
-    checkpoint.event_id, '快照内容', null,
-    { 文件数: files.length, 文件: files.map((file) => file.name) },
-  );
-  renderList();
-}
-
-function selectSnapshotFile(checkpoint, file) {
-  state.selectedCheckpoint = checkpoint;
-  state.selectedFile = file;
-  showDetail(
-    file.name || '未命名文件', 'CHECKPOINT FILE', checkpoint.seq, file.file_id,
-    checkpoint.timestamp, checkpoint.event_id, 'Checkpoint 时的文件内容', file.content || '',
-    { revision: file.revision, pinned: Boolean(file.pinned), updated_at: file.updated_at },
-  );
-  renderList();
-}
-
-async function loadCheckpoints({ append = false } = {}) {
-  if (state.busy) return;
-  state.busy = true;
-  renderList();
-  setStatus('正在读取 checkpoint…');
-  const params = new URLSearchParams({ limit: String(pageSize) });
-  if (append && state.beforeSeq !== null) params.set('before_seq', String(state.beforeSeq));
-  if (state.fileId) params.set('file_id', state.fileId);
+  el.diffList.hidden = false;
+  el.diffList.replaceChildren();
   try {
-    const response = await fetch('/api/files/checkpoints?' + params, { cache: 'no-store' });
+    const response = await fetch('/api/files/checkpoints/' + checkpoint.seq + '/diff', { cache: 'no-store' });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error || body.detail || 'HTTP ' + response.status);
-    state.checkpoints = append ? [...state.checkpoints, ...body.items] : body.items;
-    state.hasMore = body.has_more;
-    state.beforeSeq = body.next_before_seq;
-    const selected = state.checkpoints.find((item) => item.seq === state.selectedCheckpoint?.seq);
-    if (selected) {
-      state.selectedCheckpoint = selected;
-      if (state.selectedFile) {
-        const file = (selected.data?.files || []).find((item) => item.file_id === state.selectedFile.file_id);
-        state.selectedFile = file || null;
-      }
-    } else if (state.selectedCheckpoint) {
-      state.selectedCheckpoint = null;
-      state.selectedFile = null;
-      el.detailBody.hidden = true;
-      el.detailEmpty.hidden = false;
-      el.detailTitle.textContent = '选择一个 checkpoint';
+    if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+    if (requestId !== state.requestId) return;
+    if (!body.changes.length) {
+      const empty = document.createElement('p');
+      empty.className = 'diff-empty';
+      empty.textContent = checkpoint.data?.parent_seq == null ? '根节点没有文件差异' : '此 checkpoint 与父节点没有文件差异';
+      el.diffList.append(empty);
     }
-    if (state.selectedFile) selectSnapshotFile(state.selectedCheckpoint, state.selectedFile);
-    else if (state.selectedCheckpoint) selectCheckpoint(state.selectedCheckpoint);
+    for (const change of body.changes) {
+      const section = document.createElement('section');
+      section.className = 'file-diff';
+      const heading = document.createElement('header');
+      const fileName = document.createElement('strong');
+      fileName.textContent = change.after_name || change.before_name || change.file_id;
+      const badge = document.createElement('span');
+      badge.className = 'diff-status ' + change.status;
+      badge.textContent = change.status;
+      heading.append(fileName, badge);
+      section.append(heading);
+      if (change.before_name && change.after_name && change.before_name !== change.after_name) {
+        const rename = document.createElement('p');
+        rename.className = 'rename-meta';
+        rename.textContent = change.before_name + ' → ' + change.after_name;
+        section.append(rename);
+      }
+      const pre = document.createElement('pre');
+      pre.textContent = change.diff || '文件元数据有变化';
+      section.append(pre);
+      el.diffList.append(section);
+    }
+  } catch (error) {
+    if (requestId === state.requestId) setStatus(error.message || '读取差异失败', true);
+  }
+}
+
+async function loadTree() {
+  state.busy = true;
+  el.refreshButton.disabled = true;
+  setStatus('正在读取 checkpoint 树…');
+  try {
+    const response = await fetch('/api/files/checkpoints/tree', { cache: 'no-store' });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+    state.checkpoints = body.items || [];
+    state.headSeq = body.head_seq || 0;
+    renderTree();
+    fitTree();
+    if (state.selected) {
+      const selected = state.checkpoints.find((item) => item.seq === state.selected.seq);
+      if (selected) await selectCheckpoint(selected);
+    }
     setStatus('');
   } catch (error) {
     setStatus(error.message || '读取失败', true);
   } finally {
     state.busy = false;
-    renderList();
+    el.refreshButton.disabled = false;
+    el.checkoutButton.disabled = !state.selected || state.selected.seq === state.headSeq;
   }
 }
 
-el.refreshButton.addEventListener('click', () => loadCheckpoints());
-el.loadMoreButton.addEventListener('click', () => loadCheckpoints({ append: true }));
-el.filterForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  state.fileId = el.fileFilter.value.trim();
-  state.selectedCheckpoint = null;
-  state.selectedFile = null;
-  state.expanded.clear();
-  el.detailBody.hidden = true;
-  el.detailEmpty.hidden = false;
-  loadCheckpoints();
+el.checkoutButton.addEventListener('click', async () => {
+  if (!state.selected || state.busy || state.selected.seq === state.headSeq) return;
+  if (!window.confirm('Checkout 到「' + (state.selected.data?.name || '初始工作区') + '」(#' + state.selected.seq + ')？当前工作区内容将被替换。')) return;
+  state.busy = true;
+  el.checkoutButton.disabled = true;
+  try {
+    const response = await fetch('/api/files/checkpoints/' + state.selected.seq + '/restore', { method: 'POST' });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+    await loadTree();
+    setStatus('已 checkout 到 #' + body.data.checkpoint_seq);
+  } catch (error) {
+    setStatus(error.message || 'Checkout 失败', true);
+  } finally {
+    state.busy = false;
+    el.checkoutButton.disabled = !state.selected || state.selected.seq === state.headSeq;
+  }
 });
 
-loadCheckpoints();
+el.zoomIn.addEventListener('click', () => zoomTree(1.25));
+el.zoomOut.addEventListener('click', () => zoomTree(1 / 1.25));
+el.fitTree.addEventListener('click', fitTree);
+el.eventList.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  const rect = el.eventList.getBoundingClientRect();
+  zoomTree(Math.exp(-event.deltaY * .0015), event.clientX - rect.left, event.clientY - rect.top);
+}, {passive: false});
+let drag = null;
+el.eventList.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0 || event.target.closest('button')) return;
+  drag = {id: event.pointerId, x: event.clientX, y: event.clientY, originX: state.view.x, originY: state.view.y};
+  el.eventList.setPointerCapture(event.pointerId);
+  el.eventList.classList.add('dragging');
+});
+el.eventList.addEventListener('pointermove', (event) => {
+  if (!drag || drag.id !== event.pointerId) return;
+  state.view.x = drag.originX + event.clientX - drag.x;
+  state.view.y = drag.originY + event.clientY - drag.y;
+  applyViewport();
+});
+function endDrag() {
+  drag = null;
+  el.eventList.classList.remove('dragging');
+}
+el.eventList.addEventListener('pointerup', endDrag);
+el.eventList.addEventListener('pointercancel', endDrag);
+el.eventList.addEventListener('lostpointercapture', endDrag);
+el.eventList.addEventListener('keydown', (event) => {
+  if (event.target !== el.eventList) return;
+  if (event.key === '+' || event.key === '=') zoomTree(1.25);
+  else if (event.key === '-') zoomTree(1 / 1.25);
+  else if (event.key === '0') fitTree();
+  else return;
+  event.preventDefault();
+});
+new ResizeObserver(() => { if (!drag) fitTree(); }).observe(el.eventList);
+el.refreshButton.addEventListener('click', loadTree);
+loadTree();

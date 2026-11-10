@@ -47,6 +47,7 @@ MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
 MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
 MONGO_EVENT_BINDING_COLLECTION = env("MONGO_EVENT_BINDING_COLLECTION", "event_bindings")
 MONGO_FILE_EVENT_COLLECTION = env("MONGO_FILE_EVENT_COLLECTION", "workspace_file_events")
+MONGO_WORKSPACE_FILE_COLLECTION = env("MONGO_WORKSPACE_FILE_COLLECTION", "workspace_files")
 
 redis_client = redis.Redis.from_url(
     f"redis://{REDIS_ADDRESS}/{REDIS_DB}",
@@ -73,7 +74,8 @@ history: Collection = database[MONGO_HISTORY_COLLECTION]
 workflows: Collection = database[MONGO_WORKFLOW_COLLECTION]
 event_bindings: Collection = database[MONGO_EVENT_BINDING_COLLECTION]
 file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
-file_store = FileStore(file_events)
+workspace_files: Collection = database[MONGO_WORKSPACE_FILE_COLLECTION]
+file_store = FileStore(file_events, workspace_files)
 
 app = FastAPI(title="AAgent WebUI")
 

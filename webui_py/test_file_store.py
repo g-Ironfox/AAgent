@@ -62,6 +62,40 @@ class FakeCollection:
         self.documents.append(dict(document))
 
 
+class FakeWorkspaceCollection:
+    def __init__(self):
+        self.documents = []
+
+    def find_one(self, query):
+        return next((dict(doc) for doc in self.documents if doc.get("_id") == query["_id"]), None)
+
+    def find(self, query):
+        return FakeCursor([dict(doc) for doc in self.documents if doc.get("generation") == query["generation"]])
+
+    def insert_one(self, document):
+        if any(doc.get("_id") == document["_id"] for doc in self.documents):
+            raise RuntimeError("duplicate key")
+        self.documents.append(dict(document))
+
+    def replace_one(self, query, document, upsert=False):
+        for index, current in enumerate(self.documents):
+            if current.get("_id") == query["_id"]:
+                self.documents[index] = dict(document)
+                return
+        if upsert:
+            self.documents.append(dict(document))
+
+    def delete_one(self, query):
+        self.documents = [doc for doc in self.documents if doc.get("_id") != query["_id"]]
+
+    def delete_many(self, query):
+        generation = query["generation"]
+        if isinstance(generation, dict):
+            self.documents = [doc for doc in self.documents if doc.get("generation") == generation["$ne"]]
+        else:
+            self.documents = [doc for doc in self.documents if doc.get("generation") != generation]
+
+
 class FileStoreTests(unittest.TestCase):
     def setUp(self):
         self.collection = FakeCollection()
@@ -123,7 +157,7 @@ class FileStoreTests(unittest.TestCase):
         )
         self.assertEqual(self.store.list_events(before_seq=2, file_id=second["file_id"]), [])
 
-    def test_checkpoint_keeps_an_immutable_workspace_snapshot(self):
+    def test_checkpoint_keeps_an_immutable_workspace_diff(self):
         created = self.store.create_file("First", "before checkpoint")
 
         checkpoint = self.store.create_checkpoint("Before refactor")
@@ -131,26 +165,45 @@ class FileStoreTests(unittest.TestCase):
         replayed = FileStore(self.collection)
 
         self.assertEqual(checkpoint["type"], "workspace.checkpoint")
-        self.assertEqual(checkpoint["data"]["files"][0]["content"], "before checkpoint")
+        self.assertIsNone(checkpoint["data"]["parent_seq"])
+        self.assertEqual(checkpoint["data"]["changes"][0]["content_patches"][0]["lines"], ["before checkpoint"])
         self.assertEqual(replayed.get_file(created["file_id"])["content"], "after checkpoint")
-        self.assertEqual(replayed.list_events(limit=10)[1]["data"]["files"][0]["content"], "before checkpoint")
+        self.assertEqual(replayed._checkpoint_state(checkpoint["seq"])[0]["content"], "before checkpoint")
         self.assertEqual(replayed.list_checkpoints()[0]["seq"], checkpoint["seq"])
         self.assertEqual(replayed.list_checkpoints(file_id=created["file_id"])[0]["seq"], checkpoint["seq"])
         self.assertEqual(replayed.revision, 3)
 
-    def test_genesis_checkpoint_is_virtual_and_included_at_end_of_pagination(self):
+    def test_checkpoint_listing_and_tree_do_not_add_a_virtual_root(self):
         first = self.store.create_checkpoint("First")
 
         page = self.store.list_checkpoints(limit=2)
         final_page = self.store.list_checkpoints(before_seq=first["seq"], limit=2)
 
-        self.assertEqual([item["seq"] for item in page], [first["seq"], 0])
-        self.assertEqual(final_page[0]["data"], {"name": "初始状态", "files": []})
+        self.assertEqual([item["seq"] for item in page], [first["seq"]])
+        self.assertEqual(final_page, [])
         self.assertEqual(self.store.list_checkpoints(file_id="some-file"), [])
+        tree = self.store.checkpoint_tree()
+        self.assertEqual([item["seq"] for item in tree["items"]], [first["seq"]])
+        self.assertIsNone(tree["items"][0]["data"]["parent_seq"])
+        self.assertEqual(tree["head_seq"], first["seq"])
         self.assertEqual(
             [event["type"] for event in self.store.list_events(limit=10)],
             ["workspace.checkpoint"],
         )
+
+    def test_first_checkpoint_without_existing_head_becomes_root_and_head(self):
+        file = self.store.create_file("Before replay", "current workspace")
+
+        self.assertEqual(self.store.checkpoint_tree(), {"items": [], "head_seq": None})
+
+        checkpoint = self.store.create_checkpoint("Root")
+        tree = self.store.checkpoint_tree()
+
+        self.assertIsNone(checkpoint["data"]["parent_seq"])
+        self.assertEqual(tree["head_seq"], checkpoint["seq"])
+        self.assertEqual(tree["items"][0]["seq"], checkpoint["seq"])
+        self.assertEqual(self.store._checkpoint_state(checkpoint["seq"])[0]["content"], "current workspace")
+        self.assertEqual(self.store.get_file(file["file_id"])["content"], "current workspace")
 
     def test_genesis_checkpoint_is_restorable_and_replays_as_empty_workspace(self):
         self.store.create_file("Seeded file", "from replayed history")
@@ -189,6 +242,71 @@ class FileStoreTests(unittest.TestCase):
         self.store.restore_checkpoint(checkpoint["seq"])
 
         self.assertEqual(self.store.list_files(), [])
+
+    def test_checkpoint_tree_branches_after_restore_and_stores_only_changed_lines(self):
+        file = self.store.create_file("Notes", "one\ntwo\nthree\n")
+        first = self.store.create_checkpoint("First")
+        self.store.update_file(file["file_id"], "Notes", "one\ntwo changed\nthree\n", file["revision"])
+        second = self.store.create_checkpoint("Second")
+        self.store.restore_checkpoint(first["seq"])
+        restored = self.store.get_file(file["file_id"])
+        self.store.update_file(file["file_id"], "Notes", "one\ntwo alternate\nthree\n", restored["revision"])
+        branch = self.store.create_checkpoint("Branch")
+
+        tree = self.store.checkpoint_tree()
+        by_seq = {item["seq"]: item for item in tree["items"]}
+        branch_event = next(doc for doc in self.collection.documents if doc.get("seq") == branch["seq"])
+        stored_change = branch_event["data"]["changes"][0]
+
+        self.assertEqual(tree["head_seq"], branch["seq"])
+        self.assertEqual(by_seq[second["seq"]]["data"]["parent_seq"], first["seq"])
+        self.assertEqual(by_seq[branch["seq"]]["data"]["parent_seq"], first["seq"])
+        self.assertEqual(stored_change["content_patches"], [{
+            "start": 1, "end": 2, "old_lines": ["two\n"], "lines": ["two alternate\n"],
+        }])
+        self.assertIn("-two\n+two alternate\n", self.store.checkpoint_diff(branch["seq"])["changes"][0]["diff"])
+        self.assertEqual(self.store._checkpoint_state(branch["seq"])[0]["content"], "one\ntwo alternate\nthree\n")
+        self.store.restore_checkpoint(branch["seq"])
+        self.assertEqual(self.store.get_file(file["file_id"])["content"], "one\ntwo alternate\nthree\n")
+
+    def test_current_workspace_collection_holds_edits_and_checkpoints_hold_only_diffs(self):
+        workspace = FakeWorkspaceCollection()
+        store = FileStore(self.collection, workspace)
+        created = store.create_file("Notes", "base\nkeep\n")
+        store.update_file(created["file_id"], "Notes", "changed\nkeep\n", created["revision"])
+        checkpoint = store.create_checkpoint("Base")
+        changed = store.update_file(created["file_id"], "Notes", "edited\nkeep\n", store.get_file(created["file_id"])["revision"])
+
+        persisted_events = [doc for doc in self.collection.documents if "type" in doc]
+        self.assertEqual([event["type"] for event in persisted_events], ["workspace.checkpoint"])
+        self.assertEqual(persisted_events[0]["data"]["changes"][0]["content_patches"][0]["old_lines"], [])
+        self.assertEqual(store.get_file(created["file_id"])["content"], "edited\nkeep\n")
+
+        replayed = FileStore(self.collection, workspace)
+        self.assertEqual(replayed.get_file(created["file_id"])["content"], "edited\nkeep\n")
+        self.assertEqual(replayed.checkpoint_tree()["head_seq"], checkpoint["seq"])
+        replayed.restore_checkpoint(checkpoint["seq"])
+        self.assertEqual(replayed.get_file(created["file_id"])["content"], "changed\nkeep\n")
+        self.assertGreater(replayed.get_file(created["file_id"])["revision"], changed["revision"])
+        self.assertEqual(len([doc for doc in self.collection.documents if "type" in doc]), 1)
+
+        replayed.create_checkpoint("Restored branch")
+        self.assertEqual(replayed.checkpoint_tree()["items"][-1]["data"]["parent_seq"], checkpoint["seq"])
+
+    def test_legacy_event_state_is_migrated_to_workspace_collection_once(self):
+        created = self.store.create_file("Legacy", "from event history")
+        checkpoint = self.store.create_checkpoint("Legacy checkpoint")
+        workspace = FakeWorkspaceCollection()
+
+        migrated = FileStore(self.collection, workspace)
+        migrated.update_file(created["file_id"], "Legacy updated", "current collection", created["revision"])
+        reopened = FileStore(self.collection, workspace)
+
+        self.assertEqual(reopened.get_file(created["file_id"])["content"], "current collection")
+        self.assertEqual(reopened.checkpoint_tree()["head_seq"], checkpoint["seq"])
+        self.assertEqual([doc["type"] for doc in self.collection.documents if "type" in doc], [
+            "file.create", "workspace.checkpoint",
+        ])
 
     def test_missing_checkpoint_cannot_be_restored(self):
         with self.assertRaises(FileMissingError):

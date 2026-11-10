@@ -75,6 +75,17 @@ def create_files_router(store: FileStore) -> APIRouter:
             "next_before_seq": items[-1]["seq"] if has_more and items else None,
         }
 
+    @router.get("/checkpoints/tree")
+    def checkpoint_tree():
+        return store.checkpoint_tree()
+
+    @router.get("/checkpoints/{seq}/diff")
+    def checkpoint_diff(seq: int = Path(ge=0)):
+        try:
+            return store.checkpoint_diff(seq)
+        except FileMissingError:
+            return JSONResponse(status_code=404, content={"error": "Checkpoint not found"})
+
     @router.post("/checkpoints", status_code=201)
     def create_checkpoint(payload: CheckpointRequest):
         name = payload.name.strip()

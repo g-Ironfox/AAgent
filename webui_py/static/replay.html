@@ -19,25 +19,27 @@
     </div>
   </header>
   <main class="replay-main">
-    <section class="replay-layout" aria-label="工作区修改回放">
+    <section class="replay-layout" aria-label="工作区 checkpoint 树和差异">
       <aside class="replay-sidebar">
-        <header class="replay-heading"><div><p>WORKSPACE HISTORY</p><h1>工作区回放</h1></div><button id="refreshButton" class="icon-button" type="button" title="刷新 checkpoint" aria-label="刷新 checkpoint"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2"/></svg></button></header>
-        <form id="filterForm" class="replay-filter"><label for="fileFilter">文件 ID</label><div><input id="fileFilter" type="search" placeholder="筛选文件" autocomplete="off"><button type="submit" title="应用筛选">筛选</button></div></form>
-        <div id="eventList" class="event-list" aria-live="polite"></div>
-        <button id="loadMoreButton" class="load-more" type="button" hidden>加载更早记录</button>
-      </aside>
-      <section class="event-detail" aria-label="事件详情">
-        <header class="detail-heading"><div><p id="detailEyebrow">CHECKPOINT DETAIL</p><h2 id="detailTitle">选择一个 checkpoint</h2></div><code id="detailSeq"></code></header>
-        <div id="detailEmpty" class="detail-empty"><strong>选择一个 checkpoint</strong><span>展开 checkpoint 并选择文件，查看保存时的内容</span></div>
-        <div id="detailBody" class="detail-body" hidden>
-          <dl class="event-meta"><div><dt>文件 ID</dt><dd id="detailFileId"></dd></div><div><dt>时间</dt><dd id="detailTimestamp"></dd></div><div><dt>事件 ID</dt><dd id="detailEventId"></dd></div></dl>
-          <section id="contentSection" class="content-section" hidden><h3 id="contentHeading">变更后内容</h3><pre id="detailContent"></pre></section>
-          <section class="payload-section"><h3>事件数据</h3><pre id="detailPayload"></pre></section>
+        <header class="replay-heading"><div><p>WORKSPACE HISTORY</p><h1>Checkpoint 树</h1></div><button id="refreshButton" class="icon-button" type="button" title="刷新 checkpoint" aria-label="刷新 checkpoint"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2"/></svg></button></header>
+        <div class="tree-toolbar" role="toolbar" aria-label="树状图视图">
+          <button id="zoomIn" type="button" title="放大" aria-label="放大">+</button>
+          <button id="zoomOut" type="button" title="缩小" aria-label="缩小">−</button>
+          <span id="zoomValue" aria-live="polite">100%</span>
+          <button id="fitTree" type="button" title="适配画布" aria-label="适配画布">适配</button>
         </div>
+        <div id="eventList" class="event-list" tabindex="0" aria-label="Checkpoint 树状图">
+          <div id="treeScene" class="tree-scene"></div>
+        </div>
+      </aside>
+      <section class="event-detail" aria-label="Checkpoint 差异">
+        <header class="detail-heading"><div><p id="detailEyebrow">CHECKPOINT DIFF</p><h2 id="detailTitle">选择一个 checkpoint</h2><small id="detailMeta"></small></div><div class="detail-actions"><code id="detailSeq"></code><button id="checkoutButton" class="checkout-button" type="button" disabled>Checkout</button></div></header>
+        <div id="detailEmpty" class="detail-empty"><strong>选择一个 checkpoint</strong><span>右侧显示此节点相对父 checkpoint 的文件差异</span></div>
+        <div id="diffList" class="diff-list" hidden></div>
       </section>
     </section>
     <p id="pageStatus" class="page-status" role="status"></p>
   </main>
-  <script type="module" src="/replay.js?v=1"></script>
+  <script type="module" src="/replay.js?v=3"></script>
 </body>
 </html>
