@@ -8,8 +8,8 @@ auto design workflow system下的
 2. **全序控制（Total Ordering）**：
    单queue回放+全量日志+git追踪。
    单队列为并发修改和约束介入提供了**线性化点（Linearization Point）**，使得跨路径的修改历史可被全序排序与确定性回放（Deterministic Replay）。
+   
    TOCTOU
-
 
 3. **安全隔离（Isolation）**：
    sidecar回退。

@@ -22,15 +22,15 @@ class FileStoreUnavailableError(Exception):
 
 
 class FileStore:
-    """Keep the live workspace separately and persist checkpoint-only history."""
+    """Read live files from MongoDB and persist full checkpoint snapshots."""
 
     COUNTER_ID = "_workspace_file_event_counter"
     WORKSPACE_META_ID = "_workspace_current_state"
-    def __init__(self, events: Collection, workspace: Collection | None = None):
+
+    def __init__(self, events: Collection, workspace: Collection):
         self.events = events
         self.workspace = workspace
         self._lock = threading.RLock()
-        self._files: dict[str, dict[str, Any]] = {}
         self._revision = 0
         self._head_checkpoint_seq = 0
         self._workspace_generation = 0
@@ -48,7 +48,7 @@ class FileStore:
     def list_files(self) -> list[dict[str, Any]]:
         with self._lock:
             self._ensure_loaded()
-            items = [self._copy(file, False) for file in self._current_files()]
+            items = self._current_files(include_content=False)
             return sorted(items, key=lambda item: (item["updated_at"], item["file_id"]), reverse=True)
 
     def get_file(self, file_id: str) -> dict[str, Any]:
@@ -80,7 +80,13 @@ class FileStore:
                 query: dict[str, Any] = {"type": "workspace.checkpoint"}
                 if before_seq is not None:
                     query["seq"] = {"$lt": before_seq}
-                items = [self._clean_event(item) for item in self.events.find(query).sort("seq", -1)]
+                items = [self._clean_event(item) for item in self.events.find(
+                    query,
+                    {
+                        "seq": 1, "version": 1, "event_id": 1, "type": 1,
+                        "file_id": 1, "timestamp": 1, "data.name": 1, "data.parent_seq": 1,
+                    },
+                ).sort("seq", -1)]
                 if file_id:
                     items = [item for item in items if any(
                         file["file_id"] == file_id for file in self._checkpoint_state(item["seq"])
@@ -101,59 +107,47 @@ class FileStore:
         file_id = uuid.uuid4().hex
         with self._lock:
             self._ensure_loaded()
-            if self.workspace is not None:
-                timestamp = self._now()
-                file = {
-                    "file_id": file_id, "name": name, "content": content, "pinned": False,
-                    "created_at": timestamp, "updated_at": timestamp,
-                    "revision": self._next_file_revision(),
-                }
-                self._workspace_write(lambda: self.workspace.insert_one(self._workspace_document(file)))
-                return self._copy(file)
-            self._append("file.create", file_id, {"name": name, "content": content, "pinned": False})
-            return self.get_file(file_id)
+            timestamp = self._now()
+            file = {
+                "file_id": file_id, "name": name, "content": content, "pinned": False,
+                "created_at": timestamp, "updated_at": timestamp,
+                "revision": self._next_file_revision(),
+            }
+            self._workspace_write(lambda: self.workspace.insert_one(self._workspace_document(file)))
+            return self._copy(file)
 
     def update_file(self, file_id: str, name: str, content: str, expected_revision: int) -> dict[str, Any]:
         with self._lock:
             self._ensure_loaded()
             current = self._require_file(file_id)
             self._check_revision(current, expected_revision)
-            if self.workspace is not None:
-                updated = self._copy(current)
-                updated.update({"name": name, "content": content, "updated_at": self._now()})
-                updated["revision"] = self._next_file_revision()
-                self._workspace_write(lambda: self.workspace.replace_one(
-                    {"_id": self._workspace_id(file_id)}, self._workspace_document(updated), upsert=True
-                ))
-                return self._copy(updated)
-            self._append("file.update", file_id, {"name": name, "content": content})
-            return self.get_file(file_id)
+            updated = self._copy(current)
+            updated.update({"name": name, "content": content, "updated_at": self._now()})
+            updated["revision"] = self._next_file_revision()
+            self._workspace_write(lambda: self.workspace.replace_one(
+                {"_id": self._workspace_id(file_id)}, self._workspace_document(updated), upsert=False
+            ))
+            return self._copy(updated)
 
     def set_pinned(self, file_id: str, pinned: bool, expected_revision: int) -> dict[str, Any]:
         with self._lock:
             self._ensure_loaded()
             current = self._require_file(file_id)
             self._check_revision(current, expected_revision)
-            if self.workspace is not None:
-                updated = self._copy(current)
-                updated["pinned"] = pinned
-                updated["revision"] = self._next_file_revision()
-                self._workspace_write(lambda: self.workspace.replace_one(
-                    {"_id": self._workspace_id(file_id)}, self._workspace_document(updated), upsert=True
-                ))
-                return self._copy(updated)
-            self._append("file.pin", file_id, {"pinned": pinned})
-            return self.get_file(file_id)
+            updated = self._copy(current)
+            updated["pinned"] = pinned
+            updated["revision"] = self._next_file_revision()
+            self._workspace_write(lambda: self.workspace.replace_one(
+                {"_id": self._workspace_id(file_id)}, self._workspace_document(updated), upsert=False
+            ))
+            return self._copy(updated)
 
     def delete_file(self, file_id: str, expected_revision: int) -> None:
         with self._lock:
             self._ensure_loaded()
             current = self._require_file(file_id)
             self._check_revision(current, expected_revision)
-            if self.workspace is not None:
-                self._workspace_write(lambda: self.workspace.delete_one({"_id": self._workspace_id(file_id)}))
-                return
-            self._append("file.delete", file_id, {})
+            self._workspace_write(lambda: self.workspace.delete_one({"_id": self._workspace_id(file_id)}))
 
     def create_checkpoint(self, name: str) -> dict[str, Any]:
         with self._lock:
@@ -169,8 +163,12 @@ class FileStore:
             self._ensure_loaded()
             try:
                 events = [self._clean_event(item) for item in self.events.find(
-                    {"type": {"$exists": True}}
-                ).sort("seq", ASCENDING) if item.get("type") in ("workspace.checkpoint", "workspace.restore")]
+                    {"type": {"$in": ["workspace.checkpoint", "workspace.restore"]}},
+                    {
+                        "seq": 1, "type": 1, "timestamp": 1,
+                        "data.name": 1, "data.parent_seq": 1, "data.checkpoint_seq": 1,
+                    },
+                ).sort("seq", ASCENDING)]
             except PyMongoError as error:
                 self._loaded = False
                 self._load_error = error
@@ -224,32 +222,23 @@ class FileStore:
                 raise FileMissingError
             checkpoint_data = {"name": "Empty workspace"} if seq == 0 else checkpoint["data"]
             files = [self._copy(file) for file in self._checkpoint_state(seq)]
-            if self.workspace is not None:
-                generation = self._workspace_generation + 1
-                restored = {}
-                for file in files:
-                    file["revision"] = self._next_file_revision()
-                    file["updated_at"] = self._now()
-                    restored[file["file_id"]] = file
-                self._workspace_write(lambda: self.workspace.delete_many({"generation": generation}))
-                self._workspace_write(lambda: [
-                    self.workspace.insert_one(self._workspace_document(file, generation))
-                    for file in restored.values()
-                ])
-                self._workspace_generation = generation
-                self._head_checkpoint_seq = seq
-                self._persist_workspace_meta()
-                self._workspace_write(lambda: self.workspace.delete_many({"generation": {"$ne": generation}}))
-                return {
-                    "version": 1, "seq": self._revision, "event_id": uuid.uuid4().hex,
-                    "type": "workspace.restore", "file_id": "workspace", "timestamp": self._now(),
-                    "data": {"checkpoint_seq": seq, "name": checkpoint_data["name"]},
-                }
-            return self._append("workspace.restore", "workspace", {
-                "checkpoint_seq": seq,
-                "name": checkpoint_data["name"],
-                "files": files,
+            generation = self._workspace_generation + 1
+            restored = {}
+            for file in files:
+                file["revision"] = self._next_file_revision()
+                file["updated_at"] = self._now()
+                restored[file["file_id"]] = file
+            self._workspace_write(lambda: self.workspace.delete_many({"generation": generation}))
+            self._workspace_write(lambda: [
+                self.workspace.insert_one(self._workspace_document(file, generation))
+                for file in restored.values()
+            ])
+            self._workspace_generation = generation
+            restore_event = self._append("workspace.restore", "workspace", {
+                "checkpoint_seq": seq, "name": checkpoint_data["name"],
             })
+            self._workspace_write(lambda: self.workspace.delete_many({"generation": {"$ne": generation}}))
+            return restore_event
 
     def _checkpoint_state(self, seq: int) -> list[dict[str, Any]]:
         if seq == 0:
@@ -351,28 +340,33 @@ class FileStore:
 
     def _load(self) -> None:
         try:
-            self._files.clear()
             self._revision = 0
             self._head_checkpoint_seq = 0
             self.events.create_index([("seq", ASCENDING)], unique=True, name="workspace_file_event_seq")
-            stored_events = list(self.events.find({"type": {"$exists": True}}).sort("seq", ASCENDING))
-            revision = stored_events[-1]["seq"] if stored_events else 0
+            latest_event = next(iter(self.events.find(
+                {"type": {"$exists": True}}, {"seq": 1}
+            ).sort("seq", -1).limit(1)), None)
+            revision = latest_event["seq"] if latest_event else 0
             self.events.find_one_and_update(
                 {"_id": self.COUNTER_ID},
                 {"$setOnInsert": {"next_seq": revision}},
                 upsert=True,
                 return_document=ReturnDocument.AFTER,
             )
-            for event in stored_events:
-                self._apply(event)
-            if self.workspace is not None:
-                self._load_workspace_state()
+            self._revision = revision
+            latest_history_event = self._latest_workspace_history_event()
+            if latest_history_event:
+                self._head_checkpoint_seq = (
+                    latest_history_event["seq"]
+                    if latest_history_event["type"] == "workspace.checkpoint"
+                    else latest_history_event["data"]["checkpoint_seq"]
+                )
+            self._load_workspace_state()
             self._loaded = True
             self._load_error = None
         except PyMongoError as error:
             self._load_error = error
             self._loaded = False
-            self._files.clear()
             self._revision = 0
 
     def _load_workspace_state(self) -> None:
@@ -382,20 +376,31 @@ class FileStore:
             self._file_revision = meta.get("file_revision", 0)
             self._head_checkpoint_seq = meta.get("head_checkpoint_seq", self._head_checkpoint_seq)
             if meta.get("head_event_seq", self._revision) < self._revision:
-                latest_checkpoint = self.events.find_one({"type": "workspace.checkpoint"}, sort=[("seq", -1)])
-                if latest_checkpoint:
-                    self._head_checkpoint_seq = latest_checkpoint["seq"]
-            self._files.clear()
+                latest_history_event = self._latest_workspace_history_event()
+                if latest_history_event:
+                    self._head_checkpoint_seq = (
+                        latest_history_event["seq"]
+                        if latest_history_event["type"] == "workspace.checkpoint"
+                        else latest_history_event["data"]["checkpoint_seq"]
+                    )
             self._workspace_write(lambda: self.workspace.delete_many({"generation": {"$ne": self._workspace_generation}}))
             return
-        self._workspace_generation = 1
-        self._file_revision = max((item.get("revision", 0) for item in self._files.values()), default=0)
-        self._workspace_write(lambda: self.workspace.delete_many({"generation": 1}))
-        self._workspace_write(lambda: [
-            self.workspace.insert_one(self._workspace_document(file)) for file in self._files.values()
-        ])
+        latest_file = self.workspace.find_one(
+            {"file_id": {"$exists": True}}, {"generation": 1}, sort=[("generation", -1)]
+        )
+        self._workspace_generation = latest_file.get("generation", 1) if latest_file else 1
+        latest_file_revision = self.workspace.find_one(
+            {"generation": self._workspace_generation}, {"revision": 1}, sort=[("revision", -1)]
+        )
+        self._file_revision = latest_file_revision.get("revision", 0) if latest_file_revision else 0
         self._persist_workspace_meta()
-        self._files.clear()
+
+    def _latest_workspace_history_event(self) -> dict[str, Any] | None:
+        events = self.events.find(
+            {"type": {"$in": ["workspace.checkpoint", "workspace.restore"]}},
+            {"seq": 1, "type": 1, "data.checkpoint_seq": 1},
+        ).sort("seq", -1).limit(1)
+        return next(iter(events), None)
 
     def _workspace_id(self, file_id: str, generation: int | None = None) -> str:
         return f"{self._workspace_generation if generation is None else generation}:{file_id}"
@@ -416,8 +421,7 @@ class FileStore:
 
     def _next_file_revision(self) -> int:
         self._file_revision += 1
-        if self.workspace is not None:
-            self._persist_workspace_meta()
+        self._persist_workspace_meta()
         return self._file_revision
 
     def _workspace_write(self, operation) -> None:
@@ -436,10 +440,11 @@ class FileStore:
             self._load_error = error
             raise FileStoreUnavailableError("workspace file store is unavailable") from error
 
-    def _current_files(self) -> list[dict[str, Any]]:
-        if self.workspace is None:
-            return list(self._files.values())
-        documents = self._workspace_read(lambda: self.workspace.find({"generation": self._workspace_generation}))
+    def _current_files(self, include_content: bool = True) -> list[dict[str, Any]]:
+        projection = None if include_content else {"content": 0}
+        documents = self._workspace_read(lambda: self.workspace.find(
+            {"generation": self._workspace_generation}, projection
+        ))
         return [
             {key: value for key, value in item.items() if key not in ("_id", "generation")}
             for item in documents if item.get("file_id")
@@ -449,7 +454,7 @@ class FileStore:
         if not self._loaded:
             self._load()
         if not self._loaded:
-            raise FileStoreUnavailableError("workspace file event store is unavailable") from self._load_error
+            raise FileStoreUnavailableError("workspace file store is unavailable") from self._load_error
 
     def _append(self, event_type: str, file_id: str, data: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -475,7 +480,7 @@ class FileStore:
             self._load_error = error
             raise FileStoreUnavailableError("workspace file event store is unavailable") from error
         self._apply(event)
-        if self.workspace is not None and event_type == "workspace.checkpoint":
+        if event_type in ("workspace.checkpoint", "workspace.restore"):
             self._persist_workspace_meta()
         return {key: value for key, value in event.items() if key != "_id"}
 
@@ -484,68 +489,25 @@ class FileStore:
             raise RuntimeError("unsupported workspace file event version")
         if event["seq"] <= self._revision:
             raise RuntimeError("workspace file event sequence is not strictly increasing")
-        file_id = event["file_id"]
         data = event["data"]
         event_type = event["type"]
-        if event_type == "file.create":
-            if file_id in self._files:
-                raise RuntimeError("duplicate workspace file id")
-            self._files[file_id] = {
-                "file_id": file_id,
-                **data,
-                "created_at": event["timestamp"],
-                "updated_at": event["timestamp"],
-                "revision": event["seq"],
-            }
-        elif event_type == "file.update":
-            file = self._replay_target(file_id)
-            file.update(data)
-            file["updated_at"] = event["timestamp"]
-            file["revision"] = event["seq"]
-        elif event_type == "file.pin":
-            file = self._replay_target(file_id)
-            file["pinned"] = data["pinned"]
-            file["revision"] = event["seq"]
-        elif event_type == "file.delete":
-            self._replay_target(file_id)
-            del self._files[file_id]
-        elif event_type == "workspace.checkpoint":
+        if event_type == "workspace.checkpoint":
             data.setdefault("parent_seq", self._head_checkpoint_seq)
             self._head_checkpoint_seq = event["seq"]
         elif event_type == "workspace.restore":
-            restored = {}
-            for snapshot in data["files"]:
-                file = self._copy(snapshot)
-                file["updated_at"] = event["timestamp"]
-                file["revision"] = event["seq"]
-                restored[file["file_id"]] = file
-            if len(restored) != len(data["files"]):
-                raise RuntimeError("duplicate workspace file id in restore snapshot")
-            self._files = restored
             self._head_checkpoint_seq = data["checkpoint_seq"]
         else:
-            raise RuntimeError("unknown workspace file event type")
+            raise RuntimeError("unsupported workspace file event type")
         self._revision = event["seq"]
 
-    def _replay_target(self, file_id: str) -> dict[str, Any]:
-        file = self._files.get(file_id)
-        if file is None:
-            raise RuntimeError("workspace event references missing file")
-        return file
-
     def _require_file(self, file_id: str) -> dict[str, Any]:
-        if self.workspace is not None:
-            document = self._workspace_read(lambda: self.workspace.find_one({
-                "_id": self._workspace_id(file_id),
-                "generation": self._workspace_generation,
-            }))
-            if document is None:
-                raise FileMissingError
-            return {key: value for key, value in document.items() if key not in ("_id", "generation")}
-        file = self._files.get(file_id)
-        if file is None:
+        document = self._workspace_read(lambda: self.workspace.find_one({
+            "_id": self._workspace_id(file_id),
+            "generation": self._workspace_generation,
+        }))
+        if document is None:
             raise FileMissingError
-        return file
+        return {key: value for key, value in document.items() if key not in ("_id", "generation")}
 
     @staticmethod
     def _check_revision(file: dict[str, Any], expected_revision: int) -> None:

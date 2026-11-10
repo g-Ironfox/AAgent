@@ -42,8 +42,8 @@
 .detail-empty[hidden],.diff-list[hidden] { display:none; }
 .detail-empty strong { color:var(--ink); font:700 18px Georgia,"Microsoft YaHei",serif; }
 .detail-empty span { font-size:11px; }
-.diff-list { min-height:0; overflow:auto; padding:16px 20px 24px; }
-.file-diff { margin-bottom:16px; border:1px solid var(--line); background:#fff; }
+.diff-list { min-width:0; min-height:0; overflow-x:hidden; overflow-y:auto; padding:16px 20px 24px; }
+.file-diff { width:100%; max-width:1200px; box-sizing:border-box; margin:0 auto 16px; border:1px solid var(--line); background:#fff; }
 .file-diff > header { min-height:40px; padding:8px 11px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid var(--line); }
 .file-diff > header strong { min-width:0; overflow:hidden; font:600 11px Consolas,"Microsoft YaHei",monospace; text-overflow:ellipsis; white-space:nowrap; }
 .diff-status { flex:0 0 auto; color:var(--muted); font:700 9px Consolas,monospace; text-transform:uppercase; }
@@ -51,13 +51,13 @@
 .diff-status.deleted { color:var(--red); }
 .diff-status.modified { color:#9a6810; }
 .rename-meta { margin:8px 12px 0; color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
-.diff-content-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--line); }
+.diff-content-pair { min-width:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--line); }
 .diff-pane { min-width:0; background:#fff; }
 .diff-pane h3 { margin:0; padding:7px 10px; color:var(--muted); border-bottom:1px solid var(--line); background:#f7f9f7; font:600 10px Consolas,"Microsoft YaHei",monospace; }
-.diff-pane pre { overflow:auto; min-height:34px; margin:0; padding:7px 0; color:#27332e; background:#fff; font:11px/1.65 Consolas,"Microsoft YaHei",monospace; }
-.diff-source-line { display:grid; grid-template-columns:3.5em minmax(0,1fr); min-height:1.65em; white-space:pre; }
+.diff-pane pre { max-width:100%; box-sizing:border-box; overflow-x:hidden; overflow-y:hidden; min-height:34px; margin:0; padding:7px 0; color:#27332e; background:#fff; font:11px/1.65 Consolas,"Microsoft YaHei",monospace; }
+.diff-source-line { display:grid; grid-template-columns:3.5em minmax(0,1fr); min-height:1.65em; white-space:normal; }
 .diff-line-number { padding-right:8px; color:#89948e; border-right:1px solid #e5e9e6; text-align:right; user-select:none; }
-.diff-line-text { padding:0 8px; white-space:pre; }
+.diff-line-text { min-width:0; padding:0 8px; white-space:pre-wrap; overflow-wrap:anywhere; }
 .diff-source-deleted { color:#a32f37; background:#fbeaec; }
 .diff-source-added { color:#176b45; background:#e8f5ec; }
 .diff-pane-empty { margin:0; padding:14px 10px; color:var(--muted); font:11px Consolas,"Microsoft YaHei",monospace; }
