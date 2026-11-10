@@ -7,6 +7,10 @@
 .sidebar-heading { min-height:80px; padding:14px 18px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fff; }
 .sidebar-heading p { margin:0 0 5px; color:var(--green); font:700 9px Consolas,monospace; }
 .sidebar-heading h1 { margin:0; font:700 22px Georgia,"Microsoft YaHei",serif; }
+.sidebar-tools { display:flex; align-items:center; gap:7px; }
+.checkpoint-button { min-height:34px; padding:0 10px; color:var(--green); border:1px solid var(--green); background:#fff; font-size:11px; }
+.checkpoint-button:hover:not(:disabled) { color:#fff; background:var(--green); }
+.checkpoint-button:disabled { cursor:not-allowed; opacity:.45; }
 .create-button { width:36px; height:36px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:22px; }
 .create-button:hover { color:var(--green); border-color:var(--green); }
 .file-search { padding:12px; border-bottom:1px solid var(--line); }
@@ -48,4 +52,4 @@
 .save-status.success { color:var(--green); }
 .save-status.error { color:var(--red); }
 .file-count { color:var(--muted); font:10px Consolas,monospace; }
-@media(max-width:700px) { .workspace-main { width:100%; padding:0; } .workspace-state { min-width:0; padding-left:8px; } .workspace-state span { display:none; } .workspace-layout { grid-template-columns:1fr; overflow:auto; border-width:0; } .file-sidebar { min-height:180px; max-height:235px; border-right:0; border-bottom:1px solid var(--line); } .sidebar-heading { min-height:62px; } .sidebar-heading h1 { font-size:19px; } .file-editor { min-height:440px; } .editor-heading { padding:12px; align-items:flex-start; flex-direction:column; gap:10px; } .file-name { font-size:19px; } .file-actions { width:100%; } .editor-content textarea,.file-preview { padding:16px 12px; } .editor-actions { padding:10px 12px; } }
+@media(max-width:700px) { .workspace-main { width:100%; padding:0; } .workspace-state { min-width:0; padding-left:8px; } .workspace-state span { display:none; } .workspace-layout { grid-template-columns:1fr; overflow:auto; border-width:0; } .file-sidebar { min-height:180px; max-height:235px; border-right:0; border-bottom:1px solid var(--line); } .sidebar-heading { min-height:62px; padding:10px 12px; } .sidebar-heading h1 { font-size:19px; } .checkpoint-button { padding:0 8px; font-size:10px; } .file-editor { min-height:440px; } .editor-heading { padding:12px; align-items:flex-start; flex-direction:column; gap:10px; } .file-name { font-size:19px; } .file-actions { width:100%; } .editor-content textarea,.file-preview { padding:16px 12px; } .editor-actions { padding:10px 12px; } }

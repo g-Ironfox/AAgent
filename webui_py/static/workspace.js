@@ -1,5 +1,6 @@
 import {
   createFile,
+  createCheckpoint,
   deleteFile,
   fetchFile,
   fetchFiles,
@@ -9,7 +10,7 @@ import {
 
 const state = { items: [], current: null, saved: null, mode: 'preview', busy: false };
 const el = Object.fromEntries([
-  'createButton', 'searchInput', 'fileList', 'fileCount', 'name', 'fileName',
+  'createButton', 'checkpointButton', 'searchInput', 'fileList', 'fileCount', 'name', 'fileName',
   'fileContent', 'filePreview', 'fileEmpty', 'fileId', 'updatedAt',
   'pinButton', 'downloadButton', 'deleteButton', 'cancelButton', 'editButton',
   'saveStatus', 'characterCount',
@@ -33,6 +34,7 @@ function updateControls() {
   el.name.disabled = !active || busy || state.mode !== 'edit';
   el.fileContent.disabled = !active || busy || state.mode !== 'edit';
   el.createButton.disabled = busy;
+  el.checkpointButton.disabled = busy;
   el.pinButton.disabled = !active || busy || state.mode === 'edit';
   el.pinButton.textContent = state.current && state.current.pinned ? '已钉住' : '钉住';
   el.pinButton.setAttribute('aria-pressed', String(Boolean(state.current && state.current.pinned)));
@@ -154,6 +156,31 @@ async function createNew() {
   }
 }
 
+async function createWorkspaceCheckpoint() {
+  if (state.busy || changed()) {
+    if (changed()) setStatus('请先保存当前修改，再创建 checkpoint', 'error');
+    return;
+  }
+  const name = window.prompt('Checkpoint 名称', 'Checkpoint');
+  if (name === null) return;
+  if (!name.trim()) {
+    setStatus('Checkpoint 名称不能为空', 'error');
+    return;
+  }
+  state.busy = true;
+  setStatus('正在创建 checkpoint…');
+  updateControls();
+  try {
+    const checkpoint = await createCheckpoint(name.trim());
+    setStatus('Checkpoint 已创建 · #' + checkpoint.seq, 'success');
+  } catch (error) {
+    setStatus(error.message || '创建失败', 'error');
+  } finally {
+    state.busy = false;
+    updateControls();
+  }
+}
+
 async function saveCurrent() {
   if (!state.current || state.busy || !changed() || !el.name.value.trim()) return;
   state.busy = true;
@@ -218,6 +245,7 @@ async function removeCurrent() {
 }
 
 el.createButton.addEventListener('click', createNew);
+el.checkpointButton.addEventListener('click', createWorkspaceCheckpoint);
 el.searchInput.addEventListener('input', renderList);
 el.editButton.addEventListener('click', () => {
   if (state.mode === 'edit') saveCurrent();

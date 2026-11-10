@@ -19,6 +19,9 @@ async function request(path, options = {}) {
 }
 
 export const fetchFiles = () => request('/api/files');
+export const createCheckpoint = (name) => request('/api/files/checkpoints', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+});
 export const fetchFile = (id) => request('/api/files/' + encodeURIComponent(id));
 export const createFile = (name, content = '') => request('/api/files', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content }),

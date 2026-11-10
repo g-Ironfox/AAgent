@@ -28,10 +28,16 @@ class FakeCollection:
     def find(self, query):
         self._check()
         events = [doc for doc in self.documents if "type" in doc]
+        if "type" in query and isinstance(query["type"], str):
+            events = [doc for doc in events if doc["type"] == query["type"]]
         if "seq" in query:
             events = [doc for doc in events if doc["seq"] < query["seq"]["$lt"]]
         if "file_id" in query:
             events = [doc for doc in events if doc["file_id"] == query["file_id"]]
+        if "data.files.file_id" in query:
+            events = [doc for doc in events if any(
+                item["file_id"] == query["data.files.file_id"] for item in doc["data"]["files"]
+            )]
         return FakeCursor(events)
 
     def find_one_and_update(self, query, update, upsert=False, return_document=None):
@@ -112,6 +118,21 @@ class FileStoreTests(unittest.TestCase):
             [1],
         )
         self.assertEqual(self.store.list_events(before_seq=2, file_id=second["file_id"]), [])
+
+    def test_checkpoint_keeps_an_immutable_workspace_snapshot(self):
+        created = self.store.create_file("First", "before checkpoint")
+
+        checkpoint = self.store.create_checkpoint("Before refactor")
+        self.store.update_file(created["file_id"], "First", "after checkpoint", created["revision"])
+        replayed = FileStore(self.collection)
+
+        self.assertEqual(checkpoint["type"], "workspace.checkpoint")
+        self.assertEqual(checkpoint["data"]["files"][0]["content"], "before checkpoint")
+        self.assertEqual(replayed.get_file(created["file_id"])["content"], "after checkpoint")
+        self.assertEqual(replayed.list_events(limit=10)[1]["data"]["files"][0]["content"], "before checkpoint")
+        self.assertEqual(replayed.list_checkpoints()[0]["seq"], checkpoint["seq"])
+        self.assertEqual(replayed.list_checkpoints(file_id=created["file_id"])[0]["seq"], checkpoint["seq"])
+        self.assertEqual(replayed.revision, 3)
 
 
 if __name__ == "__main__":

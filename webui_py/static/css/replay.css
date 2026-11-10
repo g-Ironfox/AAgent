@@ -5,8 +5,10 @@
 .replay-layout { flex:1; min-height:0; display:grid; grid-template-columns:minmax(280px,360px) minmax(0,1fr); border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
 .replay-sidebar { min-height:0; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; border-right:1px solid var(--line); background:#fafbf9; }
 .replay-heading { min-height:76px; padding:13px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fff; }
+.replay-heading > div { min-width:0; flex:1; }
 .replay-heading p { margin:0 0 5px; color:var(--blue); font:700 9px Consolas,monospace; }
-.replay-heading h1 { margin:0; font:700 21px Georgia,"Microsoft YaHei",serif; }
+.replay-heading h1 { overflow:hidden; margin:0; font:700 21px Georgia,"Microsoft YaHei",serif; text-overflow:ellipsis; white-space:nowrap; }
+.replay-heading .icon-button { flex:0 0 38px; margin-left:10px; }
 .replay-filter { padding:11px 13px; display:grid; gap:7px; border-bottom:1px solid var(--line); }
 .replay-filter label { color:var(--muted); font-size:10px; }
 .replay-filter div { display:flex; gap:6px; }
@@ -14,14 +16,29 @@
 .replay-filter button,.load-more { min-height:34px; padding:0 11px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:11px; }
 .replay-filter button:hover,.load-more:hover:not(:disabled) { border-color:var(--blue); }
 .event-list { min-height:0; overflow:auto; }
-.event-item { width:100%; min-height:78px; padding:11px 14px; display:grid; gap:6px; text-align:left; color:var(--ink); border:0; border-bottom:1px solid #e7ebe7; background:transparent; }
-.event-item:hover { background:#eef4f7; }
-.event-item.active { background:var(--blue-soft); box-shadow:inset 3px 0 var(--blue); }
-.event-item-top { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.event-item-top strong { font-size:12px; }
-.event-item-top code { color:var(--blue); font-size:10px; }
-.event-item-name { overflow:hidden; color:var(--ink); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
-.event-item time,.event-list-empty { color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+.checkpoint-group { position:relative; }
+.checkpoint-group::before { position:absolute; top:0; bottom:0; left:16px; width:2px; content:""; background:#e98b39; }
+.checkpoint-group.last::before { bottom:auto; height:33px; }
+.checkpoint-row { position:relative; width:100%; min-width:0; min-height:66px; padding:0 9px 0 0; display:grid; grid-template-columns:34px minmax(0,1fr) 18px; align-items:center; text-align:left; color:var(--ink); border:0; border-bottom:1px solid #e7ebe7; background:transparent; }
+.checkpoint-row:hover { background:linear-gradient(90deg,transparent 0 34px,#eef4f7 34px); }
+.checkpoint-row.active { background:linear-gradient(90deg,transparent 0 34px,var(--blue-soft) 34px); box-shadow:inset 3px 0 var(--blue); }
+.checkpoint-graph { position:relative; z-index:1; width:34px; height:100%; display:grid; place-items:center; }
+.checkpoint-node { width:15px; height:15px; border:4px solid #e98b39; border-radius:50%; background:#fff; box-shadow:inset 0 0 0 2px #e98b39; }
+.checkpoint-chevron { width:18px; height:18px; display:grid; place-items:center; color:var(--muted); font:18px/1 Consolas,monospace; }
+.checkpoint-chevron.expanded { transform:rotate(90deg); }
+.checkpoint-summary { min-width:0; padding:9px 4px 9px 7px; display:grid; align-content:center; gap:4px; }
+.checkpoint-title-line { min-width:0; display:flex; align-items:center; gap:6px; }
+.checkpoint-title-line strong { min-width:0; overflow:hidden; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.checkpoint-title-line code { flex:0 0 auto; color:var(--blue); font-size:10px; }
+.checkpoint-meta { grid-column:1/-1; overflow:hidden; color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; text-overflow:ellipsis; white-space:nowrap; }
+.checkpoint-files { position:relative; margin-left:34px; padding:3px 8px 7px 10px; display:grid; gap:1px; }
+.snapshot-file { min-width:0; min-height:34px; padding:0 7px; display:flex; align-items:center; justify-content:space-between; gap:7px; text-align:left; color:var(--ink); border:0; background:transparent; }
+.snapshot-file:hover { background:#eef4f7; }
+.snapshot-file.active { background:var(--blue-soft); box-shadow:inset 2px 0 var(--blue); }
+.snapshot-file-name { overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.snapshot-file code { flex:0 0 auto; color:var(--muted); font-size:9px; }
+.snapshot-empty,.event-list-empty { color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+.snapshot-empty { margin:8px 6px; }
 .event-list-empty { margin:18px 14px; }
 .load-more { margin:10px 12px; }
 .load-more[hidden] { display:none; }
@@ -52,10 +69,23 @@
   .replay-state span { display:none; }
   .replay-layout { grid-template-columns:1fr; overflow:auto; border-width:0; }
   .replay-sidebar { min-height:250px; max-height:42dvh; border-right:0; border-bottom:1px solid var(--line); }
-  .replay-heading { min-height:60px; }
+  .replay-heading { min-height:60px; padding:10px 12px; }
+  .replay-heading h1 { font-size:19px; }
   .event-detail { min-height:400px; }
   .detail-heading { padding:12px; }
   .detail-body { padding:14px 12px 20px; }
   .event-meta { grid-template-columns:1fr; gap:9px; }
   .content-section pre,.payload-section pre { max-height:35vh; }
+}
+@media(max-width:400px) {
+  .replay-heading { padding-right:10px; padding-left:10px; }
+  .replay-heading h1 { font-size:18px; }
+  .checkpoint-row { grid-template-columns:32px minmax(0,1fr) 16px; padding-right:6px; }
+  .checkpoint-row:hover { background:linear-gradient(90deg,transparent 0 32px,#eef4f7 32px); }
+  .checkpoint-row.active { background:linear-gradient(90deg,transparent 0 32px,var(--blue-soft) 32px); }
+  .checkpoint-graph { width:32px; }
+  .checkpoint-group::before { left:15px; }
+  .checkpoint-summary { padding-left:4px; }
+  .checkpoint-title-line { gap:4px; }
+  .checkpoint-files { margin-left:32px; }
 }

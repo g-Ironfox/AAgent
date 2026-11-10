@@ -70,6 +70,22 @@ class FileStore:
                 self._load_error = error
                 raise FileStoreUnavailableError("workspace file event store is unavailable") from error
 
+    def list_checkpoints(self, before_seq: int | None = None, limit: int = 50, file_id: str | None = None) -> list[dict[str, Any]]:
+        with self._lock:
+            self._ensure_loaded()
+            query: dict[str, Any] = {"type": "workspace.checkpoint"}
+            if before_seq is not None:
+                query["seq"] = {"$lt": before_seq}
+            if file_id:
+                query["data.files.file_id"] = file_id
+            try:
+                checkpoints = self.events.find(query).sort("seq", -1).limit(limit)
+                return [{key: value for key, value in item.items() if key != "_id"} for item in checkpoints]
+            except PyMongoError as error:
+                self._loaded = False
+                self._load_error = error
+                raise FileStoreUnavailableError("workspace file event store is unavailable") from error
+
     def create_file(self, name: str, content: str = "") -> dict[str, Any]:
         file_id = uuid.uuid4().hex
         with self._lock:
@@ -100,6 +116,13 @@ class FileStore:
             self._check_revision(current, expected_revision)
             self._append("file.delete", file_id, {})
 
+    def create_checkpoint(self, name: str) -> dict[str, Any]:
+        with self._lock:
+            self._ensure_loaded()
+            files = [self._copy(file) for file in self._files.values()]
+            files.sort(key=lambda item: (item["name"].casefold(), item["file_id"]))
+            return self._append("workspace.checkpoint", "workspace", {"name": name, "files": files})
+
     def _load(self) -> None:
         try:
             self.events.create_index([("seq", ASCENDING)], unique=True, name="workspace_file_event_seq")
@@ -127,7 +150,7 @@ class FileStore:
         if not self._loaded:
             raise FileStoreUnavailableError("workspace file event store is unavailable") from self._load_error
 
-    def _append(self, event_type: str, file_id: str, data: dict[str, Any]) -> None:
+    def _append(self, event_type: str, file_id: str, data: dict[str, Any]) -> dict[str, Any]:
         try:
             counter = self.events.find_one_and_update(
                 {"_id": self.COUNTER_ID},
@@ -151,6 +174,7 @@ class FileStore:
             self._load_error = error
             raise FileStoreUnavailableError("workspace file event store is unavailable") from error
         self._apply(event)
+        return {key: value for key, value in event.items() if key != "_id"}
 
     def _apply(self, event: dict[str, Any]) -> None:
         if event.get("version") != 1:
@@ -182,6 +206,8 @@ class FileStore:
         elif event_type == "file.delete":
             self._replay_target(file_id)
             del self._files[file_id]
+        elif event_type == "workspace.checkpoint":
+            pass
         else:
             raise RuntimeError("unknown workspace file event type")
         self._revision = event["seq"]

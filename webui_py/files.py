@@ -23,6 +23,12 @@ class FilePinRequest(BaseModel):
     revision: int = Field(ge=1)
 
 
+class CheckpointRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+
+
 def create_files_router(store: FileStore) -> APIRouter:
     router = APIRouter(prefix="/api/files")
 
@@ -53,6 +59,28 @@ def create_files_router(store: FileStore) -> APIRouter:
             "has_more": has_more,
             "next_before_seq": items[-1]["seq"] if has_more and items else None,
         }
+
+    @router.get("/checkpoints")
+    def list_checkpoints(
+        before_seq: int | None = Query(default=None, ge=1),
+        limit: int = Query(default=50, ge=1, le=100),
+        file_id: str | None = None,
+    ):
+        items = store.list_checkpoints(before_seq=before_seq, limit=limit + 1, file_id=file_id)
+        has_more = len(items) > limit
+        items = items[:limit]
+        return {
+            "items": items,
+            "has_more": has_more,
+            "next_before_seq": items[-1]["seq"] if has_more and items else None,
+        }
+
+    @router.post("/checkpoints", status_code=201)
+    def create_checkpoint(payload: CheckpointRequest):
+        name = payload.name.strip()
+        if not name:
+            return JSONResponse(status_code=400, content={"error": "Checkpoint name cannot be empty"})
+        return store.create_checkpoint(name)
 
     @router.post("", status_code=201)
     def create_file(payload: FileRequest):
