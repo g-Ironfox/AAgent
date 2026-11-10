@@ -22,7 +22,7 @@
   <main class="workspace-main">
     <section class="workspace-layout" aria-label="工作区">
       <aside class="file-sidebar" aria-label="文件列表">
-        <header class="sidebar-heading"><div><p>WORKSPACE</p><h1>工作区</h1></div><div class="sidebar-tools"><button id="checkpointButton" class="checkpoint-button" type="button" title="创建工作区 checkpoint">创建 checkpoint</button><button id="createButton" class="create-button" type="button" title="新建文件" aria-label="新建文件">+</button></div></header>
+        <header class="sidebar-heading"><div><p>WORKSPACE</p><h1>工作区</h1></div><div class="sidebar-tools"><button id="checkpointButton" class="checkpoint-button" type="button" title="创建工作区 checkpoint">创建 checkpoint</button><button id="restoreButton" class="checkpoint-button" type="button" title="从 checkpoint 恢复工作区">恢复</button><button id="createButton" class="create-button" type="button" title="新建文件" aria-label="新建文件">+</button></div></header>
         <label class="file-search"><span class="sr-only">搜索文件</span><input id="searchInput" type="search" placeholder="搜索文件名" autocomplete="off"></label>
         <div id="fileList" class="file-list" aria-live="polite"></div>
       </aside>
@@ -36,6 +36,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/workspace.js?v=2"></script>
+  <script type="module" src="/workspace.js?v=3"></script>
 </body>
 </html>

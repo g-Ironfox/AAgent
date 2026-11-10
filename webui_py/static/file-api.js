@@ -22,6 +22,23 @@ export const fetchFiles = () => request('/api/files');
 export const createCheckpoint = (name) => request('/api/files/checkpoints', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
 });
+export async function fetchCheckpoints() {
+  const items = [];
+  let beforeSeq = null;
+  let hasMore = true;
+  while (hasMore) {
+    const query = new URLSearchParams({ limit: '100' });
+    if (beforeSeq !== null) query.set('before_seq', String(beforeSeq));
+    const page = await request('/api/files/checkpoints?' + query);
+    items.push(...page.items);
+    hasMore = page.has_more;
+    beforeSeq = page.next_before_seq;
+  }
+  return { items };
+}
+export const restoreCheckpoint = (seq) => request('/api/files/checkpoints/' + seq + '/restore', {
+  method: 'POST',
+});
 export const fetchFile = (id) => request('/api/files/' + encodeURIComponent(id));
 export const createFile = (name, content = '') => request('/api/files', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content }),

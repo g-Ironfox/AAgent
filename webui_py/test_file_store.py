@@ -31,7 +31,11 @@ class FakeCollection:
         if "type" in query and isinstance(query["type"], str):
             events = [doc for doc in events if doc["type"] == query["type"]]
         if "seq" in query:
-            events = [doc for doc in events if doc["seq"] < query["seq"]["$lt"]]
+            sequence = query["seq"]
+            if isinstance(sequence, dict):
+                events = [doc for doc in events if doc["seq"] < sequence["$lt"]]
+            else:
+                events = [doc for doc in events if doc["seq"] == sequence]
         if "file_id" in query:
             events = [doc for doc in events if doc["file_id"] == query["file_id"]]
         if "data.files.file_id" in query:
@@ -133,6 +137,62 @@ class FileStoreTests(unittest.TestCase):
         self.assertEqual(replayed.list_checkpoints()[0]["seq"], checkpoint["seq"])
         self.assertEqual(replayed.list_checkpoints(file_id=created["file_id"])[0]["seq"], checkpoint["seq"])
         self.assertEqual(replayed.revision, 3)
+
+    def test_genesis_checkpoint_is_virtual_and_included_at_end_of_pagination(self):
+        first = self.store.create_checkpoint("First")
+
+        page = self.store.list_checkpoints(limit=2)
+        final_page = self.store.list_checkpoints(before_seq=first["seq"], limit=2)
+
+        self.assertEqual([item["seq"] for item in page], [first["seq"], 0])
+        self.assertEqual(final_page[0]["data"], {"name": "初始状态", "files": []})
+        self.assertEqual(self.store.list_checkpoints(file_id="some-file"), [])
+        self.assertEqual(
+            [event["type"] for event in self.store.list_events(limit=10)],
+            ["workspace.checkpoint"],
+        )
+
+    def test_genesis_checkpoint_is_restorable_and_replays_as_empty_workspace(self):
+        self.store.create_file("Seeded file", "from replayed history")
+
+        restored = self.store.restore_checkpoint(0)
+        replayed = FileStore(self.collection)
+
+        self.assertEqual(restored["data"]["checkpoint_seq"], 0)
+        self.assertEqual(self.store.list_files(), [])
+        self.assertEqual(replayed.list_files(), [])
+        self.assertEqual(replayed.revision, restored["seq"])
+
+    def test_restore_checkpoint_replaces_workspace_and_replays(self):
+        original = self.store.create_file("Original", "before")
+        checkpoint = self.store.create_checkpoint("Known good")
+        self.store.update_file(original["file_id"], "Changed", "after", original["revision"])
+        self.store.create_file("Extra", "remove me")
+
+        restored = self.store.restore_checkpoint(checkpoint["seq"])
+        files = self.store.list_files()
+        replayed = FileStore(self.collection)
+
+        self.assertEqual(restored["type"], "workspace.restore")
+        self.assertEqual(restored["data"]["checkpoint_seq"], checkpoint["seq"])
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0]["file_id"], original["file_id"])
+        self.assertEqual(files[0]["name"], "Original")
+        self.assertEqual(self.store.get_file(original["file_id"])["content"], "before")
+        self.assertEqual(files[0]["revision"], restored["seq"])
+        self.assertEqual(replayed.list_files(), files)
+
+    def test_restore_checkpoint_can_restore_empty_workspace(self):
+        checkpoint = self.store.create_checkpoint("Empty")
+        self.store.create_file("Later")
+
+        self.store.restore_checkpoint(checkpoint["seq"])
+
+        self.assertEqual(self.store.list_files(), [])
+
+    def test_missing_checkpoint_cannot_be_restored(self):
+        with self.assertRaises(FileMissingError):
+            self.store.restore_checkpoint(999)
 
 
 if __name__ == "__main__":

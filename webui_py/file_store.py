@@ -24,6 +24,15 @@ class FileStore:
     """MongoDB-backed append-only event history with deterministic replay."""
 
     COUNTER_ID = "_workspace_file_event_counter"
+    GENESIS_CHECKPOINT = {
+        "version": 1,
+        "seq": 0,
+        "event_id": "workspace-genesis",
+        "type": "workspace.checkpoint",
+        "file_id": "workspace",
+        "timestamp": "1970-01-01T00:00:00+00:00",
+        "data": {"name": "初始状态", "files": []},
+    }
 
     def __init__(self, events: Collection):
         self.events = events
@@ -80,7 +89,10 @@ class FileStore:
                 query["data.files.file_id"] = file_id
             try:
                 checkpoints = self.events.find(query).sort("seq", -1).limit(limit)
-                return [{key: value for key, value in item.items() if key != "_id"} for item in checkpoints]
+                items = [{key: value for key, value in item.items() if key != "_id"} for item in checkpoints]
+                if not file_id and (before_seq is None or before_seq > 0) and len(items) < limit:
+                    items.append(self._copy(self.GENESIS_CHECKPOINT))
+                return items
             except PyMongoError as error:
                 self._loaded = False
                 self._load_error = error
@@ -122,6 +134,30 @@ class FileStore:
             files = [self._copy(file) for file in self._files.values()]
             files.sort(key=lambda item: (item["name"].casefold(), item["file_id"]))
             return self._append("workspace.checkpoint", "workspace", {"name": name, "files": files})
+
+    def restore_checkpoint(self, seq: int) -> dict[str, Any]:
+        with self._lock:
+            self._ensure_loaded()
+            if seq == 0:
+                checkpoint_data = self.GENESIS_CHECKPOINT["data"]
+            elif seq > 0:
+                try:
+                    checkpoint = next(iter(self.events.find({"type": "workspace.checkpoint", "seq": seq})), None)
+                except PyMongoError as error:
+                    self._loaded = False
+                    self._load_error = error
+                    raise FileStoreUnavailableError("workspace file event store is unavailable") from error
+                if checkpoint is None:
+                    raise FileMissingError
+                checkpoint_data = checkpoint["data"]
+            else:
+                raise FileMissingError
+            files = [self._copy(file) for file in checkpoint_data["files"]]
+            return self._append("workspace.restore", "workspace", {
+                "checkpoint_seq": seq,
+                "name": checkpoint_data["name"],
+                "files": files,
+            })
 
     def _load(self) -> None:
         try:
@@ -208,6 +244,16 @@ class FileStore:
             del self._files[file_id]
         elif event_type == "workspace.checkpoint":
             pass
+        elif event_type == "workspace.restore":
+            restored = {}
+            for snapshot in data["files"]:
+                file = self._copy(snapshot)
+                file["updated_at"] = event["timestamp"]
+                file["revision"] = event["seq"]
+                restored[file["file_id"]] = file
+            if len(restored) != len(data["files"]):
+                raise RuntimeError("duplicate workspace file id in restore snapshot")
+            self._files = restored
         else:
             raise RuntimeError("unknown workspace file event type")
         self._revision = event["seq"]

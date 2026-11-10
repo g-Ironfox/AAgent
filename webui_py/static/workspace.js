@@ -2,15 +2,17 @@ import {
   createFile,
   createCheckpoint,
   deleteFile,
+  fetchCheckpoints,
   fetchFile,
   fetchFiles,
+  restoreCheckpoint,
   updateFile,
   updateFilePin,
 } from './file-api.js';
 
 const state = { items: [], current: null, saved: null, mode: 'preview', busy: false };
 const el = Object.fromEntries([
-  'createButton', 'checkpointButton', 'searchInput', 'fileList', 'fileCount', 'name', 'fileName',
+  'createButton', 'checkpointButton', 'restoreButton', 'searchInput', 'fileList', 'fileCount', 'name', 'fileName',
   'fileContent', 'filePreview', 'fileEmpty', 'fileId', 'updatedAt',
   'pinButton', 'downloadButton', 'deleteButton', 'cancelButton', 'editButton',
   'saveStatus', 'characterCount',
@@ -35,6 +37,7 @@ function updateControls() {
   el.fileContent.disabled = !active || busy || state.mode !== 'edit';
   el.createButton.disabled = busy;
   el.checkpointButton.disabled = busy;
+  el.restoreButton.disabled = busy;
   el.pinButton.disabled = !active || busy || state.mode === 'edit';
   el.pinButton.textContent = state.current && state.current.pinned ? '已钉住' : '钉住';
   el.pinButton.setAttribute('aria-pressed', String(Boolean(state.current && state.current.pinned)));
@@ -181,6 +184,59 @@ async function createWorkspaceCheckpoint() {
   }
 }
 
+async function restoreWorkspaceCheckpoint() {
+  if (state.busy) return;
+  if (changed()) {
+    setStatus('请先保存或取消当前修改，再恢复 checkpoint', 'error');
+    return;
+  }
+  state.busy = true;
+  setStatus('正在读取 checkpoint…');
+  updateControls();
+  try {
+    const result = await fetchCheckpoints();
+    if (!result.items.length) {
+      setStatus('还没有可恢复的 checkpoint', 'error');
+      return;
+    }
+    const choices = result.items.map((item) =>
+      '#' + item.seq + ' · ' + item.data.name + ' · ' + formatDate(item.timestamp)
+    ).join('\n');
+    const answer = window.prompt('输入要恢复的 checkpoint 序号：\n' + choices, String(result.items[0].seq));
+    if (answer === null) return;
+    const seq = Number(answer.trim().replace(/^#/, ''));
+    const checkpoint = result.items.find((item) => item.seq === seq);
+    if (!checkpoint) {
+      setStatus('Checkpoint 序号无效', 'error');
+      return;
+    }
+    if (!window.confirm('将工作区恢复到「' + checkpoint.data.name + '」(#' + seq + ')。当前文件状态会被替换，继续吗？')) return;
+    setStatus('正在恢复工作区…');
+    const restored = await restoreCheckpoint(seq);
+    state.mode = 'preview';
+    state.items = (await fetchFiles()).items;
+    const selectedId = state.current && state.items.some((item) => item.file_id === state.current.file_id)
+      ? state.current.file_id
+      : state.items[0]?.file_id;
+    state.current = null;
+    state.saved = null;
+    if (selectedId) applyFile(await fetchFile(selectedId));
+    else {
+      el.name.value = '';
+      el.fileContent.value = '';
+      el.filePreview.textContent = '';
+      el.fileId.textContent = '';
+      el.updatedAt.textContent = '';
+    }
+    setStatus('已从 checkpoint #' + restored.data.checkpoint_seq + ' 恢复', 'success');
+  } catch (error) {
+    setStatus(error.message || '恢复失败', 'error');
+  } finally {
+    state.busy = false;
+    updateControls();
+  }
+}
+
 async function saveCurrent() {
   if (!state.current || state.busy || !changed() || !el.name.value.trim()) return;
   state.busy = true;
@@ -246,6 +302,7 @@ async function removeCurrent() {
 
 el.createButton.addEventListener('click', createNew);
 el.checkpointButton.addEventListener('click', createWorkspaceCheckpoint);
+el.restoreButton.addEventListener('click', restoreWorkspaceCheckpoint);
 el.searchInput.addEventListener('input', renderList);
 el.editButton.addEventListener('click', () => {
   if (state.mode === 'edit') saveCurrent();

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -81,6 +81,13 @@ def create_files_router(store: FileStore) -> APIRouter:
         if not name:
             return JSONResponse(status_code=400, content={"error": "Checkpoint name cannot be empty"})
         return store.create_checkpoint(name)
+
+    @router.post("/checkpoints/{seq}/restore")
+    def restore_checkpoint(seq: int = Path(ge=0)):
+        try:
+            return store.restore_checkpoint(seq)
+        except FileMissingError:
+            return JSONResponse(status_code=404, content={"error": "Checkpoint not found"})
 
     @router.post("", status_code=201)
     def create_file(payload: FileRequest):
