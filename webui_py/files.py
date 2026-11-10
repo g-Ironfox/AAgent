@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,6 +38,21 @@ def create_files_router(store: FileStore) -> APIRouter:
     @router.get("")
     def list_files():
         return {"items": store.list_files(), "revision": store.revision}
+
+    @router.get("/events")
+    def list_file_events(
+        before_seq: int | None = Query(default=None, ge=1),
+        limit: int = Query(default=50, ge=1, le=100),
+        file_id: str | None = None,
+    ):
+        items = store.list_events(before_seq=before_seq, limit=limit + 1, file_id=file_id)
+        has_more = len(items) > limit
+        items = items[:limit]
+        return {
+            "items": items,
+            "has_more": has_more,
+            "next_before_seq": items[-1]["seq"] if has_more and items else None,
+        }
 
     @router.post("", status_code=201)
     def create_file(payload: FileRequest):

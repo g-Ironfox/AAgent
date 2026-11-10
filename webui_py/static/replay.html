@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>工作区回放</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/replay.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 工作区回放"><span class="brand-mark" aria-hidden="true">A</span><span class="brand-name"><strong>AAgent</strong><small>WORKSPACE</small></span></a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a><a href="/terminal.html">终端</a><a href="/bindings.html">绑定</a><a href="/workspace">工作区</a><a class="active" href="/workspace/replay" aria-current="page">回放</a>
+      </nav>
+      <div class="replay-state" aria-live="polite"><span>事件记录</span><strong id="eventCount">读取中</strong></div>
+    </div>
+  </header>
+  <main class="replay-main">
+    <section class="replay-layout" aria-label="工作区修改回放">
+      <aside class="replay-sidebar">
+        <header class="replay-heading"><div><p>WORKSPACE HISTORY</p><h1>修改回放</h1></div><button id="refreshButton" class="icon-button" type="button" title="刷新事件" aria-label="刷新事件"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2"/></svg></button></header>
+        <form id="filterForm" class="replay-filter"><label for="fileFilter">文件 ID</label><div><input id="fileFilter" type="search" placeholder="筛选文件" autocomplete="off"><button type="submit" title="应用筛选">筛选</button></div></form>
+        <div id="eventList" class="event-list" aria-live="polite"></div>
+        <button id="loadMoreButton" class="load-more" type="button" hidden>加载更早记录</button>
+      </aside>
+      <section class="event-detail" aria-label="事件详情">
+        <header class="detail-heading"><div><p id="detailEyebrow">EVENT DETAIL</p><h2 id="detailTitle">选择一条修改记录</h2></div><code id="detailSeq"></code></header>
+        <div id="detailEmpty" class="detail-empty"><strong>选择一条事件</strong><span>查看该次修改的记录内容与事件数据</span></div>
+        <div id="detailBody" class="detail-body" hidden>
+          <dl class="event-meta"><div><dt>文件 ID</dt><dd id="detailFileId"></dd></div><div><dt>时间</dt><dd id="detailTimestamp"></dd></div><div><dt>事件 ID</dt><dd id="detailEventId"></dd></div></dl>
+          <section id="contentSection" class="content-section" hidden><h3>变更后内容</h3><pre id="detailContent"></pre></section>
+          <section class="payload-section"><h3>事件数据</h3><pre id="detailPayload"></pre></section>
+        </div>
+      </section>
+    </section>
+    <p id="pageStatus" class="page-status" role="status"></p>
+  </main>
+  <script type="module" src="/replay.js?v=1"></script>
+</body>
+</html>

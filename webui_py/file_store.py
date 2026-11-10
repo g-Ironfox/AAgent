@@ -54,6 +54,22 @@ class FileStore:
                 raise FileMissingError
             return self._copy(file)
 
+    def list_events(self, before_seq: int | None = None, limit: int = 50, file_id: str | None = None) -> list[dict[str, Any]]:
+        with self._lock:
+            self._ensure_loaded()
+            query: dict[str, Any] = {"type": {"$exists": True}}
+            if before_seq is not None:
+                query["seq"] = {"$lt": before_seq}
+            if file_id:
+                query["file_id"] = file_id
+            try:
+                events = self.events.find(query).sort("seq", -1).limit(limit)
+                return [{key: value for key, value in event.items() if key != "_id"} for event in events]
+            except PyMongoError as error:
+                self._loaded = False
+                self._load_error = error
+                raise FileStoreUnavailableError("workspace file event store is unavailable") from error
+
     def create_file(self, name: str, content: str = "") -> dict[str, Any]:
         file_id = uuid.uuid4().hex
         with self._lock:

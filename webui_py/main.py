@@ -162,6 +162,11 @@ def workspace_page():
     return FileResponse(static_directory / "workspace.html")
 
 
+@app.get("/workspace/replay", include_in_schema=False)
+def workspace_replay_page():
+    return FileResponse(static_directory / "replay.html")
+
+
 @app.get("/workspace.html", include_in_schema=False)
 def old_workspace_page_url():
     return RedirectResponse("/workspace", status_code=308)

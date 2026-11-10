@@ -1,0 +1,61 @@
+.replay-main { padding:14px 0; }
+.replay-state { min-width:100px; padding-left:14px; display:grid; gap:4px; border-left:2px solid var(--blue); }
+.replay-state span { color:var(--muted); font-size:9px; }
+.replay-state strong { font-size:12px; }
+.replay-layout { flex:1; min-height:0; display:grid; grid-template-columns:minmax(280px,360px) minmax(0,1fr); border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
+.replay-sidebar { min-height:0; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; border-right:1px solid var(--line); background:#fafbf9; }
+.replay-heading { min-height:76px; padding:13px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fff; }
+.replay-heading p { margin:0 0 5px; color:var(--blue); font:700 9px Consolas,monospace; }
+.replay-heading h1 { margin:0; font:700 21px Georgia,"Microsoft YaHei",serif; }
+.replay-filter { padding:11px 13px; display:grid; gap:7px; border-bottom:1px solid var(--line); }
+.replay-filter label { color:var(--muted); font-size:10px; }
+.replay-filter div { display:flex; gap:6px; }
+.replay-filter input { min-width:0; flex:1; height:34px; padding:0 9px; border:1px solid var(--line); background:#fff; font:11px Consolas,monospace; }
+.replay-filter button,.load-more { min-height:34px; padding:0 11px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:11px; }
+.replay-filter button:hover,.load-more:hover:not(:disabled) { border-color:var(--blue); }
+.event-list { min-height:0; overflow:auto; }
+.event-item { width:100%; min-height:78px; padding:11px 14px; display:grid; gap:6px; text-align:left; color:var(--ink); border:0; border-bottom:1px solid #e7ebe7; background:transparent; }
+.event-item:hover { background:#eef4f7; }
+.event-item.active { background:var(--blue-soft); box-shadow:inset 3px 0 var(--blue); }
+.event-item-top { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.event-item-top strong { font-size:12px; }
+.event-item-top code { color:var(--blue); font-size:10px; }
+.event-item-name { overflow:hidden; color:var(--ink); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.event-item time,.event-list-empty { color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
+.event-list-empty { margin:18px 14px; }
+.load-more { margin:10px 12px; }
+.load-more[hidden] { display:none; }
+.load-more:disabled,.icon-button:disabled { cursor:wait; opacity:.5; }
+.event-detail { position:relative; min-width:0; min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr); }
+.detail-heading { min-height:76px; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; gap:15px; border-bottom:1px solid var(--line); background:#fff; }
+.detail-heading p { margin:0 0 5px; color:var(--muted); font:700 9px Consolas,monospace; }
+.detail-heading h2 { overflow-wrap:anywhere; margin:0; font:700 18px Georgia,"Microsoft YaHei",serif; }
+.detail-heading code { flex:0 0 auto; color:var(--blue); font:12px Consolas,monospace; }
+.detail-empty { position:absolute; inset:76px 0 0; display:grid; place-content:center; gap:7px; color:var(--muted); text-align:center; }
+.detail-empty[hidden],.detail-body[hidden],.content-section[hidden] { display:none; }
+.detail-empty strong { color:var(--ink); font:700 18px Georgia,"Microsoft YaHei",serif; }
+.detail-empty span { font-size:11px; }
+.detail-body { min-height:0; overflow:auto; padding:18px 20px 24px; }
+.event-meta { margin:0 0 18px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; }
+.event-meta div { min-width:0; }
+.event-meta dt { margin-bottom:4px; color:var(--muted); font-size:10px; }
+.event-meta dd { overflow-wrap:anywhere; margin:0; color:var(--ink); font:11px Consolas,"Microsoft YaHei",monospace; }
+.content-section,.payload-section { margin-top:18px; }
+.content-section h3,.payload-section h3 { margin:0 0 8px; font-size:11px; }
+.content-section pre,.payload-section pre { min-height:40px; max-height:48vh; overflow:auto; margin:0; padding:14px; color:#25332e; border:1px solid var(--line); background:#f7f9f7; font:12px/1.7 Consolas,"Microsoft YaHei",monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+.payload-section pre { max-height:28vh; color:#344857; background:#f5f8fa; }
+.page-status { min-height:16px; margin:5px 0 0; color:var(--muted); font-size:10px; }
+.page-status.error { color:var(--red); }
+@media(max-width:700px) {
+  .replay-main { width:100%; padding:0; }
+  .replay-state { min-width:0; padding-left:8px; }
+  .replay-state span { display:none; }
+  .replay-layout { grid-template-columns:1fr; overflow:auto; border-width:0; }
+  .replay-sidebar { min-height:250px; max-height:42dvh; border-right:0; border-bottom:1px solid var(--line); }
+  .replay-heading { min-height:60px; }
+  .event-detail { min-height:400px; }
+  .detail-heading { padding:12px; }
+  .detail-body { padding:14px 12px 20px; }
+  .event-meta { grid-template-columns:1fr; gap:9px; }
+  .content-section pre,.payload-section pre { max-height:35vh; }
+}

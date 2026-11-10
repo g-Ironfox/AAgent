@@ -9,6 +9,9 @@ class FakeCursor(list):
     def sort(self, key, direction):
         return FakeCursor(sorted(self, key=lambda event: event[key], reverse=direction < 0))
 
+    def limit(self, count):
+        return FakeCursor(self[:count])
+
 
 class FakeCollection:
     def __init__(self, fail=False):
@@ -24,7 +27,12 @@ class FakeCollection:
 
     def find(self, query):
         self._check()
-        return FakeCursor(doc for doc in self.documents if "type" in doc)
+        events = [doc for doc in self.documents if "type" in doc]
+        if "seq" in query:
+            events = [doc for doc in events if doc["seq"] < query["seq"]["$lt"]]
+        if "file_id" in query:
+            events = [doc for doc in events if doc["file_id"] == query["file_id"]]
+        return FakeCursor(events)
 
     def find_one_and_update(self, query, update, upsert=False, return_document=None):
         self._check()
@@ -92,6 +100,18 @@ class FileStoreTests(unittest.TestCase):
         self.assertEqual(len(self.collection.documents), 2)
         self.assertNotIn("seq", self.collection.documents[0])
         self.assertIn("next_seq", self.collection.documents[0])
+
+    def test_events_can_be_filtered_and_paginated_by_sequence(self):
+        first = self.store.create_file("First")
+        second = self.store.create_file("Second")
+        self.store.update_file(first["file_id"], "First renamed", "changed", first["revision"])
+
+        self.assertEqual([event["seq"] for event in self.store.list_events(limit=2)], [3, 2])
+        self.assertEqual(
+            [event["seq"] for event in self.store.list_events(before_seq=3, file_id=first["file_id"])],
+            [1],
+        )
+        self.assertEqual(self.store.list_events(before_seq=2, file_id=second["file_id"]), [])
 
 
 if __name__ == "__main__":
