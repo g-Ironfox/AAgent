@@ -72,10 +72,10 @@ function renderTree() {
     button.style.height = node.height + 'px';
     button.setAttribute('aria-pressed', String(state.selected?.seq === checkpoint.seq));
     button.setAttribute('aria-current', isHead ? 'location' : 'false');
-    button.setAttribute('aria-label', (checkpoint.data?.name || 'Checkpoint') + ' #' + checkpoint.seq + (isHead ? '，当前 HEAD' : ''));
-    button.title = (checkpoint.data?.name || 'Checkpoint') + (checkpoint.seq ? ' · ' + formatTime(checkpoint.timestamp) : '');
+    button.setAttribute('aria-label', (checkpoint.data?.name || '检查点') + ' #' + checkpoint.seq + (isHead ? '，当前 HEAD' : ''));
+    button.title = (checkpoint.data?.name || '检查点') + (checkpoint.seq ? ' · ' + formatTime(checkpoint.timestamp) : '');
     const title = document.createElement('strong');
-    title.textContent = checkpoint.data?.name || 'Checkpoint';
+    title.textContent = checkpoint.data?.name || '检查点';
     const meta = document.createElement('span');
     meta.className = 'graph-node-meta';
     const seq = document.createElement('small');
@@ -95,17 +95,58 @@ function renderTree() {
     button.addEventListener('click', () => selectCheckpoint(checkpoint));
     el.treeScene.append(button);
   }
-  el.eventCount.textContent = state.checkpoints.length + ' checkpoints';
+  el.eventCount.textContent = state.checkpoints.length + ' 个检查点';
   applyViewport();
+}
+
+function renderContentPane(label, content, changedLines, missingText, lineClass) {
+  const pane = document.createElement('section');
+  pane.className = 'diff-pane';
+  const heading = document.createElement('h3');
+  heading.textContent = label;
+  pane.append(heading);
+
+  if (content === null) {
+    const missing = document.createElement('p');
+    missing.className = 'diff-pane-empty';
+    missing.textContent = missingText;
+    pane.append(missing);
+    return pane;
+  }
+
+  const pre = document.createElement('pre');
+  const lines = content ? content.split('\n') : [];
+  if (content.endsWith('\n')) lines.pop();
+  const changed = new Set(changedLines);
+  if (!lines.length) {
+    const empty = document.createElement('span');
+    empty.className = 'diff-pane-empty';
+    empty.textContent = '（空文件）';
+    pre.append(empty);
+  }
+  lines.forEach((line, index) => {
+    const row = document.createElement('span');
+    row.className = 'diff-source-line' + (changed.has(index) ? ' ' + lineClass : '');
+    const number = document.createElement('span');
+    number.className = 'diff-line-number';
+    number.textContent = String(index + 1);
+    const text = document.createElement('span');
+    text.className = 'diff-line-text';
+    text.textContent = line.replace(/\r$/, '') || ' ';
+    row.append(number, text);
+    pre.append(row);
+  });
+  pane.append(pre);
+  return pane;
 }
 
 async function selectCheckpoint(checkpoint) {
   const requestId = ++state.requestId;
   state.selected = checkpoint;
   renderTree();
-  el.detailTitle.textContent = checkpoint.data?.name || 'Checkpoint';
+  el.detailTitle.textContent = checkpoint.data?.name || '检查点';
   el.detailSeq.textContent = '#' + checkpoint.seq;
-  el.detailEyebrow.textContent = 'CHECKPOINT DIFF';
+  el.detailEyebrow.textContent = '检查点差异';
   el.detailMeta.textContent = checkpoint.data?.parent_seq == null
     ? '根节点'
     : '父节点 #' + checkpoint.data.parent_seq + ' · ' + formatTime(checkpoint.timestamp);
@@ -121,7 +162,7 @@ async function selectCheckpoint(checkpoint) {
     if (!body.changes.length) {
       const empty = document.createElement('p');
       empty.className = 'diff-empty';
-      empty.textContent = checkpoint.data?.parent_seq == null ? '根节点没有文件差异' : '此 checkpoint 与父节点没有文件差异';
+      empty.textContent = checkpoint.data?.parent_seq == null ? '根检查点没有文件差异' : '此检查点与父节点没有文件差异';
       el.diffList.append(empty);
     }
     for (const change of body.changes) {
@@ -141,9 +182,13 @@ async function selectCheckpoint(checkpoint) {
         rename.textContent = change.before_name + ' → ' + change.after_name;
         section.append(rename);
       }
-      const pre = document.createElement('pre');
-      pre.textContent = change.diff || '文件元数据有变化';
-      section.append(pre);
+      const panes = document.createElement('div');
+      panes.className = 'diff-content-pair';
+      panes.append(
+        renderContentPane('检查点前', change.before_content, change.before_changed_lines || [], '此时文件尚不存在', 'diff-source-deleted'),
+        renderContentPane('检查点后', change.after_content, change.after_changed_lines || [], '此时文件已删除', 'diff-source-added'),
+      );
+      section.append(panes);
       el.diffList.append(section);
     }
   } catch (error) {
@@ -154,7 +199,7 @@ async function selectCheckpoint(checkpoint) {
 async function loadTree() {
   state.busy = true;
   el.refreshButton.disabled = true;
-  setStatus('正在读取 checkpoint 树…');
+  setStatus('正在读取检查点树…');
   try {
     const response = await fetch('/api/files/checkpoints/tree', { cache: 'no-store' });
     const body = await response.json().catch(() => ({}));
@@ -187,7 +232,7 @@ el.checkoutButton.addEventListener('click', async () => {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
     await loadTree();
-    setStatus('已 checkout 到 #' + body.data.checkpoint_seq);
+    setStatus('已恢复到检查点 #' + body.data.checkpoint_seq);
   } catch (error) {
     setStatus(error.message || 'Checkout 失败', true);
   } finally {

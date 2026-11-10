@@ -4,37 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>工作区回放</title>
+  <title>工作区检查点</title>
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/replay.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="AAgent 工作区回放"><span class="brand-mark" aria-hidden="true">A</span><span class="brand-name"><strong>AAgent</strong><small>WORKSPACE</small></span></a>
+    <a class="brand" href="/" aria-label="AAgent 工作区检查点"><span class="brand-mark" aria-hidden="true">A</span><span class="brand-name"><strong>AAgent</strong><small>WORKSPACE</small></span></a>
     <div class="top-actions">
       <nav class="page-nav" aria-label="页面导航">
-        <a href="/">事件流</a><a href="/terminal.html">终端</a><a href="/bindings.html">绑定</a><a href="/workspace">工作区</a><a class="active" href="/workspace/replay" aria-current="page">回放</a>
+        <a href="/">事件流</a><a href="/terminal.html">终端</a><a href="/bindings.html">绑定</a><a href="/workspace">工作区</a><a class="active" href="/workspace/replay" aria-current="page">检查点</a>
       </nav>
-      <div class="replay-state" aria-live="polite"><span>Checkpoint</span><strong id="eventCount">读取中</strong></div>
+      <div class="replay-state" aria-live="polite"><span>检查点</span><strong id="eventCount">读取中</strong></div>
     </div>
   </header>
   <main class="replay-main">
-    <section class="replay-layout" aria-label="工作区 checkpoint 树和差异">
+    <section class="replay-layout" aria-label="工作区检查点树和差异">
       <aside class="replay-sidebar">
-        <header class="replay-heading"><div><p>WORKSPACE HISTORY</p><h1>Checkpoint 树</h1></div><button id="refreshButton" class="icon-button" type="button" title="刷新 checkpoint" aria-label="刷新 checkpoint"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2"/></svg></button></header>
+        <header class="replay-heading"><div><p>WORKSPACE HISTORY</p><h1>检查点树</h1></div><button id="refreshButton" class="icon-button" type="button" title="刷新检查点" aria-label="刷新检查点"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2"/></svg></button></header>
         <div class="tree-toolbar" role="toolbar" aria-label="树状图视图">
           <button id="zoomIn" type="button" title="放大" aria-label="放大">+</button>
           <button id="zoomOut" type="button" title="缩小" aria-label="缩小">−</button>
           <span id="zoomValue" aria-live="polite">100%</span>
           <button id="fitTree" type="button" title="适配画布" aria-label="适配画布">适配</button>
         </div>
-        <div id="eventList" class="event-list" tabindex="0" aria-label="Checkpoint 树状图">
+        <div id="eventList" class="event-list" tabindex="0" aria-label="检查点树状图">
           <div id="treeScene" class="tree-scene"></div>
         </div>
       </aside>
-      <section class="event-detail" aria-label="Checkpoint 差异">
-        <header class="detail-heading"><div><p id="detailEyebrow">CHECKPOINT DIFF</p><h2 id="detailTitle">选择一个 checkpoint</h2><small id="detailMeta"></small></div><div class="detail-actions"><code id="detailSeq"></code><button id="checkoutButton" class="checkout-button" type="button" disabled>Checkout</button></div></header>
-        <div id="detailEmpty" class="detail-empty"><strong>选择一个 checkpoint</strong><span>右侧显示此节点相对父 checkpoint 的文件差异</span></div>
+      <section class="event-detail" aria-label="检查点差异">
+        <header class="detail-heading"><div><p id="detailEyebrow">检查点差异</p><h2 id="detailTitle">选择一个检查点</h2><small id="detailMeta"></small></div><div class="detail-actions"><code id="detailSeq"></code><button id="checkoutButton" class="checkout-button" type="button" disabled>恢复到此处</button></div></header>
+        <div id="detailEmpty" class="detail-empty"><strong>选择一个检查点</strong><span>右侧显示此节点相对父检查点的文件差异</span></div>
         <div id="diffList" class="diff-list" hidden></div>
       </section>
     </section>

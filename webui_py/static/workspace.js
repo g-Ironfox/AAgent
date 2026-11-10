@@ -161,21 +161,21 @@ async function createNew() {
 
 async function createWorkspaceCheckpoint() {
   if (state.busy || changed()) {
-    if (changed()) setStatus('请先保存当前修改，再创建 checkpoint', 'error');
+    if (changed()) setStatus('请先保存当前修改，再创建检查点', 'error');
     return;
   }
-  const name = window.prompt('Checkpoint 名称', 'Checkpoint');
+  const name = window.prompt('检查点名称', '检查点');
   if (name === null) return;
   if (!name.trim()) {
-    setStatus('Checkpoint 名称不能为空', 'error');
+    setStatus('检查点名称不能为空', 'error');
     return;
   }
   state.busy = true;
-  setStatus('正在创建 checkpoint…');
+  setStatus('正在创建检查点…');
   updateControls();
   try {
     const checkpoint = await createCheckpoint(name.trim());
-    setStatus('Checkpoint 已创建 · #' + checkpoint.seq, 'success');
+    setStatus('检查点已创建 · #' + checkpoint.seq, 'success');
   } catch (error) {
     setStatus(error.message || '创建失败', 'error');
   } finally {
@@ -187,27 +187,27 @@ async function createWorkspaceCheckpoint() {
 async function restoreWorkspaceCheckpoint() {
   if (state.busy) return;
   if (changed()) {
-    setStatus('请先保存或取消当前修改，再恢复 checkpoint', 'error');
+    setStatus('请先保存或取消当前修改，再恢复检查点', 'error');
     return;
   }
   state.busy = true;
-  setStatus('正在读取 checkpoint…');
+  setStatus('正在读取检查点…');
   updateControls();
   try {
     const result = await fetchCheckpoints();
     if (!result.items.length) {
-      setStatus('还没有可恢复的 checkpoint', 'error');
+      setStatus('还没有可恢复的检查点', 'error');
       return;
     }
     const choices = result.items.map((item) =>
       '#' + item.seq + ' · ' + item.data.name + ' · ' + formatDate(item.timestamp)
     ).join('\n');
-    const answer = window.prompt('输入要恢复的 checkpoint 序号：\n' + choices, String(result.items[0].seq));
+    const answer = window.prompt('输入要恢复的检查点序号：\n' + choices, String(result.items[0].seq));
     if (answer === null) return;
     const seq = Number(answer.trim().replace(/^#/, ''));
     const checkpoint = result.items.find((item) => item.seq === seq);
     if (!checkpoint) {
-      setStatus('Checkpoint 序号无效', 'error');
+      setStatus('检查点序号无效', 'error');
       return;
     }
     if (!window.confirm('将工作区恢复到「' + checkpoint.data.name + '」(#' + seq + ')。当前文件状态会被替换，继续吗？')) return;
@@ -228,7 +228,7 @@ async function restoreWorkspaceCheckpoint() {
       el.fileId.textContent = '';
       el.updatedAt.textContent = '';
     }
-    setStatus('已从 checkpoint #' + restored.data.checkpoint_seq + ' 恢复', 'success');
+    setStatus('已从检查点 #' + restored.data.checkpoint_seq + ' 恢复', 'success');
   } catch (error) {
     setStatus(error.message || '恢复失败', 'error');
   } finally {

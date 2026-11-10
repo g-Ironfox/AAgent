@@ -51,7 +51,16 @@
 .diff-status.deleted { color:var(--red); }
 .diff-status.modified { color:#9a6810; }
 .rename-meta { margin:8px 12px 0; color:var(--muted); font:10px Consolas,"Microsoft YaHei",monospace; }
-.file-diff pre { overflow:auto; margin:0; padding:11px 12px; color:#27332e; background:#f7f9f7; font:11px/1.65 Consolas,"Microsoft YaHei",monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+.diff-content-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--line); }
+.diff-pane { min-width:0; background:#fff; }
+.diff-pane h3 { margin:0; padding:7px 10px; color:var(--muted); border-bottom:1px solid var(--line); background:#f7f9f7; font:600 10px Consolas,"Microsoft YaHei",monospace; }
+.diff-pane pre { overflow:auto; min-height:34px; margin:0; padding:7px 0; color:#27332e; background:#fff; font:11px/1.65 Consolas,"Microsoft YaHei",monospace; }
+.diff-source-line { display:grid; grid-template-columns:3.5em minmax(0,1fr); min-height:1.65em; white-space:pre; }
+.diff-line-number { padding-right:8px; color:#89948e; border-right:1px solid #e5e9e6; text-align:right; user-select:none; }
+.diff-line-text { padding:0 8px; white-space:pre; }
+.diff-source-deleted { color:#a32f37; background:#fbeaec; }
+.diff-source-added { color:#176b45; background:#e8f5ec; }
+.diff-pane-empty { margin:0; padding:14px 10px; color:var(--muted); font:11px Consolas,"Microsoft YaHei",monospace; }
 .diff-empty { margin:20px 0; color:var(--muted); font-size:12px; text-align:center; }
 .page-status { min-height:16px; margin:5px 0 0; color:var(--muted); font-size:10px; }
 .page-status.error { color:var(--red); }
@@ -67,4 +76,5 @@
   .event-detail { min-height:420px; }
   .detail-heading { padding:11px 12px; }
   .diff-list { padding:12px; }
+  .diff-content-pair { grid-template-columns:1fr; }
 }

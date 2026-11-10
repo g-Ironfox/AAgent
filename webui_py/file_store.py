@@ -48,15 +48,13 @@ class FileStore:
     def list_files(self) -> list[dict[str, Any]]:
         with self._lock:
             self._ensure_loaded()
-            items = [self._copy(file, False) for file in self._files.values()]
+            items = [self._copy(file, False) for file in self._current_files()]
             return sorted(items, key=lambda item: (item["updated_at"], item["file_id"]), reverse=True)
 
     def get_file(self, file_id: str) -> dict[str, Any]:
         with self._lock:
             self._ensure_loaded()
-            file = self._files.get(file_id)
-            if file is None:
-                raise FileMissingError
+            file = self._require_file(file_id)
             return self._copy(file)
 
     def list_events(self, before_seq: int | None = None, limit: int = 50, file_id: str | None = None) -> list[dict[str, Any]]:
@@ -87,6 +85,11 @@ class FileStore:
                     items = [item for item in items if any(
                         file["file_id"] == file_id for file in self._checkpoint_state(item["seq"])
                     )]
+                for item in items:
+                    item["data"] = {
+                        key: value for key, value in item["data"].items()
+                        if key not in ("files", "changes")
+                    }
                 items = items[:limit]
                 return items
             except PyMongoError as error:
@@ -106,7 +109,6 @@ class FileStore:
                     "revision": self._next_file_revision(),
                 }
                 self._workspace_write(lambda: self.workspace.insert_one(self._workspace_document(file)))
-                self._files[file_id] = file
                 return self._copy(file)
             self._append("file.create", file_id, {"name": name, "content": content, "pinned": False})
             return self.get_file(file_id)
@@ -123,7 +125,6 @@ class FileStore:
                 self._workspace_write(lambda: self.workspace.replace_one(
                     {"_id": self._workspace_id(file_id)}, self._workspace_document(updated), upsert=True
                 ))
-                self._files[file_id] = updated
                 return self._copy(updated)
             self._append("file.update", file_id, {"name": name, "content": content})
             return self.get_file(file_id)
@@ -140,7 +141,6 @@ class FileStore:
                 self._workspace_write(lambda: self.workspace.replace_one(
                     {"_id": self._workspace_id(file_id)}, self._workspace_document(updated), upsert=True
                 ))
-                self._files[file_id] = updated
                 return self._copy(updated)
             self._append("file.pin", file_id, {"pinned": pinned})
             return self.get_file(file_id)
@@ -152,7 +152,6 @@ class FileStore:
             self._check_revision(current, expected_revision)
             if self.workspace is not None:
                 self._workspace_write(lambda: self.workspace.delete_one({"_id": self._workspace_id(file_id)}))
-                del self._files[file_id]
                 return
             self._append("file.delete", file_id, {})
 
@@ -160,10 +159,9 @@ class FileStore:
         with self._lock:
             self._ensure_loaded()
             parent_seq = self._head_checkpoint_seq or None
-            parent_files = {item["file_id"]: item for item in self._checkpoint_state(parent_seq or 0)}
-            changes = self._diff_files(parent_files, self._files)
             return self._append("workspace.checkpoint", "workspace", {
-                "name": name, "parent_seq": parent_seq, "changes": changes,
+                "name": name, "parent_seq": parent_seq,
+                "files": [self._copy(file) for file in self._current_files()],
             })
 
     def checkpoint_tree(self) -> dict[str, Any]:
@@ -183,6 +181,10 @@ class FileStore:
                 if event["type"] == "workspace.restore":
                     head_seq = event["data"]["checkpoint_seq"]
                     continue
+                event["data"] = {
+                    key: value for key, value in event["data"].items()
+                    if key not in ("files", "changes")
+                }
                 event["data"].setdefault("parent_seq", head_seq)
                 head_seq = event["seq"]
                 if event["data"].get("parent_seq") == 0:
@@ -199,17 +201,17 @@ class FileStore:
             if checkpoint is None:
                 raise FileMissingError
             data = checkpoint["data"]
-            if "changes" not in data:
-                parent_seq = data.get("parent_seq", 0)
-                before = {item["file_id"]: item for item in self._checkpoint_state(parent_seq)}
-                after = {item["file_id"]: item for item in data.get("files", [])}
-                changes = self._diff_files(before, after)
-            else:
-                changes = data["changes"]
+            parent_seq = data.get("parent_seq", 0)
+            before = {item["file_id"]: item for item in self._checkpoint_state(parent_seq)}
+            after = {item["file_id"]: item for item in self._checkpoint_state(seq)}
+            changes = self._diff_files(before, after)
             return {
                 "seq": seq,
-                "parent_seq": data.get("parent_seq") or None,
-                "changes": [self._display_change(change) for change in changes],
+                "parent_seq": parent_seq or None,
+                "changes": [
+                    self._display_change(change, before.get(change["file_id"]), after.get(change["file_id"]))
+                    for change in changes
+                ],
             }
 
     def restore_checkpoint(self, seq: int) -> dict[str, Any]:
@@ -235,7 +237,6 @@ class FileStore:
                     for file in restored.values()
                 ])
                 self._workspace_generation = generation
-                self._files = restored
                 self._head_checkpoint_seq = seq
                 self._persist_workspace_meta()
                 self._workspace_write(lambda: self.workspace.delete_many({"generation": {"$ne": generation}}))
@@ -301,7 +302,8 @@ class FileStore:
             old_lines = old_content.splitlines(keepends=True)
             new_lines = new_content.splitlines(keepends=True)
             patches = [
-                {"start": i1, "end": i2, "old_lines": old_lines[i1:i2], "lines": new_lines[j1:j2]}
+                {"start": i1, "end": i2, "new_start": j1,
+                 "old_lines": old_lines[i1:i2], "lines": new_lines[j1:j2]}
                 for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
                     a=old_lines, b=new_lines, autojunk=False
                 ).get_opcodes()
@@ -315,20 +317,32 @@ class FileStore:
         return changes
 
     @staticmethod
-    def _display_change(change: dict[str, Any]) -> dict[str, Any]:
+    def _display_change(
+        change: dict[str, Any],
+        before_file: dict[str, Any] | None,
+        after_file: dict[str, Any] | None,
+    ) -> dict[str, Any]:
         before, after = change.get("before"), change.get("after")
         status = "added" if before is None else "deleted" if after is None else "modified"
         lines = []
+        before_changed_lines = []
+        after_changed_lines = []
         for patch in change.get("content_patches", []):
             lines.append(f"@@ -{patch['start'] + 1},{patch['end'] - patch['start']} +{patch['start'] + 1},{len(patch['lines'])} @@\n")
             if before is not None:
                 lines.extend("-" + line for line in patch.get("old_lines", []))
             lines.extend("+" + line for line in patch["lines"])
+            before_changed_lines.extend(range(patch["start"], patch["end"]))
+            after_changed_lines.extend(range(patch["new_start"], patch["new_start"] + len(patch["lines"])))
         return {
             "file_id": change["file_id"], "status": status,
             "before_name": before and before.get("name"),
             "after_name": after and after.get("name"),
             "diff": "".join(lines),
+            "before_content": before_file and before_file.get("content", ""),
+            "after_content": after_file and after_file.get("content", ""),
+            "before_changed_lines": before_changed_lines,
+            "after_changed_lines": after_changed_lines,
         }
 
     @staticmethod
@@ -371,11 +385,7 @@ class FileStore:
                 latest_checkpoint = self.events.find_one({"type": "workspace.checkpoint"}, sort=[("seq", -1)])
                 if latest_checkpoint:
                     self._head_checkpoint_seq = latest_checkpoint["seq"]
-            self._files = {
-                item["file_id"]: {key: value for key, value in item.items() if key not in ("_id", "generation")}
-                for item in self.workspace.find({"generation": self._workspace_generation})
-                if item.get("file_id")
-            }
+            self._files.clear()
             self._workspace_write(lambda: self.workspace.delete_many({"generation": {"$ne": self._workspace_generation}}))
             return
         self._workspace_generation = 1
@@ -385,6 +395,7 @@ class FileStore:
             self.workspace.insert_one(self._workspace_document(file)) for file in self._files.values()
         ])
         self._persist_workspace_meta()
+        self._files.clear()
 
     def _workspace_id(self, file_id: str, generation: int | None = None) -> str:
         return f"{self._workspace_generation if generation is None else generation}:{file_id}"
@@ -416,6 +427,23 @@ class FileStore:
             self._loaded = False
             self._load_error = error
             raise FileStoreUnavailableError("workspace file store is unavailable") from error
+
+    def _workspace_read(self, operation):
+        try:
+            return operation()
+        except PyMongoError as error:
+            self._loaded = False
+            self._load_error = error
+            raise FileStoreUnavailableError("workspace file store is unavailable") from error
+
+    def _current_files(self) -> list[dict[str, Any]]:
+        if self.workspace is None:
+            return list(self._files.values())
+        documents = self._workspace_read(lambda: self.workspace.find({"generation": self._workspace_generation}))
+        return [
+            {key: value for key, value in item.items() if key not in ("_id", "generation")}
+            for item in documents if item.get("file_id")
+        ]
 
     def _ensure_loaded(self) -> None:
         if not self._loaded:
@@ -506,6 +534,14 @@ class FileStore:
         return file
 
     def _require_file(self, file_id: str) -> dict[str, Any]:
+        if self.workspace is not None:
+            document = self._workspace_read(lambda: self.workspace.find_one({
+                "_id": self._workspace_id(file_id),
+                "generation": self._workspace_generation,
+            }))
+            if document is None:
+                raise FileMissingError
+            return {key: value for key, value in document.items() if key not in ("_id", "generation")}
         file = self._files.get(file_id)
         if file is None:
             raise FileMissingError

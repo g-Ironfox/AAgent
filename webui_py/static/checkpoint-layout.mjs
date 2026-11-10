@@ -10,7 +10,7 @@ export function layoutCheckpointTree(checkpoints) {
       roots.push(item.seq);
       continue;
     }
-    if (!byId.has(parent) || parent >= item.seq) throw new Error('Checkpoint parent is invalid: #' + item.seq);
+    if (!byId.has(parent) || parent >= item.seq) throw new Error('检查点父节点无效: #' + item.seq);
     children.get(parent).push(item.seq);
   }
   for (const list of children.values()) list.sort((a, b) => a - b);
