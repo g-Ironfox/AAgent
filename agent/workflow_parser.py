@@ -160,6 +160,45 @@ def _read_workflow(workflow_name: str, *, by_id: bool = False) -> dict[str, Any]
     return workflow
 
 
+def _read_workspace_workflow(file_id: str) -> dict[str, Any]:
+    """Load the current workspace generation and parse its live file content."""
+    mongo_kwargs: dict[str, Any] = {
+        "host": os.getenv("MONGO_HOST", "mongodb"),
+        "port": int(os.getenv("MONGO_PORT", "27017")),
+        "serverSelectionTimeoutMS": 5000,
+    }
+    if os.getenv("MONGO_USER"):
+        mongo_kwargs.update(
+            username=os.environ["MONGO_USER"],
+            password=os.getenv("MONGO_PASS", ""),
+            authSource="admin",
+        )
+    try:
+        with MongoClient(**mongo_kwargs) as client:
+            workspace = client[os.getenv("MONGO_DATABASE", "agent")][
+                os.getenv("MONGO_WORKSPACE_FILE_COLLECTION", "workspace_files")
+            ]
+            meta = workspace.find_one({"_id": "_workspace_current_state"}, {"generation": 1})
+            if meta is None or "generation" not in meta:
+                raise WorkflowParseError("workspace is not initialized")
+            generation = meta["generation"]
+            file = workspace.find_one(
+                {"_id": f"{generation}:{file_id}", "generation": generation},
+                {"content": 1},
+            )
+    except PyMongoError as error:
+        raise WorkflowParseError("failed to read workspace workflow file") from error
+    if file is None:
+        raise WorkflowParseError(f"workflow file not found: {file_id}")
+    try:
+        workflow = json.loads(file.get("content", ""))
+    except (ValueError, TypeError) as error:
+        raise WorkflowParseError(f"invalid workflow JSON in workspace file: {file_id}") from error
+    if not isinstance(workflow, dict):
+        raise WorkflowParseError(f"workflow file must contain a JSON object: {file_id}")
+    return workflow
+
+
 if __name__ =="__main__":
     workflow_name = sys.argv[1] if len(sys.argv) > 1 else ""
     result = parse_workflow(_read_workflow(workflow_name))

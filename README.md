@@ -129,6 +129,8 @@ docker compose logs -f agent qqbot
 
 启动后 Agent WebUI 在 `http://localhost:8081`,管理 WebUI 在 `http://localhost:8084`。
 
+在 Agent WebUI 的工作区中新建文件，将编辑器导出的 Workflow 2.0 JSON 保存为文件内容，再到「绑定」页选择该 Workspace 文件。绑定使用 `workflow_file_id`，文件改名不会失效，agent 每次执行读取当前文件内容（包括恢复检查点后的内容）。删除文件或写入无效 Workflow 会产生错误事件。已有按 `workflow_name` 的绑定和直接调用仍可执行；编辑旧绑定时需重新选择 Workspace 文件。子 Workflow 节点仍按管理库中的名称调用。
+
 ### 环境变量
 
 `.env.example` 已按用途分组:

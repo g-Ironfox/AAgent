@@ -44,7 +44,6 @@ MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
-MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
 MONGO_EVENT_BINDING_COLLECTION = env("MONGO_EVENT_BINDING_COLLECTION", "event_bindings")
 MONGO_FILE_EVENT_COLLECTION = env("MONGO_FILE_EVENT_COLLECTION", "workspace_file_events")
 MONGO_WORKSPACE_FILE_COLLECTION = env("MONGO_WORKSPACE_FILE_COLLECTION", "workspace_files")
@@ -71,7 +70,6 @@ if os.getenv("MONGO_USER"):
 mongo_client = MongoClient(**mongo_kwargs)
 database = mongo_client[MONGO_DATABASE]
 history: Collection = database[MONGO_HISTORY_COLLECTION]
-workflows: Collection = database[MONGO_WORKFLOW_COLLECTION]
 event_bindings: Collection = database[MONGO_EVENT_BINDING_COLLECTION]
 file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
 workspace_files: Collection = database[MONGO_WORKSPACE_FILE_COLLECTION]
@@ -153,7 +151,7 @@ def health():
 
 
 app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
-app.include_router(create_event_bindings_router(event_bindings, workflows))
+app.include_router(create_event_bindings_router(event_bindings, file_store))
 app.include_router(create_files_router(file_store))
 
 static_directory = Path(__file__).parent / "static"

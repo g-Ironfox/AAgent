@@ -61,11 +61,11 @@
                 </div>
                 <div class="route-direction" aria-hidden="true"><span></span><strong>ROUTES TO</strong><span></span></div>
                 <div class="route-field workflow-field">
-                  <label for="workflowName"><span>WORKFLOW</span><strong>目标工作流</strong></label>
-                  <select id="workflowName" name="workflow_name" required disabled>
-                    <option value="">正在读取 Workflow...</option>
+                  <label for="workflowFile"><span>WORKFLOW</span><strong>Workspace 文件</strong></label>
+                  <select id="workflowFile" name="workflow_file_id" required disabled>
+                    <option value="">正在读取 Workspace 文件...</option>
                   </select>
-                  <small>事件到达时执行该 Workflow</small>
+                  <small>选择工作区中的 Workflow JSON；每次执行读取文件最新内容</small>
                 </div>
               </div>
             </section>
@@ -106,6 +106,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/bindings.js?v=3"></script>
+  <script type="module" src="/bindings.js?v=4"></script>
 </body>
 </html>
