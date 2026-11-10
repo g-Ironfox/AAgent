@@ -29,7 +29,7 @@ class WorkflowValidationError(ValueError):
 
 
 _WORKFLOW_SCHEMA = json.loads(
-    Path(__file__).with_name("workflow_1_7.schema.json").read_text(encoding="utf-8")
+    Path(__file__).with_name("workflow_2_0.schema.json").read_text(encoding="utf-8-sig")
 )
 _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
@@ -40,6 +40,11 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
             f"workflow.schema_version must be {WORKFLOW_SCHEMA_VERSION}"
         )
     _validate_workflow_schema(workflow)
+    from workflow_structs import StructValidationError, is_internal_type, validate_struct_definitions
+    try:
+        structs = validate_struct_definitions(workflow.get("metadata", {}).get("structs", []))
+    except (StructValidationError, AttributeError) as error:
+        raise WorkflowValidationError(str(error)) from error
     nodes = workflow.get("nodes")
     connections = workflow.get("connections")
     if not isinstance(nodes, list):
@@ -48,14 +53,25 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         raise WorkflowValidationError("workflow.connections must be a list")
     input_ports = _validate_boundary_metadata(workflow, "input_ports")
     output_ports = _validate_boundary_metadata(workflow, "output_ports")
+    for label, ports in (("input_ports", input_ports), ("output_ports", output_ports)):
+        if any(port["type"].startswith(("struct:", "list-struct:")) for port in ports):
+            raise WorkflowValidationError(f"workflow.{label} cannot expose Struct types; use JSON content")
     origin_ports = [port for port in input_ports if port["name"] == "origin"]
     if origin_ports and origin_ports[0]["type"] != "event":
         raise WorkflowValidationError("workflow.input_ports origin must have type event")
     remote_tools = _validate_remote_tool_metadata(workflow)
+    for reference in workflow.get("workflow_nodes", []):
+        for port in reference.get("input_ports", []) + reference.get("output_ports", []):
+            if port.get("type", "").startswith(("struct:", "list-struct:")):
+                raise WorkflowValidationError("callable Workflow interfaces cannot expose Struct types")
+    for tool in workflow.get("remote_tools", []):
+        for port in tool.get("input_ports", []) + tool.get("output_ports", []):
+            if port.get("type", "").startswith(("struct:", "list-struct:")):
+                raise WorkflowValidationError("Tool interfaces cannot expose Struct types")
 
     node_by_id: dict[str, dict[str, Any]] = {}
     for index, node in enumerate(nodes):
-        _validate_node(node, index)
+        _validate_node(node, index, structs)
         if node["type"] in {"remote_sync_tool", "remote_async_tool"}:
             declaration = remote_tools.get(node_argument(node, "tool"))
             if declaration is None:
@@ -131,7 +147,10 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
                 )
             connected_control_outputs[from_id].add(from_port)
             connected_control_inputs[to_id].add(to_port)
-        elif connection_type in DATA_CONNECTION_TYPES:
+        elif connection_type in DATA_CONNECTION_TYPES or (
+            isinstance(connection_type, str)
+            and connection_type.startswith(("struct:", "list-struct:"))
+        ):
             _validate_data_connection(
                 source_node,
                 from_port,
@@ -141,6 +160,7 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
                 index,
                 input_ports,
                 output_ports,
+                structs,
             )
             target_endpoint = (to_id, to_port)
             if target_endpoint in connected_data_inputs:
@@ -154,6 +174,24 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
             )
 
     for node_id, node in node_by_id.items():
+        node_type = node["type"]
+        required_data_ports: set[str] = set()
+        if node_type == "construct_struct":
+            sid = node_argument(node, "struct_id")
+            required_data_ports = {field["name"] for field in structs[sid]["fields"] if field["required"]}
+        elif node_type == "struct_get":
+            required_data_ports = {"struct-in"}
+            if node_argument(node, "missing", "error") == "fallback":
+                required_data_ports.add("fallback-in")
+        elif node_type == "struct_update":
+            required_data_ports = {"struct-in", *node_argument(node, "updates", [])}
+        elif node_type == "struct_to_json":
+            required_data_ports = {"value-in"}
+        elif node_type == "json_to_struct":
+            required_data_ports = {"content-in"}
+        missing_data = sorted(port for port in required_data_ports if (node_id, port) not in connected_data_inputs)
+        if missing_data:
+            raise WorkflowValidationError(f"required data ports must be connected: node {node_id}, ports {', '.join(missing_data)}")
         required_inputs, required_outputs = control_ports_for_node(node)
         missing_inputs = required_inputs - connected_control_inputs[node_id]
         missing_outputs = required_outputs - connected_control_outputs[node_id]
@@ -177,7 +215,8 @@ def _validate_workflow_schema(workflow: dict[str, Any]) -> None:
         raise WorkflowValidationError(f"{path}: {error.message}")
 
 
-def _validate_node(node: Any, index: int) -> None:
+def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None) -> None:
+    structs = structs or {}
     if not isinstance(node, dict):
         raise WorkflowValidationError(f"nodes[{index}] must be an object")
     node_id = node.get("id")
@@ -302,9 +341,9 @@ def _validate_node(node: Any, index: int) -> None:
                 "deserialize_json outputs contains duplicate keys"
             )
     elif node_type == "construct_list":
-        _validate_construct_list(node)
+        _validate_construct_list(node, structs)
     elif node_type == "list_append":
-        if node_argument(node, "item_type") not in {"content", "message", "event"}:
+        if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
                 "list_append node item_type must be 'content', 'message', or 'event'"
             )
@@ -313,12 +352,14 @@ def _validate_node(node: Any, index: int) -> None:
                 "list_append node position must be 'start' or 'end'"
             )
     elif node_type == "foreach":
-        if node_argument(node, "item_type") not in {"content", "message", "event"}:
+        if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
                 "foreach node item_type must be 'content', 'message', or 'event'"
             )
     elif node_type in {"context_create", "context_read", "context_write", "session_create", "session_read", "session_write"}:
-        if node_argument(node, "value_type") not in DATA_CONNECTION_TYPES:
+        value_type = node_argument(node, "value_type")
+        is_context = node_type in {"context_create", "context_read", "context_write"}
+        if value_type not in DATA_CONNECTION_TYPES and not (is_context and _valid_local_type(value_type, structs)):
             raise WorkflowValidationError(
                 "context node value_type must be a supported data type"
             )
@@ -343,6 +384,49 @@ def _validate_node(node: Any, index: int) -> None:
                 raise WorkflowValidationError(
                     "context node context_id must be a non-empty string when using a fixed ID"
                 )
+    elif node_type == "construct_struct":
+        sid = node_argument(node, "struct_id")
+        if sid not in structs:
+            raise WorkflowValidationError(f"construct_struct references unknown Struct: {sid}")
+        if set(node.get("dataInputPorts", [])) != {field["name"] for field in structs[sid]["fields"]}:
+            raise WorkflowValidationError("construct_struct dataInputPorts must match declared fields")
+    elif node_type == "struct_get":
+        sid, field_name = node_argument(node, "struct_id"), node_argument(node, "field")
+        definition = structs.get(sid)
+        if definition is None or field_name not in {field["name"] for field in definition["fields"]}:
+            raise WorkflowValidationError("struct_get must reference a declared Struct field")
+        if node_argument(node, "missing", "error") not in {"error", "fallback"}:
+            raise WorkflowValidationError("struct_get missing must be error or fallback")
+        selected = next(field for field in definition["fields"] if field["name"] == field_name)
+        fallback_enabled = node_argument(node, "has_fallback", False)
+        if fallback_enabled != (node_argument(node, "missing", "error") == "fallback"):
+            raise WorkflowValidationError("struct_get has_fallback must match missing mode")
+        if fallback_enabled and selected["required"]:
+            raise WorkflowValidationError("struct_get fallback is only valid for optional fields")
+        expected_inputs = {"struct-in"} | ({"fallback-in"} if fallback_enabled else set())
+        if set(node.get("dataInputPorts", [])) != expected_inputs:
+            raise WorkflowValidationError("struct_get dataInputPorts must match its fallback mode")
+    elif node_type == "struct_update":
+        sid = node_argument(node, "struct_id")
+        definition = structs.get(sid)
+        if definition is None:
+            raise WorkflowValidationError(f"struct_update references unknown Struct: {sid}")
+        fields = {field["name"]: field for field in definition["fields"]}
+        updates, removals = node_argument(node, "updates", []), node_argument(node, "remove_fields", [])
+        if not isinstance(updates, list) or not isinstance(removals, list) or len(updates) != len(set(updates)) or len(removals) != len(set(removals)):
+            raise WorkflowValidationError("struct_update fields must be unique lists")
+        if any(name not in fields for name in updates + removals):
+            raise WorkflowValidationError("struct_update references an unknown field")
+        if any(fields[name]["required"] for name in removals):
+            raise WorkflowValidationError("struct_update cannot remove required fields")
+        if set(updates) & set(removals):
+            raise WorkflowValidationError("struct_update cannot update and remove the same field")
+        if set(node.get("dataInputPorts", [])) != set(updates) | {"struct-in"}:
+            raise WorkflowValidationError("struct_update dataInputPorts must match updates")
+    elif node_type in {"struct_to_json", "json_to_struct"}:
+        value_type = node_argument(node, "value_type")
+        if not isinstance(value_type, str) or not value_type.startswith(("struct:", "list-struct:")) or not _valid_local_type(value_type, structs):
+            raise WorkflowValidationError(f"{node_type} requires a declared Struct type")
     elif node_type == "history":
         event_types = node_argument(node, "event_types")
         if (
@@ -436,6 +520,7 @@ def _validate_node(node: Any, index: int) -> None:
                 or len(callback["event_type"]) > 128
                 or not isinstance(callback.get("on"), list)
                 or not callback["on"]
+                or not all(isinstance(status, str) for status in callback["on"])
                 or any(status not in {"working", "completed", "failed"} for status in callback["on"])
                 or len(callback["on"]) != len(set(callback["on"]))
             ):
@@ -631,9 +716,24 @@ def _validate_construct_map_content(node: dict[str, Any]) -> None:
         )
 
 
-def _validate_construct_list(node: dict[str, Any]) -> None:
+def _valid_local_type(value_type: Any, structs: dict[str, Any]) -> bool:
+    return isinstance(value_type, str) and (
+        value_type in DATA_CONNECTION_TYPES
+        or value_type in {f"struct:{sid}" for sid in structs}
+        or value_type in {f"list-struct:{sid}" for sid in structs}
+    )
+
+
+def _valid_item_type(value_type: Any, structs: dict[str, Any]) -> bool:
+    return value_type in {"content", "message", "event"} or (
+        isinstance(value_type, str) and value_type.startswith("struct:") and _valid_local_type(value_type, structs)
+    )
+
+
+def _validate_construct_list(node: dict[str, Any], structs: dict[str, Any] | None = None) -> None:
+    structs = structs or {}
     item_type = node_argument(node, "item_type")
-    if item_type not in {"content", "message", "event"}:
+    if not _valid_item_type(item_type, structs):
         raise WorkflowValidationError(
             "construct_list node item_type must be 'content', 'message', or 'event'"
         )
@@ -693,6 +793,7 @@ def _validate_data_connection(
     connection_index: int,
     input_ports: list[dict[str, Any]],
     output_ports: list[dict[str, Any]],
+    struct_definitions: dict[str, Any] | None = None,
 ) -> None:
     error = connection_validation_error(
         {
@@ -705,6 +806,7 @@ def _validate_data_connection(
         {source_node["id"]: source_node, target_node["id"]: target_node},
         input_ports,
         output_ports,
+        struct_definitions,
     )
     if error is not None:
         raise WorkflowValidationError(f"{error}: connection {connection_index}")

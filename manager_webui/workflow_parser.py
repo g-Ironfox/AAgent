@@ -22,7 +22,7 @@ class WorkflowParseError(ValueError):
     """Raised when a workflow cannot be loaded or compiled."""
 
 
-WORKFLOW_SCHEMA_VERSION = "1.7"
+WORKFLOW_SCHEMA_VERSION = "2.0"
 
 
 def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:

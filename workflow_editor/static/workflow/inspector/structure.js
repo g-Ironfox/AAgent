@@ -4,6 +4,7 @@ import { state } from '../domain/serialization.js';
 
 export function bindStructureInspector(node, context) {
   if (node.type === 'router') bindBranches(node, context);
+  if (['construct_struct', 'struct_get', 'struct_update', 'struct_to_json', 'json_to_struct'].includes(node.type)) bindStructNodes(node, context);
   if (node.type === 'construct_content') bindConstructContent(node, context);
   if (node.type === 'construct_map_content') bindContentMap(node, context);
   if (node.type === 'deserialize_json') bindDeserializeJson(node, context);
@@ -12,6 +13,147 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'foreach') bindForeach(node, context);
   if (node.type === 'history') bindHistory(node, context);
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) bindContext(node, context);
+}
+
+
+function localStructs() { return state.metadata?.structs || []; }
+
+function addTypeOptions(select, { includeBuiltin = false, includeStructLists = false } = {}) {
+  const existing = new Set([...select.options].map((option) => option.value));
+  if (includeBuiltin) {
+    for (const type of ['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event']) {
+      if (!existing.has(type)) select.add(new Option(type, type));
+    }
+  }
+  for (const definition of localStructs()) {
+    const type = `struct:${definition.id}`;
+    if (!existing.has(type)) select.add(new Option(definition.name, type));
+    if (includeStructLists) {
+      const listType = `list-struct:${definition.id}`;
+      if (!existing.has(listType)) select.add(new Option(`List<${definition.name}>`, listType));
+    }
+  }
+}
+
+function commitStructMutation(node, context, previous, connections) {
+  reconcileConnections(state);
+  const removed = state.connections.length < connections.length;
+  if (removed && !window.confirm('此更改会移除不再匹配的连线，继续吗？')) {
+    for (const key of Object.keys(node)) delete node[key];
+    Object.assign(node, previous);
+    state.connections = connections;
+    context.editor.renderNodes();
+    context.renderInspector();
+    return false;
+  }
+  context.markChanged();
+  context.editor.renderNodes();
+  context.renderInspector();
+  return true;
+}
+
+function bindStructNodes(node, context) {
+  const definitions = localStructs();
+  const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+  const structSelect = context.elements.inspectorContent.querySelector('[data-struct-id]');
+  if (structSelect) {
+    structSelect.add(new Option(definitions.length ? '选择 Struct 类型' : '尚无 Struct 声明', ''));
+    for (const definition of definitions) structSelect.add(new Option(definition.name, definition.id));
+    structSelect.value = node.struct_id || '';
+    structSelect.addEventListener('change', () => {
+      const previous = structuredClone(node); const connections = structuredClone(state.connections);
+      const definition = byId.get(structSelect.value);
+      if (!definition) {
+        node.struct_id = '';
+        if (node.type === 'construct_struct') node.dataInputPorts = [];
+        if (node.type === 'struct_get') Object.assign(node, { field: '', missing: 'error', has_fallback: false, dataInputPorts: [] });
+        if (node.type === 'struct_update') Object.assign(node, { updates: [], remove_fields: [], dataInputPorts: [] });
+        commitStructMutation(node, context, previous, connections);
+        return;
+      }
+      node.struct_id = definition.id;
+      if (node.type === 'construct_struct') node.dataInputPorts = definition.fields.map((field) => field.name);
+      if (node.type === 'struct_get') { node.field = definition.fields[0]?.name || ''; node.missing = 'error'; node.has_fallback = false; node.dataInputPorts = ['struct-in']; }
+      if (node.type === 'struct_update') { node.updates = []; node.remove_fields = []; node.dataInputPorts = ['struct-in']; }
+      commitStructMutation(node, context, previous, connections);
+    });
+  }
+  if (node.type === 'construct_struct') {
+    const mount = context.elements.inspectorContent.querySelector('[data-struct-fields]');
+    const definition = byId.get(node.struct_id);
+    if (mount && !definition) {
+      const help = document.createElement('p'); help.className = 'empty-options'; help.textContent = '先在 Inspector 中选择 Struct 类型'; mount.replaceChildren(help);
+    } else if (mount && definition) {
+      mount.innerHTML = '<div class="section-label"><strong>字段输入</strong></div>';
+      for (const field of definition.fields) {
+        const row = document.createElement('div'); row.className = 'parameter-row';
+        const text = document.createElement('span'); text.textContent = field.name;
+        const type = document.createElement('small'); type.textContent = field.type + (field.required ? ' · 必需' : ' · 可选');
+        row.append(text, type); mount.append(row);
+      }
+    }
+  }
+  if (node.type === 'struct_get') {
+    const definition = byId.get(node.struct_id);
+    const fieldSelect = context.elements.inspectorContent.querySelector('[data-struct-field]');
+    const missingSelect = context.elements.inspectorContent.querySelector('[data-struct-missing]');
+    if (fieldSelect && !definition) {
+      fieldSelect.add(new Option('先选择 Struct 类型', ''));
+      fieldSelect.disabled = true;
+      missingSelect.disabled = true;
+    }
+    if (definition && fieldSelect && missingSelect) {
+      if (!definition.fields.length) fieldSelect.add(new Option('Struct 尚无字段', ''));
+      for (const field of definition.fields) fieldSelect.add(new Option(`${field.name}: ${field.type}`, field.name));
+      fieldSelect.value = node.field; missingSelect.value = node.missing || 'error';
+      const apply = () => {
+        const field = definition.fields.find((item) => item.name === fieldSelect.value);
+        const previous = structuredClone(node); const connections = structuredClone(state.connections);
+        node.field = fieldSelect.value;
+        if (!field || field.required) { node.missing = 'error'; missingSelect.value = 'error'; } else node.missing = missingSelect.value;
+        node.has_fallback = node.missing === 'fallback';
+        node.dataInputPorts = node.has_fallback ? ['struct-in', 'fallback-in'] : ['struct-in'];
+        commitStructMutation(node, context, previous, connections);
+      };
+      fieldSelect.addEventListener('change', apply); missingSelect.addEventListener('change', apply);
+      const selected = definition.fields.find((field) => field.name === node.field);
+      if (selected?.required) missingSelect.options[1].disabled = true;
+    }
+  }
+  if (node.type === 'struct_update') {
+    const definition = byId.get(node.struct_id); const mount = context.elements.inspectorContent.querySelector('[data-struct-update-fields]');
+    if (mount && !definition) {
+      const help = document.createElement('p'); help.className = 'empty-options'; help.textContent = '先在 Inspector 中选择 Struct 类型'; mount.replaceChildren(help);
+    } else if (definition && mount) {
+      mount.replaceChildren();
+      for (const field of definition.fields) {
+        const label = document.createElement('label'); label.className = 'struct-update-row';
+        const name = document.createElement('span'); name.textContent = field.name;
+        const operation = document.createElement('select'); operation.setAttribute('aria-label', field.name + ' 操作');
+        for (const [value, text] of [['keep','保留'],['update','替换'],['remove','移除']]) operation.add(new Option(text, value));
+        operation.value = node.updates.includes(field.name) ? 'update' : node.remove_fields.includes(field.name) ? 'remove' : 'keep';
+        if (field.required) operation.options[2].disabled = true;
+        operation.addEventListener('change', () => {
+          const previous = structuredClone(node); const connections = structuredClone(state.connections);
+          node.updates = node.updates.filter((item) => item !== field.name); node.remove_fields = node.remove_fields.filter((item) => item !== field.name);
+          if (operation.value === 'update') node.updates.push(field.name);
+          if (operation.value === 'remove') node.remove_fields.push(field.name);
+          node.dataInputPorts = ['struct-in', ...node.updates];
+          commitStructMutation(node, context, previous, connections);
+        });
+        label.append(name, operation); mount.append(label);
+      }
+    }
+  }
+  const valueType = context.elements.inspectorContent.querySelector('[data-struct-value-type]');
+  if (valueType) {
+    valueType.add(new Option(definitions.length ? '选择 Struct 类型' : '尚无 Struct 声明', ''));
+    addTypeOptions(valueType, { includeStructLists: true }); valueType.value = node.value_type || '';
+    valueType.addEventListener('change', () => {
+      const previous = structuredClone(node); const connections = structuredClone(state.connections);
+      node.value_type = valueType.value; commitStructMutation(node, context, previous, connections);
+    });
+  }
 }
 
 function commitStructureChange(node, context, renderInspector = true) {
@@ -124,6 +266,7 @@ function bindConstructContent(node, context) {
 
 function bindConstructList(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="item_type"]');
+  addTypeOptions(typeField);
   const countField = context.elements.inspectorContent.querySelector('[data-field="initial_value_count"]');
   typeField.value = node.item_type;
   countField.value = node.initial_value_count;
@@ -141,6 +284,7 @@ function bindConstructList(node, context) {
 
 function bindForeach(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="item_type"]');
+  addTypeOptions(typeField);
   typeField.value = node.item_type;
   typeField.addEventListener('change', () => {
     node.item_type = typeField.value;
@@ -173,6 +317,7 @@ function bindHistory(node, context) {
 
 function bindListAppend(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="item_type"]');
+  addTypeOptions(typeField);
   typeField.value = node.item_type;
   typeField.addEventListener('change', () => {
     node.item_type = typeField.value;
@@ -182,6 +327,7 @@ function bindListAppend(node, context) {
 
 function bindContext(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="value_type"]');
+  if (node.type.startsWith('context_')) addTypeOptions(typeField, { includeStructLists: true });
   typeField.value = node.value_type;
   typeField.addEventListener('change', () => {
     node.value_type = typeField.value;

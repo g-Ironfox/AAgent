@@ -1,7 +1,7 @@
-import { boundaryPorts, createNode, NODE_TYPES } from './node-contract.js';
+import { boundaryPorts, createNode, DATA_TYPES, NODE_TYPES, setNodeStructs } from './node-contract.js';
 import { filterValidConnections } from './connection-rules.js';
 
-export const WORKFLOW_SCHEMA_VERSION = '1.7';
+export const WORKFLOW_SCHEMA_VERSION = '2.0';
 
 const initialNodes = [
   { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
@@ -20,6 +20,11 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   construct_message: new Set(['role', 'role_source']),
   construct_content: new Set(['append_items']),
   construct_map_content: new Set(['mappings']),
+  construct_struct: new Set(['struct_id']),
+  struct_get: new Set(['struct_id', 'field', 'missing', 'has_fallback']),
+  struct_update: new Set(['struct_id', 'updates', 'remove_fields']),
+  struct_to_json: new Set(['value_type']),
+  json_to_struct: new Set(['value_type']),
   map_content_get: new Set(),
   deserialize_json: new Set(['outputs']),
   split_event: new Set(),
@@ -42,6 +47,52 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   workflow: new Set(['workflow_name']),
 };
 const NODE_ARGUMENT_FIELDS = new Set(Object.values(NODE_ARGUMENT_FIELDS_BY_TYPE).flatMap((fields) => [...fields]));
+
+export function validateStructDefinitions(value) {
+  if (!Array.isArray(value)) throw new Error('metadata.structs 必须是数组');
+  const ids = new Set();
+  const names = new Set();
+  const definitions = new Map();
+  for (const [index, item] of value.entries()) {
+    if (!item || !['color,fields,id,name', 'color,fields,id,list_color,name'].includes(Object.keys(item).sort().join(','))
+      || typeof item.id !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(item.id) || ids.has(item.id)
+      || typeof item.name !== 'string' || !item.name.trim() || names.has(item.name.toLocaleLowerCase())
+      || typeof item.color !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(item.color)
+      || (item.list_color !== undefined && (typeof item.list_color !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(item.list_color)))
+      || !Array.isArray(item.fields)) throw new Error(`metadata.structs[${index}] 无效`);
+    ids.add(item.id);
+    names.add(item.name.toLocaleLowerCase());
+    const fieldNames = new Set();
+    for (const [fieldIndex, field] of item.fields.entries()) {
+      if (!field || Object.keys(field).sort().join(',') !== 'name,required,type'
+        || typeof field.name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(field.name) || fieldNames.has(field.name)
+        || typeof field.type !== 'string' || typeof field.required !== 'boolean') throw new Error(`metadata.structs[${index}].fields[${fieldIndex}] 无效`);
+      fieldNames.add(field.name);
+    }
+    definitions.set(item.id, item);
+  }
+  const visiting = new Set();
+  const visited = new Set();
+  const validType = (type) => DATA_TYPES.has(type)
+    || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(type)
+    || /^list-struct:[A-Za-z_][A-Za-z0-9_]*$/.test(type);
+  const visit = (id) => {
+    if (visiting.has(id)) throw new Error(`Struct 类型依赖形成循环: ${id}`);
+    if (visited.has(id)) return;
+    visiting.add(id);
+    const definition = definitions.get(id);
+    for (const field of definition.fields) {
+      if (!validType(field.type)) throw new Error(`Struct ${id} 字段 ${field.name} 类型无效`);
+      const ref = /^(?:list-)?struct:(.+)$/.exec(field.type)?.[1];
+      if (ref && !definitions.has(ref)) throw new Error(`Struct ${id} 引用了未声明类型 ${ref}`);
+      if (ref) visit(ref);
+    }
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const id of definitions.keys()) visit(id);
+  return structuredClone(value);
+}
 
 function hasStrictNodeFormat(node) {
   const argumentsValue = node.arguments ?? {};
@@ -75,6 +126,7 @@ function compactNodeArguments(node) {
 export const state = {
   name: 'workflow',
   description: '',
+  metadata: { structs: [] },
   nodes: structuredClone(initialNodes),
   connections: structuredClone(initialConnections),
   input_ports: [{ name: 'origin', type: 'event' }],
@@ -88,8 +140,9 @@ export function nodeById(id) {
 }
 
 export function addNode(type, configuration = null, viewport = null) {
-  const node = createNode(type, state.nodes, configuration, viewport);
+  const node = createNode(type, state.nodes, { ...(configuration || {}), structs: state.metadata?.structs || [] }, viewport);
   if (!node) return null;
+  setNodeStructs([node], state.metadata?.structs || []);
   state.nodes.push(node);
   return node;
 }
@@ -102,10 +155,13 @@ export function deleteNode(id) {
 }
 
 export function workflowSnapshot() {
+  state.metadata = { ...state.metadata, structs: validateStructDefinitions(state.metadata?.structs ?? []) };
+  setNodeStructs(state.nodes, state.metadata.structs);
   return structuredClone({
     schema_version: WORKFLOW_SCHEMA_VERSION,
     name: state.name,
     description: state.description,
+    metadata: state.metadata,
     input_ports: state.input_ports,
     output_ports: state.output_ports,
     workflow_nodes: state.workflow_nodes,
@@ -120,6 +176,7 @@ export function resetWorkflow() {
     schema_version: WORKFLOW_SCHEMA_VERSION,
     name: 'workflow',
     description: '',
+    metadata: { structs: [] },
     input_ports: [{ name: 'origin', type: 'event' }],
     output_ports: [],
     workflow_nodes: [],
@@ -165,7 +222,7 @@ function remoteToolMetadata(saved) {
   });
 }
 
-function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteTools) {
+function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteTools, structs) {
   node = expandNodeArguments(node);
   const normalized = {
     id: node.id,
@@ -230,6 +287,50 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     if (portIds.size && node.dataInputPorts === undefined) return null;
     normalized.dataInputPorts = [...portIds];
   }
+  if (node.type === 'construct_struct' || node.type === 'struct_get' || node.type === 'struct_update') {
+    if (node.struct_id === '') {
+      normalized.struct_id = '';
+      if (node.type === 'construct_struct') normalized.dataInputPorts = [];
+      if (node.type === 'struct_get') Object.assign(normalized, { field: '', missing: 'error', has_fallback: false, dataInputPorts: [] });
+      if (node.type === 'struct_update') Object.assign(normalized, { updates: [], remove_fields: [], dataInputPorts: [] });
+    } else {
+    if (typeof node.struct_id !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(node.struct_id)) return null;
+    normalized.struct_id = node.struct_id;
+    const definition = (structs || []).find((item) => item.id === node.struct_id);
+    if (!definition) return null;
+    const fields = new Map(definition.fields.map((field) => [field.name, field]));
+    if (node.type === 'construct_struct') normalized.dataInputPorts = definition.fields.map((field) => field.name);
+    if (node.type === 'struct_get') {
+      const fieldName = node.field || definition.fields[0]?.name || '';
+      if (fieldName && !fields.has(fieldName)) return null;
+      normalized.field = fieldName;
+      normalized.missing = node.missing === 'fallback' ? 'fallback' : 'error';
+      normalized.has_fallback = normalized.missing === 'fallback';
+      if (normalized.has_fallback && (!fieldName || fields.get(fieldName).required)) return null;
+      normalized.dataInputPorts = normalized.has_fallback ? ['struct-in', 'fallback-in'] : ['struct-in'];
+    }
+    if (node.type === 'struct_update') {
+      if (!Array.isArray(node.updates) || !Array.isArray(node.remove_fields)
+        || [...node.updates, ...node.remove_fields].some((name) => !fields.has(name))
+        || new Set(node.updates).size !== node.updates.length
+        || new Set(node.remove_fields).size !== node.remove_fields.length
+        || node.updates.some((name) => node.remove_fields.includes(name))) return null;
+      normalized.updates = [...node.updates];
+      normalized.remove_fields = [...node.remove_fields];
+      normalized.dataInputPorts = ['struct-in', ...node.updates];
+    }
+    }
+  }
+  if (node.type === 'struct_to_json' || node.type === 'json_to_struct') {
+    if (node.value_type === '') {
+      normalized.value_type = '';
+    } else {
+    if (typeof node.value_type !== 'string' || !/^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type)) return null;
+    const typeId = node.value_type.replace(/^list-/, '').slice('struct:'.length);
+    if (!(structs || []).some((item) => item.id === typeId)) return null;
+    normalized.value_type = node.value_type;
+    }
+  }
   if (node.type === 'deserialize_json') {
     if (!Array.isArray(node.outputs) || !node.outputs.length) return null;
     const outputKeys = new Set();
@@ -250,15 +351,15 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     }
   }
   if (node.type === 'construct_list') {
-    normalized.item_type = ['content', 'message', 'event'].includes(node.item_type) ? node.item_type : 'content';
+    normalized.item_type = (['content', 'message', 'event'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
     normalized.initial_value_count = Number.isInteger(node.initial_value_count) ? Math.min(20, Math.max(0, node.initial_value_count)) : 1;
     normalized.dataInputPorts = Array.from({ length: normalized.initial_value_count }, (_, index) => `${normalized.item_type}-in-${index}`);
   }
   if (node.type === 'list_append') {
-    normalized.item_type = ['content', 'message', 'event'].includes(node.item_type) ? node.item_type : 'content';
+    normalized.item_type = (['content', 'message', 'event'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
     normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
-  if (node.type === 'foreach') normalized.item_type = ['content', 'message', 'event'].includes(node.item_type) ? node.item_type : 'content';
+  if (node.type === 'foreach') normalized.item_type = (['content', 'message', 'event'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
   if (node.type === 'history') {
     normalized.event_types = Array.isArray(node.event_types)
       ? [...new Set(node.event_types.filter((eventType) => ['terminal', 'response'].includes(eventType)))]
@@ -267,7 +368,9 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.limit = Number.isInteger(node.limit) ? Math.min(1000, Math.max(1, node.limit)) : 10;
   }
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) {
-    if (!['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(node.value_type)) return null;
+    if (!['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(node.value_type)
+      && !((node.type.startsWith('context_')) && /^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
+        && (structs || []).some((item) => item.id === node.value_type.replace(/^list-/, '').slice('struct:'.length)))) return null;
     normalized.value_type = node.value_type;
   }
   if (node.type === 'context_read' || node.type === 'context_write') {
@@ -374,7 +477,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
 }
 
 export function migrateWorkflowToCurrentVersion(workflow) {
-  if (workflow?.schema_version !== '1.6') return workflow;
+  if (!['1.6', '1.7'].includes(workflow?.schema_version)) return workflow;
   const migrated = structuredClone(workflow);
   migrated.schema_version = WORKFLOW_SCHEMA_VERSION;
   for (const node of migrated.nodes || []) {
@@ -396,6 +499,7 @@ export function loadSnapshot(saved, metadata = null) {
     if (typeof workflowName !== 'string' || !workflowName.trim()) return false;
     const inputPorts = boundaryPorts(metadata?.input_ports ?? saved?.input_ports);
     const outputPorts = boundaryPorts(metadata?.output_ports ?? saved?.output_ports);
+    const structDefinitions = validateStructDefinitions(saved?.metadata?.structs ?? []);
     const workflowNodes = callableWorkflowMetadata(saved);
     const callableWorkflows = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
     const remoteTools = remoteToolMetadata(saved);
@@ -405,7 +509,7 @@ export function loadSnapshot(saved, metadata = null) {
     for (const node of savedNodes) {
       if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type) || !hasStrictNodeFormat(node)) return false;
       ids.add(node.id);
-      const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteToolsByName);
+      const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteToolsByName, structDefinitions);
       if (!normalized) return false;
       nodes.push(normalized);
     }
@@ -417,6 +521,8 @@ export function loadSnapshot(saved, metadata = null) {
     state.name = workflowName.trim().slice(0, 120);
     const description = metadata?.description ?? saved?.description;
     state.description = typeof description === 'string' ? description.trim().slice(0, 2000) : '';
+    state.metadata = { ...(saved?.metadata ?? {}), structs: structDefinitions };
+    setNodeStructs(nodes, state.metadata.structs);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
     state.workflow_nodes = workflowNodes;

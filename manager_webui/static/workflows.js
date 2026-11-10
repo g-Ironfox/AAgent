@@ -563,6 +563,7 @@ function exportableWorkflow(detail) {
     name: detail.name,
     description: detail.description || '',
     schema_version: detail.schema_version,
+    metadata: detail.metadata || { structs: [] },
     input_ports: detail.input_ports || [],
     output_ports: detail.output_ports || [],
     workflow_nodes: detail.workflow_nodes || [],
