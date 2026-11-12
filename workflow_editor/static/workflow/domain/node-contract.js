@@ -244,7 +244,7 @@ export function portsForNode(node) {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
-      { id: 'item-in', direction: 'input', type: node.item_type, label: '追加项', title: node.item_type, multiple: false },
+      { id: 'item-in', direction: 'input', type: node.item_type, color: structColor(node, node.item_type), label: '追加项', title: node.item_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
     ];

@@ -77,7 +77,7 @@ test('standalone WebUI canvas stays identical to the Manager renderer', async ()
   const svg = workflowCanvasSvg({ ...workflow(), name: '<script>alert(1)</script>' });
   assert.ok(!svg.includes('<script>'));
   assert.ok(svg.includes('&lt;script&gt;'));
-  assert.match(svg, /stroke="#5f7168"/);
+  assert.match(svg, /stroke="#13775a"/);
 });
 
 class Element {
