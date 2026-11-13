@@ -207,7 +207,10 @@ def workflow_llm(current_id: int, workflow_map: WorkflowMap) -> int:
         if schema["function"]["name"] in configured_tools
     ]
     content, reasoning, tool_calls = chat_with_model(
-        messages, node_argument(node, "model"), tools=tools
+        messages,
+        node_argument(node, "model"),
+        tools=tools,
+        think=node_argument(node, "think", False),
     )
     propagate_workflow_output(workflow_map, node, "output", content)
     if "reasoning" in node.get("data_outputs", {}):

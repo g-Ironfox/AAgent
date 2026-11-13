@@ -62,7 +62,21 @@ def openai_llm_api(messages,model,url,key,tools=registered_tools,extra={}):
 
     return res['content'],reasoning,tool_calls
 
-def chat_with_model(messages, model_id, tools=registered_tools):
+def _thinking_options(config: dict, think: bool) -> dict:
+    if think:
+        return {}
+
+    provider = " ".join(
+        str(config.get(key, "")) for key in ("provider", "model", "base_url")
+    ).lower()
+    if "deepseek" in provider:
+        return {"thinking": {"type": "disabled"}}
+    if "qwen" in provider or "dashscope" in provider:
+        return {"enable_thinking": False}
+    return {"reasoning_effort": "none"}
+
+
+def chat_with_model(messages, model_id, tools=registered_tools, think=True):
     config = _model_config(model_id)
     content,reasoning,tool_calls = openai_llm_api(
         messages,
@@ -70,9 +84,13 @@ def chat_with_model(messages, model_id, tools=registered_tools):
         config["base_url"],
         config.get("api_key", ""),
         tools,
+        extra=_thinking_options(config, think),
     )
 
     if content==402:
         return "[-]余额不足","",[]
     
+    if not think:
+        reasoning = ""
+
     return content,reasoning,tool_calls

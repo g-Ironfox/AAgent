@@ -993,6 +993,26 @@ class WorkflowExecutionTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "llm messages input"):
                     workflow_llm(0, workflow_map)
 
+    def test_llm_passes_think_setting_to_model_request(self):
+        workflow_map = [
+            {
+                "id": "llm",
+                "type": "llm",
+                "arguments": {"model": "model-id", "think": False, "tools": []},
+                "successors": {"next": 1},
+                "data_inputs": {"messages-in": [None, None, [{"role": "user", "content": "hello"}]]},
+                "data_outputs": {"output": [[1, "result"]]},
+            },
+            {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}},
+        ]
+        with patch("llm.chat_with_model", return_value=("answer", "hidden reasoning", [])) as chat:
+            self.assertEqual(workflow_llm(0, workflow_map), 1)
+
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}], "model-id", tools=[], think=False
+        )
+        self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "answer")
+
     def test_list_append_outputs_new_list_without_mutating_input(self):
         for position, expected in (("start", ["new", "first"]), ("end", ["first", "new"])):
             with self.subTest(position=position):
