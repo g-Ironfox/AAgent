@@ -10,7 +10,7 @@ from tool_server_client import ToolServerError, call_remote_tool
 from workflow_contract import NODE_ARGUMENT_FIELDS_BY_TYPE, SUPPORTED_NODE_TYPES, is_valid_connection
 from workflow_nodes import workflow_json_tool, workflow_local_tool, workflow_remote_async_tool, workflow_remote_sync_tool
 from workflow_nodes import nodes_map
-from workflow_validator import WorkflowValidationError, validate_workflow
+from workflow_validator import WorkflowValidationError, _validate_branches_in_foreach, validate_workflow
 from workflow_parser import WORKFLOW_SCHEMA_VERSION
 
 
@@ -67,6 +67,46 @@ def valid_workflow(node: dict) -> dict:
             "output_ports": outputs if all(isinstance(port, dict) for port in outputs) else [],
         }]
     return workflow
+
+
+class ForeachBranchValidationTest(unittest.TestCase):
+    def setUp(self):
+        self.nodes = {
+            "loop": {"id": "loop", "type": "foreach"},
+            "body": {"id": "body", "type": "json_tool"},
+            "after": {"id": "after", "type": "construct_message"},
+            "outside": {"id": "outside", "type": "input"},
+        }
+        self.connections = [
+            {"fromId": "loop", "fromPortId": "loop-out", "toId": "body", "toPortId": "control-in", "type": "control"},
+            {"fromId": "body", "fromPortId": "control-out", "toId": "loop", "toPortId": "loop-in", "type": "control"},
+            {"fromId": "loop", "fromPortId": "control-out", "toId": "after", "toPortId": "control-in", "type": "control"},
+        ]
+
+    def test_rejects_connected_json_tool_error_branch_inside_loop(self):
+        self.connections.append({
+            "fromId": "body", "fromPortId": "error-out", "toId": "after", "toPortId": "control-in", "type": "control",
+        })
+        with self.assertRaisesRegex(WorkflowValidationError, "branching control flow.*body"):
+            _validate_branches_in_foreach(self.nodes, self.connections)
+
+    def test_allows_single_path_loop_and_branch_after_loop(self):
+        self.nodes["router"] = {"id": "router", "type": "router"}
+        self.nodes["branch_a"] = {"id": "branch_a", "type": "output"}
+        self.nodes["branch_b"] = {"id": "branch_b", "type": "output"}
+        self.connections.extend([
+            {"fromId": "after", "fromPortId": "control-out", "toId": "router", "toPortId": "control-in", "type": "control"},
+            {"fromId": "router", "fromPortId": "a", "toId": "branch_a", "toPortId": "control-in", "type": "control"},
+            {"fromId": "router", "fromPortId": "branch$others", "toId": "branch_b", "toPortId": "control-in", "type": "control"},
+        ])
+        _validate_branches_in_foreach(self.nodes, self.connections)
+
+    def test_rejects_body_node_with_external_control_entry(self):
+        self.connections.append({
+            "fromId": "outside", "fromPortId": "control-out", "toId": "body", "toPortId": "control-in", "type": "control",
+        })
+        with self.assertRaisesRegex(WorkflowValidationError, "entry from outside.*body"):
+            _validate_branches_in_foreach(self.nodes, self.connections)
 
 
 class ToolNodeExecutionTest(unittest.TestCase):

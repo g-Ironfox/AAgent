@@ -184,7 +184,7 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
                 f"connections[{index}].type must be a supported control or data type"
             )
 
-    _validate_json_tool_error_branches_in_foreach(node_by_id, connections)
+    _validate_branches_in_foreach(node_by_id, connections)
 
     for node_id, node in node_by_id.items():
         node_type = node["type"]
@@ -813,39 +813,46 @@ def _port_id(connection: dict[str, Any], index: int, field: str) -> str:
     return port_id
 
 
-def _validate_json_tool_error_branches_in_foreach(
+def _validate_branches_in_foreach(
     nodes_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
 ) -> None:
     control_edges = [connection for connection in connections if connection.get("type") == "control"]
+    outgoing: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    incoming: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    for edge in control_edges:
+        outgoing[edge["fromId"]].append(edge)
+        incoming[edge["toId"]].append(edge)
+
     for foreach_id, foreach_node in nodes_by_id.items():
         if foreach_node["type"] != "foreach":
             continue
-        pending = [
-            edge["toId"] for edge in control_edges
-            if edge["fromId"] == foreach_id and edge["fromPortId"] == "loop-out"
-        ]
+
+        pending = [edge["toId"] for edge in outgoing[foreach_id] if edge["fromPortId"] == "loop-out"]
         body: set[str] = set()
         while pending:
             node_id = pending.pop()
             if node_id == foreach_id or node_id in body:
                 continue
             body.add(node_id)
-            for edge in control_edges:
-                if edge["fromId"] != node_id:
-                    continue
+            for edge in outgoing[node_id]:
                 target_id = edge["toId"]
                 if target_id == foreach_id and edge["toPortId"] == "loop-in":
                     continue
-                if nodes_by_id[target_id]["type"] == "foreach" and edge["toPortId"] == "loop-in":
-                    continue
                 pending.append(target_id)
+
         for node_id in body:
-            if nodes_by_id[node_id]["type"] == "json_tool" and any(
-                edge["fromId"] == node_id and edge["fromPortId"] == "error-out"
-                for edge in control_edges
-            ):
+            if len(outgoing[node_id]) > 1:
                 raise WorkflowValidationError(
-                    f"json_tool error-out cannot be used inside foreach: node {node_id}"
+                    f"branching control flow is not allowed inside foreach: node {node_id}"
+                )
+            external_entries = [
+                edge for edge in incoming[node_id]
+                if edge["fromId"] not in body
+                and not (edge["fromId"] == foreach_id and edge["fromPortId"] == "loop-out")
+            ]
+            if external_entries:
+                raise WorkflowValidationError(
+                    f"foreach body node also has a control-flow entry from outside the loop: node {node_id}"
                 )
 
 
