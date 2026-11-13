@@ -312,9 +312,9 @@ export function portsForNode(node) {
     const parameterPorts = (node.parameters || []).map((parameter) => ({ id: parameter.name, direction: 'input', type: parameter.type, label: parameter.name, title: `Tool parameter: ${parameter.name}`, multiple: false }));
     const resultPorts = (node.outputs || []).map((output) => ({ id: output.name, direction: 'output', type: output.type, label: output.name, title: `Tool output: ${output.name}`, multiple: true }));
     return [
-      { id: 'control-in', direction: 'input', type: 'control', label: 'Trigger', title: 'Trigger', multiple: false },
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       ...parameterPorts,
-      { id: 'control-out', direction: 'output', type: 'control', label: 'Next', title: 'Next', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       ...resultPorts,
     ];
   }

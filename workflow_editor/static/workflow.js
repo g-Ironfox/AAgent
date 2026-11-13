@@ -729,9 +729,8 @@ elements.metadataForm.addEventListener('submit', (event) => {
   const outputPorts = readMetadataPorts('output_ports');
   const callableWorkflows = readCallableWorkflows();
   const remoteTools = readRemoteTools();
-  if (remoteTools.some((tool) => tool.kind === 'local' && (tool.input_ports.some((port) => port.type !== 'content')
-    || JSON.stringify(tool.output_ports) !== JSON.stringify([{ name: 'output', type: 'content' }])))) {
-    elements.resourceState.textContent = 'Local Tool 的输入必须为 content，输出必须为 output:content';
+  if (remoteTools.some((tool) => tool.kind === 'local' && tool.input_ports.some((port) => port.type !== 'content'))) {
+    elements.resourceState.textContent = 'Local Tool 的输入必须为 content';
     return;
   }
   const allPortLists = [inputPorts, outputPorts, ...callableWorkflows.flatMap((workflow) => [workflow.input_ports, workflow.output_ports]), ...remoteTools.flatMap((tool) => [tool.input_ports, tool.output_ports])];

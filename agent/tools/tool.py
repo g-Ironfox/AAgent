@@ -33,7 +33,7 @@ tool_handlers = {}
 redis_reset_tools()
 
 
-def tool(description, parameters=None, name=None):
+def tool(description, parameters=None, name=None, output_schema=None):
     def register(function):
         tool_name = name or function.__name__
         if tool_name in tool_handlers:
@@ -49,13 +49,14 @@ def tool(description, parameters=None, name=None):
         }
         registered_tools.append(schema)
         tool_handlers[tool_name] = function
-        redis_register_tool(tool_name, schema)
+        registry_schema = {**schema, "outputSchema": output_schema}
+        redis_register_tool(tool_name, registry_schema)
         return function
 
     return register
 
 
-@tool("查询 DeepSeek API 账户余额", name="get_deepseek_balance")
+@tool("查询 DeepSeek API 账户余额", name="get_deepseek_balance", output_schema={"type": "object", "properties": {"balance": {"type": "number"}}})
 def deepseekBalance():
     url = f"{DEEPSEEK_BASE_URL}/v1/user/balance"
     headers = {
@@ -65,10 +66,10 @@ def deepseekBalance():
 
     response = requests.get(url, headers=headers, timeout=(5, 30))
     if  response.status_code == 200:
-        return response.json()['balance_infos'][0]['total_balance']
-    return None
+        return {"balance": response.json()['balance_infos'][0]['total_balance']}
+    return {"balance": None}
 
-@tool("查询 Kimi API 账户余额", name="get_kimi_balance")
+@tool("查询 Kimi API 账户余额", name="get_kimi_balance", output_schema={"type": "object", "properties": {"balance": {"type": "string"}}})
 def kimiBalance():
     url = f"{KIMI_BASE_URL}/v1/users/me/balance"
     headers = {
@@ -78,8 +79,8 @@ def kimiBalance():
 
     response = requests.get(url, headers=headers, timeout=(5, 30))
     if  response.status_code == 200:
-        return str(response.json()['data']['available_balance']) #kimi api返回的是int
-    return None
+        return {"balance": str(response.json()['data']['available_balance'])} #kimi api返回的是int
+    return {"balance": None}
 
 
 @tool(
@@ -90,7 +91,8 @@ def kimiBalance():
             "keyword": {"type": "string", "description": "搜索关键词"}
         },
         "required": ["keyword"]
-    }
+    },
+    output_schema={"type": "object", "properties": {"results": {"type": "array", "items": {"type": "object"}}}}
 )
 def tavily_search(keyword):
     url = "https://api.tavily.com/search"
@@ -109,11 +111,11 @@ def tavily_search(keyword):
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
-            return response.json().get("results", [])
+            return {"results": response.json().get("results", [])}
         except requests.exceptions.RequestException as e:
             print(f"Tavily 请求失败，切换下一个 Key: {e}")
 
-    return []
+    return {"results": []}
 
 @tool(
     "输出到终端",
@@ -123,7 +125,8 @@ def tavily_search(keyword):
             "content": {"type": "string", "description": "要输出到终端的内容"}
         },
         "required": ["content"]
-    }
+    },
+    output_schema={"type": "object", "properties": {"success": {"type": "boolean"}}}
 )
 def output_to_terminal(content):
     e={
@@ -133,6 +136,7 @@ def output_to_terminal(content):
         }
     }
     publish_to_queue(MAIN_AGENT_QUEUE_NAME,e)
+    return {"success": True}
 
 @tool(
     "查询最近N条记录",
@@ -142,10 +146,11 @@ def output_to_terminal(content):
             "limit": {"type": "integer", "description": "要查询的记录数量"}
         },
         "required": ["limit"]
-    }
+    },
+    output_schema={"type": "object", "properties": {"records": {"type": "array", "items": {"type": "object"}}}}
 )
 def get_recent_records(limit):
-    return get_recent_history(limit=limit)
+    return {"records": get_recent_history(limit=limit)}
 
 def bocha_search(keyword):
     url = f"{BOCHA_BASE_URL.rstrip('/')}/v1/web-search"
@@ -165,12 +170,15 @@ def bocha_search(keyword):
 
     print(response.json())
 
-def execute_tool(id,tool,args):
+def execute_tool(id,tool,args,preserve_result=False):
     handler = tool_handlers.get(tool)
     if handler is None:
         return f"未知工具: {tool}"
 
     result = handler(**args)
+
+    if preserve_result and result is not None:
+        return result
 
     # 将结果转为字符串（如果是列表等复杂类型，可做适当格式化）
     if isinstance(result, (list, dict)):

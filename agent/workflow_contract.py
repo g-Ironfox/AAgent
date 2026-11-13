@@ -130,8 +130,8 @@ def tool_output_type(node: dict[str, Any], name: str) -> str | None:
             (output["type"] for output in node_argument(node, "outputs", []) if output["name"] == name),
             None,
         )
-    if node.get("type") == "local_tool" and name == "output":
-        return "content"
+    if node.get("type") == "local_tool":
+        return "content" if name == "output" else None
     if node.get("type") == "remote_sync_tool":
         return next(
             (output["type"] for output in node_argument(node, "outputs", []) if output["name"] == name),

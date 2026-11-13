@@ -583,8 +583,6 @@ def _validate_tool_metadata(workflow: dict[str, Any]) -> dict[str, dict[str, Any
         if declaration["kind"] == "local":
             if any(port["type"] != "content" for port in declaration["input_ports"]):
                 raise WorkflowValidationError("local tool inputs must use content")
-            if declaration["output_ports"] != [{"name": "output", "type": "content"}]:
-                raise WorkflowValidationError("local tool output must be output:content")
         tools[name] = declaration
     return tools
 

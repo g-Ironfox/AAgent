@@ -41,7 +41,7 @@ documents_collection = mongo_client[MONGO_DATABASE][MONGO_DOCUMENT_COLLECTION]
             "title": {"type": "string", "description": "文档title"},
         },
         "required": ["title"]
-    }
+    }, output_schema={"type": "object", "properties": {"document": {"type": "string"}}}
 )
 def query_document_by_name(title):
     res=''
@@ -50,7 +50,7 @@ def query_document_by_name(title):
         res+=f"content: {i['content']}\n"
         res+=f"created_at: {i['created_at'].astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n"
         res+=f"updated_at: {i['updated_at'].astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n"
-    return res
+    return {"document": res}
 
 @tool(
     "通过文档id查询文档",
@@ -60,7 +60,7 @@ def query_document_by_name(title):
             "doc_id": {"type": "string", "description": "文档ID"},
         },
         "required": ["doc_id"]
-    }
+    }, output_schema={"type": "object", "properties": {"document": {"type": "string"}}}
 )
 def query_document_by_id(doc_id):
     res=''
@@ -71,7 +71,7 @@ def query_document_by_id(doc_id):
     d+=f"- created_at: {i['created_at'].astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n"
     d+=f"- updated_at: {i['updated_at'].astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n"
     res+=f"<document id={i['_id']}>{d}</document>\n"
-    return res
+    return {"document": res}
 
 def document_wrapper(doc_id):
     i=documents_collection.find_one({"_id":ObjectId(doc_id)})
@@ -93,7 +93,7 @@ def document_wrapper(doc_id):
             "return_final": {"type": "boolean", "description": "返回最终内容"},
         },
         "required": ["doc_id","append_content"]
-    }
+    }, output_schema={"type": "object", "properties": {"status": {"type": "string"}, "document": {"type": "string"}}}
 )
 def append_to_document(doc_id,append_content,return_final=False):
     now = datetime.now(timezone.utc)
@@ -108,7 +108,9 @@ def append_to_document(doc_id,append_content,return_final=False):
         res = documents_collection.find_one_and_update({"_id":ObjectId(doc_id)},{"$set":{"content":content,"updated_at":now}},return_document=return_final)
     if return_final and res:
         res = document_wrapper(doc_id)
-    return str(res)
+    if return_final and res:
+        return {"document": str(res), "status": "updated"}
+    return {"document": "", "status": "updated"}
 
 
 @tool(
@@ -121,7 +123,7 @@ def append_to_document(doc_id,append_content,return_final=False):
             "return_final": {"type": "boolean", "description": "返回最终内容"},
         },
         "required": ["doc_id","content"]
-    }
+    }, output_schema={"type": "object", "properties": {"status": {"type": "string"}, "document": {"type": "string"}}}
 )
 def rewrite_document(doc_id,content,return_final=False):
     now = datetime.now(timezone.utc)
@@ -134,7 +136,9 @@ def rewrite_document(doc_id,content,return_final=False):
     res = documents_collection.find_one_and_update({"_id":ObjectId(doc_id)},{"$set":{"content":content,"updated_at":now}},return_document=return_final)
     if return_final and res:
         res = document_wrapper(doc_id)
-    return str(res)
+    if return_final and res:
+        return {"document": str(res), "status": "updated"}
+    return {"document": "", "status": "updated"}
 
 @tool(
     "新建文档",
@@ -145,7 +149,7 @@ def rewrite_document(doc_id,content,return_final=False):
             "content": {"type": "string", "description": "文档内容,默认为空"},
         },
         "required": []
-    }
+    }, output_schema={"type": "object", "properties": {"document_id": {"type": "string"}, "status": {"type": "string"}}}
 )
 def create_document(title='未命名文档',content=''):
     now = datetime.now(timezone.utc)
@@ -153,7 +157,7 @@ def create_document(title='未命名文档',content=''):
         raise ValueError(f"文档内容过长,最大允许{MAX_DOCUMENT_CONTENT_CHARS}字符")
     res=documents_collection.insert_one({"title":title,"content":content,"pinned":False,"updated_at":now,"created_at":now})
     doc_id=res.inserted_id
-    return f"{doc_id} created"
+    return {"document_id": str(doc_id), "status": "created"}
 
 
 def list_documents():
@@ -181,7 +185,7 @@ def system_documents_prompt():
             "title": {"type": "string", "description": "文档title"},
         },
         "required": ["doc_id","title"]
-    }
+    }, output_schema={"type": "object", "properties": {"document_id": {"type": "string"}, "title": {"type": "string"}}}
 )
 def rename_document(doc_id,title):
     now = datetime.now(timezone.utc)
@@ -189,7 +193,7 @@ def rename_document(doc_id,title):
     if doc is None:
         raise ValueError(f"文档不存在: {doc_id}")
     res = documents_collection.find_one_and_update({"_id":ObjectId(doc_id)},{"$set":{"title":title,"updated_at":now}})
-    return f"{res['title']} : {str(res['_id'])}"
+    return {"title": res["title"], "document_id": str(res["_id"])}
 
 
 @tool(
@@ -201,7 +205,7 @@ def rename_document(doc_id,title):
             "pinned": {"type": "boolean", "description": "是否钉住"},
         },
         "required": ["doc_id","pinned"]
-    }
+    }, output_schema={"type": "object", "properties": {"document_id": {"type": "string"}, "title": {"type": "string"}, "pinned": {"type": "boolean"}}}
 )
 def pin_document(doc_id,pinned):
     now = datetime.now(timezone.utc)
@@ -209,4 +213,4 @@ def pin_document(doc_id,pinned):
     if doc is None:
         raise ValueError(f"文档不存在: {doc_id}")
     res = documents_collection.find_one_and_update({"_id":ObjectId(doc_id)},{"$set":{"pinned":pinned}}) # pin不算update
-    return f"{res['title']} : {str(res['_id'])}"
+    return {"title": res["title"], "document_id": str(res["_id"]), "pinned": pinned}

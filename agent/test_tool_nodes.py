@@ -77,8 +77,25 @@ class ToolNodeExecutionTest(unittest.TestCase):
         fake_tools.execute_tool = Mock(return_value={"ok": True})
         with patch.dict(sys.modules, {"tools.tool": fake_tools}):
             self.assertEqual(nodes_map["tool"](0, workflow_map), 1)
-        fake_tools.execute_tool.assert_called_once_with("tool-node", "echo", {"value": "hello"})
+        fake_tools.execute_tool.assert_called_once_with("tool-node", "echo", {"value": "hello"}, preserve_result=True)
         self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], '{"ok": true}')
+
+    def test_unified_local_tool_distributes_named_outputs(self):
+        outputs = [
+            {"name": "details", "type": "map-content"},
+            {"name": "message", "type": "content"},
+        ]
+        workflow_map = tool_workflow_map("tool", mode="sync", outputs=outputs)
+        workflow_map[0]["_tool_kind"] = "local"
+        workflow_map[0]["data_outputs"] = {"details": [[1, "details"]], "message": [[1, "message"]]}
+        workflow_map[1]["data_inputs"] = {"details": [0, "details", None], "message": [0, "message", None]}
+        fake_tools = types.ModuleType("tools.tool")
+        fake_tools.execute_tool = Mock(return_value={"details": {"key": "value"}, "message": "done"})
+        with patch.dict(sys.modules, {"tools.tool": fake_tools}):
+            self.assertEqual(nodes_map["tool"](0, workflow_map), 1)
+        self.assertEqual(workflow_map[1]["data_inputs"]["details"][2], {"key": "value"})
+        self.assertEqual(workflow_map[1]["data_inputs"]["message"][2], "done")
+        fake_tools.execute_tool.assert_called_once_with("tool-node", "echo", {"value": "hello"}, preserve_result=True)
 
     @patch("tool_server_client.call_remote_tool", return_value="remote-result")
     def test_unified_remote_tool_dispatches_to_remote_client(self, call_tool):
@@ -151,7 +168,7 @@ class ToolNodeExecutionTest(unittest.TestCase):
             next_id = workflow_local_tool(0, workflow_map)
 
         self.assertEqual(next_id, 1)
-        execute_tool.assert_called_once_with("tool-node", "echo", {"value": "hello"})
+        execute_tool.assert_called_once_with("tool-node", "echo", {"value": "hello"}, preserve_result=True)
         self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], '{"ok": true}')
 
     @patch("tool_server_client.call_remote_tool")
@@ -319,6 +336,22 @@ class ToolNodeValidationTest(unittest.TestCase):
         workflow["metadata"] = {"structs": [], "tools": [{
             "name": "echo", "kind": "local", "input_ports": [{"name": "value", "type": "content"}],
             "output_ports": [{"name": "output", "type": "content"}],
+        }]}
+        validate_workflow(workflow)
+
+    def test_validator_accepts_named_local_tool_outputs(self):
+        outputs = [
+            {"name": "details", "type": "map-content"},
+            {"name": "message", "type": "content"},
+        ]
+        node = {"id": "tool", "type": "tool", "arguments": {
+            "tool": "echo", "parameters": [{"name": "value", "type": "content"}],
+            "outputs": outputs, "mode": "sync",
+        }}
+        workflow = valid_workflow(node)
+        workflow["metadata"] = {"structs": [], "tools": [{
+            "name": "echo", "kind": "local", "input_ports": [{"name": "value", "type": "content"}],
+            "output_ports": outputs,
         }]}
         validate_workflow(workflow)
 

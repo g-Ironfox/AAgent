@@ -35,7 +35,7 @@ function fixture(kind, mode = 'sync') {
 }
 
 function verifyBackends(workflows) {
-  const script = "import json, sys, types\nfrom unittest.mock import Mock, patch\nsys.path.insert(0, sys.argv[1])\nfrom workflow_validator import validate_workflow\nfor workflow in json.load(sys.stdin):\n    validate_workflow(workflow)\n    if sys.argv[1] != 'agent': continue\n    from workflow_parser import parse_workflow\n    from workflow_nodes import run_workflow_map, propagate_workflow_output\n    graph = parse_workflow(workflow)\n    declaration = workflow['metadata']['tools'][0]\n    assert graph[1]['_tool_kind'] == declaration['kind']\n    propagate_workflow_output(graph, graph[0], 'workflow:text', 'hello')\n    fake = types.ModuleType('tools.tool')\n    fake.execute_tool = Mock(return_value={'message': 'hello'})\n    async_mode = workflow['nodes'][1]['type'] == 'remote_async_tool'\n    with patch.dict(sys.modules, {'tools.tool': fake}), patch('tool_server_client.call_remote_tool', return_value='task-1' if async_mode else 'hello') as remote:\n        result = run_workflow_map(graph, 0)\n    if declaration['kind'] == 'local':\n        fake.execute_tool.assert_called_once_with('tool', 'echo', {'value': 'hello'})\n        remote.assert_not_called()\n        assert result == {'result': '{\"message\": \"hello\"}'}\n    else:\n        args = workflow['nodes'][1]['arguments']\n        remote.assert_called_once_with('echo', {'value': 'hello'}, 'async' if async_mode else 'wait', args['timeout_ms'], args['callback'] if async_mode else None)\n        assert result == {'result': 'task-1' if async_mode else 'hello'}\n";
+  const script = "import json, sys, types\nfrom unittest.mock import Mock, patch\nsys.path.insert(0, sys.argv[1])\nfrom workflow_validator import validate_workflow\nfor workflow in json.load(sys.stdin):\n    validate_workflow(workflow)\n    if sys.argv[1] != 'agent': continue\n    from workflow_parser import parse_workflow\n    from workflow_nodes import run_workflow_map, propagate_workflow_output\n    graph = parse_workflow(workflow)\n    declaration = workflow['metadata']['tools'][0]\n    assert graph[1]['_tool_kind'] == declaration['kind']\n    propagate_workflow_output(graph, graph[0], 'workflow:text', 'hello')\n    fake = types.ModuleType('tools.tool')\n    fake.execute_tool = Mock(return_value=({'message': 'hello'} if declaration['output_ports'] == [{'name': 'output', 'type': 'content'}] else {port['name']: ({'key': 'value'} if port['type'] == 'map-content' else 'hello') for port in declaration['output_ports']}))\n    async_mode = workflow['nodes'][1]['type'] == 'remote_async_tool'\n    with patch.dict(sys.modules, {'tools.tool': fake}), patch('tool_server_client.call_remote_tool', return_value='task-1' if async_mode else 'hello') as remote:\n        result = run_workflow_map(graph, 0)\n    if declaration['kind'] == 'local':\n        fake.execute_tool.assert_called_once_with('tool', 'echo', {'value': 'hello'}, preserve_result=True)\n        remote.assert_not_called()\n        assert result == {'result': 'hello' if declaration['output_ports'] != [{'name': 'output', 'type': 'content'}] else '{\"message\": \"hello\"}'}\n    else:\n        args = workflow['nodes'][1]['arguments']\n        remote.assert_called_once_with('echo', {'value': 'hello'}, 'async' if async_mode else 'wait', args['timeout_ms'], args['callback'] if async_mode else None)\n        assert result == {'result': 'task-1' if async_mode else 'hello'}\n";
   for (const backend of ['agent', 'manager_webui']) {
     const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
       cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
@@ -62,6 +62,20 @@ test('sync Tool and remote async Tool round-trip through both backends', () => {
     workflows.push(snapshot);
   }
   verifyBackends(workflows);
+});
+
+test('local Tool keeps each declared result as an independent output port', () => {
+  const workflow = fixture('local');
+  const outputs = [port('answer'), port('details', 'map-content')];
+  workflow.metadata.tools[0].output_ports = outputs;
+  workflow.nodes[1].arguments.outputs = outputs;
+  workflow.connections.find((connection) => connection.id === 'd2').fromPortId = 'answer';
+  assert.equal(loadSnapshot(workflow), true);
+  assert.deepEqual(portsForNode(state.nodes[1]).filter((item) => item.direction === 'output' && item.type !== 'control').map(({ id, type }) => ({ name: id, type })), outputs);
+  const snapshot = workflowSnapshot();
+  assert.equal(loadSnapshot(snapshot), true);
+  assert.deepEqual(workflowSnapshot(), snapshot);
+  verifyBackends([snapshot]);
 });
 
 test('legacy tool nodes migrate without losing connections or async callbacks', () => {
@@ -95,7 +109,11 @@ test('tool schema conversion preserves remote types and the local output contrac
   assert.deepEqual(toolFromSchema(schema, 'remote').input_ports, [port('value', 'list-content')]);
   assert.deepEqual(toolFromSchema(schema, 'remote').output_ports, [port('result', 'map-content')]);
   assert.deepEqual(toolFromSchema(schema, 'local').input_ports, [port('value')]);
-  assert.deepEqual(toolFromSchema(schema, 'local').output_ports, [port('output')]);
+  assert.deepEqual(toolFromSchema({ ...schema, outputSchema: null }, 'local').output_ports, [port('output')]);
+  const localSchema = { ...schema, outputSchema: { type: 'object', properties: {
+    answer: { type: 'string' }, details: { type: 'object', 'x-workflow-port-type': 'map-content' },
+  } } };
+  assert.deepEqual(toolFromSchema(localSchema, 'local').output_ports, [port('answer'), port('details', 'map-content')]);
 });
 
 test('switching an async remote node to local resets mode, timeout and callback', () => {
@@ -228,4 +246,10 @@ test('legacy local nodes merge parameter declarations without dropping existing 
   assert.deepEqual(workflowSnapshot().metadata.tools[0].input_ports, [port('value'), port('other')]);
   assert.deepEqual(state.nodes[1].parameters, [port('value'), port('other')]);
   assert.equal(state.connections.length, workflow.connections.length);
+});
+
+test('Tool control ports use Chinese labels', () => {
+  const ports = portsForNode({ type: 'tool', parameters: [], outputs: [] });
+  assert.equal(ports.find((item) => item.id === 'control-in').label, '触发');
+  assert.equal(ports.find((item) => item.id === 'control-out').label, '下一步');
 });

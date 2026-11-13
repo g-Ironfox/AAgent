@@ -126,7 +126,7 @@ def list_local_tools():
                 "name": tool_name,
                 "description": function_schema.get("description", ""),
                 "inputSchema": function_schema.get("parameters", {}),
-                "outputSchema": None,
+                "outputSchema": schema.get("outputSchema"),
             }
         )
     items.sort(key=lambda item: item["name"])

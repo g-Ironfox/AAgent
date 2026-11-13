@@ -15,7 +15,9 @@ export function toolFromSchema(schema, kind) {
     input_ports: kind === 'local'
       ? Object.keys(schema.inputSchema?.properties || {}).map((name) => ({ name, type: 'content' }))
       : ports(schema.inputSchema),
-    output_ports: kind === 'local' ? [{ name: 'output', type: 'content' }] : ports(schema.outputSchema, 'result'),
+    output_ports: kind === 'local'
+      ? schema.outputSchema ? ports(schema.outputSchema, 'output') : [{ name: 'output', type: 'content' }]
+      : ports(schema.outputSchema, 'result'),
   };
 }
 

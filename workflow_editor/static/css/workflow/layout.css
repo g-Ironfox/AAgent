@@ -29,6 +29,7 @@
 .library-item { width:100%; min-height:68px; padding:10px; display:grid; grid-template-columns:38px minmax(0,1fr) auto; align-items:center; gap:10px; color:var(--ink); border:1px solid var(--line); border-left:3px solid #aab5af; background:var(--surface); text-align:left; }
 button.library-item:hover { border-color:var(--green); border-left-color:var(--green); background:var(--green-soft); }
 .library-item.fixed { border-left-color:var(--ink); background:#f2f4f1; }
+.library-item[data-add-node="tool"] { border-left-color:var(--green); }
 .library-item div { min-width:0; display:grid; gap:4px; }
 .library-item strong { font-size:12px; }
 .library-item small { color:var(--muted); font-size:9px; line-height:1.35; }
@@ -54,6 +55,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .list_append-symbol { background:#27705b; }
 .foreach-symbol { background:#9a5a24; }
 .history-symbol { background:#396a87; }
+.tool-symbol { background:var(--green); }
 .local_tool-symbol { background:var(--green); }
 .remote_sync_tool-symbol { background:#a94f36; }
 .remote_async_tool-symbol { background:#b47a22; }

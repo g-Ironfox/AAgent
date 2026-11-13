@@ -530,8 +530,37 @@ def workflow_local_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     from tools.tool import execute_tool
 
     node = workflow_map[current_id]
-    result = execute_tool(node["id"], node_argument(node, "tool"), _tool_arguments(node))
-    propagate_workflow_output(workflow_map, node, "output", _tool_output(result))
+    result = execute_tool(
+        node["id"], node_argument(node, "tool"), _tool_arguments(node), preserve_result=True
+    )
+    if node.get("type") == "local_tool":
+        propagate_workflow_output(workflow_map, node, "output", _tool_output(result))
+        return next_successor(node)
+
+    outputs = node_argument(node, "outputs", [])
+    if isinstance(result, dict):
+        if len(outputs) == 1 and outputs[0]["name"] == "output" and "output" not in result:
+            values = {"output": result}
+        else:
+            missing = [output["name"] for output in outputs if output["name"] not in result]
+            if missing:
+                raise ValueError(f"local tool result is missing outputs: {', '.join(missing)}")
+            values = result
+    elif len(outputs) == 1:
+        values = {outputs[0]["name"]: result}
+    elif outputs:
+        raise ValueError("local tool result must be an object for named outputs")
+    else:
+        values = {}
+
+    for output in outputs:
+        name = output["name"]
+        value = values[name]
+        if output["type"] == "content":
+            value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        elif output["type"] == "map-content" and not _is_map_content(value):
+            raise ValueError(f"local tool output {name} must match map-content")
+        propagate_workflow_output(workflow_map, node, name, value)
     return next_successor(node)
 
 

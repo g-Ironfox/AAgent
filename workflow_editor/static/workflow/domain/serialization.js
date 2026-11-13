@@ -530,8 +530,7 @@ export function loadSnapshot(saved, metadata = null) {
         if (!Array.isArray(tool[field]) || tool[field].some((port) => !port || typeof port.name !== 'string' || !port.name.trim() || ['control-in', 'control-out'].includes(port.name) || !DATA_TYPES.has(port.type))) return false;
         if (new Set(tool[field].map((port) => port.name.toLowerCase())).size !== tool[field].length) return false;
       }
-      if (tool.kind === 'local' && (tool.input_ports.some((port) => port.type !== 'content')
-        || tool.output_ports.length !== 1 || tool.output_ports[0].name !== 'output' || tool.output_ports[0].type !== 'content')) return false;
+      if (tool.kind === 'local' && tool.input_ports.some((port) => port.type !== 'content')) return false;
       remoteTools.push(structuredClone(tool));
     }
     const remoteToolsByName = new Map(remoteTools.map((tool) => [tool.name, tool]));
