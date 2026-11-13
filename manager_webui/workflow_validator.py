@@ -184,6 +184,8 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
                 f"connections[{index}].type must be a supported control or data type"
             )
 
+    _validate_json_tool_error_branches_in_foreach(node_by_id, connections)
+
     for node_id, node in node_by_id.items():
         node_type = node["type"]
         required_data_ports: set[str] = set()
@@ -206,6 +208,8 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         required_inputs, required_outputs = control_ports_for_node(node)
         missing_inputs = required_inputs - connected_control_inputs[node_id]
         missing_outputs = required_outputs - connected_control_outputs[node_id]
+        if node_type == "json_tool":
+            missing_outputs.discard("error-out")
         if missing_inputs or missing_outputs:
             missing = [
                 *(f"input:{port_id}" for port_id in sorted(missing_inputs)),
@@ -807,6 +811,42 @@ def _port_id(connection: dict[str, Any], index: int, field: str) -> str:
             f"connections[{index}].{field} must be a non-empty string"
         )
     return port_id
+
+
+def _validate_json_tool_error_branches_in_foreach(
+    nodes_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
+) -> None:
+    control_edges = [connection for connection in connections if connection.get("type") == "control"]
+    for foreach_id, foreach_node in nodes_by_id.items():
+        if foreach_node["type"] != "foreach":
+            continue
+        pending = [
+            edge["toId"] for edge in control_edges
+            if edge["fromId"] == foreach_id and edge["fromPortId"] == "loop-out"
+        ]
+        body: set[str] = set()
+        while pending:
+            node_id = pending.pop()
+            if node_id == foreach_id or node_id in body:
+                continue
+            body.add(node_id)
+            for edge in control_edges:
+                if edge["fromId"] != node_id:
+                    continue
+                target_id = edge["toId"]
+                if target_id == foreach_id and edge["toPortId"] == "loop-in":
+                    continue
+                if nodes_by_id[target_id]["type"] == "foreach" and edge["toPortId"] == "loop-in":
+                    continue
+                pending.append(target_id)
+        for node_id in body:
+            if nodes_by_id[node_id]["type"] == "json_tool" and any(
+                edge["fromId"] == node_id and edge["fromPortId"] == "error-out"
+                for edge in control_edges
+            ):
+                raise WorkflowValidationError(
+                    f"json_tool error-out cannot be used inside foreach: node {node_id}"
+                )
 
 
 def _validate_control_connection(

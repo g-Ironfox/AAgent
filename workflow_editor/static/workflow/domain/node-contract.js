@@ -26,6 +26,7 @@ export const NODE_TYPES = new Set([
   'local_tool',
   'remote_sync_tool',
   'remote_async_tool',
+  'json_tool',
   'context_create',
   'context_read',
   'context_write',
@@ -345,6 +346,17 @@ export function portsForNode(node) {
       ...resultPorts,
     ];
   }
+  if (node.type === 'json_tool') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+      { id: 'tool-name', direction: 'input', type: 'content', label: '工具名', title: '工具名称', multiple: false },
+      { id: 'arguments-json', direction: 'input', type: 'content', label: '参数 JSON', title: '工具参数 JSON 对象', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'error-out', direction: 'output', type: 'control', label: '错误', title: '工具调用失败', multiple: false },
+      { id: 'result-json', direction: 'output', type: 'content', label: '结果 JSON', title: '工具结果 JSON', multiple: true },
+      { id: 'error-json', direction: 'output', type: 'content', label: '错误 JSON', title: '工具调用错误信息', multiple: true },
+    ];
+  }
   if (node.type === 'workflow') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '调用 Workflow', multiple: false },
@@ -434,6 +446,7 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'local_tool') return { id: createWorkflowId('local-tool'), type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
   if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
   if (type === 'remote_async_tool') return { id: createWorkflowId('remote-async-tool'), type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };
+  if (type === 'json_tool') return { id: createWorkflowId('json-tool'), type, name: 'JSON Tool ' + number, ...position };
   if (type === 'workflow' && configuration) {
     return {
       id: createWorkflowId('workflow'),

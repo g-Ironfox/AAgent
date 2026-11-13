@@ -177,7 +177,7 @@ def execute_tool(id,tool,args,preserve_result=False):
 
     result = handler(**args)
 
-    if preserve_result and result is not None:
+    if preserve_result:
         return result
 
     # 将结果转为字符串（如果是列表等复杂类型，可做适当格式化）

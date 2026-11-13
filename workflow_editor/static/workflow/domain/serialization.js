@@ -39,6 +39,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   local_tool: new Set(['tool', 'parameters']),
   remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
   remote_async_tool: new Set(['tool', 'parameters', 'timeout_ms', 'callback']),
+  json_tool: new Set(),
   context_create: new Set(['value_type', 'context_id']),
   context_read: new Set(['value_type', 'context_id_source', 'context_id']),
   context_write: new Set(['value_type', 'context_id_source', 'context_id']),

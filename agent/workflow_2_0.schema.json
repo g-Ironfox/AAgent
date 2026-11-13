@@ -253,6 +253,7 @@
             "local_tool",
             "remote_sync_tool",
             "remote_async_tool",
+            "json_tool",
             "context_create",
             "context_read",
             "context_write",

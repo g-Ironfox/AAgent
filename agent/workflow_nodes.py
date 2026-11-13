@@ -610,6 +610,51 @@ def workflow_remote_sync_tool(current_id: int, workflow_map: WorkflowMap) -> int
     return next_successor(node)
 
 
+def workflow_json_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    tool_name = None
+    try:
+        has_name, tool_name = read_workflow_input(node, "tool-name")
+        has_arguments, arguments_json = read_workflow_input(node, "arguments-json")
+        if not has_name or not isinstance(tool_name, str) or not tool_name.strip():
+            raise ValueError(f"JSON Tool name is missing: node {node.get('id')}")
+        if not has_arguments or not isinstance(arguments_json, str):
+            raise ValueError(f"JSON Tool arguments are missing: node {node.get('id')}")
+        arguments = json.loads(arguments_json)
+        if not isinstance(arguments, dict):
+            raise ValueError(f"JSON Tool arguments must be a JSON object: node {node.get('id')}")
+
+        from tools.tool import execute_tool, tool_handlers
+
+        name = tool_name.strip()
+        if name in tool_handlers:
+            result = execute_tool(node["id"], name, arguments, preserve_result=True)
+        else:
+            from tool_server_client import call_remote_tool
+
+            timeout_ms = int(os.getenv("TOOL_CLIENT_DEFAULT_WAIT_MS", "10000"))
+            result = call_remote_tool(name, arguments, "wait", timeout_ms, None)
+
+        result_json = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
+    except Exception as error:
+        details = {
+            "tool": tool_name.strip() if isinstance(tool_name, str) else None,
+            "error": {"type": type(error).__name__, "message": str(error)},
+        }
+        task_id = getattr(error, "task_id", None)
+        if task_id:
+            details["error"]["task_id"] = task_id
+        error_json = json.dumps(details, ensure_ascii=False, separators=(",", ":"))
+        propagate_workflow_output(workflow_map, node, "error-json", error_json)
+        if isinstance(node.get("successors", {}).get("error"), int):
+            logger.warning("JSON Tool routed an error: node=%s, tool=%s, error=%s", node.get("id"), details["tool"], str(error))
+            return next_successor(node, "error")
+        raise
+
+    propagate_workflow_output(workflow_map, node, "result-json", result_json)
+    return next_successor(node)
+
+
 def workflow_remote_async_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     task_id = _call_remote_node(
@@ -783,6 +828,7 @@ nodes_map: dict[str, NodeHandler] = {
     "history": workflow_history,
     "llm": workflow_llm,
     "tool": workflow_tool,
+    "json_tool": workflow_json_tool,
     "local_tool": workflow_local_tool,
     "remote_sync_tool": workflow_remote_sync_tool,
     "remote_async_tool": workflow_remote_async_tool,

@@ -186,6 +186,13 @@ test('duplicate tool names and local async mode are rejected without altering th
 test('an unbound Tool can be created and saved as an editor draft', () => {
   assert.equal(resetWorkflow(), true);
   assert.equal(addNode('tool').type, 'tool');
+  const jsonTool = addNode('json_tool');
+  assert.equal(jsonTool.type, 'json_tool');
+  assert.deepEqual(portsForNode(jsonTool).filter((item) => item.type !== 'control').map(({ id, direction, type }) => ({ id, direction, type })), [
+    { id: 'tool-name', direction: 'input', type: 'content' },
+    { id: 'arguments-json', direction: 'input', type: 'content' },
+    { id: 'result-json', direction: 'output', type: 'content' },
+  ]);
   assert.equal(addNode('remote_async_tool').type, 'remote_async_tool');
   assert.equal(loadSnapshot(workflowSnapshot()), true);
 });
@@ -194,6 +201,8 @@ test('tool library is unified and retains Workflow integration mounts and metada
   const html = readFileSync(new URL('./static/workflow_edit.html', import.meta.url), 'utf8');
   assert.match(html, /id="workflowNodeLibrary"/);
   assert.match(html, /data-add-node="tool"/);
+  assert.match(html, /data-add-node="json_tool"/);
+  assert.match(html, /id="json_toolInspectorTemplate"/);
   assert.doesNotMatch(html, /data-add-node="(?:local_tool|remote_sync_tool)"/);
   assert.match(html, /id="toolInspectorTemplate"/);
   assert.match(html, /data-add-node="remote_async_tool"/);

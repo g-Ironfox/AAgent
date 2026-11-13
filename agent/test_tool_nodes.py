@@ -8,7 +8,7 @@ import requests
 
 from tool_server_client import ToolServerError, call_remote_tool
 from workflow_contract import NODE_ARGUMENT_FIELDS_BY_TYPE, SUPPORTED_NODE_TYPES, is_valid_connection
-from workflow_nodes import workflow_local_tool, workflow_remote_async_tool, workflow_remote_sync_tool
+from workflow_nodes import workflow_json_tool, workflow_local_tool, workflow_remote_async_tool, workflow_remote_sync_tool
 from workflow_nodes import nodes_map
 from workflow_validator import WorkflowValidationError, validate_workflow
 from workflow_parser import WORKFLOW_SCHEMA_VERSION
@@ -70,6 +70,42 @@ def valid_workflow(node: dict) -> dict:
 
 
 class ToolNodeExecutionTest(unittest.TestCase):
+    def test_validator_accepts_json_tool_without_static_tool_metadata(self):
+        self.assertIn("json_tool", SUPPORTED_NODE_TYPES)
+        self.assertEqual(NODE_ARGUMENT_FIELDS_BY_TYPE["json_tool"], set())
+        validate_workflow(valid_workflow({"id": "dynamic", "type": "json_tool"}))
+
+    def test_json_tool_dispatches_to_registered_local_tool(self):
+        node = {"id": "json-node", "type": "json_tool", "data_inputs": {
+            "tool-name": [None, None, "local_echo"], "arguments-json": [None, None, '{"value":3}'],
+        }, "data_outputs": {"result-json": [[1, "result"]]}, "successors": {"next": 1}}
+        target = {"id": "target", "data_inputs": {"result": [0, "result-json", None]}, "data_outputs": {}}
+        execute_tool = Mock(return_value={"answer": 3})
+        tools_module = types.ModuleType("tools.tool")
+        tools_module.execute_tool = execute_tool
+        tools_module.tool_handlers = {"local_echo": object()}
+        with patch.dict(sys.modules, {"tools.tool": tools_module}), patch("tool_server_client.call_remote_tool") as remote:
+            self.assertEqual(workflow_json_tool(0, [node, target]), 1)
+        execute_tool.assert_called_once_with("json-node", "local_echo", {"value": 3}, preserve_result=True)
+        remote.assert_not_called()
+        self.assertEqual(target["data_inputs"]["result"][2], '{"answer":3}')
+
+    @patch("tool_server_client.call_remote_tool", return_value={"ok": True})
+    def test_json_tool_dispatches_to_remote_when_not_locally_registered(self, call_tool):
+        node = {"id": "json-node", "type": "json_tool", "data_inputs": {
+            "tool-name": [None, None, "remote_echo"], "arguments-json": [None, None, "{}"],
+        }, "data_outputs": {"result-json": [[1, "result"]]}, "successors": {"next": 1}}
+        target = {"id": "target", "data_inputs": {"result": [0, "result-json", None]}, "data_outputs": {}}
+        tools_module = types.ModuleType("tools.tool")
+        tools_module.execute_tool = Mock()
+        tools_module.tool_handlers = {}
+        with patch.dict(sys.modules, {"tools.tool": tools_module}), patch.dict(
+            "os.environ", {"TOOL_CLIENT_DEFAULT_WAIT_MS": "23000"}
+        ):
+            self.assertEqual(workflow_json_tool(0, [node, target]), 1)
+        call_tool.assert_called_once_with("remote_echo", {}, "wait", 23000, None)
+        self.assertEqual(target["data_inputs"]["result"][2], '{"ok":true}')
+
     def test_unified_local_tool_dispatches_from_metadata_kind(self):
         workflow_map = tool_workflow_map("tool", mode="sync", outputs=[{"name": "output", "type": "content"}])
         workflow_map[0]["_tool_kind"] = "local"

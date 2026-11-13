@@ -165,6 +165,11 @@
             <div><strong>Tool</strong><small>同步执行 Local / Remote Tool</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="json_tool">
+            <span class="node-symbol json_tool-symbol" aria-hidden="true">J-T</span>
+            <div><strong>JSON Tool</strong><small>通过 JSON 输入动态同步调用工具</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="remote_async_tool">
             <span class="node-symbol remote_async_tool-symbol" aria-hidden="true">RA</span>
             <div><strong>异步 Tool</strong><small>仅 Remote Tool，发布后返回 Task ID</small></div>
@@ -625,6 +630,14 @@
           <label><input data-callback-status type="checkbox" value="failed"><span>失败</span></label>
         </fieldset>
       </div>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="json_toolInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
