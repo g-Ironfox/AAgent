@@ -146,7 +146,7 @@ function contractPortIds(node, direction, workflow) {
   if (node.type === 'tool') {
     const parameters = (Array.isArray(args.parameters) ? args.parameters : []).map((parameter) => parameter.name);
     if (direction === 'input') return ['control-in', ...parameters];
-    return ['control-out', ...(args.mode === 'async' ? ['task_id'] : (args.outputs || []).map((output) => output.name))];
+    return ['control-out', ...(args.outputs || []).map((output) => output.name)];
   }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     const parameters = (Array.isArray(args.parameters) ? args.parameters : []).map((parameter) => (

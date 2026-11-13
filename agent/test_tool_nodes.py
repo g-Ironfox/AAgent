@@ -87,6 +87,14 @@ class ToolNodeExecutionTest(unittest.TestCase):
         self.assertEqual(nodes_map["tool"](0, workflow_map), 1)
         call_tool.assert_called_once_with("echo", {"value": "hello"}, "wait", 10000, None)
         self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "remote-result")
+
+    @patch("tool_server_client.call_remote_tool")
+    def test_sync_tool_cannot_dispatch_async_even_without_validation(self, call_tool):
+        workflow_map = tool_workflow_map("tool", mode="async", outputs=[])
+        workflow_map[0]["_tool_kind"] = "remote"
+        with self.assertRaisesRegex(ValueError, "only supports sync"):
+            nodes_map["tool"](0, workflow_map)
+        call_tool.assert_not_called()
     def test_construct_event_is_registered_with_event_type_argument(self):
         self.assertIn("construct_event", SUPPORTED_NODE_TYPES)
         self.assertEqual(NODE_ARGUMENT_FIELDS_BY_TYPE["construct_event"], {"event_type"})

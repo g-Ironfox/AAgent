@@ -20,12 +20,20 @@ export function toolFromSchema(schema, kind) {
 }
 
 export function applyToolDeclaration(node, declaration) {
+  if (node.type === 'remote_async_tool' && declaration.kind !== 'remote') {
+    throw new Error('异步 Tool 只能使用 Remote Tool');
+  }
   node.tool = declaration.name;
   node.parameters = structuredClone(declaration.input_ports);
-  node.outputs = structuredClone(declaration.output_ports);
-  if (declaration.kind === 'local') {
+  if (node.type === 'remote_async_tool') {
+    delete node.mode;
+    delete node.outputs;
+  } else {
+    node.outputs = structuredClone(declaration.output_ports);
+    if (node.mode !== 'sync' || declaration.kind === 'local') {
+      node.timeout_ms = 10000;
+    }
     node.mode = 'sync';
-    node.timeout_ms = 10000;
     node.callback = null;
   }
 }

@@ -547,20 +547,14 @@
                     "$ref": "#/$defs/toolPorts"
                   },
                   "mode": {
-                    "enum": [
-                      "sync",
-                      "async"
-                    ]
+                    "const": "sync"
                   },
                   "timeout_ms": {
                     "type": "integer",
                     "minimum": 1
                   },
                   "callback": {
-                    "type": [
-                      "object",
-                      "null"
-                    ]
+                    "type": "null"
                   }
                 },
                 "additionalProperties": false

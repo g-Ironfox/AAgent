@@ -229,7 +229,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `foreach` | `item_type` | `list-in: list-<item_type>` | `item-out: <item_type>`；控制端口见第 10 节 |
 | `history` | `event_types`、`limit` | 无 | `events: list-event` |
 | `llm` | `model`、`think`、`tool_calls`、`tools` | `messages-in: list-message` | `output: content`；配置启用时有 `reasoning: content`、`tool_calls: list-content` |
-| `tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `mode`、`timeout_ms`、`callback` | 每个 parameters 端口 | sync：每个 outputs 端口；async：`task_id: content` |
+| `tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `mode`（仅 sync）、`timeout_ms` | 每个 parameters 端口 | 同步返回每个 outputs 端口 |
 | `local_tool`（兼容） | `tool`、`parameters: string[]` | 每个参数名一个 content 输入 | `output: content` |
 | `remote_sync_tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `timeout_ms` | 每个 parameters 端口 | 每个 outputs 端口 |
 | `remote_async_tool` | `tool`、`parameters: port[]`、可选 `timeout_ms`、`callback` | 每个 parameters 端口 | `task_id: content` |
@@ -257,7 +257,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `foreach` | `item_type` | 无 |
 | `history` | `event_types`、`limit` | 无 |
 | `llm` | 无 | `model`、`think`、`tool_calls`、`tools` |
-| `tool` | `tool`、`parameters`、`outputs` | `mode` (`sync`)、`timeout_ms`、`callback` |
+| `tool` | `tool`、`parameters`、`outputs` | `mode`（固定 `sync`）、`timeout_ms`、`callback`（仅 null） |
 | `local_tool` | `tool` | `parameters` (空数组) |
 | `remote_sync_tool` | `tool` | `parameters` (空数组)、`outputs` (空数组)、`timeout_ms` |
 | `remote_async_tool` | `tool` | `parameters` (空数组)、`timeout_ms`、`callback` |
@@ -286,8 +286,9 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `history.event_types` 必须为非空、不重复的 `terminal`/`response` 子集；limit 必须为 1 到 1000 的整数。
 - `llm.model` 在管理端保存及执行时必须为有效且已启用模型标识；通用静态契约校验器不保证验证模型存在。`llm.tools` 缺省为空数组并选择已注册的本地工具；`think`、`tool_calls` 布尔值控制 reasoning、tool_calls 输出端口是否存在，不表示发送给模型的推理开关。tool_calls 输出为 JSON 文本组成的 list-content。
 - 新建工具使用统一的 `tool` 节点，来源由 `metadata.tools` 中同名声明的 `kind` 决定，取值为 `local` 或 `remote`。声明恰含 `name`、`kind`、`input_ports`、`output_ports`，名称去除首尾空白并忽略大小写后全局唯一（local/remote 也不能重名）。每侧最多 50 个端口，只允许七种内建数据类型，禁止 Struct 和保留控制端口名。
-- `tool.parameters` / `tool.outputs` 必须与声明的输入/输出端口数组完全一致；`mode` 只允许 `sync`、`async`。local 仅支持 sync，输入类型均为 content，输出声明必须为 `[{"name":"output","type":"content"}]`；运行时字符串结果原样输出，其他结果 JSON 序列化。remote 复用下述远程同步/异步、超时和回调行为，sync 模式禁止非空 callback。
-- 编辑器 metadata 页合并 Local/Remote 目录，下拉选择后自动更新来源单选框和端口快照；目录不可用时保留已保存的声明。画布只新增 `tool`，旧 `local_tool`、`remote_sync_tool`、`remote_async_tool` 载入后迁移为统一节点，并把顶层 `remote_tools` 合并到 `metadata.tools`。后端仍接受旧节点格式；此版保持 schema_version 为 2.0，使用新格式的 editor、manager、agent 需一起更新。
+- `tool.parameters` / `tool.outputs` 必须与声明的输入/输出端口数组完全一致；Tool 节点仅同步执行，`mode` 省略或固定为 `sync`，callback 只能省略或为 null。local 输入类型均为 content，输出声明必须为 `[{"name":"output","type":"content"}]`；运行时字符串结果原样输出，其他结果 JSON 序列化。remote 等待结果并遵循下述同步超时行为。
+- `remote_async_tool` 是独立的异步 Tool 节点，只允许绑定 `metadata.tools` 中 kind 为 remote 的声明（旧格式仍可使用顶层 `remote_tools`），parameters 必须匹配声明，输出固定为 `task_id: content`。节点没有 mode 或 outputs 参数，支持异步超时和 Redis callback。
+- 编辑器 metadata 页合并 Local/Remote 目录，下拉选择后自动更新来源单选框和端口快照；目录不可用时保留已保存的声明。画布提供同步 `tool` 和异步 `remote_async_tool` 两类节点。旧 `local_tool`、`remote_sync_tool` 载入后迁移为同步 Tool，上一版 `tool + mode: async` 迁移为 `remote_async_tool`，保留连线和回调，并把顶层 `remote_tools` 合并到 `metadata.tools`。后端仍接受旧节点格式；此版保持 schema_version 为 2.0，使用新格式的 editor、manager、agent 需一起更新。
 - `local_tool.parameters` 是无重复的非空参数名数组；工具参数和输出均为 content。
 - Remote Tool 参数必须与 `remote_tools` 中同名声明的输入端口完全一致；sync 的 outputs 必须与输出声明完全一致。工具接口不能使用保留控制端口名。timeout_ms 若省略，同步默认 10000 ms、异步默认 600000 ms；同步最大值 10000 ms、异步最大值 3600000 ms，运行时还受部署配置限制。
 - async callback 若提供，必须恰含 `type`、`queue`、`event_type`、`on`；type 固定为 `redis`，queue 长度 1–256，event_type 长度 1–128，on 为不重复且非空的 `working`/`completed`/`failed` 数组。

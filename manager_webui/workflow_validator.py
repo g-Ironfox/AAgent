@@ -82,11 +82,13 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
             if declaration["kind"] == "local" and node_argument(node, "mode", "sync") != "sync":
                 raise WorkflowValidationError("local tool only supports sync mode")
         if node["type"] in {"remote_sync_tool", "remote_async_tool"}:
-            declaration = remote_tools.get(node_argument(node, "tool"))
+            declaration = (tools.get(node_argument(node, "tool")) if node["type"] == "remote_async_tool" else None) or remote_tools.get(node_argument(node, "tool"))
             if declaration is None:
                 raise WorkflowValidationError(
-                    f"nodes[{index}] remote tool is not registered in workflow.remote_tools"
+                    f"nodes[{index}] remote tool is not registered in metadata.tools or workflow.remote_tools"
                 )
+            if declaration.get("kind", "remote") != "remote":
+                raise WorkflowValidationError("remote_async_tool requires a remote tool declaration")
             if node_argument(node, "parameters") != declaration["input_ports"]:
                 raise WorkflowValidationError(
                     f"nodes[{index}] remote tool inputs must match workflow.remote_tools"
@@ -453,21 +455,17 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
                 "history node limit must be an integer from 1 to 1000"
             )
     elif node_type == "tool":
-        if node_argument(node, "mode", "sync") not in {"sync", "async"}:
-            raise WorkflowValidationError("tool mode must be sync or async")
+        if node_argument(node, "mode", "sync") != "sync":
+            raise WorkflowValidationError("tool only supports sync mode; use remote_async_tool")
         # Reuse remote validation for typed ports, timeouts and callbacks.
         arguments = dict(node.get("arguments", {}))
-        mode = arguments.pop("mode", "sync")
+        arguments.pop("mode", "sync")
         callback = arguments.pop("callback", None)
         outputs = arguments.pop("outputs", [])
-        if mode == "sync":
-            if callback is not None:
-                raise WorkflowValidationError("sync tool cannot configure callback")
-            arguments["outputs"] = outputs
-        else:
-            arguments["callback"] = callback
-            _validate_callable_workflow_ports({"output_ports": outputs}, "output_ports")
-        proxy = {**node, "type": "remote_sync_tool" if mode == "sync" else "remote_async_tool", "arguments": arguments}
+        if callback is not None:
+            raise WorkflowValidationError("sync tool cannot configure callback")
+        arguments["outputs"] = outputs
+        proxy = {**node, "type": "remote_sync_tool", "arguments": arguments}
         _validate_node(proxy, index, structs)
     elif node_type == "local_tool":
         parameters = node_argument(node, "parameters", [])

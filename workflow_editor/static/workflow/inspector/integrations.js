@@ -31,12 +31,9 @@ export function createIntegrationInspector(context) {
     mount.querySelector('[data-tool-kind]').textContent = declaration?.kind || '未选择';
     const remote = declaration?.kind === 'remote';
     mount.querySelector('[data-tool-remote-options]').hidden = !remote;
-    mount.querySelector('[data-tool-mode]').value = node.mode || 'sync';
     const timeout = mount.querySelector('[data-tool-timeout]');
-    timeout.value = node.timeout_ms || (node.mode === 'async' ? 600000 : 10000);
-    timeout.max = node.mode === 'async' ? 3600000 : 10000;
-    mount.querySelector('[data-tool-callback]').hidden = !remote || node.mode !== 'async';
-    renderCallback(node);
+    timeout.value = node.timeout_ms || 10000;
+    timeout.max = 10000;
   }
 
   function bindTool(node) {
@@ -53,17 +50,10 @@ export function createIntegrationInspector(context) {
       else { node.tool = ''; node.parameters = []; node.outputs = []; }
       refresh();
     });
-    mount.querySelector('[data-tool-mode]').addEventListener('change', (event) => {
-      node.mode = event.target.value;
-      node.timeout_ms = node.mode === 'async' ? 600000 : 10000;
-      if (node.mode !== 'async') node.callback = null;
-      refresh();
-    });
     mount.querySelector('[data-tool-timeout]').addEventListener('input', (event) => {
       node.timeout_ms = Number(event.target.value);
       context.markChanged();
     });
-    bindCallback(node);
   }
 
   function renderModelOptions(node) {
@@ -131,6 +121,7 @@ export function createIntegrationInspector(context) {
       }));
     }
     toolSelect.replaceChildren(...options);
+    toolSelect.value = node.tool;
     toolSelect.disabled = remoteToolReferences.length === 0;
   }
 
@@ -162,6 +153,7 @@ export function createIntegrationInspector(context) {
     const timeoutInput = context.elements.inspectorContent.querySelector('[data-field="timeout_ms"]');
     timeoutInput.addEventListener('input', () => {
       node.timeout_ms = Number(timeoutInput.value);
+      context.markChanged();
     });
     if (node.type === 'remote_async_tool') bindCallback(node);
   }
@@ -257,7 +249,7 @@ export function createIntegrationInspector(context) {
   }
 
   function setRemoteToolReferences(tools) {
-    remoteToolReferences = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
+    remoteToolReferences = tools.filter((tool) => tool.kind === 'remote' && typeof tool.name === 'string' && tool.name);
     if (['tool', 'remote_sync_tool', 'remote_async_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
   }
 

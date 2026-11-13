@@ -222,6 +222,12 @@ function remoteToolMetadata(saved) {
 
 function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteTools, structs) {
   node = expandNodeArguments(node);
+  // Migrate the former unified async configuration without changing its ports.
+  if (node.type === 'tool' && node.mode === 'async') {
+    node = { ...node, type: 'remote_async_tool' };
+    delete node.mode;
+    delete node.outputs;
+  }
   const normalized = {
     id: node.id,
     type: node.type,
@@ -386,20 +392,13 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.tool = typeof node.tool === 'string' ? node.tool : '';
     const declaration = remoteTools.get(normalized.tool);
     if (normalized.tool && !declaration) return null;
-    if (!['sync', 'async'].includes(node.mode || 'sync')) return null;
-    normalized.mode = node.mode || 'sync';
+    if ((node.mode || 'sync') !== 'sync') return null;
+    normalized.mode = 'sync';
     normalized.parameters = structuredClone(declaration?.input_ports || node.parameters || []);
     normalized.outputs = structuredClone(declaration?.output_ports || node.outputs || []);
-    normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : (normalized.mode === 'async' ? 600000 : 10000);
-    normalized.callback = node.callback ?? null;
-    const callback = normalized.callback;
-    if (callback !== null && (normalized.mode !== 'async' || typeof callback !== 'object' || Array.isArray(callback)
-      || Object.keys(callback).length !== 4 || callback.type !== 'redis'
-      || typeof callback.queue !== 'string' || !callback.queue || callback.queue.length > 256
-      || typeof callback.event_type !== 'string' || !callback.event_type || callback.event_type.length > 128
-      || !Array.isArray(callback.on) || !callback.on.length || callback.on.length !== new Set(callback.on).size
-      || callback.on.some((status) => !['working', 'completed', 'failed'].includes(status)))) return null;
-    if (declaration?.kind === 'local' && normalized.mode !== 'sync') return null;
+    normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : 10000;
+    if (normalized.timeout_ms > 10000 || node.callback != null) return null;
+    normalized.callback = null;
   }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     normalized.tool = typeof node.tool === 'string' ? node.tool : '';
@@ -410,6 +409,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     } else {
       const declaration = remoteTools.get(normalized.tool);
       if (normalized.tool && !declaration) return null;
+      if (declaration && declaration.kind !== 'remote') return null;
       if (!Array.isArray(node.parameters)) return null;
       const parameterNames = new Set();
       normalized.parameters = [];
@@ -450,6 +450,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
       }
       const defaultTimeoutMs = node.type === 'remote_async_tool' ? 600000 : 10000;
       normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : defaultTimeoutMs;
+      if (normalized.timeout_ms > (node.type === 'remote_async_tool' ? 3600000 : 10000)) return null;
       if (node.type === 'remote_async_tool') {
         const callback = node.callback;
         if (callback == null) normalized.callback = null;
@@ -558,9 +559,11 @@ export function loadSnapshot(saved, metadata = null) {
       ids.add(node.id);
       const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteToolsByName, structDefinitions);
       if (!normalized) return false;
-      if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(normalized.type)) {
+      if (['local_tool', 'remote_sync_tool'].includes(normalized.type)) {
         const declaration = remoteToolsByName.get(normalized.tool);
-        normalized.mode = normalized.type === 'remote_async_tool' ? 'async' : 'sync';
+        normalized.mode = 'sync';
+        normalized.timeout_ms ??= 10000;
+        normalized.callback = null;
         normalized.parameters = structuredClone(declaration?.input_ports || []);
         normalized.outputs = structuredClone(declaration?.output_ports || []);
         normalized.type = 'tool';

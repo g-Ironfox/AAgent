@@ -309,11 +309,8 @@ export function portsForNode(node) {
     return ports;
   }
   if (node.type === 'tool') {
-    const isAsync = node.mode === 'async';
     const parameterPorts = (node.parameters || []).map((parameter) => ({ id: parameter.name, direction: 'input', type: parameter.type, label: parameter.name, title: `Tool parameter: ${parameter.name}`, multiple: false }));
-    const resultPorts = isAsync
-      ? [{ id: 'task_id', direction: 'output', type: 'content', label: 'Task ID', title: 'Published task ID', multiple: true }]
-      : (node.outputs || []).map((output) => ({ id: output.name, direction: 'output', type: output.type, label: output.name, title: `Tool output: ${output.name}`, multiple: true }));
+    const resultPorts = (node.outputs || []).map((output) => ({ id: output.name, direction: 'output', type: output.type, label: output.name, title: `Tool output: ${output.name}`, multiple: true }));
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: 'Trigger', title: 'Trigger', multiple: false },
       ...parameterPorts,

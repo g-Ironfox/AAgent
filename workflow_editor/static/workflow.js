@@ -662,7 +662,7 @@ function syncCallableWorkflowNodes(nextWorkflows) {
 function syncRemoteToolNodes(nextTools) {
   const nextByPreviousName = new Map(nextTools.map((tool) => [tool.previous_name || tool.name, tool]));
   for (const node of state.nodes) {
-    if (node.type !== 'tool') continue;
+    if (!['tool', 'remote_async_tool'].includes(node.type)) continue;
     const tool = nextByPreviousName.get(node.tool);
     if (!tool) continue;
     applyToolDeclaration(node, tool);
@@ -754,9 +754,15 @@ elements.metadataForm.addEventListener('submit', (event) => {
     return;
   }
   const retainedToolNames = new Set(remoteTools.map((tool) => tool.previous_name || tool.name));
-  const removedToolInUse = state.nodes.find((node) => node.type === 'tool' && node.tool && !retainedToolNames.has(node.tool));
+  const removedToolInUse = state.nodes.find((node) => ['tool', 'remote_async_tool'].includes(node.type) && node.tool && !retainedToolNames.has(node.tool));
   if (removedToolInUse) {
     elements.resourceState.textContent = `“${removedToolInUse.tool}”仍被画布节点调用`;
+    return;
+  }
+  const invalidAsyncTool = state.nodes.find((node) => node.type === 'remote_async_tool' && node.tool
+    && remoteTools.find((tool) => (tool.previous_name || tool.name) === node.tool)?.kind !== 'remote');
+  if (invalidAsyncTool) {
+    elements.resourceState.textContent = `“${invalidAsyncTool.tool}”被异步节点使用，必须保持为 Remote Tool`;
     return;
   }
   const previousSnapshot = workflowSnapshot();

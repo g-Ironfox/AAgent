@@ -514,14 +514,14 @@ def _tool_output(result: Any) -> str:
 
 def workflow_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
+    if node_argument(node, "mode", "sync") != "sync":
+        raise ValueError("tool only supports sync mode; use remote_async_tool")
     kind = node.get("_tool_kind")
     if kind == "local":
         if node_argument(node, "mode", "sync") != "sync":
             raise ValueError("local tool only supports sync mode")
         return workflow_local_tool(current_id, workflow_map)
     if kind == "remote":
-        if node_argument(node, "mode", "sync") == "async":
-            return workflow_remote_async_tool(current_id, workflow_map)
         return workflow_remote_sync_tool(current_id, workflow_map)
     raise ValueError("tool kind must be resolved from metadata.tools")
 

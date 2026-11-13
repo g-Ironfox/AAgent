@@ -126,8 +126,6 @@ def tool_parameter_type(node: dict[str, Any], name: str) -> str | None:
 
 def tool_output_type(node: dict[str, Any], name: str) -> str | None:
     if node.get("type") == "tool":
-        if node_argument(node, "mode", "sync") == "async" and name == "task_id":
-            return "content"
         return next(
             (output["type"] for output in node_argument(node, "outputs", []) if output["name"] == name),
             None,
@@ -231,8 +229,6 @@ def data_ports_for_node(
         return declared_inputs, {"events"}
     if node_type == "tool":
         outputs = {output["name"] for output in node_argument(node, "outputs", [])}
-        if node_argument(node, "mode", "sync") == "async":
-            outputs = {"task_id"}
         return declared_inputs | set(tool_parameter_names(node)), outputs
     if node_type == "local_tool":
         return declared_inputs | set(tool_parameter_names(node)), {"output"}
