@@ -340,6 +340,18 @@ class CallableWorkflowNodeTest(unittest.TestCase):
             [0, "workflow:messages", None],
         )
 
+        workflow["metadata"] = {"tools": [
+            {"name": "local_echo", "kind": "local", "input_ports": [], "output_ports": []},
+            {"name": "remote_echo", "kind": "remote", "input_ports": [], "output_ports": []},
+        ]}
+        workflow["nodes"][1]["arguments"]["tool_calls"] = True
+        parsed = parse_workflow(workflow)
+        self.assertEqual(parsed[1]["data_inputs"]["available-tools-in"], [None, None, None])
+        self.assertEqual(parsed[1]["_metadata_tools"], [
+            {"name": "local_echo", "kind": "local"},
+            {"name": "remote_echo", "kind": "remote"},
+        ])
+
         workflow["input_ports"][0]["type"] = "message"
         workflow["nodes"][0]["workflowPorts"][0]["type"] = "message"
         workflow["connections"][2]["type"] = "message"
@@ -864,6 +876,16 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
 
 class WorkflowExecutionTest(unittest.TestCase):
+    def test_llm_available_tools_input_accepts_only_list_content_when_enabled(self):
+        source = {"id": "tools", "type": "construct_list", "arguments": {"item_type": "content", "initial_value_count": 0}, "dataInputPorts": []}
+        target = {"id": "llm", "type": "llm", "arguments": {"tool_calls": True}}
+        connection = {"fromId": "tools", "fromPortId": "list-out", "toId": "llm", "toPortId": "available-tools-in", "type": "list-content"}
+        nodes = {"tools": source, "llm": target}
+        self.assertTrue(is_valid_connection(connection, nodes, [], []))
+        self.assertFalse(is_valid_connection({**connection, "type": "list-message"}, nodes, [], []))
+        target["arguments"]["tool_calls"] = False
+        self.assertFalse(is_valid_connection(connection, nodes, [], []))
+
     def test_construct_map_content_and_get(self):
         workflow_map = [
             {
@@ -1005,13 +1027,84 @@ class WorkflowExecutionTest(unittest.TestCase):
             },
             {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}},
         ]
-        with patch("llm.chat_with_model", return_value=("answer", "hidden reasoning", [])) as chat:
+        fake_tools = type("ToolsModule", (), {"registered_tools": []})()
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("llm.chat_with_model", return_value=("answer", "hidden reasoning", [])) as chat:
             self.assertEqual(workflow_llm(0, workflow_map), 1)
 
         chat.assert_called_once_with(
             [{"role": "user", "content": "hello"}], "model-id", tools=[], think=False
         )
         self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "answer")
+
+    def test_llm_defaults_to_all_metadata_tools_and_dynamic_input_filters_them(self):
+        schemas = [
+            {"function": {"name": "local_echo"}},
+            {"function": {"name": "other_local"}},
+        ]
+        remote_schema = {"type": "function", "function": {"name": "remote_echo", "parameters": {}}}
+        fake_tools = type("ToolsModule", (), {"registered_tools": schemas})()
+        metadata_tools = [
+            {"name": "local_echo", "kind": "local"},
+            {"name": "other_local", "kind": "local"},
+            {"name": "remote_echo", "kind": "remote"},
+        ]
+        workflow_map = [{
+            "id": "llm", "type": "llm",
+            "arguments": {"model": "model-id", "think": False, "tool_calls": True, "tools": []},
+            "_metadata_tools": metadata_tools,
+            "successors": {"next": 1},
+            "data_inputs": {"messages-in": [None, None, [{"role": "user", "content": "hello"}]]},
+            "data_outputs": {"output": [[1, "result"]]},
+        }, {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("tool_server_client.get_remote_tool_schemas", return_value=[remote_schema]) as get_remote, \
+             patch("llm.chat_with_model", return_value=("answer", "", [])) as chat:
+            self.assertEqual(workflow_llm(0, workflow_map), 1)
+
+        get_remote.assert_called_once_with({"remote_echo"})
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}],
+            "model-id",
+            tools=[*schemas, remote_schema],
+            think=False,
+        )
+
+    def test_llm_dynamic_tools_accept_local_and_remote_metadata_tools(self):
+        local_schema = {"function": {"name": "local_echo"}}
+        remote_schema = {"type": "function", "function": {"name": "remote_echo"}}
+        fake_tools = type("ToolsModule", (), {"registered_tools": [local_schema]})()
+        workflow_map = [{
+            "id": "llm", "type": "llm", "arguments": {"model": "model-id", "tools": []},
+            "_metadata_tools": [{"name": "local_echo", "kind": "local"}, {"name": "remote_echo", "kind": "remote"}],
+            "successors": {"next": 1},
+            "data_inputs": {
+                "messages-in": [None, None, [{"role": "user", "content": "hello"}]],
+                "available-tools-in": [0, "list-out", ["remote_echo", "local_echo"]],
+            },
+        }, {"id": "next", "successors": {}, "data_inputs": {}, "data_outputs": {}}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("tool_server_client.get_remote_tool_schemas", return_value=[remote_schema]), \
+             patch("llm.chat_with_model", return_value=("answer", "", [])) as chat:
+            workflow_llm(0, workflow_map)
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}], "model-id",
+            tools=[local_schema, remote_schema], think=False,
+        )
+
+    def test_llm_rejects_tools_not_declared_in_metadata(self):
+        fake_tools = type("ToolsModule", (), {"registered_tools": [{"function": {"name": "local_echo"}}]})()
+        workflow_map = [{
+            "id": "llm", "type": "llm", "arguments": {"model": "model-id", "tools": []},
+            "_metadata_tools": [{"name": "local_echo", "kind": "local"}],
+            "data_inputs": {
+                "messages-in": [None, None, [{"role": "user", "content": "hello"}]],
+                "available-tools-in": [0, "list-out", ["remote_echo"]],
+            },
+        }, {}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), patch("llm.chat_with_model"):
+            with self.assertRaisesRegex(ValueError, "metadata.tools"):
+                workflow_llm(0, workflow_map)
 
     def test_list_append_outputs_new_list_without_mutating_input(self):
         for position, expected in (("start", ["new", "first"]), ("end", ["first", "new"])):

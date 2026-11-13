@@ -368,6 +368,7 @@ export function portsForNode(node) {
   const ports = [
     { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
     { id: 'messages-in', direction: 'input', type: 'list-message', label: 'Messages', title: 'Message 列表', multiple: false },
+    ...(node.tool_calls === true ? [{ id: 'available-tools-in', direction: 'input', type: 'list-content', label: '可用 Tools', title: '覆盖默认工具列表；名称必须来自 metadata.tools', multiple: false }] : []),
     { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
     { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },
   ];

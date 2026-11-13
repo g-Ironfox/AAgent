@@ -192,7 +192,10 @@ def data_ports_for_node(
             outputs.add("reasoning")
         if node_argument(node, "tool_calls") is True:
             outputs.add("tool_calls")
-        return {"messages-in"}, outputs
+        inputs = {"messages-in"}
+        if node_argument(node, "tool_calls") is True:
+            inputs.add("available-tools-in")
+        return inputs, outputs
     if node_type == "construct_message":
         inputs = declared_inputs | {"content-in"}
         if node_argument(node, "role_source", "fixed") == "port":
@@ -438,8 +441,10 @@ def connection_validation_error(
                 return f"deserialize_json output {from_port} requires {output_type} data"
         source_type = source_node["type"]
         target_type = target_node["type"]
-        if target_type == "llm" and connection_type != "list-message":
-            return "llm messages-in input requires list-message data"
+        if target_type == "llm":
+            expected_type = "list-message" if to_port == "messages-in" else "list-content"
+            if connection_type != expected_type:
+                return f"llm {to_port} input requires {expected_type} data"
         if target_type == "construct_message" and connection_type != "content":
             return f"construct_message {to_port} requires content data"
         if source_type == "construct_message" and connection_type != "message":

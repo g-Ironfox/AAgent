@@ -6,12 +6,40 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from tool_server_client import ToolServerError, call_remote_tool
+from tool_server_client import ToolServerError, call_remote_tool, get_remote_tool_schemas
 from workflow_contract import NODE_ARGUMENT_FIELDS_BY_TYPE, SUPPORTED_NODE_TYPES, is_valid_connection
 from workflow_nodes import workflow_json_tool, workflow_local_tool, workflow_remote_async_tool, workflow_remote_sync_tool
 from workflow_nodes import nodes_map
 from workflow_validator import WorkflowValidationError, _validate_branches_in_foreach, validate_workflow
 from workflow_parser import WORKFLOW_SCHEMA_VERSION
+
+
+class RemoteToolSchemaClientTest(unittest.TestCase):
+    def test_fetches_only_requested_remote_tools_as_openai_functions(self):
+        response = Mock()
+        response.json.return_value = {"tools": [
+            {"name": "provider.search", "description": "Search", "inputSchema": {"type": "object"}},
+            {"name": "provider.other", "description": "Other", "inputSchema": {"type": "object"}},
+        ]}
+        with patch("tool_server_client.requests.get", return_value=response) as get:
+            schemas = get_remote_tool_schemas({"provider.search"})
+
+        get.assert_called_once()
+        self.assertEqual(schemas, [{
+            "type": "function",
+            "function": {
+                "name": "provider.search",
+                "description": "Search",
+                "parameters": {"type": "object"},
+            },
+        }])
+
+    def test_missing_remote_tool_schema_fails_explicitly(self):
+        response = Mock()
+        response.json.return_value = {"tools": []}
+        with patch("tool_server_client.requests.get", return_value=response):
+            with self.assertRaisesRegex(ToolServerError, "provider.missing"):
+                get_remote_tool_schemas({"provider.missing"})
 
 
 def tool_workflow_map(node_type: str, **arguments) -> list[dict]:

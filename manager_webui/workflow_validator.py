@@ -833,6 +833,10 @@ def _validate_branches_in_foreach(
             node_id = pending.pop()
             if node_id == foreach_id or node_id in body:
                 continue
+            if len(outgoing[node_id]) > 1:
+                raise WorkflowValidationError(
+                    f"branching control flow is not allowed inside foreach: node {node_id}"
+                )
             body.add(node_id)
             for edge in outgoing[node_id]:
                 target_id = edge["toId"]
@@ -841,10 +845,6 @@ def _validate_branches_in_foreach(
                 pending.append(target_id)
 
         for node_id in body:
-            if len(outgoing[node_id]) > 1:
-                raise WorkflowValidationError(
-                    f"branching control flow is not allowed inside foreach: node {node_id}"
-                )
             external_entries = [
                 edge for edge in incoming[node_id]
                 if edge["fromId"] not in body

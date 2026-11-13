@@ -5,7 +5,9 @@ import { nodeById, state } from '../domain/serialization.js';
 export function createIntegrationInspector(context) {
   let modelConfigs = [];
   let localToolSchemas = [];
+  let remoteToolSchemas = [];
   let remoteToolReferences = [];
+  let metadataToolReferences = [];
 
   function prepare(node) {
     if (node.type === 'llm') renderModelOptions(node);
@@ -183,26 +185,28 @@ export function createIntegrationInspector(context) {
   function bindTools(node) {
     const count = context.elements.inspectorContent.querySelector('[data-tool-count]');
     const container = context.elements.inspectorContent.querySelector('.tool-options');
-    const availableNames = new Set(localToolSchemas.map((tool) => tool.name));
+    const availableNames = new Set(metadataToolReferences.map((tool) => tool.name));
     const availableTools = node.tools.filter((toolName) => availableNames.has(toolName));
     if (availableTools.length !== node.tools.length) {
       node.tools = availableTools;
       context.markChanged();
     }
-    const options = localToolSchemas.map((tool) => {
+    const options = metadataToolReferences.map((tool) => {
       const label = document.createElement('label');
       label.innerHTML = '<input type="checkbox" data-tool><span><strong></strong><small></small></span>';
       label.querySelector('input').value = tool.name;
-      label.querySelector('strong').textContent = tool.name;
+      label.querySelector('strong').textContent = `${tool.name} (${tool.kind})`;
       label.querySelector('small').textContent = tool.description || '无描述';
       return label;
     });
     if (!options.length) options.push(Object.assign(document.createElement('div'), { className: 'empty-options', textContent: '没有已注册的 Tool' }));
     container.replaceChildren(...options);
     const inputs = context.elements.inspectorContent.querySelectorAll('[data-tool]');
-    const syncCount = () => { count.textContent = `${node.tools.length} 个`; };
+    const selectedTools = () => node.tools.length ? node.tools : metadataToolReferences.map((tool) => tool.name);
+    const syncCount = () => { count.textContent = `${selectedTools().length} 个`; };
+    count.title = '未连接可用 Tools 输入端口时使用此默认列表';
     for (const input of inputs) {
-      input.checked = node.tools.includes(input.value);
+      input.checked = selectedTools().includes(input.value);
       input.addEventListener('change', () => {
         node.tools = Array.from(inputs).filter((item) => item.checked).map((item) => item.value);
         syncCount();
@@ -245,13 +249,37 @@ export function createIntegrationInspector(context) {
 
   function setLocalTools(tools) {
     localToolSchemas = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
+    refreshMetadataToolDescriptions();
     if (['llm', 'local_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
+  }
+
+  function refreshMetadataToolDescriptions() {
+    const schemas = new Map([...localToolSchemas, ...remoteToolSchemas].map((tool) => [tool.name, tool]));
+    metadataToolReferences = metadataToolReferences.map((tool) => ({
+      ...tool,
+      description: schemas.get(tool.name)?.description || '',
+    }));
+  }
+
+  function setMetadataTools(tools) {
+    metadataToolReferences = tools
+      .filter((tool) => typeof tool.name === 'string' && tool.name)
+      .map((tool) => ({ ...tool }));
+    refreshMetadataToolDescriptions();
+    if (nodeById(context.editor.editorState.selectedId)?.type === 'llm') context.renderInspector();
   }
 
   function setRemoteToolReferences(tools) {
     remoteToolReferences = tools.filter((tool) => tool.kind === 'remote' && typeof tool.name === 'string' && tool.name);
+    if (nodeById(context.editor.editorState.selectedId)?.type === 'llm') refreshMetadataToolDescriptions();
     if (['tool', 'remote_sync_tool', 'remote_async_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
   }
 
-  return { bind, prepare, setModels, setLocalTools, setRemoteToolReferences };
+  function setRemoteToolSchemas(tools) {
+    remoteToolSchemas = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
+    refreshMetadataToolDescriptions();
+    if (nodeById(context.editor.editorState.selectedId)?.type === 'llm') context.renderInspector();
+  }
+
+  return { bind, prepare, setModels, setLocalTools, setMetadataTools, setRemoteToolReferences, setRemoteToolSchemas };
 }

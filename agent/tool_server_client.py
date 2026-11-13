@@ -16,6 +16,38 @@ class ToolServerError(RuntimeError):
         self.task_id = task_id
 
 
+def get_remote_tool_schemas(tool_names: set[str]) -> list[dict[str, Any]]:
+    """Fetch selected Remote Tool definitions and convert them to OpenAI format."""
+    if not tool_names:
+        return []
+    base_url = os.getenv("TOOL_SERVER_URL", "http://tool_server:8083").rstrip("/")
+    try:
+        response = requests.get(f"{base_url}/api/tools", timeout=(3, 10))
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as error:
+        raise ToolServerError(f"remote tool schema request failed: {error}") from error
+
+    catalog = payload.get("tools", []) if isinstance(payload, dict) else []
+    schemas = []
+    for tool in catalog:
+        if not isinstance(tool, dict) or tool.get("name") not in tool_names:
+            continue
+        schemas.append({
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "parameters": tool.get("inputSchema", {"type": "object", "properties": {}}),
+            },
+        })
+    found = {schema["function"]["name"] for schema in schemas}
+    missing = sorted(tool_names - found)
+    if missing:
+        raise ToolServerError(f"remote tool schemas are unavailable: {', '.join(missing)}")
+    return schemas
+
+
 def call_remote_tool(
     tool: str,
     arguments: dict[str, Any],

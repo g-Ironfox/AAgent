@@ -120,6 +120,7 @@ function importWorkflowText(text, source = '已导入') {
   if (!loadSnapshot(workflow)) throw new Error('内容不是有效的 Workflow JSON');
   inspector.setWorkflowNodes(workflowReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
+  inspector.setMetadataTools(metadataToolReferences());
   resetUndoHistory();
   hasUnsavedChanges = true;
   elements.workflowNameDisplay.textContent = state.name;
@@ -173,9 +174,19 @@ function remoteToolReferences() {
   }));
 }
 
+function metadataToolReferences() {
+  return state.metadata.tools.map((tool) => ({
+    name: tool.name,
+    kind: tool.kind,
+    input_ports: tool.input_ports || [],
+    output_ports: tool.output_ports || [],
+  }));
+}
+
 loadSnapshot(workflowSnapshot());
 inspector.setWorkflowNodes(workflowReferences());
 inspector.setRemoteToolReferences(remoteToolReferences());
+inspector.setMetadataTools(metadataToolReferences());
 elements.workflowNameDisplay.textContent = state.name;
 resetUndoHistory();
 
@@ -197,6 +208,7 @@ document.addEventListener('keydown', (event) => {
   elements.workflowNameDisplay.textContent = state.name;
   inspector.setWorkflowNodes(workflowReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
+  inspector.setMetadataTools(metadataToolReferences());
   editor.ensureSelection();
   renderWorkflow();
 });
@@ -230,6 +242,7 @@ fetchLocalTools()
   .then((tools) => {
     localToolSchemas = tools.items.map((tool) => ({ ...tool, kind: 'local' }));
     inspector.setLocalTools(tools.items);
+    inspector.setMetadataTools(metadataToolReferences());
     document.querySelectorAll('.remote-tool-metadata-row').forEach(renderRemoteToolSuggestions);
     resourceCounts.localTools = tools.items.length;
     renderResourceState();
@@ -243,6 +256,8 @@ fetchLocalTools()
 fetchRemoteTools()
   .then((tools) => {
     remoteToolSchemas = tools.items.map((tool) => ({ ...tool, kind: 'remote' }));
+    inspector.setRemoteToolSchemas(remoteToolSchemas);
+    inspector.setMetadataTools(metadataToolReferences());
     document.querySelectorAll('.remote-tool-metadata-row').forEach((row) => renderRemoteToolSuggestions(row));
     resourceCounts.remoteTools = tools.items.length;
     renderResourceState();
@@ -679,6 +694,7 @@ elements.clearButton.addEventListener('click', () => {
   if (!resetWorkflow()) return;
   inspector.setWorkflowNodes([]);
   inspector.setRemoteToolReferences([]);
+  inspector.setMetadataTools([]);
   hasUnsavedChanges = true;
   elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();
@@ -789,6 +805,7 @@ elements.metadataForm.addEventListener('submit', (event) => {
   }
   inspector.setWorkflowNodes(workflowReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
+  inspector.setMetadataTools(metadataToolReferences());
   markChanged();
   elements.workflowNameDisplay.textContent = state.name;
   renderWorkflow();

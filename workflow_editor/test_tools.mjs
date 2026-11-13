@@ -9,6 +9,17 @@ import { applyToolDeclaration, toolFromSchema } from './static/workflow/domain/t
 import { createIntegrationInspector } from './static/workflow/inspector/integrations.js';
 
 const port = (name, type = 'content') => ({ name, type });
+
+test('LLM tool-call mode exposes a list-content available-tools input', () => {
+  const disabled = portsForNode({ id: 'llm-off', type: 'llm', tool_calls: false });
+  assert.equal(disabled.some((item) => item.id === 'available-tools-in'), false);
+  const enabled = portsForNode({ id: 'llm-on', type: 'llm', tool_calls: true });
+  const availableToolsPort = enabled.find((item) => item.id === 'available-tools-in');
+  assert.equal(availableToolsPort.direction, 'input');
+  assert.equal(availableToolsPort.type, 'list-content');
+  assert.equal(availableToolsPort.multiple, false);
+  assert.match(availableToolsPort.title, /metadata\.tools/);
+});
 function fixture(kind, mode = 'sync') {
   const outputs = [port(kind === 'local' ? 'output' : 'result')];
   const output = mode === 'async' ? 'task_id' : outputs[0].name;
@@ -192,6 +203,7 @@ test('an unbound Tool can be created and saved as an editor draft', () => {
     { id: 'tool-name', direction: 'input', type: 'content' },
     { id: 'arguments-json', direction: 'input', type: 'content' },
     { id: 'result-json', direction: 'output', type: 'content' },
+    { id: 'error-json', direction: 'output', type: 'content' },
   ]);
   assert.equal(addNode('remote_async_tool').type, 'remote_async_tool');
   assert.equal(loadSnapshot(workflowSnapshot()), true);

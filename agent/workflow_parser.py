@@ -54,6 +54,11 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
             if declaration is None:
                 raise WorkflowParseError("tool is not registered in metadata.tools")
             parsed_node["_tool_kind"] = declaration.get("kind", "remote")
+        if node.get("type") == "llm":
+            parsed_node["_metadata_tools"] = [
+                {"name": tool["name"], "kind": tool.get("kind", "remote")}
+                for tool in workflow.get("metadata", {}).get("tools", [])
+            ]
         parsed_node.pop("x", None)
         parsed_node.pop("y", None)
         if node.get("type") == "input":
