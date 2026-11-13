@@ -60,6 +60,7 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     if origin_ports and origin_ports[0]["type"] != "event":
         raise WorkflowValidationError("workflow.input_ports origin must have type event")
     remote_tools = _validate_remote_tool_metadata(workflow)
+    tools = _validate_tool_metadata(workflow)
     for reference in workflow.get("workflow_nodes", []):
         for port in reference.get("input_ports", []) + reference.get("output_ports", []):
             if port.get("type", "").startswith(("struct:", "list-struct:")):
@@ -72,6 +73,14 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     node_by_id: dict[str, dict[str, Any]] = {}
     for index, node in enumerate(nodes):
         _validate_node(node, index, structs)
+        if node["type"] == "tool":
+            declaration = tools.get(node_argument(node, "tool"))
+            if declaration is None:
+                raise WorkflowValidationError(f"nodes[{index}] tool is not registered in metadata.tools")
+            if node_argument(node, "parameters") != declaration["input_ports"] or node_argument(node, "outputs") != declaration["output_ports"]:
+                raise WorkflowValidationError(f"nodes[{index}] tool ports must match metadata.tools")
+            if declaration["kind"] == "local" and node_argument(node, "mode", "sync") != "sync":
+                raise WorkflowValidationError("local tool only supports sync mode")
         if node["type"] in {"remote_sync_tool", "remote_async_tool"}:
             declaration = remote_tools.get(node_argument(node, "tool"))
             if declaration is None:
@@ -443,6 +452,23 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             raise WorkflowValidationError(
                 "history node limit must be an integer from 1 to 1000"
             )
+    elif node_type == "tool":
+        if node_argument(node, "mode", "sync") not in {"sync", "async"}:
+            raise WorkflowValidationError("tool mode must be sync or async")
+        # Reuse remote validation for typed ports, timeouts and callbacks.
+        arguments = dict(node.get("arguments", {}))
+        mode = arguments.pop("mode", "sync")
+        callback = arguments.pop("callback", None)
+        outputs = arguments.pop("outputs", [])
+        if mode == "sync":
+            if callback is not None:
+                raise WorkflowValidationError("sync tool cannot configure callback")
+            arguments["outputs"] = outputs
+        else:
+            arguments["callback"] = callback
+            _validate_callable_workflow_ports({"output_ports": outputs}, "output_ports")
+        proxy = {**node, "type": "remote_sync_tool" if mode == "sync" else "remote_async_tool", "arguments": arguments}
+        _validate_node(proxy, index, structs)
     elif node_type == "local_tool":
         parameters = node_argument(node, "parameters", [])
         if not isinstance(parameters, list) or any(
@@ -541,6 +567,28 @@ def _validate_boundary_metadata(
         raise WorkflowValidationError(f"workflow.{field} must be a list")
     _validate_callable_workflow_ports({field: ports}, field)
     return ports
+
+
+def _validate_tool_metadata(workflow: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    declarations = workflow.get("metadata", {}).get("tools", [])
+    tools: dict[str, dict[str, Any]] = {}
+    names: set[str] = set()
+    for declaration in declarations:
+        name = declaration["name"]
+        if not name.strip() or name.strip().casefold() in names:
+            raise WorkflowValidationError(f"metadata.tools contains an empty or duplicate tool name: {name}")
+        names.add(name.strip().casefold())
+        for field in ("input_ports", "output_ports"):
+            _validate_callable_workflow_ports(declaration, field)
+            if any(port["name"] in {"control-in", "control-out"} for port in declaration[field]):
+                raise WorkflowValidationError("Tool ports cannot use reserved control port names")
+        if declaration["kind"] == "local":
+            if any(port["type"] != "content" for port in declaration["input_ports"]):
+                raise WorkflowValidationError("local tool inputs must use content")
+            if declaration["output_ports"] != [{"name": "output", "type": "content"}]:
+                raise WorkflowValidationError("local tool output must be output:content")
+        tools[name] = declaration
+    return tools
 
 
 def _validate_remote_tool_metadata(

@@ -160,19 +160,9 @@
             <div><strong>修改 Session</strong><small>完整覆盖共享状态</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <button class="library-item" type="button" data-add-node="local_tool">
-            <span class="node-symbol local_tool-symbol" aria-hidden="true">LT</span>
-            <div><strong>Local Tool</strong><small>调用 Agent 进程内工具</small></div>
-            <span class="add-symbol" aria-hidden="true">+</span>
-          </button>
-          <button class="library-item" type="button" data-add-node="remote_sync_tool">
-            <span class="node-symbol remote_sync_tool-symbol" aria-hidden="true">RS</span>
-            <div><strong>Remote Sync Tool</strong><small>等待 Tool Server 返回结果</small></div>
-            <span class="add-symbol" aria-hidden="true">+</span>
-          </button>
-          <button class="library-item" type="button" data-add-node="remote_async_tool">
-            <span class="node-symbol remote_async_tool-symbol" aria-hidden="true">RA</span>
-            <div><strong>Remote Async Tool</strong><small>发布任务并返回 Task ID</small></div>
+          <button class="library-item" type="button" data-add-node="tool">
+            <span class="node-symbol tool-symbol" aria-hidden="true">T</span>
+            <div><strong>Tool</strong><small>执行 Local / Remote Tool</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <div id="workflowNodeLibrary" class="workflow-node-library" hidden></div>
@@ -265,8 +255,8 @@
         </section>
         <section class="callable-workflow-section">
           <header>
-            <div><span class="metadata-port-mark remote-tool">RT</span><h3>Remote Tools</h3></div>
-            <button id="addRemoteToolButton" type="button" title="注册 Remote Tool" aria-label="注册 Remote Tool">+</button>
+            <div><span class="metadata-port-mark remote-tool">T</span><h3>Tools</h3></div>
+            <button id="addRemoteToolButton" type="button" title="注册 Tool" aria-label="注册 Tool">+</button>
           </header>
           <div id="remoteToolList" class="callable-workflow-list"></div>
         </section>
@@ -305,10 +295,16 @@
   <template id="remoteToolMetadataTemplate">
     <article class="callable-workflow-row remote-tool-metadata-row">
       <header>
-        <label class="remote-tool-name-field">Remote Tool 名称<input data-remote-tool-name maxlength="128" required placeholder="输入工具名称以搜索"><div data-remote-tool-suggestions class="remote-tool-suggestions" role="listbox" hidden></div></label>
+        <div class="tool-metadata-picker">
+          <fieldset class="tool-kind-switch"><legend>执行位置</legend>
+            <label><input type="radio" data-tool-kind value="local"><span>Local</span></label>
+            <label><input type="radio" data-tool-kind value="remote"><span>Remote</span></label>
+          </fieldset>
+          <label class="remote-tool-name-field">Tool<input data-remote-tool-name maxlength="128" required autocomplete="off" placeholder="Search tools"><div data-remote-tool-suggestions class="remote-tool-suggestions" role="listbox" hidden></div></label>
+        </div>
         <div class="metadata-row-actions">
-          <button type="button" data-fill-remote-tool title="从 Tool Server 填充" aria-label="从 Tool Server 填充">↻</button>
-          <button type="button" data-remove-remote-tool title="删除 Remote Tool" aria-label="删除 Remote Tool">×</button>
+          <button type="button" data-fill-remote-tool title="从工具目录填充" aria-label="从工具目录填充">↻</button>
+          <button type="button" data-remove-remote-tool title="删除 Tool" aria-label="删除 Tool">×</button>
         </div>
       </header>
       <div class="callable-contract-columns">
@@ -564,6 +560,37 @@
     <div data-interface-contract data-contract-status="按内容项顺序执行"></div>
     <section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section>
     <section class="inspector-section"><div class="section-label"><strong>内容项</strong><span>可添加多个</span></div><div data-append-items></div><button class="add-branch-button" type="button" data-add-append>+ 添加内容项</button></section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="toolInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Tool<select data-tool-reference></select></label>
+      <label>执行位置<strong data-tool-kind></strong></label>
+      <div class="form-section" data-tool-remote-options>
+        <label>执行模式<select data-tool-mode><option value="sync">同步等待</option><option value="async">异步发布</option></select></label>
+        <label>超时 (ms)<input data-tool-timeout type="number" min="1" step="1"></label>
+        <div data-tool-callback>
+      <label class="checkbox-field">
+        <input data-callback-enabled type="checkbox">
+        <span><strong>发送 Redis 回调</strong><small>任务状态变化时发布事件</small></span>
+      </label>
+      <div class="callback-options" data-callback-options hidden>
+        <label>Redis List key<input data-callback-queue maxlength="256"></label>
+        <label>事件类型<input data-callback-event-type maxlength="128"></label>
+        <fieldset class="callback-statuses">
+          <legend>触发状态</legend>
+          <label><input data-callback-status type="checkbox" value="working"><span>状态更新</span></label>
+          <label><input data-callback-status type="checkbox" value="completed"><span>完成</span></label>
+          <label><input data-callback-status type="checkbox" value="failed"><span>失败</span></label>
+        </fieldset>
+      </div>
+
+        </div>
+      </div>
+    </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 

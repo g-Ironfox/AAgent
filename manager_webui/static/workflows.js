@@ -170,7 +170,7 @@ function renderRemoteTools(references) {
   if (!references.length) {
     const empty = document.createElement('p');
     empty.className = 'metadata-port-empty';
-    empty.textContent = '无 Remote Tool 依赖';
+    empty.textContent = '无 Tool 依赖';
     elements.remoteTools.append(empty);
     return;
   }
@@ -182,9 +182,9 @@ function renderRemoteTools(references) {
     identity.className = 'workflow-dependency-identity';
     const marker = document.createElement('span');
     marker.className = 'metadata-port-mark remote-tool';
-    marker.textContent = 'RT';
+    marker.textContent = reference.kind === 'local' ? 'LT' : 'RT';
     const name = document.createElement('strong');
-    name.textContent = reference.name || '未命名 Remote Tool';
+    name.textContent = reference.name || '未命名 Tool';
     identity.append(marker, name);
     heading.append(identity);
     const contracts = document.createElement('div');
@@ -293,7 +293,7 @@ function renderConfiguration() {
   renderPortList(elements.inputPorts, workflow.input_ports || []);
   renderPortList(elements.outputPorts, workflow.output_ports || []);
   renderDependencies(workflow.workflow_nodes || []);
-  renderRemoteTools(workflow.remote_tools || []);
+  renderRemoteTools([...(workflow.metadata?.tools || []), ...(workflow.remote_tools || []).map((tool) => ({ ...tool, kind: 'remote' }))]);
   renderCanvasPreview(workflow.name);
 }
 

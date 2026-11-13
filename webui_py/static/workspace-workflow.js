@@ -43,12 +43,12 @@ export function createWorkflowPanel({ onChange, onError }) {
 
   function renderReferences(container, references, editable) {
     container.replaceChildren();
-    if (!references.length) container.append(element('p', 'metadata-port-empty', editable ? '无 Workflows 依赖' : '无 Remote Tool 依赖'));
+    if (!references.length) container.append(element('p', 'metadata-port-empty', editable ? '无 Workflows 依赖' : '无 Tool 依赖'));
     references.forEach((reference, index) => {
       const item = element('article', 'workflow-dependency-item');
       const heading = element('header');
       const identity = element('div', 'workflow-dependency-identity');
-      identity.append(element('span', 'metadata-port-mark ' + (editable ? 'workflow' : 'remote-tool'), editable ? 'WF' : 'RT'));
+      identity.append(element('span', 'metadata-port-mark ' + (editable ? 'workflow' : 'remote-tool'), editable ? 'WF' : reference.kind === 'local' ? 'LT' : 'RT'));
       const name = reference.name ?? reference.workflow_name;
       if (editable) {
         const input = element('input', 'dependency-name-input');
@@ -129,9 +129,10 @@ export function createWorkflowPanel({ onChange, onError }) {
       renderPorts(el.inputPorts, original.input_ports);
       renderPorts(el.outputPorts, original.output_ports);
       renderReferences(el.workflowDependencies, original.workflow_nodes || [], true);
-      renderReferences(el.remoteTools, original.remote_tools || [], false);
+      const tools = [...(original.metadata?.tools || []), ...(original.remote_tools || []).map((tool) => ({ ...tool, kind: 'remote' }))];
+      renderReferences(el.remoteTools, tools, false);
       el.dependencyCount.textContent = (original.workflow_nodes?.length || 0) + ' 项';
-      el.remoteToolCount.textContent = (original.remote_tools?.length || 0) + ' 项';
+      el.remoteToolCount.textContent = tools.length + ' 项';
       renderCanvas(original);
       return true;
     },

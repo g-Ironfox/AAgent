@@ -512,6 +512,20 @@ def _tool_output(result: Any) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def workflow_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    kind = node.get("_tool_kind")
+    if kind == "local":
+        if node_argument(node, "mode", "sync") != "sync":
+            raise ValueError("local tool only supports sync mode")
+        return workflow_local_tool(current_id, workflow_map)
+    if kind == "remote":
+        if node_argument(node, "mode", "sync") == "async":
+            return workflow_remote_async_tool(current_id, workflow_map)
+        return workflow_remote_sync_tool(current_id, workflow_map)
+    raise ValueError("tool kind must be resolved from metadata.tools")
+
+
 def workflow_local_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     from tools.tool import execute_tool
 
@@ -739,6 +753,7 @@ nodes_map: dict[str, NodeHandler] = {
     "foreach": workflow_foreach,
     "history": workflow_history,
     "llm": workflow_llm,
+    "tool": workflow_tool,
     "local_tool": workflow_local_tool,
     "remote_sync_tool": workflow_remote_sync_tool,
     "remote_async_tool": workflow_remote_async_tool,

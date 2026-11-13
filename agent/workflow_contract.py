@@ -36,6 +36,7 @@ SUPPORTED_NODE_TYPES = {
     "foreach",
     "history",
     "llm",
+    "tool",
     "local_tool",
     "remote_sync_tool",
     "remote_async_tool",
@@ -77,6 +78,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "foreach": {"item_type"},
     "history": {"event_types", "limit"},
     "llm": {"model", "think", "tool_calls", "tools"},
+    "tool": {"tool", "parameters", "outputs", "mode", "timeout_ms", "callback"},
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
     "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
@@ -106,7 +108,7 @@ def list_type_for_item(item_type: Any) -> str:
 
 def tool_parameter_names(node: dict[str, Any]) -> list[str]:
     parameters = node_argument(node, "parameters", [])
-    if node.get("type") in {"remote_sync_tool", "remote_async_tool"}:
+    if node.get("type") in {"remote_sync_tool", "remote_async_tool", "tool"}:
         return [parameter["name"] for parameter in parameters]
     return parameters
 
@@ -114,7 +116,7 @@ def tool_parameter_names(node: dict[str, Any]) -> list[str]:
 def tool_parameter_type(node: dict[str, Any], name: str) -> str | None:
     if node.get("type") == "local_tool":
         return "content" if name in tool_parameter_names(node) else None
-    if node.get("type") in {"remote_sync_tool", "remote_async_tool"}:
+    if node.get("type") in {"remote_sync_tool", "remote_async_tool", "tool"}:
         return next(
             (parameter["type"] for parameter in node_argument(node, "parameters", []) if parameter["name"] == name),
             None,
@@ -123,6 +125,13 @@ def tool_parameter_type(node: dict[str, Any], name: str) -> str | None:
 
 
 def tool_output_type(node: dict[str, Any], name: str) -> str | None:
+    if node.get("type") == "tool":
+        if node_argument(node, "mode", "sync") == "async" and name == "task_id":
+            return "content"
+        return next(
+            (output["type"] for output in node_argument(node, "outputs", []) if output["name"] == name),
+            None,
+        )
     if node.get("type") == "local_tool" and name == "output":
         return "content"
     if node.get("type") == "remote_sync_tool":
@@ -220,6 +229,11 @@ def data_ports_for_node(
         return declared_inputs | {"list-in"}, {"item-out"}
     if node_type == "history":
         return declared_inputs, {"events"}
+    if node_type == "tool":
+        outputs = {output["name"] for output in node_argument(node, "outputs", [])}
+        if node_argument(node, "mode", "sync") == "async":
+            outputs = {"task_id"}
+        return declared_inputs | set(tool_parameter_names(node)), outputs
     if node_type == "local_tool":
         return declared_inputs | set(tool_parameter_names(node)), {"output"}
     if node_type == "remote_sync_tool":
@@ -357,9 +371,9 @@ def connection_validation_error(
             target_port = next(port for port in target_node.get("input_ports", []) if f"workflow:{port['name']}" == to_port)
             if connection_type != target_port["type"]:
                 return f"callable workflow input {to_port} requires {target_port['type']} data"
-        if target_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_parameter_type(target_node, to_port):
+        if target_node["type"] in {"tool", "local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_parameter_type(target_node, to_port):
             return f"tool input {to_port} requires {tool_parameter_type(target_node, to_port)} data"
-        if source_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_output_type(source_node, from_port):
+        if source_node["type"] in {"tool", "local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_output_type(source_node, from_port):
             return f"tool output {from_port} requires {tool_output_type(source_node, from_port)} data"
         if target_node["type"] in {"context_create", "context_write", "session_create", "session_write"}:
             value_port = "initial-value" if target_node["type"].endswith("create") else "value-in"

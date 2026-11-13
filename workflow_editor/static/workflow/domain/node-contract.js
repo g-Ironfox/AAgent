@@ -22,6 +22,7 @@ export const NODE_TYPES = new Set([
   'foreach',
   'history',
   'llm',
+  'tool',
   'local_tool',
   'remote_sync_tool',
   'remote_async_tool',
@@ -307,6 +308,19 @@ export function portsForNode(node) {
     }
     return ports;
   }
+  if (node.type === 'tool') {
+    const isAsync = node.mode === 'async';
+    const parameterPorts = (node.parameters || []).map((parameter) => ({ id: parameter.name, direction: 'input', type: parameter.type, label: parameter.name, title: `Tool parameter: ${parameter.name}`, multiple: false }));
+    const resultPorts = isAsync
+      ? [{ id: 'task_id', direction: 'output', type: 'content', label: 'Task ID', title: 'Published task ID', multiple: true }]
+      : (node.outputs || []).map((output) => ({ id: output.name, direction: 'output', type: output.type, label: output.name, title: `Tool output: ${output.name}`, multiple: true }));
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: 'Trigger', title: 'Trigger', multiple: false },
+      ...parameterPorts,
+      { id: 'control-out', direction: 'output', type: 'control', label: 'Next', title: 'Next', multiple: false },
+      ...resultPorts,
+    ];
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     const isRemote = node.type !== 'local_tool';
     const parameterPorts = (node.parameters || []).map((parameter) => ({
@@ -419,6 +433,7 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'session_read') return { id: createWorkflowId('session-read'), type, name: `读取 Session ${number}`, value_type: 'content', ...position };
   if (type === 'session_write') return { id: createWorkflowId('session-write'), type, name: `修改 Session ${number}`, value_type: 'content', ...position };
   if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
+  if (type === 'tool') return { id: createWorkflowId('tool'), type, name: `Tool ${number}`, tool: '', parameters: [], outputs: [], mode: 'sync', timeout_ms: 10000, callback: null, ...position };
   if (type === 'local_tool') return { id: createWorkflowId('local-tool'), type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
   if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
   if (type === 'remote_async_tool') return { id: createWorkflowId('remote-async-tool'), type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };

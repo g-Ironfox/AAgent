@@ -35,6 +35,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   foreach: new Set(['item_type']),
   history: new Set(['event_types', 'limit']),
   llm: new Set(['model', 'think', 'tool_calls', 'tools']),
+  tool: new Set(['tool', 'parameters', 'outputs', 'mode', 'timeout_ms', 'callback']),
   local_tool: new Set(['tool', 'parameters']),
   remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
   remote_async_tool: new Set(['tool', 'parameters', 'timeout_ms', 'callback']),
@@ -126,13 +127,12 @@ function compactNodeArguments(node) {
 export const state = {
   name: 'workflow',
   description: '',
-  metadata: { structs: [] },
+  metadata: { structs: [], tools: [] },
   nodes: structuredClone(initialNodes),
   connections: structuredClone(initialConnections),
   input_ports: [{ name: 'origin', type: 'event' }],
   output_ports: [],
   workflow_nodes: [],
-  remote_tools: [],
 };
 
 export function nodeById(id) {
@@ -165,7 +165,6 @@ export function workflowSnapshot() {
     input_ports: state.input_ports,
     output_ports: state.output_ports,
     workflow_nodes: state.workflow_nodes,
-    remote_tools: state.remote_tools,
     nodes: state.nodes.map(compactNodeArguments),
     connections: state.connections,
   });
@@ -176,12 +175,11 @@ export function resetWorkflow() {
     schema_version: WORKFLOW_SCHEMA_VERSION,
     name: 'workflow',
     description: '',
-    metadata: { structs: [] },
+    metadata: { structs: [], tools: [] },
     input_ports: [{ name: 'origin', type: 'event' }],
     output_ports: [],
     workflow_nodes: [],
-    remote_tools: [],
-    nodes: initialNodes,
+      nodes: initialNodes,
     connections: initialConnections,
   });
 }
@@ -384,6 +382,25 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     if (typeof node.context_id !== 'string' || !node.context_id.trim()) return null;
     normalized.context_id = node.context_id;
   }
+  if (node.type === 'tool') {
+    normalized.tool = typeof node.tool === 'string' ? node.tool : '';
+    const declaration = remoteTools.get(normalized.tool);
+    if (normalized.tool && !declaration) return null;
+    if (!['sync', 'async'].includes(node.mode || 'sync')) return null;
+    normalized.mode = node.mode || 'sync';
+    normalized.parameters = structuredClone(declaration?.input_ports || node.parameters || []);
+    normalized.outputs = structuredClone(declaration?.output_ports || node.outputs || []);
+    normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : (normalized.mode === 'async' ? 600000 : 10000);
+    normalized.callback = node.callback ?? null;
+    const callback = normalized.callback;
+    if (callback !== null && (normalized.mode !== 'async' || typeof callback !== 'object' || Array.isArray(callback)
+      || Object.keys(callback).length !== 4 || callback.type !== 'redis'
+      || typeof callback.queue !== 'string' || !callback.queue || callback.queue.length > 256
+      || typeof callback.event_type !== 'string' || !callback.event_type || callback.event_type.length > 128
+      || !Array.isArray(callback.on) || !callback.on.length || callback.on.length !== new Set(callback.on).size
+      || callback.on.some((status) => !['working', 'completed', 'failed'].includes(status)))) return null;
+    if (declaration?.kind === 'local' && normalized.mode !== 'sync') return null;
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     normalized.tool = typeof node.tool === 'string' ? node.tool : '';
     if (node.type === 'local_tool') {
@@ -502,8 +519,38 @@ export function loadSnapshot(saved, metadata = null) {
     const structDefinitions = validateStructDefinitions(saved?.metadata?.structs ?? []);
     const workflowNodes = callableWorkflowMetadata(saved);
     const callableWorkflows = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
-    const remoteTools = remoteToolMetadata(saved);
+    const remoteTools = remoteToolMetadata(saved).map((tool) => ({ ...tool, kind: 'remote' }));
+    const declaredTools = saved?.metadata?.tools ?? [];
+    if (!Array.isArray(declaredTools)) return false;
+    for (const tool of declaredTools) {
+      if (!tool || !['local', 'remote'].includes(tool.kind) || typeof tool.name !== 'string' || !tool.name.trim()) return false;
+      if (remoteTools.some((existing) => existing.name.toLowerCase() === tool.name.toLowerCase())) return false;
+      for (const field of ['input_ports', 'output_ports']) {
+        if (!Array.isArray(tool[field]) || tool[field].some((port) => !port || typeof port.name !== 'string' || !port.name.trim() || ['control-in', 'control-out'].includes(port.name) || !DATA_TYPES.has(port.type))) return false;
+        if (new Set(tool[field].map((port) => port.name.toLowerCase())).size !== tool[field].length) return false;
+      }
+      if (tool.kind === 'local' && (tool.input_ports.some((port) => port.type !== 'content')
+        || tool.output_ports.length !== 1 || tool.output_ports[0].name !== 'output' || tool.output_ports[0].type !== 'content')) return false;
+      remoteTools.push(structuredClone(tool));
+    }
     const remoteToolsByName = new Map(remoteTools.map((tool) => [tool.name, tool]));
+    for (const node of savedNodes) {
+      if (node?.type !== 'local_tool' || !node.arguments?.tool) continue;
+      const name = node.arguments.tool;
+      let declaration = remoteToolsByName.get(name);
+      if (declaration && declaration.kind !== 'local') return false;
+      if (!declaration) {
+        if (remoteTools.some((tool) => tool.name.toLowerCase() === name.toLowerCase())) return false;
+        declaration = { name, kind: 'local', input_ports: [], output_ports: [{ name: 'output', type: 'content' }] };
+        remoteTools.push(declaration);
+        remoteToolsByName.set(name, declaration);
+      }
+      for (const parameter of node.arguments.parameters || []) {
+        if (typeof parameter === 'string' && parameter && !declaration.input_ports.some((port) => port.name === parameter)) {
+          declaration.input_ports.push({ name: parameter, type: 'content' });
+        }
+      }
+    }
     const ids = new Set();
     const nodes = [];
     for (const node of savedNodes) {
@@ -511,6 +558,13 @@ export function loadSnapshot(saved, metadata = null) {
       ids.add(node.id);
       const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteToolsByName, structDefinitions);
       if (!normalized) return false;
+      if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(normalized.type)) {
+        const declaration = remoteToolsByName.get(normalized.tool);
+        normalized.mode = normalized.type === 'remote_async_tool' ? 'async' : 'sync';
+        normalized.parameters = structuredClone(declaration?.input_ports || []);
+        normalized.outputs = structuredClone(declaration?.output_ports || []);
+        normalized.type = 'tool';
+      }
       nodes.push(normalized);
     }
     if (!nodes.some((node) => node.id === 'input' && node.type === 'input')) return false;
@@ -521,12 +575,11 @@ export function loadSnapshot(saved, metadata = null) {
     state.name = workflowName.trim().slice(0, 120);
     const description = metadata?.description ?? saved?.description;
     state.description = typeof description === 'string' ? description.trim().slice(0, 2000) : '';
-    state.metadata = { ...(saved?.metadata ?? {}), structs: structDefinitions };
+    state.metadata = { ...(saved?.metadata ?? {}), structs: structDefinitions, tools: remoteTools };
     setNodeStructs(nodes, state.metadata.structs);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
     state.workflow_nodes = workflowNodes;
-    state.remote_tools = remoteTools;
     state.nodes = nodes;
     state.connections = filterValidConnections(Array.isArray(saved?.connections) ? saved.connections : initialConnections, nodes);
     return true;

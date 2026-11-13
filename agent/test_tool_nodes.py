@@ -15,10 +15,11 @@ from workflow_parser import WORKFLOW_SCHEMA_VERSION
 
 
 def tool_workflow_map(node_type: str, **arguments) -> list[dict]:
-    is_remote = node_type in {"remote_sync_tool", "remote_async_tool"}
+    is_remote = node_type in {"remote_sync_tool", "remote_async_tool", "tool"}
     parameters = [{"name": "value", "type": "content"}] if is_remote else ["value"]
     output_port = (
-        "task_id" if node_type == "remote_async_tool"
+        "task_id" if node_type == "remote_async_tool" or (node_type == "tool" and arguments.get("mode") == "async")
+        else arguments.get("outputs", [{"name": "result"}])[0]["name"] if node_type == "tool"
         else "result" if node_type == "remote_sync_tool"
         else "output"
     )
@@ -69,6 +70,23 @@ def valid_workflow(node: dict) -> dict:
 
 
 class ToolNodeExecutionTest(unittest.TestCase):
+    def test_unified_local_tool_dispatches_from_metadata_kind(self):
+        workflow_map = tool_workflow_map("tool", mode="sync", outputs=[{"name": "output", "type": "content"}])
+        workflow_map[0]["_tool_kind"] = "local"
+        fake_tools = types.ModuleType("tools.tool")
+        fake_tools.execute_tool = Mock(return_value={"ok": True})
+        with patch.dict(sys.modules, {"tools.tool": fake_tools}):
+            self.assertEqual(nodes_map["tool"](0, workflow_map), 1)
+        fake_tools.execute_tool.assert_called_once_with("tool-node", "echo", {"value": "hello"})
+        self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], '{"ok": true}')
+
+    @patch("tool_server_client.call_remote_tool", return_value="remote-result")
+    def test_unified_remote_tool_dispatches_to_remote_client(self, call_tool):
+        workflow_map = tool_workflow_map("tool", mode="sync", outputs=[{"name": "result", "type": "content"}])
+        workflow_map[0]["_tool_kind"] = "remote"
+        self.assertEqual(nodes_map["tool"](0, workflow_map), 1)
+        call_tool.assert_called_once_with("echo", {"value": "hello"}, "wait", 10000, None)
+        self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "remote-result")
     def test_construct_event_is_registered_with_event_type_argument(self):
         self.assertIn("construct_event", SUPPORTED_NODE_TYPES)
         self.assertEqual(NODE_ARGUMENT_FIELDS_BY_TYPE["construct_event"], {"event_type"})
@@ -274,15 +292,27 @@ class ToolServerClientTest(unittest.TestCase):
 
 
 class ToolNodeValidationTest(unittest.TestCase):
-    def test_legacy_tool_node_is_rejected(self):
+    def test_unified_tool_requires_metadata_declaration(self):
         workflow = valid_workflow({
-            "id": "legacy-tool",
+            "id": "undeclared-tool",
             "type": "tool",
-            "arguments": {"tool": "echo", "parameters": []},
+            "arguments": {"tool": "echo", "parameters": [], "outputs": []},
         })
 
-        with self.assertRaisesRegex(WorkflowValidationError, "nodes.1.type"):
+        with self.assertRaisesRegex(WorkflowValidationError, "metadata.tools"):
             validate_workflow(workflow)
+
+    def test_validator_accepts_unified_local_tool_metadata(self):
+        node = {"id": "tool", "type": "tool", "arguments": {
+            "tool": "echo", "parameters": [{"name": "value", "type": "content"}],
+            "outputs": [{"name": "output", "type": "content"}], "mode": "sync",
+        }}
+        workflow = valid_workflow(node)
+        workflow["metadata"] = {"structs": [], "tools": [{
+            "name": "echo", "kind": "local", "input_ports": [{"name": "value", "type": "content"}],
+            "output_ports": [{"name": "output", "type": "content"}],
+        }]}
+        validate_workflow(workflow)
 
     def test_runtime_and_argument_contract_support_the_same_node_types(self):
         self.assertEqual(SUPPORTED_NODE_TYPES, set(NODE_ARGUMENT_FIELDS_BY_TYPE))

@@ -22,17 +22,17 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 | `schema_version` | 是 | string | 固定为 `2.0` |
 | `name` | 是 | string | Workflow 名称 |
 | `description` | 否 | string | Workflow 描述 |
-| `metadata` | 否 | object | Workflow 局部元数据；`structs` 缺省为空数组 |
+| `metadata` | 否 | object | Workflow 局部元数据；`structs`、`tools` 缺省为空数组 |
 | `input_ports` | 是 | port[] | Workflow 输入接口 |
 | `output_ports` | 是 | port[] | Workflow 输出接口 |
 | `nodes` | 是 | node[] | 节点列表 |
 | `connections` | 是* | connection[] | 控制流和数据连线 |
 | `workflow_nodes` | 否 | dependency[] | 子 Workflow 名称及接口快照 |
-| `remote_tools` | 否 | dependency[] | Remote Tool 名称及接口快照 |
+| `remote_tools` | 否 | dependency[] | 旧格式 Remote Tool 名称及接口快照（兼容读取） |
 
 端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
 
-规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`workflow_nodes` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。`name` 长度为 1–120；`description` 最大长度 2000。`metadata` 当前只允许 `structs` 一个属性；`metadata.structs` 缺省为空数组。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`workflow_nodes` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
+规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`workflow_nodes` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。`name` 长度为 1–120；`description` 最大长度 2000。`metadata` 允许 `structs`、`tools` 两个属性；二者缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`workflow_nodes` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
 
 对根对象的未知字段，管理端请求模型会拒绝；当前 Agent 所用 JSON Schema 没有在根层设置 `additionalProperties: false`，因此 Agent 单独进行 Schema 校验时不拒绝未知根字段。这是接收端行为差异，不改变本协议规定的根字段集合；需要严格互操作的生产者不得发送未知根字段。
 
@@ -42,7 +42,7 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 
 Struct 是 Workflow 局部类型，不是全局注册类型。标识形式为 `struct:<id>`，Struct 列表为 `list-struct:<id>`。`<id>` 必须匹配 `^[A-Za-z_][A-Za-z0-9_]*$`，并区分大小写。
 
-Struct 类型可用于 Workflow 内部数据端口、节点参数和 Context；不得用于 Workflow 输入/输出接口、`workflow_nodes` 或 `remote_tools` 的接口快照。需要跨 Workflow 或服务边界传递时，先用 `struct_to_json` 转成 `content`，接收方再用 `json_to_struct` 校验和恢复。
+Struct 类型可用于 Workflow 内部数据端口、节点参数和 Context；不得用于 Workflow 输入/输出接口、`workflow_nodes`、`metadata.tools` 或兼容字段 `remote_tools` 的接口快照。需要跨 Workflow 或服务边界传递时，先用 `struct_to_json` 转成 `content`，接收方再用 `json_to_struct` 校验和恢复。
 
 ### 3.2 声明格式
 
@@ -229,7 +229,8 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `foreach` | `item_type` | `list-in: list-<item_type>` | `item-out: <item_type>`；控制端口见第 10 节 |
 | `history` | `event_types`、`limit` | 无 | `events: list-event` |
 | `llm` | `model`、`think`、`tool_calls`、`tools` | `messages-in: list-message` | `output: content`；配置启用时有 `reasoning: content`、`tool_calls: list-content` |
-| `local_tool` | `tool`、`parameters: string[]` | 每个参数名一个 content 输入 | `output: content` |
+| `tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `mode`、`timeout_ms`、`callback` | 每个 parameters 端口 | sync：每个 outputs 端口；async：`task_id: content` |
+| `local_tool`（兼容） | `tool`、`parameters: string[]` | 每个参数名一个 content 输入 | `output: content` |
 | `remote_sync_tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `timeout_ms` | 每个 parameters 端口 | 每个 outputs 端口 |
 | `remote_async_tool` | `tool`、`parameters: port[]`、可选 `timeout_ms`、`callback` | 每个 parameters 端口 | `task_id: content` |
 | `context_create` | `value_type`、可选 `context_id` | `initial-value: value_type` | `context-id: content` |
@@ -256,6 +257,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `foreach` | `item_type` | 无 |
 | `history` | `event_types`、`limit` | 无 |
 | `llm` | 无 | `model`、`think`、`tool_calls`、`tools` |
+| `tool` | `tool`、`parameters`、`outputs` | `mode` (`sync`)、`timeout_ms`、`callback` |
 | `local_tool` | `tool` | `parameters` (空数组) |
 | `remote_sync_tool` | `tool` | `parameters` (空数组)、`outputs` (空数组)、`timeout_ms` |
 | `remote_async_tool` | `tool` | `parameters` (空数组)、`timeout_ms`、`callback` |
@@ -283,6 +285,9 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `foreach.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`。逐项输出列表元素，列表耗尽后退出循环；空列表直接退出。
 - `history.event_types` 必须为非空、不重复的 `terminal`/`response` 子集；limit 必须为 1 到 1000 的整数。
 - `llm.model` 在管理端保存及执行时必须为有效且已启用模型标识；通用静态契约校验器不保证验证模型存在。`llm.tools` 缺省为空数组并选择已注册的本地工具；`think`、`tool_calls` 布尔值控制 reasoning、tool_calls 输出端口是否存在，不表示发送给模型的推理开关。tool_calls 输出为 JSON 文本组成的 list-content。
+- 新建工具使用统一的 `tool` 节点，来源由 `metadata.tools` 中同名声明的 `kind` 决定，取值为 `local` 或 `remote`。声明恰含 `name`、`kind`、`input_ports`、`output_ports`，名称去除首尾空白并忽略大小写后全局唯一（local/remote 也不能重名）。每侧最多 50 个端口，只允许七种内建数据类型，禁止 Struct 和保留控制端口名。
+- `tool.parameters` / `tool.outputs` 必须与声明的输入/输出端口数组完全一致；`mode` 只允许 `sync`、`async`。local 仅支持 sync，输入类型均为 content，输出声明必须为 `[{"name":"output","type":"content"}]`；运行时字符串结果原样输出，其他结果 JSON 序列化。remote 复用下述远程同步/异步、超时和回调行为，sync 模式禁止非空 callback。
+- 编辑器 metadata 页合并 Local/Remote 目录，下拉选择后自动更新来源单选框和端口快照；目录不可用时保留已保存的声明。画布只新增 `tool`，旧 `local_tool`、`remote_sync_tool`、`remote_async_tool` 载入后迁移为统一节点，并把顶层 `remote_tools` 合并到 `metadata.tools`。后端仍接受旧节点格式；此版保持 schema_version 为 2.0，使用新格式的 editor、manager、agent 需一起更新。
 - `local_tool.parameters` 是无重复的非空参数名数组；工具参数和输出均为 content。
 - Remote Tool 参数必须与 `remote_tools` 中同名声明的输入端口完全一致；sync 的 outputs 必须与输出声明完全一致。工具接口不能使用保留控制端口名。timeout_ms 若省略，同步默认 10000 ms、异步默认 600000 ms；同步最大值 10000 ms、异步最大值 3600000 ms，运行时还受部署配置限制。
 - async callback 若提供，必须恰含 `type`、`queue`、`event_type`、`on`；type 固定为 `redis`，queue 长度 1–256，event_type 长度 1–128，on 为不重复且非空的 `working`/`completed`/`failed` 数组。

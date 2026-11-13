@@ -193,7 +193,8 @@ def create_workflows_router(
                 validate_workflow(values)
             except WorkflowValidationError as error:
                 return JSONResponse(status_code=400, content={"error": str(error)})
-            local_tools = [node for node in values["nodes"] if node.get("type") == "local_tool"]
+            local_names = {tool["name"] for tool in values.get("metadata", {}).get("tools", []) if tool["kind"] == "local"}
+            local_tools = [node for node in values["nodes"] if node.get("type") == "local_tool" or (node.get("type") == "tool" and node_arguments(node).get("tool") in local_names)]
             if local_tools:
                 registered = {value.decode() if isinstance(value, bytes) else value for value in redis_client.hkeys(tools_key)}
                 if any(node_arguments(node).get("tool") not in registered for node in local_tools):

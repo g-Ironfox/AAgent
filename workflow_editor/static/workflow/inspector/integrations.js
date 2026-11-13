@@ -1,3 +1,4 @@
+import { applyToolDeclaration } from '../domain/tool-contract.js';
 import { reconcileConnections } from '../domain/connection-rules.js';
 import { nodeById, state } from '../domain/serialization.js';
 
@@ -8,6 +9,7 @@ export function createIntegrationInspector(context) {
 
   function prepare(node) {
     if (node.type === 'llm') renderModelOptions(node);
+    if (node.type === 'tool') renderTool(node);
     if (node.type === 'local_tool') renderLocalToolSelect(node);
     if (['remote_sync_tool', 'remote_async_tool'].includes(node.type)) renderRemoteToolFields(node);
     if (node.type === 'workflow') context.elements.inspectorContent.querySelector('[data-workflow-name]').value = node.workflow_name;
@@ -15,7 +17,53 @@ export function createIntegrationInspector(context) {
 
   function bind(node) {
     if (node.type === 'llm') bindLlm(node);
+    if (node.type === 'tool') bindTool(node);
     if (['remote_sync_tool', 'remote_async_tool'].includes(node.type)) bindRemoteTool(node);
+  }
+
+  function renderTool(node) {
+    const mount = context.elements.inspectorContent;
+    const select = mount.querySelector('[data-tool-reference]');
+    const tools = state.metadata.tools || [];
+    select.replaceChildren(new Option('选择 metadata 中的 Tool', ''), ...tools.map((tool) => new Option(tool.name + ' (' + tool.kind + ')', tool.name)));
+    select.value = node.tool;
+    const declaration = tools.find((tool) => tool.name === node.tool);
+    mount.querySelector('[data-tool-kind]').textContent = declaration?.kind || '未选择';
+    const remote = declaration?.kind === 'remote';
+    mount.querySelector('[data-tool-remote-options]').hidden = !remote;
+    mount.querySelector('[data-tool-mode]').value = node.mode || 'sync';
+    const timeout = mount.querySelector('[data-tool-timeout]');
+    timeout.value = node.timeout_ms || (node.mode === 'async' ? 600000 : 10000);
+    timeout.max = node.mode === 'async' ? 3600000 : 10000;
+    mount.querySelector('[data-tool-callback]').hidden = !remote || node.mode !== 'async';
+    renderCallback(node);
+  }
+
+  function bindTool(node) {
+    const mount = context.elements.inspectorContent;
+    const refresh = () => {
+      reconcileConnections(state);
+      context.markChanged();
+      context.editor.renderNodes();
+      context.renderInspector();
+    };
+    mount.querySelector('[data-tool-reference]').addEventListener('change', (event) => {
+      const tool = state.metadata.tools.find((item) => item.name === event.target.value);
+      if (tool) applyToolDeclaration(node, tool);
+      else { node.tool = ''; node.parameters = []; node.outputs = []; }
+      refresh();
+    });
+    mount.querySelector('[data-tool-mode]').addEventListener('change', (event) => {
+      node.mode = event.target.value;
+      node.timeout_ms = node.mode === 'async' ? 600000 : 10000;
+      if (node.mode !== 'async') node.callback = null;
+      refresh();
+    });
+    mount.querySelector('[data-tool-timeout]').addEventListener('input', (event) => {
+      node.timeout_ms = Number(event.target.value);
+      context.markChanged();
+    });
+    bindCallback(node);
   }
 
   function renderModelOptions(node) {
@@ -89,7 +137,7 @@ export function createIntegrationInspector(context) {
   function renderCallback(node) {
     const enabled = context.elements.inspectorContent.querySelector('[data-callback-enabled]');
     const options = context.elements.inspectorContent.querySelector('[data-callback-options]');
-    const callback = node.callback;
+    const callback = node.callback ?? null;
     enabled.checked = callback !== null;
     options.hidden = callback === null;
     options.querySelector('[data-callback-queue]').value = callback?.queue || 'main_agent_queue';
@@ -210,7 +258,7 @@ export function createIntegrationInspector(context) {
 
   function setRemoteToolReferences(tools) {
     remoteToolReferences = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
-    if (['remote_sync_tool', 'remote_async_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
+    if (['tool', 'remote_sync_tool', 'remote_async_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
   }
 
   return { bind, prepare, setModels, setLocalTools, setRemoteToolReferences };

@@ -23,6 +23,7 @@ const TYPE_COLORS = {
   list_append: '#27705b',
   foreach: '#9a5a24',
   history: '#396a87',
+  tool: '#13775a',
   llm: '#356e9b',
   local_tool: '#13775a',
   remote_sync_tool: '#a94f36',
@@ -142,6 +143,11 @@ function contractPortIds(node, direction, workflow) {
   if (node.type === 'context_create') return direction === 'input' ? ['control-in', 'initial-value'] : ['control-out', 'context-id'];
   if (node.type === 'context_read') return direction === 'input' ? ['control-in', 'context-id'] : ['control-out', 'value-out'];
   if (node.type === 'context_write') return direction === 'input' ? ['control-in', 'context-id', 'value-in'] : ['control-out', 'context-id', 'value-out'];
+  if (node.type === 'tool') {
+    const parameters = (Array.isArray(args.parameters) ? args.parameters : []).map((parameter) => parameter.name);
+    if (direction === 'input') return ['control-in', ...parameters];
+    return ['control-out', ...(args.mode === 'async' ? ['task_id'] : (args.outputs || []).map((output) => output.name))];
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     const parameters = (Array.isArray(args.parameters) ? args.parameters : []).map((parameter) => (
       typeof parameter === 'string' ? parameter : parameter.name

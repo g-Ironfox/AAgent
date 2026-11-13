@@ -81,6 +81,13 @@
             },
             "additionalProperties": false
           }
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/toolDependency"
+          }
         }
       },
       "additionalProperties": false
@@ -257,7 +264,8 @@
             "struct_get",
             "struct_update",
             "struct_to_json",
-            "json_to_struct"
+            "json_to_struct",
+            "tool"
           ]
         },
         "name": {
@@ -502,6 +510,63 @@
               "arguments"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tool"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "tool",
+                  "parameters",
+                  "outputs"
+                ],
+                "properties": {
+                  "tool": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/toolPorts"
+                  },
+                  "outputs": {
+                    "$ref": "#/$defs/toolPorts"
+                  },
+                  "mode": {
+                    "enum": [
+                      "sync",
+                      "async"
+                    ]
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "callback": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
         }
       ]
     },
@@ -556,6 +621,71 @@
         }
       },
       "additionalProperties": false
+    },
+    "toolDependency": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind",
+        "input_ports",
+        "output_ports"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "remote"
+          ]
+        },
+        "input_ports": {
+          "$ref": "#/$defs/toolPorts"
+        },
+        "output_ports": {
+          "$ref": "#/$defs/toolPorts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "toolPorts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "not": {
+              "enum": [
+                "control-in",
+                "control-out"
+              ]
+            }
+          },
+          "type": {
+            "enum": [
+              "content",
+              "message",
+              "event",
+              "map-content",
+              "list-content",
+              "list-message",
+              "list-event"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
     }
   }
 }

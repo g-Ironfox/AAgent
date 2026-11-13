@@ -87,3 +87,5 @@
 .node-port[data-port-type^="struct:"] { background:var(--port-color,#3a7d68); }
 .node-port[data-port-type^="list-struct:"] { background:var(--port-color,#3a7d68); }
 .clipboard-fallback { position:fixed; left:-10000px; top:0; opacity:0; }
+
+.flow-node.tool { border-top-color:var(--green); }

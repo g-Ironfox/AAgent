@@ -47,6 +47,11 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     linked_nodes: list[dict[str, Any]] = []
     for node in nodes:
         parsed_node = normalize_node_arguments(node)
+        if node.get("type") == "tool":
+            declaration = next((tool for tool in workflow.get("metadata", {}).get("tools", []) if tool["name"] == node_argument(node, "tool")), None)
+            if declaration is None:
+                raise WorkflowParseError("tool is not registered in metadata.tools")
+            parsed_node["_tool_kind"] = declaration["kind"]
         parsed_node.pop("x", None)
         parsed_node.pop("y", None)
         if node.get("type") == "input":
