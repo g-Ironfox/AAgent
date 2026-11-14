@@ -112,11 +112,14 @@ def handle_task(e: dict):
     input_node = workflow_map[start]
     workflow_ports = input_node.get('workflowPorts', [])
     origin = e['payload'].get('origin', e)
+    workflow_inputs = {}
     for port in workflow_ports:
         value = origin if port['name'] == 'origin' else e['payload'].get(port['name'])
+        workflow_inputs[port['name']] = value
         propagate_workflow_output(
             workflow_map, input_node, port['id'], value
         )
+    input_node['_workflow_input_values'] = workflow_inputs
 
     output = run_workflow_map(workflow_map, start)
     publish_to_queue(MAIN_AGENT_QUEUE_NAME, {

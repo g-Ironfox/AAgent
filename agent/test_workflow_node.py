@@ -1171,6 +1171,46 @@ class WorkflowExecutionTest(unittest.TestCase):
 
         self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "done"})
 
+    @patch("workflow_run_repository.record_workflow_run")
+    def test_run_workflow_map_records_workflow_inputs_and_outputs(self, record_run):
+        workflow_map = [
+            {
+                "id": "input", "type": "input", "_workflow_call_stack": ["example"],
+                "workflowPorts": [{"id": "workflow:query", "name": "query"}],
+                "successors": {"next": 1}, "data_outputs": {"workflow:query": [[1, "workflow:result"]]},
+            },
+            {
+                "id": "output", "type": "output", "_workflow_call_stack": ["example"],
+                "workflowPorts": [{"id": "workflow:result", "name": "result"}],
+                "successors": {}, "data_inputs": {"workflow:result": [0, "workflow:query", "hello"]},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "hello"})
+        record = record_run.call_args.args[0]
+        self.assertEqual(record["workflow_name"], "example")
+        self.assertEqual(record["input"], {"query": "hello"})
+        self.assertEqual(record["output"], {"result": "hello"})
+        self.assertEqual(record["status"], "completed")
+        self.assertEqual([entry["node_type"] for entry in record["node_trace"]], ["input", "output"])
+        self.assertTrue(all(entry["duration_ms"] >= 0 for entry in record["node_trace"]))
+
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("workflow_nodes.time.monotonic", side_effect=[0, 181, 182])
+    def test_run_workflow_map_stops_when_execution_exceeds_timeout(
+        self, monotonic, delete_contexts
+    ):
+        workflow_map = [{"id": "slow", "type": "test", "successors": {}}]
+        with patch("workflow_nodes.nodes_map", {"test": lambda current_id, _: current_id}):
+            with self.assertRaisesRegex(
+                TimeoutError, "workflow execution exceeded 180 seconds"
+            ):
+                run_workflow_map(workflow_map, 0)
+
+        self.assertEqual(monotonic.call_count, 2)
+        delete_contexts.assert_called_once_with(set())
+
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")
     def test_run_workflow_map_cleans_created_contexts_on_success(
@@ -1263,8 +1303,10 @@ class WorkflowExecutionTest(unittest.TestCase):
     @patch("workflow_validator.validate_workflow")
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")
+    @patch("workflow_run_repository.record_workflow_run")
     def test_child_workflow_uses_and_cleans_independent_context_scope(
         self,
+        record_workflow_run,
         create_context,
         delete_contexts,
         validate_workflow,

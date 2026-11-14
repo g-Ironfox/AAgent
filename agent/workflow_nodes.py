@@ -6,6 +6,8 @@ import json
 import copy
 import logging
 import os
+import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -15,6 +17,7 @@ from workflow_contract import node_argument, tool_parameter_names
 WorkflowMap = list[dict[str, Any]]
 NodeHandler = Callable[[int, WorkflowMap], int]
 WORKFLOW_END = -1
+WORKFLOW_TIMEOUT_SECONDS = 180
 logger = logging.getLogger("aagent.workflow")
 
 
@@ -140,22 +143,92 @@ def run_workflow_map(
 
     invocation_id = uuid4().hex
     context_ids: set[str] = set()
+    started_at = time.monotonic()
+    started_at_utc = datetime.now(timezone.utc)
+    node_trace: list[dict[str, Any]] = []
     for node in workflow_map:
         node["_workflow_invocation_id"] = invocation_id
         node["_workflow_context_ids"] = context_ids
+    input_node = workflow_map[start]
+    workflow_inputs: dict[str, Any] = copy.deepcopy(input_node.get("_workflow_input_values", {}))
+    for port in input_node.get("workflowPorts", []):
+        if port["name"] in workflow_inputs:
+            continue
+        targets = input_node.get("data_outputs", {}).get(port["id"], [])
+        if not targets:
+            workflow_inputs[port["name"]] = None
+            continue
+        target_id, target_port = targets[0]
+        slot = workflow_map[target_id].get("data_inputs", {}).get(target_port)
+        workflow_inputs[port["name"]] = copy.deepcopy(slot[2]) if isinstance(slot, list) and len(slot) == 3 else None
+
+    def record_run(status: str, output: dict[str, Any], error: str | None = None) -> None:
+        call_stack = input_node.get("_workflow_call_stack", [])
+        workflow_name = call_stack[-1] if call_stack else input_node.get("_workflow_name")
+        if not workflow_name:
+            return
+        try:
+            from workflow_run_repository import record_workflow_run
+
+            record_workflow_run({
+                "run_id": invocation_id,
+                "workflow_name": workflow_name,
+                "call_stack": call_stack,
+                "started_at": started_at_utc,
+                "finished_at": datetime.now(timezone.utc),
+                "duration_ms": round((time.monotonic() - started_at) * 1000),
+                "status": status,
+                "input": workflow_inputs,
+                "output": output,
+                "node_trace": node_trace,
+                "error": error,
+            })
+        except Exception:
+            logger.exception("failed to record workflow run: %s", invocation_id)
+
     try:
         current_id = start
         result: dict[str, Any] | None = None
         while current_id != WORKFLOW_END:
+            elapsed = time.monotonic() - started_at
+            if elapsed > WORKFLOW_TIMEOUT_SECONDS:
+                raise TimeoutError(
+                    f"workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds"
+                )
             node = workflow_map[current_id]
             handler = nodes_map.get(node.get("type"))
-            if handler is None:
-                raise ValueError(f"unsupported workflow node type: {node.get('type')}")
-            current_id = handler(current_id, workflow_map)
+            node_started_at = datetime.now(timezone.utc)
+            node_started_monotonic = time.monotonic()
+            trace_entry = {
+                "index": len(node_trace) + 1,
+                "node_id": node.get("id"),
+                "node_type": node.get("type"),
+                "started_at": node_started_at,
+                "status": "completed",
+            }
+            try:
+                if handler is None:
+                    raise ValueError(f"unsupported workflow node type: {node.get('type')}")
+                current_id = handler(current_id, workflow_map)
+            except Exception as error:
+                trace_entry["status"] = "failed"
+                trace_entry["error"] = str(error)
+                raise
+            finally:
+                trace_entry["finished_at"] = datetime.now(timezone.utc)
+                trace_entry["duration_ms"] = round(
+                    (time.monotonic() - node_started_monotonic) * 1000
+                )
+                node_trace.append(trace_entry)
             node_result = node.pop("_workflow_result", None)
             if isinstance(node_result, dict):
                 result = node_result
-        return result or {}
+        result = result or {}
+        record_run("completed", result)
+        return result
+    except Exception as error:
+        record_run("failed", {}, str(error))
+        raise
     finally:
         try:
             delete_contexts(context_ids)
@@ -830,12 +903,15 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
     for child_node in child_map:
         child_node["_workflow_call_stack"] = next_call_stack
     child_input = child_map[child_input_id]
+    child_inputs: dict[str, Any] = {}
     for port in child_input.get("workflowPorts", []):
         has_value, value = read_workflow_input(
             parent_node, f"workflow:{port['name']}"
         )
+        child_inputs[port["name"]] = value if has_value else None
         if has_value:
             propagate_workflow_output(child_map, child_input, port["id"], value)
+    child_input["_workflow_input_values"] = child_inputs
 
     output = run_workflow_map(child_map, child_input_id)
     for name, value in output.items():

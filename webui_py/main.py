@@ -16,6 +16,7 @@ from event_bindings import create_event_bindings_router
 from file_store import FileStore, FileStoreUnavailableError
 from files import create_files_router
 from events import create_events_router
+from workflow_logs import create_workflow_logs_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("aagent.webui")
@@ -44,6 +45,7 @@ MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
+MONGO_WORKFLOW_LOG_COLLECTION = env("MONGO_WORKFLOW_LOG_COLLECTION", "workflow_logs")
 MONGO_EVENT_BINDING_COLLECTION = env("MONGO_EVENT_BINDING_COLLECTION", "event_bindings")
 MONGO_FILE_EVENT_COLLECTION = env("MONGO_FILE_EVENT_COLLECTION", "workspace_file_events")
 MONGO_WORKSPACE_FILE_COLLECTION = env("MONGO_WORKSPACE_FILE_COLLECTION", "workspace_files")
@@ -70,6 +72,7 @@ if os.getenv("MONGO_USER"):
 mongo_client = MongoClient(**mongo_kwargs)
 database = mongo_client[MONGO_DATABASE]
 history: Collection = database[MONGO_HISTORY_COLLECTION]
+workflow_logs: Collection = database[MONGO_WORKFLOW_LOG_COLLECTION]
 event_bindings: Collection = database[MONGO_EVENT_BINDING_COLLECTION]
 file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
 workspace_files: Collection = database[MONGO_WORKSPACE_FILE_COLLECTION]
@@ -151,6 +154,7 @@ def health():
 
 
 app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
+app.include_router(create_workflow_logs_router(workflow_logs))
 app.include_router(create_event_bindings_router(event_bindings, file_store))
 app.include_router(create_files_router(file_store))
 
@@ -165,6 +169,11 @@ def workspace_page():
 @app.get("/workspace/replay", include_in_schema=False)
 def workspace_replay_page():
     return FileResponse(static_directory / "replay.html")
+
+
+@app.get("/logs", include_in_schema=False)
+def workflow_logs_page():
+    return FileResponse(static_directory / "workflow-logs.html")
 
 
 @app.get("/workspace.html", include_in_schema=False)
