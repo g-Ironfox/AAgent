@@ -684,13 +684,16 @@ class CallableWorkflowNodeTest(unittest.TestCase):
             {"fromId": "router", "fromPortId": "route-other", "toId": "call-summary", "toPortId": "control-in", "type": "control"},
             {"fromId": "router", "fromPortId": "branch$others", "toId": "output", "toPortId": "control-in", "type": "control"},
         ])
+        fallback = {**workflow["nodes"][-1], "id": "fallback-output"}
+        workflow["nodes"].append(fallback)
+        workflow["connections"][-1]["toId"] = "fallback-output"
         validate_workflow(workflow)
         parsed = parse_workflow(workflow)
-        self.assertEqual(parsed[1]["successors"], {"branch-其它": 2, "branch$others": 3})
+        self.assertEqual(parsed[1]["successors"], {"branch-其它": 2, "branch$others": 4})
         parsed[1]["data_inputs"]["content-in"][2] = "其它"
         self.assertEqual(workflow_router(1, parsed), 2)
         parsed[1]["data_inputs"]["content-in"][2] = "unmatched"
-        self.assertEqual(workflow_router(1, parsed), 3)
+        self.assertEqual(workflow_router(1, parsed), 4)
 
     def test_router_requires_input_even_with_builtin_fallback(self):
         node = {

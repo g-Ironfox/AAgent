@@ -301,9 +301,9 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 ### 10.1 连线对象与连接基数
 
-连线对象必须含非空字符串 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`。端点节点及端口必须存在。type 为 `control` 或本规范定义的数据类型，包括当前 Workflow 的 Struct 类型。控制连线只能连接合法控制端口；数据连线类型必须同时等于源输出和目标输入端口推导类型。每个 control 输出最多一个后继；control 输入可汇合多个来源；每个数据输入最多一个来源。
+连线对象必须含非空字符串 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`。端点节点及端口必须存在。type 为 `control` 或本规范定义的数据类型，包括当前 Workflow 的 Struct 类型。控制连线只能连接合法控制端口；数据连线类型必须同时等于源输出和目标输入端口推导类型。每个 control 输出最多一个后继；控制流不允许汇合，每个 control 输入最多一个来源；Foreach 的 control-in 与 loop-in 是两个独立入口。每个数据输入最多一个来源。
 
-Input 的 control-out、普通执行节点的 control-in/control-out、Output 的 control-in 必须连接。Router 的每个分支输出必须连接。Foreach 的 control-in、loop-in、loop-out、control-out 必须连接。允许控制流有向环，由 Workflow 自身提供退出条件。数据输入可以不连；运行时读取必要值而无值时失败。运行时 `None` 视为未提供。
+Input 的 control-out、普通执行节点的 control-in/control-out、Output 的 control-in 必须连接。Router 的每个分支输出必须连接。Foreach 的 control-in、loop-in、loop-out、control-out 必须连接。控制流必须从唯一 Input 构成可达的树；只允许 Foreach 循环体返回所属 Foreach 的 loop-in 形成回边，不允许其他环、分支汇合或共享节点（包括共用 Output）。数据输入可以不连；运行时读取必要值而无值时失败。运行时 `None` 视为未提供。
 
 ### 10.2 Router
 
@@ -317,7 +317,13 @@ Input 的 control-out、普通执行节点的 control-in/control-out、Output �
 
 Foreach 每轮从 list-in 取一个值，经 loop-out 控制端口进入循环体；循环体以 loop-in 回到 Foreach。所有元素处理完后走 control-out；空数组直接走 control-out。list-in 类型必须是 arguments.item_type 对应的 list 类型。
 
-Agent 的通用结构校验不证明节点从 Input 可达，也不保证其运行前置数据生产者已执行。每个 Workflow invocation 中，端口槽位的值在被覆盖前可能保留；生产者未运行时不得把槽位是否存在误认为当前轮次已成功生成值。Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据触发事件/调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子 Workflow 快照过期或递归调用均使执行失败。
+Agent 和管理端在基本端口、类型及连接基数校验后执行静态生命周期校验；编辑器的“编译生命周期”使用相同的作用域规则。所有节点必须从 Input 可达，分支不得汇合；除 Foreach 循环体到所属 loop-in 的回边外，控制图不得有环。Foreach 循环体内禁止多控制出口节点及 Router（包括只有兜底出口的 Router），循环体必须返回所属 Foreach，不得直接以 Output 结束。
+
+生命周期按父子路径划分：工作流拥有根空间；Router 的每个控制出口各创建一个子空间；Foreach 的 loop-out 创建循环体子空间，control-out 延续父空间；JSON Tool 的成功与错误控制出口分别创建子空间。普通节点继承控制路径上的空间。Router 的数据输入和 Foreach 的 list-in 属于边界节点所在的父空间；Foreach 的 item-out 属于循环体空间。JSON Tool 的 result-json 属于成功分支，error-json 属于错误分支，工具名及参数输入属于父空间。
+
+数据边的源空间必须等于目标空间或为其祖先；兄弟分支、不同循环体之间，以及子空间向父空间的数据连线均非法。Foreach 的 item-out 直接连接到循环外也非法。循环结果须通过 Context 显式写入并在外层读取；Context 节点的普通输出仍按节点空间校验，不能用 Context 写入节点的输出绕过循环边界。生命周期标签仅作为静态校验及编辑器预览状态，不写入 Workflow JSON。生命周期校验不额外证明同一空间内部的生产者执行顺序，也不改变运行时槽位的存储方式。
+
+Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据触发事件/调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子 Workflow 快照过期或递归调用均使执行失败。
 
 子 Workflow 在当前调用栈内执行，并使用自身 Input/Output 边界。Workflow 节点接口快照必须等于实际 Workflow 接口。调用链出现重复 Workflow 名称时拒绝递归。Struct 不能跨子 Workflow 接口传递，须显式 JSON 转换。
 

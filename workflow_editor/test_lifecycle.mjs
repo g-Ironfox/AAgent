@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { compileLifecycles, lifecycleFingerprint } from './static/workflow/domain/lifecycle.js';
 import { createLifecyclePreview } from './static/workflow/domain/lifecycle-preview.js';
 
@@ -288,4 +290,38 @@ test('lifecycle HTML labels remain intact UTF-8', async () => {
   const preview = html.match(/<section id="lifecyclePanel"[\s\S]*?<\/section>/)?.[0];
   assert.ok(preview);
   assert.doesNotMatch(preview, /\?{2,}|\uFFFD/);
+});
+
+// Exercise the same protocol documents against all three lifecycle validators.
+test('editor preview and both backend validators agree on lifecycle fixtures', () => {
+  const script = `import json, sys
+sys.path.insert(0, sys.argv[1])
+from test_workflow_lifecycles import test_cases
+from workflow_validator import WorkflowValidationError, validate_workflow
+results = []
+for case in test_cases():
+    try:
+        validate_workflow(case['workflow'])
+        accepted = True
+    except WorkflowValidationError:
+        accepted = False
+    results.append({**case, 'accepted': accepted})
+print(json.dumps(results))
+`;
+  const results = [];
+  for (const backend of ['agent', 'manager_webui']) {
+    const child = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
+      cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', timeout: 30000,
+    });
+    assert.ifError(child.error);
+    assert.equal(child.status, 0, `${backend}: ${child.stderr}`);
+    const cases = JSON.parse(child.stdout);
+    for (const entry of cases) {
+      const preview = compileLifecycles(entry.workflow);
+      assert.equal(entry.accepted, !entry.error, `${backend}: ${entry.name}`);
+      assert.equal(preview.errors.length === 0, entry.accepted, `${backend} vs editor: ${entry.name}`);
+    }
+    results.push(cases);
+  }
+  assert.deepEqual(results[0], results[1]);
 });

@@ -219,6 +219,112 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
                 f"control ports must be connected: node {node_id}, ports {', '.join(missing)}"
             )
 
+    _validate_lifecycles(node_by_id, connections)
+
+
+def _validate_lifecycles(
+    nodes_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
+) -> None:
+    """Check a control tree and visibility of values across branch/loop scopes.
+
+    Scope paths are static compiler state only. Parents may supply descendants;
+    a child or sibling may not supply its parent/sibling. Context operations are
+    ordinary nodes: explicitly stored values cross boundaries via a later read.
+    """
+    Scope = tuple[tuple[str, str], ...]
+    outgoing: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    for edge in connections:
+        if edge["type"] == "control":
+            outgoing[edge["fromId"]].append(edge)
+
+    node_scopes: dict[str, Scope] = {}
+    output_scopes: dict[tuple[str, str], Scope] = {}
+    active: set[str] = set()
+    returned_loops: set[str] = set()
+    input_id = next(node_id for node_id, node in nodes_by_id.items() if node["type"] == "input")
+    # Explicit DFS stack keeps maximum-sized trees independent of recursion limits.
+    pending: list[tuple[str, Scope, str | None, bool]] = [(input_id, (), None, False)]
+    while pending:
+        node_id, scope, loop_id, exiting = pending.pop()
+        if exiting:
+            active.remove(node_id)
+            continue
+        if node_id in active:
+            raise WorkflowValidationError(
+                f"control-flow cycle is not a foreach loop-in return: node {node_id}"
+            )
+        if node_id in node_scopes:
+            raise WorkflowValidationError(
+                f"control-flow merge is not allowed: node {node_id} has multiple entries"
+            )
+        node = nodes_by_id[node_id]
+        node_type = node["type"]
+        _, control_outputs = control_ports_for_node(node)
+        if loop_id and (node_type == "router" or len(control_outputs) > 1):
+            raise WorkflowValidationError(
+                f"branching control flow is not allowed inside foreach: node {node_id}"
+            )
+        if loop_id and node_type == "output":
+            raise WorkflowValidationError(
+                f"foreach body must return to loop-in instead of output: node {node_id}"
+            )
+        node_scopes[node_id] = scope
+        active.add(node_id)
+        pending.append((node_id, scope, loop_id, True))
+
+        child_scopes = {}
+        for port in control_outputs:
+            child_scope = scope
+            if node_type == "foreach" and port == "loop-out":
+                child_scope = (*scope, (node_id, port))
+                output_scopes[(node_id, "item-out")] = child_scope
+            elif node_type != "foreach" and (node_type == "router" or len(control_outputs) > 1):
+                child_scope = (*scope, (node_id, port))
+                if node_type == "json_tool":
+                    data_port = "error-json" if port == "error-out" else "result-json"
+                    output_scopes[(node_id, data_port)] = child_scope
+            child_scopes[port] = child_scope
+
+        for edge in reversed(outgoing[node_id]):
+            port = edge["fromPortId"]
+            child_scope = child_scopes[port]
+            child_loop = node_id if node_type == "foreach" and port == "loop-out" else loop_id
+            target_id = edge["toId"]
+            if nodes_by_id[target_id]["type"] == "foreach" and edge["toPortId"] == "loop-in":
+                if child_loop != target_id:
+                    raise WorkflowValidationError(
+                        f"foreach loop-in must return from its own body: node {target_id}, source {node_id}"
+                    )
+                returned_loops.add(target_id)
+            else:
+                pending.append((target_id, child_scope, child_loop, False))
+
+    unreachable = sorted(set(nodes_by_id) - set(node_scopes))
+    if unreachable:
+        raise WorkflowValidationError(
+            f"control-flow nodes are unreachable from input: {', '.join(unreachable)}"
+        )
+    for node_id, node in nodes_by_id.items():
+        if node["type"] == "foreach" and node_id not in returned_loops:
+            raise WorkflowValidationError(f"foreach body has no loop-in return: node {node_id}")
+
+    def describe(scope: Scope) -> str:
+        return "root" + "".join(f" / {owner}:{port}" for owner, port in scope)
+
+    for index, edge in enumerate(connections):
+        if edge["type"] == "control":
+            continue
+        source = output_scopes.get((edge["fromId"], edge["fromPortId"]), node_scopes[edge["fromId"]])
+        target = node_scopes[edge["toId"]]
+        if target[:len(source)] != source:
+            raise WorkflowValidationError(
+                f"connections[{index}] crosses lifecycle boundary: "
+                f"{edge['fromId']}.{edge['fromPortId']} [{describe(source)}] -> "
+                f"{edge['toId']}.{edge['toPortId']} [{describe(target)}]; "
+                "data source must belong to the same or an ancestor lifecycle"
+            )
+
+
 def _validate_workflow_schema(workflow: dict[str, Any]) -> None:
     schema_errors = sorted(
         _WORKFLOW_SCHEMA_VALIDATOR.iter_errors(workflow),
