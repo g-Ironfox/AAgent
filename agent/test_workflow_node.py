@@ -1175,7 +1175,7 @@ class WorkflowExecutionTest(unittest.TestCase):
     def test_run_workflow_map_records_workflow_inputs_and_outputs(self, record_run):
         workflow_map = [
             {
-                "id": "input", "type": "input", "_workflow_call_stack": ["example"],
+                "id": "input", "name": "用户输入", "type": "input", "_workflow_call_stack": ["example"],
                 "workflowPorts": [{"id": "workflow:query", "name": "query"}],
                 "successors": {"next": 1}, "data_outputs": {"workflow:query": [[1, "workflow:result"]]},
             },
@@ -1194,6 +1194,9 @@ class WorkflowExecutionTest(unittest.TestCase):
         self.assertEqual(record["output"], {"result": "hello"})
         self.assertEqual(record["status"], "completed")
         self.assertEqual([entry["node_type"] for entry in record["node_trace"]], ["input", "output"])
+        self.assertEqual(record["node_trace"][0]["node_name"], "用户输入")
+        self.assertEqual(record["node_trace"][0]["node_id"], "input")
+        self.assertIsNone(record["node_trace"][1]["node_name"])
         self.assertTrue(all(entry["duration_ms"] >= 0 for entry in record["node_trace"]))
 
     @patch("workflow_context_repository.delete_contexts")

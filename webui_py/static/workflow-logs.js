@@ -11,15 +11,44 @@ const elements = {
 };
 let records = [];
 let loading = false;
+const expandedRuns = new Set();
+const recordViews = new Map();
 function render() {
   const query = elements.search.value.trim().toLocaleLowerCase();
   const status = elements.status.value;
   const visible = records.filter((item) => (status === 'all' || item.status === status) && (!query || JSON.stringify(item).toLocaleLowerCase().includes(query)));
-  elements.list.replaceChildren(...visible.map(renderRecord));
+  const views = visible.map((item) => {
+    const runId = item.id || item.run_id;
+    const content = JSON.stringify(item);
+    let view = recordViews.get(runId);
+    if (!view || view.content !== content) {
+      view = { content, element: renderRecord(item) };
+      recordViews.set(runId, view);
+    }
+    return view.element;
+  });
+  const visibleViews = new Set(views);
+  for (const child of Array.from(elements.list.children)) {
+    if (!visibleViews.has(child)) child.remove();
+  }
+  let cursor = elements.list.firstElementChild;
+  for (const view of views) {
+    if (view !== cursor) elements.list.insertBefore(view, cursor);
+    cursor = view.nextElementSibling;
+  }
+  const runIds = new Set(records.map((item) => item.id || item.run_id));
+  for (const runId of recordViews.keys()) {
+    if (!runIds.has(runId)) {
+      recordViews.delete(runId);
+      expandedRuns.delete(runId);
+    }
+  }
   elements.empty.hidden = visible.length !== 0;
   elements.count.textContent = visible.length + ' / ' + records.length + ' 次运行';
 }
 function renderRecord(item) {
+  const runId = item.id || item.run_id;
+  const expanded = expandedRuns.has(runId);
   const article = document.createElement('article');
   article.className = 'run-record' + (item.status === 'failed' ? ' is-failed' : '');
   const summary = document.createElement('button'); summary.className = 'run-summary'; summary.type = 'button'; summary.setAttribute('aria-expanded', 'false');
@@ -30,10 +59,19 @@ function renderRecord(item) {
   const chevron = document.createElement('span'); chevron.className = 'run-chevron'; chevron.setAttribute('aria-hidden', 'true');
   summary.append(workflow, badge, time, duration, chevron);
   const details = document.createElement('div'); details.className = 'run-details'; details.hidden = true;
+  details.hidden = !expanded;
+  summary.setAttribute('aria-expanded', String(expanded));
+  article.classList.toggle('is-open', expanded);
   details.append(jsonPanel('输入', item.input), jsonPanel('输出', item.output));
   if (item.node_trace?.length) details.append(tracePanel(item.node_trace));
   if (item.error) details.append(jsonPanel('错误', item.error));
-  summary.addEventListener('click', () => { details.hidden = !details.hidden; summary.setAttribute('aria-expanded', String(!details.hidden)); article.classList.toggle('is-open', !details.hidden); });
+  summary.addEventListener('click', () => {
+    details.hidden = !details.hidden;
+    if (details.hidden) expandedRuns.delete(runId);
+    else expandedRuns.add(runId);
+    summary.setAttribute('aria-expanded', String(!details.hidden));
+    article.classList.toggle('is-open', !details.hidden);
+  });
   article.append(summary, details); return article;
 }
 function tracePanel(trace) {
@@ -44,9 +82,15 @@ function tracePanel(trace) {
     const row = document.createElement('li'); row.className = 'trace-row' + (entry.status === 'failed' ? ' trace-failed' : '');
     const sequence = document.createElement('span'); sequence.className = 'trace-index'; sequence.textContent = String(entry.index);
     const identity = document.createElement('span'); identity.className = 'trace-identity';
-    const nodeId = document.createElement('strong'); nodeId.textContent = entry.node_id || '(no id)';
+    const label = document.createElement('span'); label.className = 'trace-label';
+    const nodeName = document.createElement('strong'); nodeName.textContent = entry.node_name || entry.node_id || '(no id)'; nodeName.title = nodeName.textContent;
+    label.append(nodeName);
+    if (entry.node_name && entry.node_id) {
+      const nodeId = document.createElement('span'); nodeId.className = 'trace-node-id'; nodeId.textContent = entry.node_id; nodeId.title = 'ID: ' + entry.node_id;
+      label.append(nodeId);
+    }
     const nodeType = document.createElement('small'); nodeType.textContent = entry.node_type || 'unknown';
-    identity.append(nodeId, nodeType);
+    identity.append(label, nodeType);
     const nodeStatus = document.createElement('span'); nodeStatus.className = 'trace-status';
     nodeStatus.textContent = entry.status === 'failed' ? '失败' : '完成';
     const duration = document.createElement('time'); duration.className = 'trace-duration'; duration.textContent = formatDuration(entry.duration_ms);

@@ -31,6 +31,8 @@
 .trace-row:nth-child(even) { background:#f8faf8; }
 .trace-index,.trace-duration { color:var(--muted); font:10px Consolas,monospace; }
 .trace-identity { min-width:0; display:flex; align-items:center; gap:8px; }
+.trace-label { min-width:0; max-width:100%; display:inline-flex; align-items:baseline; gap:6px; }
+.trace-node-id { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font:10px Consolas,monospace; }
 .trace-identity strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:600 11px Consolas,monospace; }
 .trace-identity small { padding:3px 5px; color:#365a4c; background:#e5eee9; font-size:9px; }
 .trace-status { color:var(--green); font-size:9px; }

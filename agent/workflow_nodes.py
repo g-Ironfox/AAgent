@@ -202,6 +202,7 @@ def run_workflow_map(
             trace_entry = {
                 "index": len(node_trace) + 1,
                 "node_id": node.get("id"),
+                "node_name": node.get("name"),
                 "node_type": node.get("type"),
                 "started_at": node_started_at,
                 "status": "completed",
