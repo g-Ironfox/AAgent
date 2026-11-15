@@ -153,9 +153,9 @@ Struct 节点都是普通控制流节点：每个节点有 `control-in` 和 `con
 | `context_read` | `context_id_source` 为 `port` 时使用 `context-id`：`content`；为 `fixed` 时无 ID 输入 | `value-out`：`value_type` |
 | `context_write` | `context_id_source` 为 `port` 时使用 `context-id`：`content`；另有 `value-in`：`value_type` | `context-id`：`content`、`value-out`：`value_type` |
 
-`context_create.context_id` 省略时生成 ID；若显式提供，必须是非空白字符串且该 ID 在 Context 存储中尚不存在。空字符串不是规范化 Workflow 中的生成 ID 表示，Schema 会拒绝它。读写节点的 `context_id_source` 为 `port` 或 `fixed`；固定来源必须给出非空 `context_id`。读写时 Context ID、当前 invocation 和声明类型必须匹配，否则操作失败。写入值在存储前递归验证，读取值在返回前再次验证；读写会刷新存储 TTL。
+`context_create.context_id` 省略时生成 ID；若显式提供，必须是非空白字符串且该 ID 在 Context 存储中尚不存在。空字符串不是规范化 Workflow 中的生成 ID 表示，Schema 会拒绝它。读写节点的 `context_id_source` 为 `port` 或 `fixed`；固定来源必须给出非空 `context_id`。读写时 Context ID 必须存在，所属 invocation 必须为当前调用或其祖先调用，且声明类型必须匹配，否则操作失败。写入值在存储前递归验证，读取值在返回前再次验证；读写会刷新存储 TTL。
 
-Context 按 Workflow invocation 隔离，不能被其他 invocation 读取或写入。子 Workflow 调用有独立 invocation，不能使用父 Workflow 的 Context。值以 JSON 序列化存储，默认 TTL 为 86400 秒，单个序列化值默认最大 1048576 字节；部署可分别通过 `WORKFLOW_CONTEXT_TTL_SECONDS` 和 `WORKFLOW_CONTEXT_MAX_VALUE_BYTES` 调整。每次执行创建的 Context 会在该 Workflow 执行结束（成功或失败）时尝试清理；清理失败会记日志，TTL 是兜底。Context ID 是不透明字符串。
+每次 Workflow 执行拥有独立 invocation。子 Workflow 可以通过 Context ID 读取、写入或弹出父 Workflow 及更上层祖先调用创建的 Context；嵌套子调用会继承完整祖先链。Context ID 可以通过 `content` 接口传入，也可使用已知的固定 ID。其他独立执行、兄弟调用或已返回的子调用不在访问范围内；父 Workflow 不能反向访问子调用的 Context。值以 JSON 序列化存储，默认 TTL 为 86400 秒，单个序列化值默认最大 1048576 字节；部署可分别通过 `WORKFLOW_CONTEXT_TTL_SECONDS` 和 `WORKFLOW_CONTEXT_MAX_VALUE_BYTES` 调整。每次执行仅在自身结束（成功或失败）时尝试清理自己创建的 Context，子调用结束不会清理祖先 Context；清理失败会记日志，TTL 是兜底。Context ID 是不透明字符串。访问 Struct Context 时，子 Workflow 仍须声明相同 ID 且兼容的 Struct 类型；祖先的 Struct 声明不会自动导入。
 
 Session 与 Context 不同：Session 仅支持七种内建值类型，ID 格式为 `ses_` 加 32 位小写十六进制字符，值存入 MongoDB 且不按 Workflow invocation 自动清理；单值序列化 UTF-8 大小上限默认 1048576 字节，可由 `WORKFLOW_SESSION_MAX_VALUE_BYTES` 配置。Session 读写要求 ID 存在且声明类型精确匹配，写入替换完整值；不得用于 Struct。
 
@@ -328,13 +328,13 @@ Agent 和管理端在基本端口、类型及连接基数校验后执行静态�
 
 Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据触发事件/调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子 Workflow 快照过期或递归调用均使执行失败。
 
-子 Workflow 在当前调用栈内执行，并使用自身 Input/Output 边界。Workflow 节点接口快照必须等于实际 Workflow 接口。调用链出现重复 Workflow 名称时拒绝递归。Struct 不能跨子 Workflow 接口传递，须显式 JSON 转换。
+子 Workflow 在当前调用栈内执行，并使用自身 Input/Output 边界，同时继承祖先调用的 Context 访问范围。Workflow 节点接口快照必须等于实际 Workflow 接口。调用链出现重复 Workflow 名称时拒绝递归。Struct 不能跨子 Workflow 接口传递，须显式 JSON 转换。
 
 `construct_event` 产生的 Event 以及 `publish_event` 接受的 Event 遵循 Event 1.1：JSON 对象含 `version` 字符串 `1.1`、非空字符串 `event_type` 和 object `payload`。作为 Struct 字段值或 Context 值递归校验的 `event` 还必须含非空字符串 `event_type` 和 `payload` 属性，但不额外要求 `version`。Event 节点之间按对象传值；只有显式 JSON 转换节点或规定的 payload 文本端口执行序列化/反序列化。`publish_event` 将事件发布到主 Agent 队列，由独立消费者调度，不在当前 Workflow 调用栈内递归启动。
 
 ### 10.4 While Pop
 
-`while_pop` 使用 Foreach 的 `control-in`、`loop-in`、`loop-out`、`control-out` 控制端口。数据输入为 Context ID（`context-id`，类型 `content`）；必须配置该 Context 的列表类型 `arguments.value_type`。`context_id_source` 缺省为 `port`，此时必须连接 `context-id`；也可设置为 `fixed`，提供非空白 `context_id` 并省去 ID 输入端口。Context 必须属于当前 invocation，且存储类型与声明类型完全匹配。
+`while_pop` 使用 Foreach 的 `control-in`、`loop-in`、`loop-out`、`control-out` 控制端口。数据输入为 Context ID（`context-id`，类型 `content`）；必须配置该 Context 的列表类型 `arguments.value_type`。`context_id_source` 缺省为 `port`，此时必须连接 `context-id`；也可设置为 `fixed`，提供非空白 `context_id` 并省去 ID 输入端口。Context 必须属于当前 invocation 或其祖先调用，且存储类型与声明类型完全匹配。
 
 每次触发（包括循环体返回 `loop-in`）都读取 Context 的最新列表，从 `position` 指定的一端弹出一项，原子保存剩余列表，再通过 `item-out` 传出该项并走 `loop-out`。`position` 缺省为 `end`，可设置为 `start`。列表为空时直接走 `control-out`，不执行循环体；空字符串等合法元素仍会执行一轮。弹出操作刷新 Context TTL，并在并发修改冲突时重新读取、重试。Context 不存在、类型不符或存储值无效时执行失败。
 

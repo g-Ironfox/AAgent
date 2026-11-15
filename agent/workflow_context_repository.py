@@ -145,16 +145,24 @@ def create_context(
     return context_id
 
 
-def read_context(context_id: Any, invocation_id: str, value_type: str, struct_definitions: dict[str, Any] | None = None) -> Any:
+def read_context(
+    context_id: Any,
+    invocation_id: str,
+    value_type: str,
+    struct_definitions: dict[str, Any] | None = None,
+    *,
+    ancestor_invocation_ids: tuple[str, ...] = (),
+) -> Any:
     context_id = _validate_context_id(context_id)
     key = _key(context_id)
     client = get_connection()
+    allowed_invocation_ids = {invocation_id, *ancestor_invocation_ids}
     while True:
         try:
             with client.pipeline() as pipeline:
                 pipeline.watch(key)
                 stored = pipeline.hgetall(key)
-                if not stored or stored.get("invocation_id") != invocation_id:
+                if not stored or stored.get("invocation_id") not in allowed_invocation_ids:
                     raise WorkflowContextError("Workflow Context 不存在")
                 if stored.get("value_type") != value_type:
                     raise WorkflowContextError("Workflow Context 类型不匹配")
@@ -180,17 +188,20 @@ def write_context(
     value_type: str,
     value: Any,
     struct_definitions: dict[str, Any] | None = None,
+    *,
+    ancestor_invocation_ids: tuple[str, ...] = (),
 ) -> None:
     context_id = _validate_context_id(context_id)
     serialized = _serialize(value_type, value, struct_definitions)
     key = _key(context_id)
     client = get_connection()
+    allowed_invocation_ids = {invocation_id, *ancestor_invocation_ids}
     while True:
         try:
             with client.pipeline() as pipeline:
                 pipeline.watch(key)
                 stored = pipeline.hgetall(key)
-                if not stored or stored.get("invocation_id") != invocation_id:
+                if not stored or stored.get("invocation_id") not in allowed_invocation_ids:
                     raise WorkflowContextError("Workflow Context 不存在")
                 if stored.get("value_type") != value_type:
                     raise WorkflowContextError("Workflow Context 类型不匹配")
@@ -217,6 +228,8 @@ def pop_context(
     value_type: str,
     position: str = "end",
     struct_definitions: dict[str, Any] | None = None,
+    *,
+    ancestor_invocation_ids: tuple[str, ...] = (),
 ) -> tuple[bool, Any]:
     """Atomically remove one list item; an empty list returns (False, None)."""
     context_id = _validate_context_id(context_id)
@@ -226,12 +239,13 @@ def pop_context(
         raise WorkflowContextError("while_pop position must be 'start' or 'end'")
     key = _key(context_id)
     client = get_connection()
+    allowed_invocation_ids = {invocation_id, *ancestor_invocation_ids}
     while True:
         try:
             with client.pipeline() as pipeline:
                 pipeline.watch(key)
                 stored = pipeline.hgetall(key)
-                if not stored or stored.get("invocation_id") != invocation_id:
+                if not stored or stored.get("invocation_id") not in allowed_invocation_ids:
                     raise WorkflowContextError("Workflow Context 不存在")
                 if stored.get("value_type") != value_type:
                     raise WorkflowContextError("Workflow Context 类型不匹配")

@@ -7,6 +7,7 @@ from workflow_context_repository import (
     create_context,
     delete_contexts,
     read_context,
+    pop_context,
     write_context,
 )
 
@@ -124,6 +125,55 @@ class WorkflowContextRepositoryTest(unittest.TestCase):
         self.assertEqual(json.loads(mapping["value"]), "after")
         pipeline.expire.assert_called_once_with("workflow-context:ctx-one", 120)
         pipeline.execute.assert_called_once_with()
+
+    @patch("workflow_context_repository.get_connection")
+    def test_access_is_limited_to_current_invocation_and_ancestors(self, get_connection):
+        for operation in ("read", "write", "pop"):
+            for owner in ("current", "parent", "root", "sibling", "descendant", "unrelated"):
+                with self.subTest(operation=operation, owner=owner):
+                    pipeline = MagicMock()
+                    pipeline.__enter__.return_value = pipeline
+                    pipeline.hgetall.return_value = {
+                        "value_type": "list-content", "value": '["first","last"]', "invocation_id": owner,
+                    }
+                    get_connection.return_value.pipeline.return_value = pipeline
+                    kwargs = {"ancestor_invocation_ids": ("root", "parent")}
+                    def run():
+                        if operation == "read":
+                            return read_context("ctx-one", "current", "list-content", **kwargs)
+                        if operation == "write":
+                            return write_context("ctx-one", "current", "list-content", ["new"], **kwargs)
+                        return pop_context("ctx-one", "current", "list-content", **kwargs)
+                    if owner in {"current", "parent", "root"}:
+                        value = run()
+                        if operation == "read":
+                            self.assertEqual(value, ["first", "last"])
+                        elif operation == "pop":
+                            self.assertEqual(value, (True, "last"))
+                        if operation != "read":
+                            self.assertNotIn("invocation_id", pipeline.hset.call_args.kwargs["mapping"])
+                        pipeline.execute.assert_called_once()
+                    else:
+                        with self.assertRaisesRegex(WorkflowContextError, "Workflow Context 不存在"):
+                            run()
+                        pipeline.multi.assert_not_called()
+
+    @patch("workflow_context_repository.get_connection")
+    def test_ancestor_access_still_requires_matching_type(self, get_connection):
+        pipeline = MagicMock()
+        pipeline.__enter__.return_value = pipeline
+        pipeline.hgetall.return_value = {
+            "value_type": "list-message", "value": '[]', "invocation_id": "parent",
+        }
+        get_connection.return_value.pipeline.return_value = pipeline
+        for operation in (
+            lambda: read_context("ctx-one", "child", "list-content", ancestor_invocation_ids=("parent",)),
+            lambda: write_context("ctx-one", "child", "list-content", [], ancestor_invocation_ids=("parent",)),
+            lambda: pop_context("ctx-one", "child", "list-content", ancestor_invocation_ids=("parent",)),
+        ):
+            with self.assertRaisesRegex(WorkflowContextError, "Workflow Context 类型不匹配"):
+                operation()
+        pipeline.multi.assert_not_called()
 
     @patch("workflow_context_repository.get_connection")
     def test_delete_contexts_removes_all_registered_keys(self, get_connection):

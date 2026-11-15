@@ -138,6 +138,8 @@ def next_successor(node: dict[str, Any], key: str = "next") -> int:
 def run_workflow_map(
     workflow_map: WorkflowMap,
     start: int,
+    *,
+    ancestor_invocation_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     from workflow_context_repository import WorkflowContextError, delete_contexts
 
@@ -148,6 +150,7 @@ def run_workflow_map(
     node_trace: list[dict[str, Any]] = []
     for node in workflow_map:
         node["_workflow_invocation_id"] = invocation_id
+        node["_workflow_ancestor_invocation_ids"] = ancestor_invocation_ids
         node["_workflow_context_ids"] = context_ids
     input_node = workflow_map[start]
     workflow_inputs: dict[str, Any] = copy.deepcopy(input_node.get("_workflow_input_values", {}))
@@ -237,6 +240,7 @@ def run_workflow_map(
             logger.exception("failed to clean up Workflow Contexts")
         for node in workflow_map:
             node.pop("_workflow_invocation_id", None)
+            node.pop("_workflow_ancestor_invocation_ids", None)
             node.pop("_workflow_context_ids", None)
 
 
@@ -599,6 +603,7 @@ def workflow_while_pop(current_id: int, workflow_map: WorkflowMap) -> int:
         node_argument(node, "value_type"),
         node_argument(node, "position", "end"),
         _struct_defs(node),
+        ancestor_invocation_ids=node.get("_workflow_ancestor_invocation_ids", ()),
     )
     if not has_item:
         return next_successor(node)
@@ -830,7 +835,11 @@ def workflow_context_read(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     context_id = node_argument(node, "context_id") if node_argument(node, "context_id_source", "port") == "fixed" else _context_input(node, "context-id", "Context ID 输入无效")
     value = read_context(
-        context_id, node["_workflow_invocation_id"], node_argument(node, "value_type"), _struct_defs(node)
+        context_id,
+        node["_workflow_invocation_id"],
+        node_argument(node, "value_type"),
+        _struct_defs(node),
+        ancestor_invocation_ids=node.get("_workflow_ancestor_invocation_ids", ()),
     )
     propagate_workflow_output(workflow_map, node, "value-out", value)
     return next_successor(node)
@@ -848,6 +857,7 @@ def workflow_context_write(current_id: int, workflow_map: WorkflowMap) -> int:
         node_argument(node, "value_type"),
         value,
         _struct_defs(node),
+        ancestor_invocation_ids=node.get("_workflow_ancestor_invocation_ids", ()),
     )
     propagate_workflow_output(workflow_map, node, "context-id", context_id)
     propagate_workflow_output(workflow_map, node, "value-out", value)
@@ -932,7 +942,14 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
             propagate_workflow_output(child_map, child_input, port["id"], value)
     child_input["_workflow_input_values"] = child_inputs
 
-    output = run_workflow_map(child_map, child_input_id)
+    output = run_workflow_map(
+        child_map,
+        child_input_id,
+        ancestor_invocation_ids=(
+            *parent_node.get("_workflow_ancestor_invocation_ids", ()),
+            parent_node["_workflow_invocation_id"],
+        ),
+    )
     for name, value in output.items():
         propagate_workflow_output(
             workflow_map, parent_node, f"workflow:{name}", value

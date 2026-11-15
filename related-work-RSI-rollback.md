@@ -8,7 +8,7 @@
 
 ## ✦ 三个核心结论（如果只看一段）
 
-1. **你必须处理的不是 RIR 那类"单轨迹反思"，而是四篇正面撞车的工作**：`Exo`（受保护机制层保留执行历史 + 治理策略激活，几乎是你 §5 的机制描述）、`Anti-Persistence`（已提出 "separating experience accumulation from abstraction persistence"，即你的双层分离原则）、`EvoUndo`（可恢复性约束自演化）、`ChronoMem`（记忆的语义版本控制 + 回滚，且以"反事实"为回滚成功判据）。
+1. **你必须处理的不是 RIR 那类"单轨迹反思"，而是三篇正面撞车的工作**：`Exo`（受保护机制层保留执行历史 + 治理策略激活，几乎是你 §5 的机制描述）、`Anti-Persistence`（已提出 "separating experience accumulation from abstraction persistence"，即你的双层分离原则）、`ChronoMem`（记忆的语义版本控制 + 回滚，且以"反事实"为回滚成功判据）。另有一篇必须引用做动机：`Can Coding Agents Sustain Continual Evolution without Forgetting?`（SWE-Bench 94%→32%）。**`EvoUndo` 已排除**：它的问题是 revert 本身做不到（apply 时信息已被销毁），而你的前提恰恰是 revert 免费且完整，不共享问题。
 2. **你的核心新意必须从"双层分离"迁移到"回滚算子的作用域语义"**：`scope(revert) ∩ scope(evidence) = ∅`。双层分离已是公共财产，作用域语义才没人形式化。而且 `ChronoMem` 的"反事实回滚"给了你一个**极强的对照**：同一个回滚算子，对世界事实是对的，对自我事实就是 bug——这一条足以撑起全文洞察。
 3. **你有两个免费的实证背书，务必用**：`Can Coding Agents Sustain Continual Evolution without Forgetting?` 实测 harness 跨任务演化导致 SWE-Bench 94.0% → 32.0%（你的 F1）；`Masked Erosion` 证明任何以任务成功率为判据的门都会被侵蚀（你的 Sidecar 必须降级为可用性触发器，信任上移到 substrate）。
 
@@ -78,7 +78,7 @@
 **建议的 Related Work 句：**
 > Exo keeps a protected mechanism layer that preserves execution history and gates policy activation during runtime harness self-improvement, but its objective is cost reduction rather than auditability, and it does not define the scope of a revert operator: protection is over *what may be edited*, not over *what must survive an undo*.
 
-### 1.2 EvoUndo: Recoverability-Constrained Self-Evolution for LLM Agent Harnesses
+### 1.2 EvoUndo —— 排除（不同场景、不同问题，不收录）
 
 - Sah, Sah, Jain, Sah. arXiv:2608.28363 (v2, 2026-09-16).
 - https://arxiv.org/abs/2608.28363
@@ -86,18 +86,23 @@
 **摘要（原文）：**
 > LLM agents increasingly modify their own prompts, tools, middleware, resources, and execution harnesses at runtime. Such self-evolution can improve capability, but a successful mutation may leave persistent effects that cannot be safely reversed in states different from the one in which it was created. We introduce EvoUndo, a framework for representing, synthesizing, diagnosing, and independently verifying recoverability of model-generated self-modifications across counterfactual states. Across 600 unseen one-shot self-evolution tasks, we identify 197 capability-improving mutations that fail recoverability verification. Under the original recovery representation, conventional repair strategies recover 0/197 of these natural failures. Deterministic oracle analysis recovers 48/197 under the original recovery language L0, while the extended recovery calculus increases empirical oracle recovery to 191/197. A protocol-locked 2x2 grounding-by-expressivity intervention then separates two bottlenecks: exact state-address grounding increases successful recovery from 0/48 to 38/48 (79.2%) when the original language is sufficient, while extending the recovery language enables recovery on 142/143 (99.3%) failures in the oracle-defined S1 stratum. On the primary gpt-oss-120b backbone, adding exact-address diagnostics to the richer language reduces recovery to 133/143 (93.0%); a Qwen3.8-27B replication preserves the grounding and expressivity effects but not this negative interaction, indicating that the latter is model-dependent. These results indicate that reliable agent self-evolution requires co-designing verification, state grounding, witness semantics, and recovery-language expressivity rather than relying on iterative prompting alone.
 
-**它解决什么问题：** 自修改的**不可逆性**。`w` 被改动后会在"不同于它被创建时的状态"里留下无法安全撤销的持久影响；EvoUndo 提出恢复语言的表达力 + 精确状态寻址 + 独立验证，来判定"这次改动还能不能撤"。
+**它实际做了什么（据正文 §1、§2.1–2.5、§3.1–3.5，非仅摘要）：**
+- 状态：`H = (s, Π)`，其中 `s` 明确包含 "configuration, prompt templates, routing, tool registries, middleware sequences, event-listener bindings, **sandboxed files, and managed resources**"。
+- 失效机制：forward mutation 会 "overwrite configuration values, reorder middleware chains, shadow existing tools, create temporary files, or leak background resources"，因此 `m(s)` **本身不足以重建 `s`** —— 信息在 apply 的那一刻就被销毁了。
+- 解法：apply 时捕获 **witness** `w(s)`（pre-state 值 + existence flags）与 **allocation receipt** `R_m(s)`（符号资源键 → 动态句柄），再合成 recovery program `u`；`m` 被锁死（`m_repaired ≡ m_0`），只允许修 `(w, u, C_e)`。
+- 评价：**counterfactual recoverability**（在状态分布 `Q` 上）、typed observational equivalence、effect contract、`E(m,s) ⊆ C_e` 的独立审计。
+- 性质：这是一个**准入（admission）**机制——不可恢复的 mutation 干脆不许进入。
 
-**与你的关系：** 它和你是**同一个问题的两半**，且是绝佳的互补引用：
-- 它解决"**能不能撤**"（recoverability of a mutation，事前验证）；
-- 你解决"**撤了之后学什么**"（epistemic semantics of a revert，事后学习）。
+**排除理由（已读正文 §1–§3）：** 它的失败发生在 **apply 时刻**——mutation 破坏了重建自身所需的信息（覆盖配置值、重排 middleware 链、遮蔽已有工具、无法序列化的 socket 句柄），所以必须抓 witness、合成 recovery program，并把"不可恢复"的 mutation **直接拒绝准入**。
 
-这是你 Related Work 最有说服力的一句话对比，也是你论文价值最容易被 reviewer 接受的位置：**recoverability ≠ learnability**。一个 mutation 可以完全可恢复，而 agent 依然什么都没学到——因为回滚把证据抹平了。
+你的场景里 **revert 是完整且免费的**：状态面是声明式的（workflow 文本 + 经验文本），任务静态，快照恢复在定义上就完备——**不存在"撤回不了"的问题**。准入这个动作在你的设定里既无必要也无可能（无 ground truth，无法预判修改好坏）。
 
-**注意：** 它明确把"recoverability"当成安全前置条件（pre-conditioned safety），你的 Table 1 原稿写的 "Avoided (by rejection)" 基本正确，但要补上：**它的成功恰恰暴露了你的问题**——197 个"capability-improving 但不可恢复"的 mutation 表明，撤销本身是 agent 自我改进的主要瓶颈，而不是边角情况。
+两者不共享问题，不收录。
 
-**建议的 Related Work 句：**
-> EvoUndo asks whether a mutation *can* be reversed, and shows that most capability-improving mutations fail recoverability verification. We ask the complementary question: given that a mutation is reversed, what does the agent learn from it? Recoverability is a precondition for safety, not for learning.
+**唯一值得保留的一句（放 §6，不放 §2）：**
+> Our state surface is declarative and fully snapshot-revertible; making revert possible is not part of the problem. This is what makes the amnesia question reachable at all — because rolling back is free, nothing draws attention to what the rollback takes away.
+
+这句话把"免费的回滚"从**前提**变成**论点的一部分**：正因为 rollback 在你这里不构成困难，才没人去检查它带走了什么。
 
 ### 1.3 AgentGit: A Version Control Framework for Reliable and Scalable LLM-Powered Multi-Agent Systems
 
@@ -329,7 +334,7 @@
 | AgentGit | workflow / agent state | commit-level `revert`, `branch` | working tree at checkpoint; failed commit not in context | **evidence outside scope** → amnesia |
 | ChronoMem | long-term memory (world facts) | semantic, whole-memory snapshot rollback | state as if later updates never happened | evidence ⊂ scope **by design** → correct for facts, amnesia for self-facts |
 | Darwin Gödel Machine | own codebase | none (archive never pruned) | entire archive incl. failures | evidence ⊃ scope (no undo, no forgetting) |
-| EvoUndo | prompts/tools/harness | verified recovery program | recovered state; failure only if recorded in recovery witness | scope = recoverability, not learning |
+| EvoUndo | 排除：不同问题（revert 本身不是它的难点正是我们的前提），见 §1.2 | — | — | — |
 | Dependency-Guided | memory store | fine-grained, provenance-typed | unaffected state retained, affected replayed | **partial scope** → higher recurrence (26.6%) |
 | Exo | harness policy + code | activation governance (no explicit undo) | execution history preserved by protected layer | protects mechanism, not evidence |
 | **Ours** | `w`, `e` (interpretation layer) | **holistic, to `s_{t-k}`, `L` untouched** | **entire `L_t`, incl. failed `Δ` and its rationale** | **scope ∩ evidence = ∅ (C1–C3)** |
@@ -351,6 +356,7 @@
 
 ## 7. 待核实 / 未完成
 
+- [x] **EvoUndo —— 已排除，不收录。** 读正文后确认：它的难点是 **revert 本身做不到**（apply 时信息已被销毁、live socket 无法序列化），解法是事前准入。你的前提是 **revert 免费且完整**（声明式状态、静态任务、快照即可），"撤回不了"在你的设定里不存在。两者不共享问题，Related Work 不引。此前"同一问题的两半""reductio"两种说法均已作废。唯一可留的一句在 §1.2 末尾，放 §6。
 - [x] **"rollback amnesia" 术语检索（初步结论）**：在 arXiv / 检索范围内**未发现**同行评议文献使用该术语于同一含义。唯一命中是一个 GitHub release 附件 `system-design-patterns.pdf` 中的一句 "The characteristic failure is rollback amnesia"（非同行评议，且无法确认是否同义）。另有 "Strategic Amnesia in LLM Agents playing the Iterated Prisoner's Dilemma"（CEUR-WS），其 "amnesia" 指**策略性地遗忘历史以改变博弈行为**，与你的含义无关，但建议在脚注中一并排除，防止 reviewer 拿它说你用词重复。
   → **建议**：在 abstract 首次出现处下定义 + 加脚注 "We introduce this term; it is distinct from strategic amnesia, which denotes deliberate forgetting of interaction history." 这会同时完成"造词"和"防御"。
 - [x] **"Can Coding Agents Sustain Continual Evolution without Forgetting?"** (arXiv:2611.03219) 已读，见 §2.5。结论：**必须引，且是最强动机引用**；但同时是竞争威胁，需明确"诊断 vs 机制"的分工。
@@ -380,12 +386,7 @@ defining a post-exposure protocol under which a successful rollback is one where
 agent answers \emph{as if future updates had never occurred}. That criterion is exactly
 right for world-facts and exactly wrong for self-facts: an agent that behaves as if a
 failed self-modification never occurred is an agent that will propose it again.
-EvoUndo~\citep{sah2026evoundo} attacks the complementary half of the problem, showing
-that most capability-improving self-modifications fail independent recoverability
-verification across counterfactual states, and co-designing a recovery language with
-exact state grounding to make undo possible at all. Recoverability, however, is a
-precondition for safety rather than for learning: a mutation may be perfectly
-reversible and still teach the agent nothing. Exo~\citep{krentsel2026exo} collapses the
+Exo~\citep{krentsel2026exo} collapses the
 optimization loop into task execution and protects a minimal mechanism layer that
 preserves execution history and governs policy activation while the harness evolves
 through inspectable code changes. It is the closest architectural relative of our
@@ -437,8 +438,8 @@ availability trigger and place the trust property in a layer no gate can erode.
 
 \paragraph{Position.}
 Prior systems either keep everything and never undo (Reflexion, ExpeL, DGM), or undo
-and lose the evidence (checkpoint-based runtimes), or make undo verifiable without
-asking what is learned afterwards (EvoUndo). None specifies the \emph{scope} of the
+and lose the evidence (checkpoint-based runtimes and version-control layers such as
+AgentGit and ChronoMem). None specifies the \emph{scope} of the
 revert operator relative to the scope of learning evidence. Our claim is that this
 scope relation, not the rollback mechanism, is what makes self-evolution trustworthy.
 ```
@@ -466,13 +467,6 @@ scope relation, not the rollback mechanism, is what makes self-evolution trustwo
   title   = {ChronoMem: Version Control and Semantic Rollback for Large Language Model Agent Memory},
   author  = {Su, Yongye and Xu, Wujiang and Zuo, Chaoji and Bertino, Elisa},
   journal = {arXiv preprint arXiv:2607.27773},
-  year    = {2026}
-}
-
-@article{sah2026evoundo,
-  title   = {EvoUndo: Recoverability-Constrained Self-Evolution for {LLM} Agent Harnesses},
-  author  = {Sah, Tanmay and Sah, Dolly and Jain, Harshul and Sah, Tanya},
-  journal = {arXiv preprint arXiv:2608.28363},
   year    = {2026}
 }
 
@@ -560,4 +554,104 @@ scope relation, not the rollback mechanism, is what makes self-evolution trustwo
   year    = {2023}
 }
 ```
+
+---
+
+## 10. 失败模式的最终分类：四种，但必须是 2×2 而不是并列四项
+
+### 10.1 结论
+
+是四种，编号按你的顺序（把失忆当压轴是对的）：
+
+| # | 模式 | 违反 | 在哪一层坏 | 可否被信号发现 |
+|---|---|---|---|---|
+| F1 | Availability Drift（可用性漂移） | C2 | 状态：不可用 | 可以（超时/异常/耗尽） |
+| F2 | Anecdotal Overfitting（局部过拟合） | C3 | 状态：可用但更差 | **不可以** |
+| F3 | **Compression Drift**（证据衰减） | **C4** | 读取：证据还在但变模糊 | **不可以** |
+| F4 | Rollback Amnesia（回滚失忆） | C1 | 读取：证据被删除 | **不可以** |
+
+关键：**F1/F2 与 F3/F4 不是一个维度上的四项，而是两个正交轴上的 2×2。**
+
+```
+                 证据完整 ─────────────── 证据损坏
+                 （下一轮学到对教训）      （下一轮学到错教训）
+   s 可用且更好 ── 成功 ────────────────── F3 压缩漂移（衰减）
+   s 可用但更差 ── F2 局部过拟合 ───────── F4 回滚失忆（抹除）
+   s 不可用   ── F1 可用性漂移 ────────── （三者可叠加）
+```
+
+更清楚的表述：
+
+- **功能轴**（`s_{t+1}` 能不能用）：不可用 → F1；可用但更差 → F2；
+- **认知轴**（`Iter` 有没有拿到真实证据）：被**衰减** → F3；被**抹除** → F4。
+
+两轴独立，所以四格穷尽，**不存在第五种**——这正是审稿人会问的"为什么是四个不是五个"，而 2×2 直接答掉。
+
+### 10.2 为什么必须写成 2×2（三个理由）
+
+1. **穷尽性可证**：每一轴只有"好/坏"两种取值，2×2 覆盖全部失败格。并列四项则无法回答"你是否漏了一个"。
+2. **每条约束对且只对一个模式**：C2→F1、C3→F2、C4→F3、C1→F4。一一对应，你原稿里 F3 "violates C1 or C3" 的补丁自动消失（那个 "or" 正是 F3/F4 未被分开的痕迹）。
+3. **它产出了全文最锋利的一句**：
+
+> **F3 是唯一一个在 C1、C2、C3 全部满足时仍然发生的失败模式。**
+
+因为 C1 只要求字节不删（摘要没删任何字节）、C2 只要求能回滚（回滚是成功的）、C3 只要求 `Iter(L_t, s_t)` 的**形式**上以 `L_t` 为条件（而 `Iter` 内部读的是 `g(L_t)`）。一个完美的分层摘要系统**完全满足 C1–C3，却依然学不到教训**。这一句就是 C4 存在的证明，也顺手挡掉"你的三条约束是不是已经够了"这一必问。
+
+**但 C4 必须拆成两半，否则你会犯自己指控的错**（用一条只约束了 A 的规则声称消除了 B）：
+
+| | 内容 | 能否强制 | 挡住什么 |
+|---|---|---|---|
+| **C4a 纯函数性** | `v_t = g(L_t)`，**禁止** `v_t = g(v_{t-1}, …)` | **能**（一行断言即可） | 只挡住**递归摘要漂移**（摘要的摘要，教训单调退化至语义归零） |
+| **C4b 保真度** | `g` 不得系统性遮蔽失败证据 | **不能** | 挡住**衰减**本身 → 转为公开问题（§6） |
+
+所以措辞要精确：**C4a 消除漂移，C4b 约束衰减；前者是工程不变量，后者是 honest open problem。** F3 违反的是 C4b。这样写有两个好处：一是不会过度承诺（"我们的 C4 保证了教训不被压缩"是假的），二是把一个限制变成了"已消除一半、另一半已命名并可测"的清晰边界——这比含糊承认风险强得多。
+
+### 10.3 一处必须修正的因果表述
+
+**不要写"通过回滚解决前三个问题，导致失忆"。** 不准确：回滚是 F1 的正解，但对 F2/F3 它只是**兜底**（F2 的正解是全历史条件化，F3 的正解是视图纯函数性）。
+
+改成：
+
+> Rollback is the universal **fallback** for any modification-induced harm (F1–F3); it is the last line of defense, and it is precisely the line that introduces F4. F4 is therefore an **iatrogenic** failure — a pathology caused by the treatment.
+
+"医源性"这个词值得直接用（`iatrogenic`），它把"解药成为新病"这件事一次讲透，也让 F4 与 F1–F3 的**类别差异**（病的病 vs 病本身）变得正当，而不是逻辑上的不整齐。
+
+### 10.4 顺带的好处：F3/F4 的"衰减 vs 抹除"能重构你的 Related Work
+
+这条二分恰好把整个领域切成两半，比现在按"应用场景"分组有力得多：
+
+- **抹除型（erasure）**：AgentGit（revert 后工作区不含失败）、ChronoMem（反事实回滚＝按设计抹除）、组件级回滚（Dependency-Guided）。
+- **衰减型（attenuation）**：Reflexion（口头反思是 lossy 抽象）、ExpeL（insight 是有损抽取）、Anti-Persistence（它诊断的正是抽象衰减，解法是"不存抽象"）。
+- 你的位置：**同时防住两者**——C1 挡抹除，C4 挡衰减；而 Anti-Persistence 用"放弃抽象"来挡衰减，代价是上下文与能力。
+
+这给 §2 一个非常干净的收束句：*the field has treated evidence loss as erasure and answered it with retention; attenuation survives retention, and no prior substrate constrains it.*
+
+### 10.5 可粘贴的 Failure Modes 段落（替换你 §3 现在那四行）
+
+```latex
+\paragraph{Failure modes.}
+We organize the failure space along two orthogonal axes. The \emph{functional} axis
+asks whether the modified interpretation state is usable: a modification may render the
+system unusable (\textbf{F1}, availability drift), or leave it usable but worse
+(\textbf{F2}, anecdotal overfitting). The \emph{epistemic} axis asks whether the
+iterator receives true evidence about the modification: the evidence may be
+\emph{attenuated} while every byte remains (\textbf{F3}, compression drift), or
+\emph{erased} (\textbf{F4}, rollback amnesia). Because the axes are independent the
+four cells are exhaustive, and each mode violates exactly one constraint
+(C2, C3, C4, C1 respectively). Rollback is the universal fallback for F1--F3 and is
+precisely what introduces F4, making F4 an \emph{iatrogenic} failure of the treatment
+rather than a property of the disease. Only F1 is detectable from execution signals;
+F2 and F3 are silent, and F3 is the only mode that occurs while C1, C2 and C3 all hold
+--- since C3 constrains the iterator's \emph{interface} to $\mathcal{L}_t$, not the
+fidelity of the view $g(\mathcal{L}_t)$ it actually consumes. This is why C4 is not
+redundant.
+```
+
+### 10.6 一处命名建议
+
+你把 F3 叫作"经验总结中的信息压缩与漂移"，范围偏窄。你的 `g` 不只压缩经验，还压缩**整条日志**（含工作流、执行轨迹）。建议改名为 **Compression Drift（证据衰减）**，正文里用一句限定："we use *compression* for any lossy map from $\mathcal{L}_t$ to a view, including experience summarization." 否则 reviewer 会问"为什么只谈经验总结"。
+
+### 10.7 如果要改编号，只需动三处
+
+若采纳 F4=失忆的编号，需替换：① §3 的 failure list；② §4.2 小标题 "(Addressing F3)" → "(Addressing F4)"；③ §1 贡献 1 里 "Rollback Amnesia … (violates C1)" 的编号引用。其余正文用的是名字不是编号，不受影响。
 
