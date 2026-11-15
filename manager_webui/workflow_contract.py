@@ -34,6 +34,7 @@ SUPPORTED_NODE_TYPES = {
     "construct_list",
     "list_append",
     "foreach",
+    "while_pop",
     "history",
     "llm",
     "tool",
@@ -77,6 +78,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
+    "while_pop": {"value_type", "position", "context_id_source", "context_id"},
     "history": {"event_types", "limit"},
     "llm": {"model", "think", "tool_calls", "tools"},
     "tool": {"tool", "parameters", "outputs", "mode", "timeout_ms", "callback"},
@@ -234,6 +236,9 @@ def data_ports_for_node(
         return declared_inputs | {"list-in", "item-in"}, {"list-out"}
     if node_type == "foreach":
         return declared_inputs | {"list-in"}, {"item-out"}
+    if node_type == "while_pop":
+        id_inputs = {"context-id"} if node_argument(node, "context_id_source", "port") == "port" else set()
+        return id_inputs, {"item-out"}
     if node_type == "history":
         return declared_inputs, {"events"}
     if node_type == "tool":
@@ -296,6 +301,9 @@ def data_type_for_port(
         return node_argument(node, "item_type") if port_id == "item-in" else None
     if kind == "foreach":
         return f"list-{node_argument(node, 'item_type')}" if port_id == "list-in" else (node_argument(node, "item_type") if port_id == "item-out" else None)
+    if kind == "while_pop":
+        if port_id == "context-id": return "content"
+        if port_id == "item-out": return value_type.removeprefix("list-")
     if kind in {"context_create", "context_read", "context_write"}:
         if port_id in {"initial-value", "value-in", "value-out"}: return value_type
         if port_id == "context-id": return "content"
@@ -314,7 +322,7 @@ def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
         } | {"branch$others"}
     if node_type == "json_tool":
         return {"control-in"}, {"control-out", "error-out"}
-    if node_type == "foreach":
+    if node_type in {"foreach", "while_pop"}:
         return {"control-in", "loop-in"}, {"control-out", "loop-out"}
     return {"control-in"}, {"control-out"}
 

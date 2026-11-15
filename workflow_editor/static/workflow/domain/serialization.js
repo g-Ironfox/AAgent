@@ -33,6 +33,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),
+  while_pop: new Set(['value_type', 'position', 'context_id_source', 'context_id']),
   history: new Set(['event_types', 'limit']),
   llm: new Set(['model', 'think', 'tool_calls', 'tools']),
   tool: new Set(['tool', 'parameters', 'outputs', 'mode', 'timeout_ms', 'callback']),
@@ -372,13 +373,20 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     if (!normalized.event_types.length) return null;
     normalized.limit = Number.isInteger(node.limit) ? Math.min(1000, Math.max(1, node.limit)) : 10;
   }
+  if (node.type === 'while_pop') {
+    if (!['list-content', 'list-message', 'list-event'].includes(node.value_type)
+      && !(/^list-struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
+        && (structs || []).some((item) => item.id === node.value_type.slice('list-struct:'.length)))) return null;
+    normalized.value_type = node.value_type;
+    normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
+  }
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) {
     if (!['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(node.value_type)
       && !((node.type.startsWith('context_')) && /^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.replace(/^list-/, '').slice('struct:'.length)))) return null;
     normalized.value_type = node.value_type;
   }
-  if (node.type === 'context_read' || node.type === 'context_write') {
+  if (['context_read', 'context_write', 'while_pop'].includes(node.type)) {
     normalized.context_id_source = node.context_id_source === 'fixed' ? 'fixed' : 'port';
     if (normalized.context_id_source === 'fixed') {
       if (typeof node.context_id !== 'string' || !node.context_id.trim()) return null;

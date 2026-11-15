@@ -82,7 +82,7 @@ export function createLifecyclePreview(elements, workflow) {
       if (port.dataset.portDirection === 'output') {
         portScope = result.outputScopes.get(node.id)?.[port.dataset.portId]
           || children.find((child) => child.portId === port.dataset.portId)?.id || scope.id;
-      } else if (node.type === 'foreach' && port.dataset.portId === 'loop-in') {
+      } else if (['foreach', 'while_pop'].includes(node.type) && port.dataset.portId === 'loop-in') {
         portScope = children.find((child) => child.kind === 'loop')?.id || scope.id;
       }
       port.dataset.lifecycleId = portScope;

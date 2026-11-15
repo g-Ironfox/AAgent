@@ -209,7 +209,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 ### 9.3 内建节点参数、数据端口和语义
 
-除表中标明的控制端口外，普通执行节点均有 `control-in`、`control-out`。Input 仅有 `control-out`；Output 仅有 `control-in`。Router 和 Foreach 的特殊控制端口见第 10 节。
+除表中标明的控制端口外，普通执行节点均有 `control-in`、`control-out`。Input 仅有 `control-out`；Output 仅有 `control-in`。Router、Foreach 和 While Pop 的特殊控制端口见第 10 节。
 
 | 节点类型 | arguments 字段 | 数据输入 | 数据输出 |
 | --- | --- | --- | --- |
@@ -227,6 +227,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `construct_list` | `item_type`、`initial_value_count` | `<item_type>-in-0` 至 `<item_type>-in-(count-1)` | `list-out: list-<item_type>` |
 | `list_append` | `item_type`、`position` | `list-in: list-<item_type>`、`item-in: <item_type>` | `list-out: list-<item_type>` |
 | `foreach` | `item_type` | `list-in: list-<item_type>` | `item-out: <item_type>`；控制端口见第 10 节 |
+| `while_pop` | `value_type`、可选 `position`、`context_id_source`、`context_id` | port 模式下 `context-id: content` | `item-out: <value_type 去除 list- 前缀>`；控制端口同 Foreach |
 | `history` | `event_types`、`limit` | 无 | `events: list-event` |
 | `llm` | `model`、`think`、`tool_calls`、`tools` | `messages-in: list-message` | `output: content`；配置启用时有 `reasoning: content`、`tool_calls: list-content` |
 | `tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `mode`（仅 sync）、`timeout_ms` | 每个 parameters 端口 | 同步返回每个 outputs 端口 |
@@ -255,6 +256,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `construct_list` | `item_type`、`initial_value_count` | 无 |
 | `list_append` | `item_type`、`position` | 无 |
 | `foreach` | `item_type` | 无 |
+| `while_pop` | `value_type` (仅列表类型) | `position` (`end`)、`context_id_source` (`port`)、`context_id` (仅 fixed 模式使用) |
 | `history` | `event_types`、`limit` | 无 |
 | `llm` | 无 | `model`、`think`、`tool_calls`、`tools` |
 | `tool` | `tool`、`parameters`、`outputs` | `mode`（固定 `sync`）、`timeout_ms`、`callback`（仅 null） |
@@ -282,6 +284,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为七种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
 - `construct_list.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message`、`list-event` 或 `list-struct:<id>`。
 - `list_append.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
+- `while_pop.value_type` 必须是 `list-content`、`list-message`、`list-event` 或本 Workflow 声明的 `list-struct:<id>`。每轮从 Context 列表原子弹出一项；`position` 为 `end`（默认，末尾）或 `start`（最前）。Context 为空时退出，详情见 10.4。
 - `foreach.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`。逐项输出列表元素，列表耗尽后退出循环；空列表直接退出。
 - `history.event_types` 必须为非空、不重复的 `terminal`/`response` 子集；limit 必须为 1 到 1000 的整数。
 - `llm.model` 在管理端保存及执行时必须为有效且已启用模型标识；通用静态契约校验器不保证验证模型存在。`llm.tools` 是未连接动态工具输入时的可选默认工具子集；省略或为空时默认使用 `metadata.tools` 中的全部 Local 与 Remote Tool。工具名称必须在 `metadata.tools` 声明且对应完整 schema 可用；Local schema 来自 Agent 注册表，Remote schema 来自 Tool Server。`think` 控制模型请求是否启用推理以及 reasoning 输出端口是否存在，`tool_calls` 控制工具调用能力、`available-tools-in: list-content` 输入端口及 `tool_calls` 输出端口是否存在。动态输入为 metadata.tools 中任意 kind 的工具名称列表，接入后覆盖默认列表。think 关闭时按模型 Provider 发送对应的关闭参数。tool_calls 输出为 JSON 文本组成的 list-content；模型生成 tool_calls 不代表 Workflow 自动执行这些工具。
@@ -301,9 +304,9 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 ### 10.1 连线对象与连接基数
 
-连线对象必须含非空字符串 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`。端点节点及端口必须存在。type 为 `control` 或本规范定义的数据类型，包括当前 Workflow 的 Struct 类型。控制连线只能连接合法控制端口；数据连线类型必须同时等于源输出和目标输入端口推导类型。每个 control 输出最多一个后继；控制流不允许汇合，每个 control 输入最多一个来源；Foreach 的 control-in 与 loop-in 是两个独立入口。每个数据输入最多一个来源。
+连线对象必须含非空字符串 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`。端点节点及端口必须存在。type 为 `control` 或本规范定义的数据类型，包括当前 Workflow 的 Struct 类型。控制连线只能连接合法控制端口；数据连线类型必须同时等于源输出和目标输入端口推导类型。每个 control 输出最多一个后继；控制流不允许汇合，每个 control 输入最多一个来源；Foreach 和 While Pop 的 control-in 与 loop-in 是两个独立入口。每个数据输入最多一个来源。
 
-Input 的 control-out、普通执行节点的 control-in/control-out、Output 的 control-in 必须连接。Router 的每个分支输出必须连接。Foreach 的 control-in、loop-in、loop-out、control-out 必须连接。控制流必须从唯一 Input 构成可达的树；只允许 Foreach 循环体返回所属 Foreach 的 loop-in 形成回边，不允许其他环、分支汇合或共享节点（包括共用 Output）。数据输入可以不连；运行时读取必要值而无值时失败。运行时 `None` 视为未提供。
+Input 的 control-out、普通执行节点的 control-in/control-out、Output 的 control-in 必须连接。Router 的每个分支输出必须连接。Foreach 和 While Pop 的 control-in、loop-in、loop-out、control-out 必须连接。控制流必须从唯一 Input 构成可达的树；只允许 Foreach 或 While Pop 循环体返回所属循环节点的 loop-in 形成回边，不允许其他环、分支汇合或共享节点（包括共用 Output）。除 Struct 必需输入和 While Pop 的端口模式 `context-id` 等显式必需输入外，数据输入可以不连；运行时读取必要值而无值时失败。运行时 `None` 视为未提供。
 
 ### 10.2 Router
 
@@ -328,3 +331,27 @@ Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控�
 子 Workflow 在当前调用栈内执行，并使用自身 Input/Output 边界。Workflow 节点接口快照必须等于实际 Workflow 接口。调用链出现重复 Workflow 名称时拒绝递归。Struct 不能跨子 Workflow 接口传递，须显式 JSON 转换。
 
 `construct_event` 产生的 Event 以及 `publish_event` 接受的 Event 遵循 Event 1.1：JSON 对象含 `version` 字符串 `1.1`、非空字符串 `event_type` 和 object `payload`。作为 Struct 字段值或 Context 值递归校验的 `event` 还必须含非空字符串 `event_type` 和 `payload` 属性，但不额外要求 `version`。Event 节点之间按对象传值；只有显式 JSON 转换节点或规定的 payload 文本端口执行序列化/反序列化。`publish_event` 将事件发布到主 Agent 队列，由独立消费者调度，不在当前 Workflow 调用栈内递归启动。
+
+### 10.4 While Pop
+
+`while_pop` 使用 Foreach 的 `control-in`、`loop-in`、`loop-out`、`control-out` 控制端口。数据输入为 Context ID（`context-id`，类型 `content`）；必须配置该 Context 的列表类型 `arguments.value_type`。`context_id_source` 缺省为 `port`，此时必须连接 `context-id`；也可设置为 `fixed`，提供非空白 `context_id` 并省去 ID 输入端口。Context 必须属于当前 invocation，且存储类型与声明类型完全匹配。
+
+每次触发（包括循环体返回 `loop-in`）都读取 Context 的最新列表，从 `position` 指定的一端弹出一项，原子保存剩余列表，再通过 `item-out` 传出该项并走 `loop-out`。`position` 缺省为 `end`，可设置为 `start`。列表为空时直接走 `control-out`，不执行循环体；空字符串等合法元素仍会执行一轮。弹出操作刷新 Context TTL，并在并发修改冲突时重新读取、重试。Context 不存在、类型不符或存储值无效时执行失败。
+
+例如以下配置从列表末尾依次弹出 `content`：
+
+```json
+{
+  "id": "consume_queue",
+  "type": "while_pop",
+  "arguments": {
+    "value_type": "list-content",
+    "position": "end",
+    "context_id_source": "port"
+  }
+}
+```
+
+将创建 Context 节点的 `context-id` 输出接入此节点的 `context-id`；将 `loop-out` 接入循环体，循环体末尾返回 `loop-in`，`control-out` 接循环结束后的节点。初始列表 `["a", "b", "c"]` 在默认配置下传出 `"c"`、`"b"`、`"a"`，并留下空列表；改为 `start` 则传出 `"a"`、`"b"`、`"c"`。循环体可以修改同一 Context 列表，下一轮会使用修改后的值。
+
+While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out` 仅在循环体子空间可见，`context-id` 输入属于父空间，`control-out` 延续父空间；循环体禁止 Router、多控制出口节点和嵌套循环，必须返回自身的 `loop-in`。循环结果通过 Context 显式传递到外层。

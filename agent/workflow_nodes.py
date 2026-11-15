@@ -588,6 +588,24 @@ def workflow_foreach(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node, "item")
 
 
+def workflow_while_pop(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_context_repository import pop_context
+
+    node = workflow_map[current_id]
+    context_id = node_argument(node, "context_id") if node_argument(node, "context_id_source", "port") == "fixed" else _context_input(node, "context-id", "Context ID 输入无效")
+    has_item, item = pop_context(
+        context_id,
+        node["_workflow_invocation_id"],
+        node_argument(node, "value_type"),
+        node_argument(node, "position", "end"),
+        _struct_defs(node),
+    )
+    if not has_item:
+        return next_successor(node)
+    propagate_workflow_output(workflow_map, node, "item-out", item)
+    return next_successor(node, "item")
+
+
 def workflow_history(current_id: int, workflow_map: WorkflowMap) -> int:
     from history_repository import get_recent_history
 
@@ -942,6 +960,7 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,
     "foreach": workflow_foreach,
+    "while_pop": workflow_while_pop,
     "history": workflow_history,
     "llm": workflow_llm,
     "tool": workflow_tool,

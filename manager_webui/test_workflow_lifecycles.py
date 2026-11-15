@@ -174,6 +174,24 @@ def test_cases():
     g["nodes"].append(node("nested"))
     g["connections"] += [control("body", "nested", "loop-out"), control("nested", "body", input_port="loop-in")]
     add("nested foreach follows existing no-branch restriction", g, "branching control flow")
+    # Both loop nodes obey the same control and data visibility rules.
+    for case in list(cases):
+        graph = copy.deepcopy(case["workflow"])
+        loops = {item["id"] for item in graph["nodes"] if item["type"] == "foreach"}
+        if not loops:
+            continue
+        for item in graph["nodes"]:
+            if item["id"] in loops:
+                item.update(type="while_pop", arguments={
+                    "value_type": "list-content", "context_id_source": "fixed", "context_id": "queue-" + item["id"],
+                })
+        graph["connections"] = [edge for edge in graph["connections"] if not (edge["toId"] in loops and edge["toPortId"] == "list-in")]
+        add("while_pop: " + case["name"], graph, case["error"])
+    g = loop()
+    g["nodes"][1].update(type="while_pop", arguments={"value_type": "list-content"})
+    edge = next(edge for edge in g["connections"] if edge["toPortId"] == "list-in")
+    edge.update(fromPortId="workflow:value", toPortId="context-id", type="content")
+    add("while_pop takes a context ID from its parent scope", g)
     return cases
 
 

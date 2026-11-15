@@ -189,7 +189,9 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     for node_id, node in node_by_id.items():
         node_type = node["type"]
         required_data_ports: set[str] = set()
-        if node_type == "construct_struct":
+        if node_type == "while_pop" and node_argument(node, "context_id_source", "port") == "port":
+            required_data_ports = {"context-id"}
+        elif node_type == "construct_struct":
             sid = node_argument(node, "struct_id")
             required_data_ports = {field["name"] for field in structs[sid]["fields"] if field["required"]}
         elif node_type == "struct_get":
@@ -262,11 +264,11 @@ def _validate_lifecycles(
         _, control_outputs = control_ports_for_node(node)
         if loop_id and (node_type == "router" or len(control_outputs) > 1):
             raise WorkflowValidationError(
-                f"branching control flow is not allowed inside foreach: node {node_id}"
+                f"branching control flow is not allowed inside {nodes_by_id[loop_id]['type']}: node {node_id}"
             )
         if loop_id and node_type == "output":
             raise WorkflowValidationError(
-                f"foreach body must return to loop-in instead of output: node {node_id}"
+                f"{nodes_by_id[loop_id]['type']} body must return to loop-in instead of output: node {node_id}"
             )
         node_scopes[node_id] = scope
         active.add(node_id)
@@ -275,10 +277,10 @@ def _validate_lifecycles(
         child_scopes = {}
         for port in control_outputs:
             child_scope = scope
-            if node_type == "foreach" and port == "loop-out":
+            if node_type in {"foreach", "while_pop"} and port == "loop-out":
                 child_scope = (*scope, (node_id, port))
                 output_scopes[(node_id, "item-out")] = child_scope
-            elif node_type != "foreach" and (node_type == "router" or len(control_outputs) > 1):
+            elif node_type not in {"foreach", "while_pop"} and (node_type == "router" or len(control_outputs) > 1):
                 child_scope = (*scope, (node_id, port))
                 if node_type == "json_tool":
                     data_port = "error-json" if port == "error-out" else "result-json"
@@ -288,12 +290,12 @@ def _validate_lifecycles(
         for edge in reversed(outgoing[node_id]):
             port = edge["fromPortId"]
             child_scope = child_scopes[port]
-            child_loop = node_id if node_type == "foreach" and port == "loop-out" else loop_id
+            child_loop = node_id if node_type in {"foreach", "while_pop"} and port == "loop-out" else loop_id
             target_id = edge["toId"]
-            if nodes_by_id[target_id]["type"] == "foreach" and edge["toPortId"] == "loop-in":
+            if nodes_by_id[target_id]["type"] in {"foreach", "while_pop"} and edge["toPortId"] == "loop-in":
                 if child_loop != target_id:
                     raise WorkflowValidationError(
-                        f"foreach loop-in must return from its own body: node {target_id}, source {node_id}"
+                        f"{nodes_by_id[target_id]['type']} loop-in must return from its own body: node {target_id}, source {node_id}"
                     )
                 returned_loops.add(target_id)
             else:
@@ -305,8 +307,8 @@ def _validate_lifecycles(
             f"control-flow nodes are unreachable from input: {', '.join(unreachable)}"
         )
     for node_id, node in nodes_by_id.items():
-        if node["type"] == "foreach" and node_id not in returned_loops:
-            raise WorkflowValidationError(f"foreach body has no loop-in return: node {node_id}")
+        if node["type"] in {"foreach", "while_pop"} and node_id not in returned_loops:
+            raise WorkflowValidationError(f"{node['type']} body has no loop-in return: node {node_id}")
 
     def describe(scope: Scope) -> str:
         return "root" + "".join(f" / {owner}:{port}" for owner, port in scope)
@@ -477,13 +479,18 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             raise WorkflowValidationError(
                 "foreach node item_type must be 'content', 'message', or 'event'"
             )
-    elif node_type in {"context_create", "context_read", "context_write", "session_create", "session_read", "session_write"}:
+    elif node_type in {"context_create", "context_read", "context_write", "session_create", "session_read", "session_write", "while_pop"}:
         value_type = node_argument(node, "value_type")
-        is_context = node_type in {"context_create", "context_read", "context_write"}
+        is_context = node_type in {"context_create", "context_read", "context_write", "while_pop"}
         if value_type not in DATA_CONNECTION_TYPES and not (is_context and _valid_local_type(value_type, structs)):
             raise WorkflowValidationError(
                 "context node value_type must be a supported data type"
             )
+        if node_type == "while_pop":
+            if not isinstance(value_type, str) or not value_type.startswith("list-") or not _valid_item_type(value_type[5:], structs):
+                raise WorkflowValidationError("while_pop value_type must be a supported list type")
+            if node_argument(node, "position", "end") not in {"start", "end"}:
+                raise WorkflowValidationError("while_pop position must be 'start' or 'end'")
         if node_type == "context_create":
             context_id = node_argument(node, "context_id")
             if context_id is not None and (
@@ -492,7 +499,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
                 raise WorkflowValidationError(
                     "context_create context_id must be a non-empty string"
                 )
-        if node_type in {"context_read", "context_write"}:
+        if node_type in {"context_read", "context_write", "while_pop"}:
             source = node_argument(node, "context_id_source", "port")
             context_id = node_argument(node, "context_id")
             if source not in {"port", "fixed"}:
@@ -930,7 +937,7 @@ def _validate_branches_in_foreach(
         incoming[edge["toId"]].append(edge)
 
     for foreach_id, foreach_node in nodes_by_id.items():
-        if foreach_node["type"] != "foreach":
+        if foreach_node["type"] not in {"foreach", "while_pop"}:
             continue
 
         pending = [edge["toId"] for edge in outgoing[foreach_id] if edge["fromPortId"] == "loop-out"]
@@ -941,7 +948,7 @@ def _validate_branches_in_foreach(
                 continue
             if len(outgoing[node_id]) > 1:
                 raise WorkflowValidationError(
-                    f"branching control flow is not allowed inside foreach: node {node_id}"
+                    f"branching control flow is not allowed inside {foreach_node['type']}: node {node_id}"
                 )
             body.add(node_id)
             for edge in outgoing[node_id]:
@@ -958,7 +965,7 @@ def _validate_branches_in_foreach(
             ]
             if external_entries:
                 raise WorkflowValidationError(
-                    f"foreach body node also has a control-flow entry from outside the loop: node {node_id}"
+                    f"{foreach_node['type']} body node also has a control-flow entry from outside the loop: node {node_id}"
                 )
 
 

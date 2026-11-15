@@ -70,10 +70,10 @@ export function compileLifecycles(workflow) {
     const edges = outgoing.get(nodeId);
     // Match the existing rule: no branching node (including nested foreach) in a loop body.
     if (loopId && (controls.length > 1 || node.type === 'router')) {
-      fail(`Foreach 循环体内不允许多分支节点「${name(node)}」。`, nodeId);
+      fail(`循环体内不允许多分支节点「${name(node)}」。`, nodeId);
     }
     if (loopId && node.type === 'output') {
-      fail(`循环体必须返回 Foreach 的 loop-in，不能在「${name(node)}」结束。`, nodeId);
+      fail(`循环体必须返回所属循环的 loop-in，不能在「${name(node)}」结束。`, nodeId);
     }
     const successors = new Map();
     for (const edge of edges) {
@@ -84,11 +84,11 @@ export function compileLifecycles(workflow) {
     for (const port of controls) {
       let childScope = scopeId;
       let childLoop = loopId;
-      if (node.type === 'foreach' && port.id === 'loop-out') {
+      if (['foreach', 'while_pop'].includes(node.type) && port.id === 'loop-out') {
         childScope = addScope(scopeId, 'loop', `${name(node)} / 循环体`, nodeId, port.id);
         outputScopes.set(nodeId, { 'item-out': childScope });
         childLoop = nodeId;
-      } else if (node.type !== 'foreach' && (node.type === 'router' || controls.length > 1)) {
+      } else if (!['foreach', 'while_pop'].includes(node.type) && (node.type === 'router' || controls.length > 1)) {
         childScope = addScope(scopeId, 'branch', `${name(node)} / ${port.label}`, nodeId, port.id);
         if (node.type === 'json_tool') {
           const dataPort = port.id === 'error-out' ? 'error-json' : 'result-json';
@@ -103,7 +103,7 @@ export function compileLifecycles(workflow) {
         continue;
       }
       const target = byId.get(edge.toId);
-      if (target.type === 'foreach' && edge.toPortId === 'loop-in') {
+      if (['foreach', 'while_pop'].includes(target.type) && edge.toPortId === 'loop-in') {
         if (target.id !== childLoop) {
           fail(`loop-in 只能接收自己循环体的回边：「${name(target)}」。`, nodeId, edge);
         } else returnedLoops.add(target.id);
@@ -116,7 +116,7 @@ export function compileLifecycles(workflow) {
   if (inputs.length === 1) visit(inputs[0].id, root);
   for (const node of nodes) {
     if (!nodeScopes.has(node.id)) fail(`「${name(node)}」无法从 Input 到达。`, node.id);
-    if (node.type === 'foreach' && nodeScopes.has(node.id) && !returnedLoops.has(node.id)) {
+    if (['foreach', 'while_pop'].includes(node.type) && nodeScopes.has(node.id) && !returnedLoops.has(node.id)) {
       fail(`「${name(node)}」缺少循环体返回 loop-in 的连接。`, node.id);
     }
   }

@@ -12,7 +12,7 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
   if (node.type === 'history') bindHistory(node, context);
-  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) bindContext(node, context);
+  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop'].includes(node.type)) bindContext(node, context);
 }
 
 
@@ -327,7 +327,12 @@ function bindListAppend(node, context) {
 
 function bindContext(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="value_type"]');
-  if (node.type.startsWith('context_')) addTypeOptions(typeField, { includeStructLists: true });
+  if (node.type.startsWith('context_') || node.type === 'while_pop') addTypeOptions(typeField, { includeStructLists: true });
+  if (node.type === 'while_pop') {
+    for (const option of [...typeField.options]) {
+      if (!option.value.startsWith('list-')) option.remove();
+    }
+  }
   typeField.value = node.value_type;
   typeField.addEventListener('change', () => {
     node.value_type = typeField.value;
@@ -341,7 +346,7 @@ function bindContext(node, context) {
       commitStructureChange(node, context, false);
     });
   }
-  if (node.type === 'context_read' || node.type === 'context_write') {
+  if (['context_read', 'context_write', 'while_pop'].includes(node.type)) {
     const sourceField = context.elements.inspectorContent.querySelector('[data-field="context_id_source"]');
     const idField = context.elements.inspectorContent.querySelector('[data-field="context_id"]');
     const idContainer = context.elements.inspectorContent.querySelector('[data-context-id-field]');

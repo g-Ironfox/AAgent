@@ -120,6 +120,11 @@
             <div><strong>List 追加</strong><small>在列表最前或最后追加同类型项</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="while_pop">
+            <span class="node-symbol while_pop-symbol" aria-hidden="true">WP</span>
+            <div><strong>弹出 Context 列表</strong><small>while_pop · 逐项弹出，直到列表为空</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="foreach">
             <span class="node-symbol foreach-symbol" aria-hidden="true">FE</span>
             <div><strong>遍历列表</strong><small>逐项执行循环体控制流</small></div>
@@ -475,6 +480,18 @@
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="struct:">Struct…</option></select></label>
       <label>初始值数量<input data-field="initial_value_count" type="number" min="0" max="20" step="1"></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="while_popInspectorTemplate">
+    <div data-interface-contract data-contract-status="每轮修改 Context 列表，空列表结束循环"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Context 列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>弹出位置<select data-field="position"><option value="end">末尾（默认）</option><option value="start">最前</option></select></label>
+      <label>Context ID 来源<select data-field="context_id_source"><option value="port">通过端口输入</option><option value="fixed">固定文本</option></select></label>
+      <label data-context-id-field>Context ID<input data-field="context_id" maxlength="200" placeholder="输入 Context ID"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

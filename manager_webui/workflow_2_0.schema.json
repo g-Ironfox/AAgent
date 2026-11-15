@@ -248,6 +248,7 @@
             "construct_list",
             "list_append",
             "foreach",
+            "while_pop",
             "history",
             "llm",
             "local_tool",
@@ -469,20 +470,31 @@
             }
           },
           "else": {
-            "properties": {
-              "arguments": {
-                "type": "object",
-                "properties": {
-                  "value_type": {
-                    "enum": [
-                      "content",
-                      "message",
-                      "event",
-                      "map-content",
-                      "list-content",
-                      "list-message",
-                      "list-event"
-                    ]
+            "if": {
+              "properties": {
+                "type": {
+                  "not": {
+                    "const": "while_pop"
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "properties": {
+                    "value_type": {
+                      "enum": [
+                        "content",
+                        "message",
+                        "event",
+                        "map-content",
+                        "list-content",
+                        "list-message",
+                        "list-event"
+                      ]
+                    }
                   }
                 }
               }
@@ -496,7 +508,8 @@
                 "not": {
                   "enum": [
                     "context_read",
-                    "context_write"
+                    "context_write",
+                    "while_pop"
                   ]
                 }
               },
@@ -559,6 +572,86 @@
                   }
                 },
                 "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "while_pop"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content",
+                          "list-message",
+                          "list-event"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  },
+                  "position": {
+                    "enum": [
+                      "start",
+                      "end"
+                    ],
+                    "default": "end"
+                  },
+                  "context_id_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ],
+                    "default": "port"
+                  },
+                  "context_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "context_id_source": {
+                          "const": "fixed"
+                        }
+                      },
+                      "required": [
+                        "context_id_source"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "context_id"
+                      ]
+                    }
+                  }
+                ]
               }
             }
           }

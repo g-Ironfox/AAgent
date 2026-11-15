@@ -22,6 +22,7 @@ const TYPE_COLORS = {
   construct_list: '#176f73',
   list_append: '#27705b',
   foreach: '#9a5a24',
+  while_pop: '#9a5a24',
   history: '#396a87',
   tool: '#13775a',
   llm: '#356e9b',
@@ -138,6 +139,7 @@ function contractPortIds(node, direction, workflow) {
     return direction === 'input' ? ['control-in', ...inputs] : ['control-out', 'list-out'];
   }
   if (node.type === 'list_append') return direction === 'input' ? ['control-in', 'list-in', 'item-in'] : ['control-out', 'list-out'];
+  if (node.type === 'while_pop') return direction === 'input' ? ['control-in', 'loop-in', ...((node.arguments?.context_id_source || node.context_id_source || 'port') === 'port' ? ['context-id'] : [])] : ['control-out', 'loop-out', 'item-out'];
   if (node.type === 'foreach') return direction === 'input' ? ['control-in', 'loop-in', 'list-in'] : ['control-out', 'loop-out', 'item-out'];
   if (node.type === 'history') return direction === 'input' ? ['control-in'] : ['control-out', 'events'];
   if (node.type === 'context_create') return direction === 'input' ? ['control-in', 'initial-value'] : ['control-out', 'context-id'];

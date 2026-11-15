@@ -20,6 +20,7 @@ export const NODE_TYPES = new Set([
   'construct_list',
   'list_append',
   'foreach',
+  'while_pop',
   'history',
   'llm',
   'tool',
@@ -251,14 +252,19 @@ export function portsForNode(node) {
       { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
-  if (node.type === 'foreach') {
+  if (['foreach', 'while_pop'].includes(node.type)) {
+    const isPop = node.type === 'while_pop';
+    const itemType = isPop ? node.value_type?.replace(/^list-/, '') : node.item_type;
+    const inputPorts = isPop
+      ? ((node.context_id_source || 'port') === 'port' ? [{ id: 'context-id', direction: 'input', type: 'content', label: 'Context ID', title: node.value_type, multiple: false }] : [])
+      : [{ id: 'list-in', direction: 'input', type: listTypeForItem(itemType), color: structColor(node, listTypeForItem(itemType)), label: '列表', title: listTypeForItem(itemType), multiple: false }];
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发遍历', multiple: false },
       { id: 'loop-in', direction: 'input', type: 'control', label: '循环体结束', title: '循环体完成后返回', multiple: false },
-      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '列表遍历完成后继续', multiple: false },
+      ...inputPorts,
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: isPop ? 'Context 列表为空后继续' : '列表遍历完成后继续', multiple: false },
       { id: 'loop-out', direction: 'output', type: 'control', label: '循环体开始', title: '执行当前项的循环体', multiple: false },
-      { id: 'item-out', direction: 'output', type: node.item_type, color: structColor(node, node.item_type), label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
+      { id: 'item-out', direction: 'output', type: itemType, color: structColor(node, itemType), label: isPop ? '弹出项' : '当前项', title: `当前 ${itemType}`, multiple: true },
     ];
   }
   if (node.type === 'history') {
@@ -434,6 +440,7 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'construct_event') return { id: createWorkflowId('construct-event'), type, name: `构造 Event ${number}`, event_type: 'event_type', ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
+  if (type === 'while_pop') return { id: createWorkflowId('while-pop'), type, name: `弹出 Context 列表 ${number}`, value_type: 'list-content', position: 'end', context_id_source: 'port', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
   if (type === 'history') return { id: createWorkflowId('history'), type, name: `召回 History ${number}`, event_types: ['terminal', 'response'], limit: 10, ...position };
   if (type === 'context_create') return { id: createWorkflowId('context-create'), type, name: `创建 Context ${number}`, value_type: 'content', ...position };

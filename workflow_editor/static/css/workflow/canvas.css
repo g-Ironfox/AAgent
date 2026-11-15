@@ -41,6 +41,7 @@
 .flow-node.construct_list { border-top-color:#176f73; }
 .flow-node.list_append { border-top-color:#27705b; }
 .flow-node.foreach { border-top-color:#9a5a24; }
+.flow-node.while_pop { border-top-color:#9a5a24; }
 .flow-node.history { border-top-color:#396a87; }
 .flow-node.context_create { border-top-color:#326b4b; }
 .flow-node.context_read { border-top-color:#376c78; }

@@ -106,13 +106,13 @@ def _successor_key(node: dict[str, Any], port_id: str) -> str:
             if branch["id"] == port_id
         )
         return f"branch-{branch['name']}"
-    if node.get("type") == "foreach" and port_id == "loop-out":
+    if node.get("type") in {"foreach", "while_pop"} and port_id == "loop-out":
         return "item"
     return "next"
 
 
 def _predecessor_key(node: dict[str, Any], port_id: str) -> str:
-    if node.get("type") == "foreach" and port_id == "loop-in":
+    if node.get("type") in {"foreach", "while_pop"} and port_id == "loop-in":
         return "continue"
     return "last"
 
