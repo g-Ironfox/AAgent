@@ -89,3 +89,20 @@
 .clipboard-fallback { position:fixed; left:-10000px; top:0; opacity:0; }
 
 .flow-node.tool { border-top-color:var(--green); }
+
+/* Lifecycle compilation is a transient overlay; port/type colors stay intact. */
+.flow-node.lifecycle-colored { background:var(--lifecycle-fill); box-shadow:0 0 0 2px var(--lifecycle-color),0 3px 10px rgba(28,42,36,.08); }
+.lifecycle-badge { display:block; padding:5px 10px; border-top:1px solid var(--lifecycle-color); color:var(--lifecycle-color); background:var(--lifecycle-fill); font:700 10px Consolas,monospace; text-align:left; overflow-wrap:anywhere; }
+.lifecycle-panel { flex:none; padding:10px 14px; max-height:230px; overflow:auto; border-bottom:1px solid var(--line); background:var(--surface); }
+.lifecycle-panel[hidden] { display:none; }
+.lifecycle-panel header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.lifecycle-panel header strong { font-size:12px; }
+.lifecycle-panel p { margin:6px 0; color:var(--muted); font-size:10px; line-height:1.6; }
+.lifecycle-panel.has-errors header strong,.lifecycle-errors { color:#a32b36; }
+.lifecycle-scopes { display:flex; flex-wrap:wrap; gap:6px; }
+.lifecycle-scope { border:1px solid var(--lifecycle-color); border-radius:4px; padding:4px 7px; background:var(--lifecycle-fill); color:var(--lifecycle-color); font-size:10px; }
+.lifecycle-errors { margin:8px 0 0; padding-left:20px; font-size:11px; line-height:1.6; overflow-wrap:anywhere; }
+.lifecycle-errors:empty { display:none; }
+.connection-path.lifecycle-invalid { stroke:#c52c43; stroke-width:3.5; stroke-dasharray:5 3; }
+
+#compileLifecyclesButton,#clearLifecyclesButton { width:auto; padding:0 10px; white-space:nowrap; }

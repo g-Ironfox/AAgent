@@ -14,6 +14,12 @@ import {
 } from './workflow/domain/serialization.js';
 
 const elements = {
+  compileLifecyclesButton: document.querySelector('#compileLifecyclesButton'),
+  clearLifecyclesButton: document.querySelector('#clearLifecyclesButton'),
+  lifecyclePanel: document.querySelector('#lifecyclePanel'),
+  lifecycleSummary: document.querySelector('#lifecycleSummary'),
+  lifecycleScopes: document.querySelector('#lifecycleScopes'),
+  lifecycleErrors: document.querySelector('#lifecycleErrors'),
   canvas: document.querySelector('#workflowCanvas'),
   connectionLayer: document.querySelector('#connectionLayer'),
   nodeLayer: document.querySelector('#nodeLayer'),
@@ -63,6 +69,7 @@ function resetUndoHistory(snapshot = workflowSnapshot()) {
 }
 
 function markChanged() {
+  editor.invalidateLifecycles();
   if (lastUndoSnapshot) {
     undoHistory.push(lastUndoSnapshot);
     if (undoHistory.length > 100) undoHistory.shift();
