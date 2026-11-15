@@ -174,8 +174,10 @@ def _read_workflow(workflow_name: str, *, by_id: bool = False) -> dict[str, Any]
     return workflow
 
 
-def _read_workspace_workflow(file_id: str) -> dict[str, Any]:
-    """Load the current workspace generation and parse its live file content."""
+def _read_workspace_workflow_file(
+    selector: str, value: str, identifier: str
+) -> dict[str, Any]:
+    """Load a live workflow file from the current workspace generation."""
     mongo_kwargs: dict[str, Any] = {
         "host": os.getenv("MONGO_HOST", "mongodb"),
         "port": int(os.getenv("MONGO_PORT", "27017")),
@@ -196,21 +198,30 @@ def _read_workspace_workflow(file_id: str) -> dict[str, Any]:
             if meta is None or "generation" not in meta:
                 raise WorkflowParseError("workspace is not initialized")
             generation = meta["generation"]
+            selector_value = f"{generation}:{value}" if selector == "_id" else value
             file = workspace.find_one(
-                {"_id": f"{generation}:{file_id}", "generation": generation},
-                {"content": 1},
+                {selector: selector_value, "generation": generation}, {"content": 1}
             )
     except PyMongoError as error:
         raise WorkflowParseError("failed to read workspace workflow file") from error
     if file is None:
-        raise WorkflowParseError(f"workflow file not found: {file_id}")
+        raise WorkflowParseError(f"workflow file not found: {identifier}")
     try:
         workflow = json.loads(file.get("content", ""))
     except (ValueError, TypeError) as error:
-        raise WorkflowParseError(f"invalid workflow JSON in workspace file: {file_id}") from error
+        raise WorkflowParseError(f"invalid workflow JSON in workspace file: {identifier}") from error
     if not isinstance(workflow, dict):
-        raise WorkflowParseError(f"workflow file must contain a JSON object: {file_id}")
+        raise WorkflowParseError(f"workflow file must contain a JSON object: {identifier}")
     return workflow
+
+
+def _read_workspace_workflow(file_id: str) -> dict[str, Any]:
+    return _read_workspace_workflow_file("_id", file_id, file_id)
+
+
+def _read_workspace_workflow_by_name(file_name: str) -> dict[str, Any]:
+    """Resolve a callable workflow by its exact workspace filename."""
+    return _read_workspace_workflow_file("name", file_name, file_name)
 
 
 if __name__ =="__main__":

@@ -869,7 +869,7 @@ def workflow_session_write(current_id: int, workflow_map: WorkflowMap) -> int:
 
 
 def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
-    from workflow_parser import _read_workflow, parse_workflow
+    from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
     from workflow_validator import validate_workflow
 
     parent_node = workflow_map[current_id]
@@ -879,7 +879,7 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
         chain = " -> ".join([*call_stack, workflow_name])
         raise ValueError(f"recursive workflow call detected: {chain}")
 
-    workflow_document = _read_workflow(workflow_name)
+    workflow_document = _read_workspace_workflow_by_name(workflow_name)
     validate_workflow(workflow_document)
     if (
         parent_node.get("input_ports", [])

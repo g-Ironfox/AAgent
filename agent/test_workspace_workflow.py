@@ -6,7 +6,11 @@ from unittest.mock import call, patch
 from pymongo.errors import PyMongoError
 
 import task_worker
-from workflow_parser import WorkflowParseError, _read_workspace_workflow
+from workflow_parser import (
+    WorkflowParseError,
+    _read_workspace_workflow,
+    _read_workspace_workflow_by_name,
+)
 
 
 def echo_workflow():
@@ -59,6 +63,19 @@ class WorkspaceWorkflowTest(unittest.TestCase):
         self.assertEqual([_read_workspace_workflow("file-1")["name"] for _ in range(3)],
                          ["before", "edited", "restored"])
         self.assertEqual(self.workspace.find_one.call_args.args[0], {"_id": "2:file-1", "generation": 2})
+
+    def test_reader_resolves_exact_workspace_filename_not_workflow_metadata_name(self):
+        workflow = echo_workflow()
+        workflow["name"] = "different metadata name"
+        self.workspace.find_one.side_effect = [
+            {"generation": 3}, {"content": json.dumps(workflow)},
+        ]
+
+        self.assertEqual(_read_workspace_workflow_by_name("Child.flow"), workflow)
+        self.workspace.find_one.assert_has_calls([
+            call({"_id": "_workspace_current_state"}, {"generation": 1}),
+            call({"name": "Child.flow", "generation": 3}, {"content": 1}),
+        ])
 
     def test_deleted_file_is_not_read_from_other_generations(self):
         self.workspace.find_one.side_effect = [{"generation": 2}, None]

@@ -9,11 +9,14 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
+      webui_py:
+        condition: service_healthy
     env_file:
       - .env
     environment:
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       TOOL_SERVER_URL: ${TOOL_SERVER_URL:-http://tool_server:8083}
+      WORKSPACE_API_URL: ${WORKSPACE_API_URL:-http://webui_py:8081}
       TOOL_CLIENT_DEFAULT_WAIT_MS: ${TOOL_CLIENT_DEFAULT_WAIT_MS:-10000}
       TOOL_CLIENT_MAX_WAIT_MS: ${TOOL_CLIENT_MAX_WAIT_MS:-10000}
       MONGO_SESSION_COLLECTION: ${MONGO_SESSION_COLLECTION:-sessions}

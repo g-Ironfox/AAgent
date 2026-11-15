@@ -257,7 +257,7 @@ class WorkerRoutingTest(unittest.TestCase):
     @patch("task_worker.handle_task", side_effect=ValueError("invalid workflow JSON"))
     @patch("task_worker.pop_from_queue", return_value={"version": "1.1", "event_type": "workflow", "payload": {"workflow_file_id": "file-1"}})
     def test_file_failure_includes_file_id(self, pop, handle, publish, status, log, trace, sleep):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         self.assertEqual(publish.call_args.args[1], {
             "event_type": "error", "payload": {"workflow_file_id": "file-1", "message": "invalid workflow JSON"},
@@ -273,7 +273,7 @@ class WorkerRoutingTest(unittest.TestCase):
     def test_workflow_failure_publishes_error_and_resets_status(
         self, pop, handle, publish, set_status, log, print_exc, sleep
     ):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
             "event_type": "error",
@@ -296,7 +296,7 @@ class WorkerRoutingTest(unittest.TestCase):
     def test_node_failure_reaches_error_event(
         self, pop, record, read, validate, parse, run, publish, set_status, log, print_exc, sleep
     ):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
             "event_type": "error", "payload": {"workflow_name": "selected", "message": "node failed"},
@@ -313,7 +313,7 @@ class WorkerRoutingTest(unittest.TestCase):
     def test_binding_failure_publishes_error_without_workflow_name(
         self, pop, record, read_bound, publish, set_status, log, print_exc, sleep
     ):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
             "event_type": "error", "payload": {"message": "binding unavailable"},
@@ -329,7 +329,7 @@ class WorkerRoutingTest(unittest.TestCase):
     def test_failed_error_handler_does_not_publish_recursively(
         self, pop, handle, publish, set_status, log, print_exc, sleep
     ):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         publish.assert_not_called()
 

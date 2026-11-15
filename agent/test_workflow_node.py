@@ -1302,7 +1302,7 @@ class WorkflowExecutionTest(unittest.TestCase):
                 run_workflow_map(workflow_map, 0)
 
     @patch("workflow_parser.parse_workflow")
-    @patch("workflow_parser._read_workflow")
+    @patch("workflow_parser._read_workspace_workflow_by_name")
     @patch("workflow_validator.validate_workflow")
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")

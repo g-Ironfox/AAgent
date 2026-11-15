@@ -128,7 +128,12 @@ def handle_task(e: dict):
     })
     
 
+def load_workspace_tools() -> None:
+    from tools import workspace as _workspace_tools  # noqa: F401
+
+
 def main():
+    load_workspace_tools()
     print("Agent worker started...")
     while True:
         try:
