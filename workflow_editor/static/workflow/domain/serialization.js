@@ -33,11 +33,14 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),
+  while_pop: new Set(['value_type', 'position', 'context_id_source', 'context_id']),
   history: new Set(['event_types', 'limit']),
   llm: new Set(['model', 'think', 'tool_calls', 'tools']),
+  tool: new Set(['tool', 'parameters', 'outputs', 'mode', 'timeout_ms', 'callback']),
   local_tool: new Set(['tool', 'parameters']),
   remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
   remote_async_tool: new Set(['tool', 'parameters', 'timeout_ms', 'callback']),
+  json_tool: new Set(),
   context_create: new Set(['value_type', 'context_id']),
   context_read: new Set(['value_type', 'context_id_source', 'context_id']),
   context_write: new Set(['value_type', 'context_id_source', 'context_id']),
@@ -126,13 +129,12 @@ function compactNodeArguments(node) {
 export const state = {
   name: 'workflow',
   description: '',
-  metadata: { structs: [] },
+  metadata: { structs: [], tools: [] },
   nodes: structuredClone(initialNodes),
   connections: structuredClone(initialConnections),
   input_ports: [{ name: 'origin', type: 'event' }],
   output_ports: [],
   workflow_nodes: [],
-  remote_tools: [],
 };
 
 export function nodeById(id) {
@@ -165,7 +167,6 @@ export function workflowSnapshot() {
     input_ports: state.input_ports,
     output_ports: state.output_ports,
     workflow_nodes: state.workflow_nodes,
-    remote_tools: state.remote_tools,
     nodes: state.nodes.map(compactNodeArguments),
     connections: state.connections,
   });
@@ -176,12 +177,11 @@ export function resetWorkflow() {
     schema_version: WORKFLOW_SCHEMA_VERSION,
     name: 'workflow',
     description: '',
-    metadata: { structs: [] },
+    metadata: { structs: [], tools: [] },
     input_ports: [{ name: 'origin', type: 'event' }],
     output_ports: [],
     workflow_nodes: [],
-    remote_tools: [],
-    nodes: initialNodes,
+      nodes: initialNodes,
     connections: initialConnections,
   });
 }
@@ -224,6 +224,12 @@ function remoteToolMetadata(saved) {
 
 function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteTools, structs) {
   node = expandNodeArguments(node);
+  // Migrate the former unified async configuration without changing its ports.
+  if (node.type === 'tool' && node.mode === 'async') {
+    node = { ...node, type: 'remote_async_tool' };
+    delete node.mode;
+    delete node.outputs;
+  }
   const normalized = {
     id: node.id,
     type: node.type,
@@ -367,13 +373,20 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     if (!normalized.event_types.length) return null;
     normalized.limit = Number.isInteger(node.limit) ? Math.min(1000, Math.max(1, node.limit)) : 10;
   }
+  if (node.type === 'while_pop') {
+    if (!['list-content', 'list-message', 'list-event'].includes(node.value_type)
+      && !(/^list-struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
+        && (structs || []).some((item) => item.id === node.value_type.slice('list-struct:'.length)))) return null;
+    normalized.value_type = node.value_type;
+    normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
+  }
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) {
     if (!['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(node.value_type)
       && !((node.type.startsWith('context_')) && /^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.replace(/^list-/, '').slice('struct:'.length)))) return null;
     normalized.value_type = node.value_type;
   }
-  if (node.type === 'context_read' || node.type === 'context_write') {
+  if (['context_read', 'context_write', 'while_pop'].includes(node.type)) {
     normalized.context_id_source = node.context_id_source === 'fixed' ? 'fixed' : 'port';
     if (normalized.context_id_source === 'fixed') {
       if (typeof node.context_id !== 'string' || !node.context_id.trim()) return null;
@@ -384,6 +397,18 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     if (typeof node.context_id !== 'string' || !node.context_id.trim()) return null;
     normalized.context_id = node.context_id;
   }
+  if (node.type === 'tool') {
+    normalized.tool = typeof node.tool === 'string' ? node.tool : '';
+    const declaration = remoteTools.get(normalized.tool);
+    if (normalized.tool && !declaration) return null;
+    if ((node.mode || 'sync') !== 'sync') return null;
+    normalized.mode = 'sync';
+    normalized.parameters = structuredClone(declaration?.input_ports || node.parameters || []);
+    normalized.outputs = structuredClone(declaration?.output_ports || node.outputs || []);
+    normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : 10000;
+    if (normalized.timeout_ms > 10000 || node.callback != null) return null;
+    normalized.callback = null;
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     normalized.tool = typeof node.tool === 'string' ? node.tool : '';
     if (node.type === 'local_tool') {
@@ -393,6 +418,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     } else {
       const declaration = remoteTools.get(normalized.tool);
       if (normalized.tool && !declaration) return null;
+      if (declaration && declaration.kind !== 'remote') return null;
       if (!Array.isArray(node.parameters)) return null;
       const parameterNames = new Set();
       normalized.parameters = [];
@@ -433,6 +459,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
       }
       const defaultTimeoutMs = node.type === 'remote_async_tool' ? 600000 : 10000;
       normalized.timeout_ms = Number.isInteger(node.timeout_ms) && node.timeout_ms > 0 ? node.timeout_ms : defaultTimeoutMs;
+      if (normalized.timeout_ms > (node.type === 'remote_async_tool' ? 3600000 : 10000)) return null;
       if (node.type === 'remote_async_tool') {
         const callback = node.callback;
         if (callback == null) normalized.callback = null;
@@ -502,8 +529,37 @@ export function loadSnapshot(saved, metadata = null) {
     const structDefinitions = validateStructDefinitions(saved?.metadata?.structs ?? []);
     const workflowNodes = callableWorkflowMetadata(saved);
     const callableWorkflows = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
-    const remoteTools = remoteToolMetadata(saved);
+    const remoteTools = remoteToolMetadata(saved).map((tool) => ({ ...tool, kind: 'remote' }));
+    const declaredTools = saved?.metadata?.tools ?? [];
+    if (!Array.isArray(declaredTools)) return false;
+    for (const tool of declaredTools) {
+      if (!tool || !['local', 'remote'].includes(tool.kind) || typeof tool.name !== 'string' || !tool.name.trim()) return false;
+      if (remoteTools.some((existing) => existing.name.toLowerCase() === tool.name.toLowerCase())) return false;
+      for (const field of ['input_ports', 'output_ports']) {
+        if (!Array.isArray(tool[field]) || tool[field].some((port) => !port || typeof port.name !== 'string' || !port.name.trim() || ['control-in', 'control-out'].includes(port.name) || !DATA_TYPES.has(port.type))) return false;
+        if (new Set(tool[field].map((port) => port.name.toLowerCase())).size !== tool[field].length) return false;
+      }
+      if (tool.kind === 'local' && tool.input_ports.some((port) => port.type !== 'content')) return false;
+      remoteTools.push(structuredClone(tool));
+    }
     const remoteToolsByName = new Map(remoteTools.map((tool) => [tool.name, tool]));
+    for (const node of savedNodes) {
+      if (node?.type !== 'local_tool' || !node.arguments?.tool) continue;
+      const name = node.arguments.tool;
+      let declaration = remoteToolsByName.get(name);
+      if (declaration && declaration.kind !== 'local') return false;
+      if (!declaration) {
+        if (remoteTools.some((tool) => tool.name.toLowerCase() === name.toLowerCase())) return false;
+        declaration = { name, kind: 'local', input_ports: [], output_ports: [{ name: 'output', type: 'content' }] };
+        remoteTools.push(declaration);
+        remoteToolsByName.set(name, declaration);
+      }
+      for (const parameter of node.arguments.parameters || []) {
+        if (typeof parameter === 'string' && parameter && !declaration.input_ports.some((port) => port.name === parameter)) {
+          declaration.input_ports.push({ name: parameter, type: 'content' });
+        }
+      }
+    }
     const ids = new Set();
     const nodes = [];
     for (const node of savedNodes) {
@@ -511,6 +567,15 @@ export function loadSnapshot(saved, metadata = null) {
       ids.add(node.id);
       const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteToolsByName, structDefinitions);
       if (!normalized) return false;
+      if (['local_tool', 'remote_sync_tool'].includes(normalized.type)) {
+        const declaration = remoteToolsByName.get(normalized.tool);
+        normalized.mode = 'sync';
+        normalized.timeout_ms ??= 10000;
+        normalized.callback = null;
+        normalized.parameters = structuredClone(declaration?.input_ports || []);
+        normalized.outputs = structuredClone(declaration?.output_ports || []);
+        normalized.type = 'tool';
+      }
       nodes.push(normalized);
     }
     if (!nodes.some((node) => node.id === 'input' && node.type === 'input')) return false;
@@ -521,12 +586,11 @@ export function loadSnapshot(saved, metadata = null) {
     state.name = workflowName.trim().slice(0, 120);
     const description = metadata?.description ?? saved?.description;
     state.description = typeof description === 'string' ? description.trim().slice(0, 2000) : '';
-    state.metadata = { ...(saved?.metadata ?? {}), structs: structDefinitions };
+    state.metadata = { ...(saved?.metadata ?? {}), structs: structDefinitions, tools: remoteTools };
     setNodeStructs(nodes, state.metadata.structs);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
     state.workflow_nodes = workflowNodes;
-    state.remote_tools = remoteTools;
     state.nodes = nodes;
     state.connections = filterValidConnections(Array.isArray(saved?.connections) ? saved.connections : initialConnections, nodes);
     return true;
@@ -552,7 +616,13 @@ export function normalizeImportedWorkflow(imported) {
 }
 
 export function parseWorkflowText(text) {
-  const workflow = migrateWorkflowToCurrentVersion(normalizeImportedWorkflow(JSON.parse(text)));
+  const imported = JSON.parse(text);
+  if (imported?.format === 'aagent.workflow-design/1') {
+    const entrypoint = typeof imported.entrypoint === 'string' && imported.entrypoint.trim()
+      ? imported.entrypoint : '入口 .flow 文件';
+    throw new Error(`这是多工作流设计包，不能作为单个 Workflow 导入。请先保存子工作流，再导入拆分后的 ${entrypoint}；原生文件的 schema_version 必须是字符串 "2.0"。`);
+  }
+  const workflow = migrateWorkflowToCurrentVersion(normalizeImportedWorkflow(imported));
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('内容不是有效的 Workflow JSON');
   if (workflow.schema_version !== WORKFLOW_SCHEMA_VERSION) throw new Error(`Workflow schema_version 必须是 ${WORKFLOW_SCHEMA_VERSION}`);
   if (typeof workflow.name !== 'string' || !workflow.name.trim()) throw new Error('Workflow 名称不能为空');

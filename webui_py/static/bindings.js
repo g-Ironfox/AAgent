@@ -14,7 +14,7 @@ const formState = document.querySelector('#formState');
 const formStatus = document.querySelector('#formStatus');
 const emptyState = document.querySelector('#bindingEmpty');
 const eventType = document.querySelector('#eventType');
-const workflowName = document.querySelector('#workflowName');
+const workflowFile = document.querySelector('#workflowFile');
 const contractWorkflowName = document.querySelector('#contractWorkflowName');
 const contractInputPorts = document.querySelector('#contractInputPorts');
 const contractOutputPorts = document.querySelector('#contractOutputPorts');
@@ -56,10 +56,10 @@ function renderContractPorts(container, ports, emptyMessage) {
 }
 
 function renderContractPreview() {
-  const workflow = workflows.find((item) => item.name === workflowName.value);
+  const workflow = workflows.find((item) => item.file_id === workflowFile.value);
   const inputPorts = workflow?.input_ports || [];
   const outputPorts = workflow?.output_ports || [];
-  contractWorkflowName.textContent = workflow ? (workflow.name || workflow.id) : '未选择 Workflow';
+  contractWorkflowName.textContent = workflow ? workflow.name : '未选择 Workflow';
   contractInputCount.textContent = `${inputPorts.length} 个端口`;
   contractOutputCount.textContent = `${outputPorts.length} 个端口`;
   const emptyMessage = workflow ? '暂无字段' : '选择 Workflow 后预览';
@@ -72,6 +72,7 @@ function resetForm() {
   renderList();
   form.classList.remove('open');
   emptyState.hidden = false;
+  workflowFile.querySelector('option[data-unavailable]')?.remove();
   form.reset();
   enabled.checked = true;
   formTitle.textContent = '新建事件绑定';
@@ -109,7 +110,8 @@ function renderList() {
     arrow.textContent = '→';
     const workflow = document.createElement('span');
     workflow.className = 'binding-workflow';
-    workflow.textContent = binding.workflow_name || binding.workflow_id || '未知 Workflow';
+    workflow.textContent = workflows.find((item) => item.file_id === binding.workflow_file_id)?.name
+      || binding.workflow_file_name || binding.workflow_name || '文件不可用';
     target.append(arrow, workflow);
     main.append(event, target);
 
@@ -132,18 +134,18 @@ function renderList() {
 
 function renderWorkflows(items) {
   workflows = items;
-  workflowName.replaceChildren();
+  workflowFile.replaceChildren();
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.textContent = items.length ? '选择 Workflow' : '暂无 Workflow，请先创建';
-  workflowName.append(placeholder);
+  placeholder.textContent = items.length ? '选择 Workspace 中的 Workflow 文件' : '暂无 Workflow 文件，请先在工作区保存 JSON';
+  workflowFile.append(placeholder);
   for (const workflow of items) {
     const option = document.createElement('option');
-    option.value = workflow.name;
-    option.textContent = workflow.name || workflow.id;
-    workflowName.append(option);
+    option.value = workflow.file_id;
+    option.textContent = workflow.name;
+    workflowFile.append(option);
   }
-  workflowName.disabled = items.length === 0;
+  workflowFile.disabled = items.length === 0;
   saveButton.disabled = items.length === 0;
   renderContractPreview();
 }
@@ -153,13 +155,24 @@ function editBinding(binding) {
   form.classList.add('open');
   emptyState.hidden = true;
   eventType.value = binding.event_type;
-  workflowName.value = binding.workflow_name || '';
+  workflowFile.querySelector('option[data-unavailable]')?.remove();
+  if (binding.workflow_file_id && !workflows.some((item) => item.file_id === binding.workflow_file_id)) {
+    const unavailable = document.createElement('option');
+    unavailable.value = binding.workflow_file_id;
+    unavailable.textContent = `${binding.workflow_file_name || binding.workflow_file_id}（文件不可用，请重新选择）`;
+    unavailable.disabled = true;
+    unavailable.dataset.unavailable = 'true';
+    workflowFile.append(unavailable);
+  }
+  workflowFile.value = binding.workflow_file_id || '';
   renderContractPreview();
   enabled.checked = binding.enabled;
   formTitle.textContent = '编辑事件绑定';
   formState.textContent = '编辑中';
   cancelButton.disabled = false;
-  setStatus('');
+  setStatus(binding.workflow_file_id
+    ? (workflows.some((item) => item.file_id === binding.workflow_file_id) ? '' : '文件已删除或内容不是有效 Workflow，请重新选择')
+    : '旧绑定：请重新选择 Workspace 中的 Workflow 文件', 'error');
   renderList();
 }
 
@@ -201,13 +214,16 @@ newButton.addEventListener('click', () => {
   eventType.focus();
 });
 cancelButton.addEventListener('click', resetForm);
-workflowName.addEventListener('change', renderContractPreview);
+workflowFile.addEventListener('change', () => {
+  setStatus('');
+  renderContractPreview();
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const payload = {
     event_type: eventType.value.trim().toLowerCase(),
-    workflow_name: workflowName.value,
+    workflow_file_id: workflowFile.value,
     enabled: enabled.checked,
   };
   saveButton.disabled = true;

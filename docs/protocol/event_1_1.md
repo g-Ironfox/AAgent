@@ -24,7 +24,7 @@ Event 在 Redis List 中占一个元素，内容是 UTF-8 编码的 JSON 对象�
 |---|---|---|---|
 | `version` | 必须 | 固定字符串 `1.1` | 单条 Event 的协议版本；Agent 主队列消费者拒绝缺失或不匹配的版本 |
 | `event_type` | 必须 | 非空字符串 | 选择 Workflow 执行或事件绑定 |
-| `payload` | 必须 | JSON 对象 | 类型专属数据；绑定路由将其浅拷贝并覆盖 `workflow_name` |
+| `payload` | 必须 | JSON 对象 | 类型专属数据；绑定路由浅拷贝并覆盖 Workflow 选择字段与 `origin` |
 | `time` | 可选 | 字符串 | 终端生产者附加的时间；主 worker 不读取 |
 
 其他顶层字段可随 Event 透传并保存到历史，但没有统一处理语义。`created_at` 和 `_id` 由历史存储生成，不属于队列 Event：worker 校验版本后把 Event 复制并加 UTC `created_at` 写入 MongoDB，数据库生成 `_id`。WebUI 展示不可解析的队列内容时包装出的 `raw` 不是可发送的协议类型。Tool Server 专用回调队列不由主 worker 消费，不在本次主队列版本校验范围内。
@@ -72,25 +72,19 @@ WebUI 要求去除首尾空白后的 `content` 非空且最多 4000 个字符，
 {
   "version": "1.1",
   "event_type": "workflow",
-  "payload": {"content": "执行任务", "files": [], "workflow_name": "answer_question"}
+  "payload": {"content": "执行任务", "files": [], "workflow_file_id": "workspace-file-id"}
 }
 ```
 
-`payload.workflow_name` 为目标 Workflow 的唯一名称，由绑定写入，覆盖原始 payload 中同名字段。其他原始 payload 字段保留。执行时按该名称读取 Workflow 定义，再按 Workflow Input 端口的 `name` 读取同名字段；缺失的字段传为 `None`。`workflow` 是唯一不查询事件绑定、直接执行的主 worker 类型。
+`payload.workflow_file_id` 为 Workspace 文件的稳定 ID，由绑定写入。路由移除原始 payload 中的 `workflow_file_id`、`workflow_name` 和 `origin`，写入绑定目标并将原事件设为 `origin`；其他原始 payload 字段保留。执行时从 Workspace 当前 generation 读取文件最新内容并解析为 Workflow JSON，文件改名不影响绑定，恢复检查点后使用恢复的文件内容。兼容已有按 `workflow_name` 从管理库读取的调用；同时提供两个字段时优先使用 `workflow_file_id`，文件读取失败不回退到名称。再按 Workflow Input 端口的 `name` 读取同名字段；缺失的字段传为 `None`。`workflow` 是唯一不查询事件绑定、直接执行的主 worker 类型。
 
-执行成功产生 `response`：
-
-```json
-{"version": "1.1", "event_type": "response", "payload": {"content": "Workflow 输出"}}
-```
-
-`content` 是 Workflow 最终输出的 `content` 字段（若没有则为整个输出），值不限定为字符串。目标 Workflow 不存在或处理时抛出异常产生 `error`：
+Workflow 执行成功后不会自动产生 `response` 事件；如需向终端展示输出，应由 Workflow 显式调用 `output_to_terminal`。目标 Workflow 不存在或处理时抛出异常产生 `error`：
 
 ```json
-{"version": "1.1", "event_type": "error", "payload": {"workflow_name": "answer_question", "message": "workflow not found"}}
+{"version": "1.1", "event_type": "error", "payload": {"workflow_file_id": "workspace-file-id", "message": "workflow not found"}}
 ```
 
-`message` 是错误文本；若原 Event 的 payload 没有 `workflow_name`，异常捕获产生的 `error` 也不带该字段。当前 worker 对所有非 `workflow` 类型（包括 `response` 和 `error`）都查询绑定：为它们配置绑定会再次触发 Workflow，需避免循环。远景设计目标是“无终态”：让 Agent 自主判断是否继续处理并形成循环，同时权衡循环带来的成本与效果；这并非让这两种事件退出绑定路由，也不意味着当前已具备自主控制循环的机制。该目标不属于 Event 1.1 的已实现行为。
+`message` 是错误文本；异常捕获产生的 `error` 保留原 Event payload 中存在的 `workflow_file_id` 和 `workflow_name` 以定位执行目标。当前 worker 对所有非 `workflow` 类型（包括 `response` 和 `error`）都查询绑定：为它们配置绑定会再次触发 Workflow，需避免循环。远景设计目标是“无终态”：让 Agent 自主判断是否继续处理并形成循环，同时权衡循环带来的成本与效果；这并非让这两种事件退出绑定路由，也不意味着当前已具备自主控制循环的机制。该目标不属于 Event 1.1 的已实现行为。
 
 ### 2.3 Tool Server 回调
 
@@ -117,6 +111,6 @@ WebUI 要求去除首尾空白后的 `content` 非空且最多 4000 个字符，
 
 QQ 队列用 `LPUSH` / `BLPOP`，后入先出；主队列常规 Event 用 `LPUSH` / `BRPOP`，先入先出；WebUI 终端用 `RPUSH`，会先于已排队的常规 Event 出队。所有投递至主队列的生产者必须携带顶层 `version: "1.1"`。主 worker 出队后先校验该值必须精确匹配 `1.1`，再写历史和处理 Event；缺失或不匹配时拒绝处理且不写入历史。无启用绑定的非 `workflow` Event 仅留在历史。绑定查询出错会报告失败，不当作未绑定。当前队列不提供确认、自动重试或去重协议。
 
-Event 1.1 相较 Event 1.0 将 Workflow 选择字段从 MongoDB ID `workflow_id` 改为唯一名称 `workflow_name`。事件绑定记录和 `workflow` Event 均使用 `workflow_name`；MongoDB `_id` 仅供管理 API 定位 Workflow 文档，不属于 Event 执行选择契约。本版本不保留旧字段兼容分支。
+Event 1.1 相较 Event 1.0 将 Workflow 选择字段从 MongoDB ID `workflow_id` 改为唯一名称 `workflow_name`。新建及编辑的事件绑定使用 Workspace `workflow_file_id`，`workflow` Event 优先使用该字段并兼容 `workflow_name`。MongoDB Workflow 文档 `_id` 仅供管理 API 定位，不属于 Event 执行选择契约；不支持 `workflow_id`。
 
 Event 协议按 `MAJOR.MINOR` 独立演进；发布时才同步根版本清单、文档元信息与标签正文。变更字段、事件类型或队列方向时，必须同时检查所有生产者和消费者，不保留旧格式的兼容分支。详细版本规则见[版本与归属规范](../版本与归属规范.md)。

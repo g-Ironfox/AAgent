@@ -3,22 +3,28 @@ const NODE_HEIGHT = 86;
 const PADDING = 56;
 
 const TYPE_COLORS = {
-  input: '#13775a',
-  output: '#785d9b',
+  input: '#17201d',
+  output: '#7a3e88',
   router: '#c18413',
   construct_message: '#b75b18',
+  construct_event: '#147d78',
   construct_content: '#2f6f8f',
   construct_map_content: '#46713f',
+  map_content_get: '#326b4b',
   construct_struct: '#326b4b',
   struct_get: '#326f91',
   struct_update: '#9a5a24',
   struct_to_json: '#61568a',
   json_to_struct: '#147d78',
+  deserialize_json: '#61568a',
   split_event: '#147d78',
+  publish_event: '#b8483d',
   construct_list: '#176f73',
   list_append: '#27705b',
   foreach: '#9a5a24',
+  while_pop: '#9a5a24',
   history: '#396a87',
+  tool: '#13775a',
   llm: '#356e9b',
   local_tool: '#13775a',
   remote_sync_tool: '#a94f36',
@@ -26,17 +32,30 @@ const TYPE_COLORS = {
   context_create: '#326b4b',
   context_read: '#376c78',
   context_write: '#8a5b2d',
+  session_create: '#187b70',
+  session_read: '#28749c',
+  session_write: '#ab6740',
   workflow: '#785d9b',
 };
 
 const CONNECTION_COLORS = {
-  control: '#5f7168',
+  control: '#13775a',
   content: '#356e9b',
   message: '#b75b18',
   event: '#147d78',
+  'map-content': '#46713f',
   'list-content': '#d12f72',
   'list-message': '#7a3e88',
   'list-event': '#147d78',
+};
+
+const CONNECTION_DASHES = {
+  content: '5 5',
+  message: '2 4',
+  event: '2 4',
+  'list-content': '7 3',
+  'list-message': '7 3',
+  'list-event': '7 3',
 };
 
 function escapeXml(value) {
@@ -61,11 +80,11 @@ function structColorForType(type, workflow) {
   const match = /^(?:list-)?struct:(.+)$/.exec(type || '');
   if (!match) return null;
   const definition = (workflow?.metadata?.structs || []).find((item) => item.id === match[1]);
-  return type.startsWith('list-struct:') ? (definition?.list_color || definition?.color || null) : (definition?.color || null);
+  return (type.startsWith('list-struct:') ? (definition?.list_color || definition?.color) : definition?.color) || '#3a7d68';
 }
 
 function connectionColor(type, workflow) {
-  return structColorForType(type, workflow) || CONNECTION_COLORS[type] || CONNECTION_COLORS.control;
+  return structColorForType(type, workflow) || CONNECTION_COLORS[type] || '#8b9991';
 }
 
 function structDefinition(node, workflow) {
@@ -120,11 +139,17 @@ function contractPortIds(node, direction, workflow) {
     return direction === 'input' ? ['control-in', ...inputs] : ['control-out', 'list-out'];
   }
   if (node.type === 'list_append') return direction === 'input' ? ['control-in', 'list-in', 'item-in'] : ['control-out', 'list-out'];
+  if (node.type === 'while_pop') return direction === 'input' ? ['control-in', 'loop-in', ...((node.arguments?.context_id_source || node.context_id_source || 'port') === 'port' ? ['context-id'] : [])] : ['control-out', 'loop-out', 'item-out'];
   if (node.type === 'foreach') return direction === 'input' ? ['control-in', 'loop-in', 'list-in'] : ['control-out', 'loop-out', 'item-out'];
   if (node.type === 'history') return direction === 'input' ? ['control-in'] : ['control-out', 'events'];
   if (node.type === 'context_create') return direction === 'input' ? ['control-in', 'initial-value'] : ['control-out', 'context-id'];
   if (node.type === 'context_read') return direction === 'input' ? ['control-in', 'context-id'] : ['control-out', 'value-out'];
   if (node.type === 'context_write') return direction === 'input' ? ['control-in', 'context-id', 'value-in'] : ['control-out', 'context-id', 'value-out'];
+  if (node.type === 'tool') {
+    const parameters = (Array.isArray(args.parameters) ? args.parameters : []).map((parameter) => parameter.name);
+    if (direction === 'input') return ['control-in', ...parameters];
+    return ['control-out', ...(args.outputs || []).map((output) => output.name)];
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     const parameters = (Array.isArray(args.parameters) ? args.parameters : []).map((parameter) => (
       typeof parameter === 'string' ? parameter : parameter.name
@@ -204,7 +229,7 @@ export function workflowCanvasSvg(workflow) {
     const start = endpointPosition(source, connection.fromPortId, 'output', connections, workflow);
     const end = endpointPosition(target, connection.toPortId, 'input', connections, workflow);
     const color = connectionColor(connection.type, workflow);
-    const dash = connection.type === 'control' ? '' : ' stroke-dasharray="6 5"';
+    const dash = CONNECTION_DASHES[connection.type] ? ` stroke-dasharray="${CONNECTION_DASHES[connection.type]}"` : '';
     return `<path d="${connectionPath(start, end)}" fill="none" stroke="${color}" stroke-width="2"${dash}/>`;
   }).join('');
 

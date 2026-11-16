@@ -6,6 +6,8 @@ import json
 import copy
 import logging
 import os
+import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -15,6 +17,7 @@ from workflow_contract import node_argument, tool_parameter_names
 WorkflowMap = list[dict[str, Any]]
 NodeHandler = Callable[[int, WorkflowMap], int]
 WORKFLOW_END = -1
+WORKFLOW_TIMEOUT_SECONDS = 180
 logger = logging.getLogger("aagent.workflow")
 
 
@@ -135,27 +138,101 @@ def next_successor(node: dict[str, Any], key: str = "next") -> int:
 def run_workflow_map(
     workflow_map: WorkflowMap,
     start: int,
+    *,
+    ancestor_invocation_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     from workflow_context_repository import WorkflowContextError, delete_contexts
 
     invocation_id = uuid4().hex
     context_ids: set[str] = set()
+    started_at = time.monotonic()
+    started_at_utc = datetime.now(timezone.utc)
+    node_trace: list[dict[str, Any]] = []
     for node in workflow_map:
         node["_workflow_invocation_id"] = invocation_id
+        node["_workflow_ancestor_invocation_ids"] = ancestor_invocation_ids
         node["_workflow_context_ids"] = context_ids
+    input_node = workflow_map[start]
+    workflow_inputs: dict[str, Any] = copy.deepcopy(input_node.get("_workflow_input_values", {}))
+    for port in input_node.get("workflowPorts", []):
+        if port["name"] in workflow_inputs:
+            continue
+        targets = input_node.get("data_outputs", {}).get(port["id"], [])
+        if not targets:
+            workflow_inputs[port["name"]] = None
+            continue
+        target_id, target_port = targets[0]
+        slot = workflow_map[target_id].get("data_inputs", {}).get(target_port)
+        workflow_inputs[port["name"]] = copy.deepcopy(slot[2]) if isinstance(slot, list) and len(slot) == 3 else None
+
+    def record_run(status: str, output: dict[str, Any], error: str | None = None) -> None:
+        call_stack = input_node.get("_workflow_call_stack", [])
+        workflow_name = call_stack[-1] if call_stack else input_node.get("_workflow_name")
+        if not workflow_name:
+            return
+        try:
+            from workflow_run_repository import record_workflow_run
+
+            record_workflow_run({
+                "run_id": invocation_id,
+                "workflow_name": workflow_name,
+                "call_stack": call_stack,
+                "started_at": started_at_utc,
+                "finished_at": datetime.now(timezone.utc),
+                "duration_ms": round((time.monotonic() - started_at) * 1000),
+                "status": status,
+                "input": workflow_inputs,
+                "output": output,
+                "node_trace": node_trace,
+                "error": error,
+            })
+        except Exception:
+            logger.exception("failed to record workflow run: %s", invocation_id)
+
     try:
         current_id = start
         result: dict[str, Any] | None = None
         while current_id != WORKFLOW_END:
+            elapsed = time.monotonic() - started_at
+            if elapsed > WORKFLOW_TIMEOUT_SECONDS:
+                raise TimeoutError(
+                    f"workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds"
+                )
             node = workflow_map[current_id]
             handler = nodes_map.get(node.get("type"))
-            if handler is None:
-                raise ValueError(f"unsupported workflow node type: {node.get('type')}")
-            current_id = handler(current_id, workflow_map)
+            node_started_at = datetime.now(timezone.utc)
+            node_started_monotonic = time.monotonic()
+            trace_entry = {
+                "index": len(node_trace) + 1,
+                "node_id": node.get("id"),
+                "node_name": node.get("name"),
+                "node_type": node.get("type"),
+                "started_at": node_started_at,
+                "status": "completed",
+            }
+            try:
+                if handler is None:
+                    raise ValueError(f"unsupported workflow node type: {node.get('type')}")
+                current_id = handler(current_id, workflow_map)
+            except Exception as error:
+                trace_entry["status"] = "failed"
+                trace_entry["error"] = str(error)
+                raise
+            finally:
+                trace_entry["finished_at"] = datetime.now(timezone.utc)
+                trace_entry["duration_ms"] = round(
+                    (time.monotonic() - node_started_monotonic) * 1000
+                )
+                node_trace.append(trace_entry)
             node_result = node.pop("_workflow_result", None)
             if isinstance(node_result, dict):
                 result = node_result
-        return result or {}
+        result = result or {}
+        record_run("completed", result)
+        return result
+    except Exception as error:
+        record_run("failed", {}, str(error))
+        raise
     finally:
         try:
             delete_contexts(context_ids)
@@ -163,6 +240,7 @@ def run_workflow_map(
             logger.exception("failed to clean up Workflow Contexts")
         for node in workflow_map:
             node.pop("_workflow_invocation_id", None)
+            node.pop("_workflow_ancestor_invocation_ids", None)
             node.pop("_workflow_context_ids", None)
 
 
@@ -200,14 +278,54 @@ def workflow_llm(current_id: int, workflow_map: WorkflowMap) -> int:
     from llm import chat_with_model
     from tools.tool import registered_tools
 
-    configured_tools = set(node_argument(node, "tools", []))
-    tools = [
-        schema
-        for schema in registered_tools
-        if schema["function"]["name"] in configured_tools
-    ]
+    dynamic_tools_slot = node.get("data_inputs", {}).get("available-tools-in")
+    has_dynamic_tools = (
+        isinstance(dynamic_tools_slot, list)
+        and len(dynamic_tools_slot) == 3
+        and dynamic_tools_slot[0] is not None
+    )
+    dynamic_tool_names = dynamic_tools_slot[2] if has_dynamic_tools else None
+    metadata_tools = node.get("_metadata_tools", [])
+    if not metadata_tools and node.get("_metadata_local_tool_names"):
+        metadata_tools = [
+            {"name": name, "kind": "local"}
+            for name in node["_metadata_local_tool_names"]
+        ]
+    metadata_by_name = {tool["name"]: tool.get("kind", "remote") for tool in metadata_tools}
+    if has_dynamic_tools:
+        if not isinstance(dynamic_tool_names, list) or any(
+            not isinstance(name, str) or not name.strip() for name in dynamic_tool_names
+        ):
+            raise ValueError(f"llm available-tools-in must be a list of non-empty tool names: node {node.get('id')}")
+        configured_tools = list(dict.fromkeys(name.strip() for name in dynamic_tool_names))
+        invalid_names = sorted(set(configured_tools) - metadata_by_name.keys())
+        if invalid_names:
+            raise ValueError(f"llm tools must reference metadata.tools declarations: {', '.join(invalid_names)}")
+    else:
+        configured_tools = node_argument(node, "tools", []) or [tool["name"] for tool in metadata_tools]
+        invalid_names = sorted(set(configured_tools) - metadata_by_name.keys())
+        if invalid_names:
+            raise ValueError(f"llm tools must reference metadata.tools declarations: {', '.join(invalid_names)}")
+
+    registered_by_name = {schema["function"]["name"]: schema for schema in registered_tools}
+    selected_local = {name for name in configured_tools if metadata_by_name.get(name) == "local"}
+    missing_local = sorted(selected_local - registered_by_name.keys())
+    if missing_local:
+        raise ValueError(f"local tool schemas are not registered: {', '.join(missing_local)}")
+    tools = [registered_by_name[name] for name in configured_tools if name in selected_local]
+    selected_remote = {name for name in configured_tools if metadata_by_name.get(name) == "remote"}
+    if selected_remote:
+        from tool_server_client import ToolServerError, get_remote_tool_schemas
+
+        try:
+            tools.extend(get_remote_tool_schemas(selected_remote))
+        except ToolServerError as error:
+            raise ValueError(f"llm could not load Remote Tool schemas: {error}") from error
     content, reasoning, tool_calls = chat_with_model(
-        messages, node_argument(node, "model"), tools=tools
+        messages,
+        node_argument(node, "model"),
+        tools=tools,
+        think=node_argument(node, "think", False),
     )
     propagate_workflow_output(workflow_map, node, "output", content)
     if "reasoning" in node.get("data_outputs", {}):
@@ -474,6 +592,25 @@ def workflow_foreach(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node, "item")
 
 
+def workflow_while_pop(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_context_repository import pop_context
+
+    node = workflow_map[current_id]
+    context_id = node_argument(node, "context_id") if node_argument(node, "context_id_source", "port") == "fixed" else _context_input(node, "context-id", "Context ID 输入无效")
+    has_item, item = pop_context(
+        context_id,
+        node["_workflow_invocation_id"],
+        node_argument(node, "value_type"),
+        node_argument(node, "position", "end"),
+        _struct_defs(node),
+        ancestor_invocation_ids=node.get("_workflow_ancestor_invocation_ids", ()),
+    )
+    if not has_item:
+        return next_successor(node)
+    propagate_workflow_output(workflow_map, node, "item-out", item)
+    return next_successor(node, "item")
+
+
 def workflow_history(current_id: int, workflow_map: WorkflowMap) -> int:
     from history_repository import get_recent_history
 
@@ -512,12 +649,55 @@ def _tool_output(result: Any) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def workflow_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    if node_argument(node, "mode", "sync") != "sync":
+        raise ValueError("tool only supports sync mode; use remote_async_tool")
+    kind = node.get("_tool_kind")
+    if kind == "local":
+        if node_argument(node, "mode", "sync") != "sync":
+            raise ValueError("local tool only supports sync mode")
+        return workflow_local_tool(current_id, workflow_map)
+    if kind == "remote":
+        return workflow_remote_sync_tool(current_id, workflow_map)
+    raise ValueError("tool kind must be resolved from metadata.tools")
+
+
 def workflow_local_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     from tools.tool import execute_tool
 
     node = workflow_map[current_id]
-    result = execute_tool(node["id"], node_argument(node, "tool"), _tool_arguments(node))
-    propagate_workflow_output(workflow_map, node, "output", _tool_output(result))
+    result = execute_tool(
+        node["id"], node_argument(node, "tool"), _tool_arguments(node), preserve_result=True
+    )
+    if node.get("type") == "local_tool":
+        propagate_workflow_output(workflow_map, node, "output", _tool_output(result))
+        return next_successor(node)
+
+    outputs = node_argument(node, "outputs", [])
+    if isinstance(result, dict):
+        if len(outputs) == 1 and outputs[0]["name"] == "output" and "output" not in result:
+            values = {"output": result}
+        else:
+            missing = [output["name"] for output in outputs if output["name"] not in result]
+            if missing:
+                raise ValueError(f"local tool result is missing outputs: {', '.join(missing)}")
+            values = result
+    elif len(outputs) == 1:
+        values = {outputs[0]["name"]: result}
+    elif outputs:
+        raise ValueError("local tool result must be an object for named outputs")
+    else:
+        values = {}
+
+    for output in outputs:
+        name = output["name"]
+        value = values[name]
+        if output["type"] == "content":
+            value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        elif output["type"] == "map-content" and not _is_map_content(value):
+            raise ValueError(f"local tool output {name} must match map-content")
+        propagate_workflow_output(workflow_map, node, name, value)
     return next_successor(node)
 
 
@@ -567,6 +747,51 @@ def workflow_remote_sync_tool(current_id: int, workflow_map: WorkflowMap) -> int
     return next_successor(node)
 
 
+def workflow_json_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    tool_name = None
+    try:
+        has_name, tool_name = read_workflow_input(node, "tool-name")
+        has_arguments, arguments_json = read_workflow_input(node, "arguments-json")
+        if not has_name or not isinstance(tool_name, str) or not tool_name.strip():
+            raise ValueError(f"JSON Tool name is missing: node {node.get('id')}")
+        if not has_arguments or not isinstance(arguments_json, str):
+            raise ValueError(f"JSON Tool arguments are missing: node {node.get('id')}")
+        arguments = json.loads(arguments_json)
+        if not isinstance(arguments, dict):
+            raise ValueError(f"JSON Tool arguments must be a JSON object: node {node.get('id')}")
+
+        from tools.tool import execute_tool, tool_handlers
+
+        name = tool_name.strip()
+        if name in tool_handlers:
+            result = execute_tool(node["id"], name, arguments, preserve_result=True)
+        else:
+            from tool_server_client import call_remote_tool
+
+            timeout_ms = int(os.getenv("TOOL_CLIENT_DEFAULT_WAIT_MS", "10000"))
+            result = call_remote_tool(name, arguments, "wait", timeout_ms, None)
+
+        result_json = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
+    except Exception as error:
+        details = {
+            "tool": tool_name.strip() if isinstance(tool_name, str) else None,
+            "error": {"type": type(error).__name__, "message": str(error)},
+        }
+        task_id = getattr(error, "task_id", None)
+        if task_id:
+            details["error"]["task_id"] = task_id
+        error_json = json.dumps(details, ensure_ascii=False, separators=(",", ":"))
+        propagate_workflow_output(workflow_map, node, "error-json", error_json)
+        if isinstance(node.get("successors", {}).get("error"), int):
+            logger.warning("JSON Tool routed an error: node=%s, tool=%s, error=%s", node.get("id"), details["tool"], str(error))
+            return next_successor(node, "error")
+        raise
+
+    propagate_workflow_output(workflow_map, node, "result-json", result_json)
+    return next_successor(node)
+
+
 def workflow_remote_async_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     task_id = _call_remote_node(
@@ -610,7 +835,11 @@ def workflow_context_read(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     context_id = node_argument(node, "context_id") if node_argument(node, "context_id_source", "port") == "fixed" else _context_input(node, "context-id", "Context ID 输入无效")
     value = read_context(
-        context_id, node["_workflow_invocation_id"], node_argument(node, "value_type"), _struct_defs(node)
+        context_id,
+        node["_workflow_invocation_id"],
+        node_argument(node, "value_type"),
+        _struct_defs(node),
+        ancestor_invocation_ids=node.get("_workflow_ancestor_invocation_ids", ()),
     )
     propagate_workflow_output(workflow_map, node, "value-out", value)
     return next_successor(node)
@@ -628,6 +857,7 @@ def workflow_context_write(current_id: int, workflow_map: WorkflowMap) -> int:
         node_argument(node, "value_type"),
         value,
         _struct_defs(node),
+        ancestor_invocation_ids=node.get("_workflow_ancestor_invocation_ids", ()),
     )
     propagate_workflow_output(workflow_map, node, "context-id", context_id)
     propagate_workflow_output(workflow_map, node, "value-out", value)
@@ -667,8 +897,12 @@ def workflow_session_write(current_id: int, workflow_map: WorkflowMap) -> int:
 
 
 def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
-    from workflow_parser import _read_workflow, parse_workflow
-    from workflow_validator import validate_workflow
+    from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
+    from workflow_validator import (
+        WorkflowValidationError,
+        validate_workflow,
+        validate_workflow_dependencies,
+    )
 
     parent_node = workflow_map[current_id]
     workflow_name = node_argument(parent_node, "workflow_name")
@@ -677,18 +911,19 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
         chain = " -> ".join([*call_stack, workflow_name])
         raise ValueError(f"recursive workflow call detected: {chain}")
 
-    workflow_document = _read_workflow(workflow_name)
+    workflow_document = _read_workspace_workflow_by_name(workflow_name)
     validate_workflow(workflow_document)
-    if (
-        parent_node.get("input_ports", [])
-        != workflow_document.get("input_ports", [])
-        or parent_node.get("output_ports", [])
-        != workflow_document.get("output_ports", [])
-    ):
-        raise ValueError(
-            "callable workflow contract changed; refresh the workflow node metadata: "
-            f"{workflow_name}"
-        )
+    validate_workflow_dependencies(workflow_document)
+    for field in ("input_ports", "output_ports"):
+        saved = parent_node.get(field, [])
+        actual = workflow_document.get(field, [])
+        if saved != actual:
+            raise WorkflowValidationError(
+                f"workflow {call_stack[-1] if call_stack else workflow_name} "
+                f"dependency {workflow_name} at {parent_node.get('id', 'workflow node')} "
+                f"has stale {field}: saved={saved!r}, actual={actual!r}; "
+                "refresh the workflow node metadata"
+            )
 
     child_map = parse_workflow(workflow_document)
     child_input_id = next(
@@ -702,14 +937,24 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
     for child_node in child_map:
         child_node["_workflow_call_stack"] = next_call_stack
     child_input = child_map[child_input_id]
+    child_inputs: dict[str, Any] = {}
     for port in child_input.get("workflowPorts", []):
         has_value, value = read_workflow_input(
             parent_node, f"workflow:{port['name']}"
         )
+        child_inputs[port["name"]] = value if has_value else None
         if has_value:
             propagate_workflow_output(child_map, child_input, port["id"], value)
+    child_input["_workflow_input_values"] = child_inputs
 
-    output = run_workflow_map(child_map, child_input_id)
+    output = run_workflow_map(
+        child_map,
+        child_input_id,
+        ancestor_invocation_ids=(
+            *parent_node.get("_workflow_ancestor_invocation_ids", ()),
+            parent_node["_workflow_invocation_id"],
+        ),
+    )
     for name, value in output.items():
         propagate_workflow_output(
             workflow_map, parent_node, f"workflow:{name}", value
@@ -737,8 +982,11 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,
     "foreach": workflow_foreach,
+    "while_pop": workflow_while_pop,
     "history": workflow_history,
     "llm": workflow_llm,
+    "tool": workflow_tool,
+    "json_tool": workflow_json_tool,
     "local_tool": workflow_local_tool,
     "remote_sync_tool": workflow_remote_sync_tool,
     "remote_async_tool": workflow_remote_async_tool,

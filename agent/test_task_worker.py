@@ -15,14 +15,14 @@ class WorkerRoutingTest(unittest.TestCase):
         ):
             with self.subTest(event=event):
                 with patch("task_worker.record_history") as record_history, patch(
-                    "task_worker.read_bound_workflow_name"
+                    "task_worker.read_bound_workflow"
                 ) as read_bound:
                     with self.assertRaisesRegex(ValueError, "unsupported event version"):
                         task_worker.handle_task(event)
                     record_history.assert_not_called()
                     read_bound.assert_not_called()
 
-    @patch("task_worker.read_bound_workflow_name", return_value=None)
+    @patch("task_worker.read_bound_workflow", return_value=None)
     @patch("task_worker.record_history")
     def test_matching_event_version_is_recorded(self, record_history, read_bound):
         event = {"version": "1.1", "event_type": "terminal", "payload": {}}
@@ -35,21 +35,41 @@ class WorkerRoutingTest(unittest.TestCase):
         database = mongo_client.return_value.__enter__.return_value.__getitem__.return_value
         database.__getitem__.return_value.find_one.return_value = {"workflow_name": "terminal workflow"}
 
-        self.assertEqual(task_worker.read_bound_workflow_name("terminal"), "terminal workflow")
+        self.assertEqual(task_worker.read_bound_workflow("terminal"), {"workflow_name": "terminal workflow"})
         database.__getitem__.return_value.find_one.assert_called_once_with(
-            {"event_type": "terminal", "enabled": True}, {"workflow_name": 1}
+            {"event_type": "terminal", "enabled": True}, {"workflow_file_id": 1, "workflow_name": 1}
         )
         database.__getitem__.assert_called_once_with("event_bindings")
+
+    @patch("task_worker.MongoClient")
+    def test_file_binding_takes_priority_over_legacy_name(self, mongo_client):
+        database = mongo_client.return_value.__enter__.return_value.__getitem__.return_value
+        database.__getitem__.return_value.find_one.return_value = {
+            "workflow_file_id": "file-1", "workflow_name": "legacy",
+        }
+        self.assertEqual(task_worker.read_bound_workflow("terminal"), {"workflow_file_id": "file-1"})
+
+    @patch("task_worker.read_bound_workflow", return_value={"workflow_name": "legacy"})
+    @patch("task_worker.publish_to_queue")
+    @patch("task_worker.record_history")
+    def test_legacy_binding_removes_incoming_file_selector(self, record, publish, read_bound):
+        task_worker.handle_task({
+            "version": "1.1", "event_type": "terminal",
+            "payload": {"workflow_file_id": "untrusted"},
+        })
+        payload = publish.call_args.args[1]["payload"]
+        self.assertEqual(payload["workflow_name"], "legacy")
+        self.assertNotIn("workflow_file_id", payload)
 
     @patch("task_worker.MongoClient")
     def test_unbound_or_disabled_event_does_not_fall_back(self, mongo_client):
         database = mongo_client.return_value.__enter__.return_value.__getitem__.return_value
         database.__getitem__.return_value.find_one.return_value = None
 
-        self.assertIsNone(task_worker.read_bound_workflow_name("terminal"))
+        self.assertIsNone(task_worker.read_bound_workflow("terminal"))
         database.__getitem__.assert_called_once_with("event_bindings")
 
-    @patch("task_worker.read_bound_workflow_name", return_value=None)
+    @patch("task_worker.read_bound_workflow", return_value=None)
     @patch("task_worker.publish_to_queue")
     @patch("task_worker.record_history")
     def test_unbound_event_only_records_history(self, record_history, publish, read_bound):
@@ -59,18 +79,18 @@ class WorkerRoutingTest(unittest.TestCase):
         read_bound.assert_called_once_with("custom.event")
         publish.assert_not_called()
 
-    @patch("task_worker.read_bound_workflow_name", return_value="bound workflow")
+    @patch("task_worker.read_bound_workflow", return_value={"workflow_file_id": "bound-file"})
     @patch("task_worker.publish_to_queue")
     @patch("task_worker.record_history")
     def test_bound_event_preserves_payload_but_overwrites_id(self, record_history, publish, read_bound):
-        event = {"version": "1.1", "event_type": "custom.event", "payload": {"value": 1, "workflow_name": "untrusted"}}
+        event = {"version": "1.1", "event_type": "custom.event", "payload": {"value": 1, "workflow_name": "untrusted", "workflow_file_id": "untrusted-file"}}
         task_worker.handle_task(event)
         publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
-            "event_type": "workflow", "payload": {"value": 1, "workflow_name": "bound workflow", "origin": event},
+            "event_type": "workflow", "payload": {"value": 1, "workflow_file_id": "bound-file", "origin": event},
         })
         self.assertEqual(event["payload"]["workflow_name"], "untrusted")
 
-    @patch("task_worker.read_bound_workflow_name", return_value="bound workflow")
+    @patch("task_worker.read_bound_workflow", return_value={"workflow_file_id": "bound-file"})
     @patch("task_worker.publish_to_queue")
     @patch("task_worker.record_history")
     def test_bound_event_replaces_payload_origin_with_source_event(self, record_history, publish, read_bound):
@@ -82,7 +102,7 @@ class WorkerRoutingTest(unittest.TestCase):
         task_worker.handle_task(event)
         self.assertEqual(publish.call_args.args[1]["payload"]["origin"], event)
 
-    @patch("task_worker.read_bound_workflow_name", return_value=None)
+    @patch("task_worker.read_bound_workflow", return_value=None)
     @patch("task_worker.publish_to_queue")
     @patch("task_worker.record_history")
     def test_unbound_response_and_error_only_record_history(self, record_history, publish, read_bound):
@@ -92,7 +112,7 @@ class WorkerRoutingTest(unittest.TestCase):
         self.assertEqual([call.args[0] for call in read_bound.call_args_list], ["response", "error"])
         publish.assert_not_called()
 
-    @patch("task_worker.read_bound_workflow_name", return_value="self-workflow")
+    @patch("task_worker.read_bound_workflow", return_value={"workflow_file_id": "self-file"})
     @patch("task_worker.publish_to_queue")
     @patch("task_worker.record_history")
     def test_bound_response_and_error_trigger_workflow(self, record_history, publish, read_bound):
@@ -100,7 +120,7 @@ class WorkerRoutingTest(unittest.TestCase):
             task_worker.handle_task({"version": "1.1", "event_type": event_type, "payload": {"text": event_type}})
         self.assertEqual([call.args[0] for call in read_bound.call_args_list], ["response", "error"])
         self.assertEqual([call.args[1] for call in publish.call_args_list], [
-            {"event_type": "workflow", "payload": {"text": event_type, "workflow_name": "self-workflow", "origin": {"version": "1.1", "event_type": event_type, "payload": {"text": event_type}}}}
+            {"event_type": "workflow", "payload": {"text": event_type, "workflow_file_id": "self-file", "origin": {"version": "1.1", "event_type": event_type, "payload": {"text": event_type}}}}
             for event_type in ("response", "error")
         ])
 
@@ -109,7 +129,7 @@ class WorkerRoutingTest(unittest.TestCase):
         database = mongo_client.return_value.__enter__.return_value.__getitem__.return_value
         database.__getitem__.return_value.find_one.side_effect = PyMongoError("unavailable")
         with self.assertRaisesRegex(RuntimeError, "failed to read event binding"):
-            task_worker.read_bound_workflow_name("terminal")
+            task_worker.read_bound_workflow("terminal")
 
     @patch("task_worker._read_workflow")
     @patch("task_worker.validate_workflow")
@@ -133,7 +153,7 @@ class WorkerRoutingTest(unittest.TestCase):
         self.assertEqual(propagate.call_args_list[0].args[3], "selected")
         self.assertEqual(propagate.call_args_list[1].args[3], 42)
         self.assertEqual(propagate.call_args_list[2].args[3], event)
-        self.assertEqual(publish.call_args.args[1]["event_type"], "response")
+        publish.assert_not_called()
 
     @patch("task_worker._read_workflow", return_value={"name": "workflow"})
     @patch("task_worker.validate_workflow")
@@ -156,6 +176,7 @@ class WorkerRoutingTest(unittest.TestCase):
             "payload": {"workflow_name": "selected", "origin": origin},
         })
         self.assertEqual(propagate.call_args.args[3], origin)
+        publish.assert_not_called()
 
     @patch("task_worker._read_workflow", return_value={"name": "workflow"})
     @patch("task_worker.validate_workflow")
@@ -170,7 +191,7 @@ class WorkerRoutingTest(unittest.TestCase):
         task_worker.handle_task({"version": "1.1", "event_type": "workflow", "payload": {"workflow_name": "selected"}})
         read_workflow.assert_called_once_with("selected")
         propagate.assert_not_called()
-        self.assertEqual(publish.call_args.args[1]["event_type"], "response")
+        publish.assert_not_called()
 
     @patch("task_worker._read_workflow", side_effect=WorkflowParseError("workflow not found: deleted"))
     @patch("task_worker.publish_to_queue")
@@ -190,6 +211,59 @@ class WorkerRoutingTest(unittest.TestCase):
             "event_type": "error", "payload": {"workflow_name": "bad", "message": "workflow not found"},
         })
 
+    @patch("task_worker._read_workflow")
+    @patch("task_worker._read_workspace_workflow", return_value={"name": "from file"})
+    @patch("task_worker.validate_workflow")
+    @patch("task_worker.parse_workflow", return_value=[{"type": "input", "workflowPorts": [
+        {"id": "workflow:value", "name": "value"},
+        {"id": "workflow:origin", "name": "origin"},
+    ]}])
+    @patch("task_worker.propagate_workflow_output")
+    @patch("task_worker.run_workflow_map", return_value={"content": "done"})
+    @patch("task_worker.publish_to_queue")
+    @patch("task_worker.record_history")
+    def test_file_workflow_executes_with_payload_and_origin(
+        self, record, publish, run, propagate, parse, validate, read_file, read_legacy
+    ):
+        origin = {"version": "1.1", "event_type": "terminal", "payload": {"value": "hello"}}
+        task_worker.handle_task({
+            "version": "1.1", "event_type": "workflow",
+            "payload": {"workflow_file_id": "file-1", "workflow_name": "ignored", "value": "hello", "origin": origin},
+        })
+        read_file.assert_called_once_with("file-1")
+        read_legacy.assert_not_called()
+        validate.assert_called_once_with({"name": "from file"})
+        self.assertEqual([call.args[3] for call in propagate.call_args_list], ["hello", origin])
+        self.assertEqual(run.call_args.args[0][0]["_workflow_call_stack"], ["from file"])
+        publish.assert_not_called()
+
+    @patch("task_worker._read_workspace_workflow", side_effect=WorkflowParseError("workflow file not found: deleted"))
+    @patch("task_worker._read_workflow")
+    @patch("task_worker.publish_to_queue")
+    @patch("task_worker.record_history")
+    def test_deleted_file_publishes_error_without_legacy_fallback(self, record, publish, read_legacy, read_file):
+        task_worker.handle_task({
+            "version": "1.1", "event_type": "workflow", "payload": {"workflow_file_id": "deleted"},
+        })
+        read_legacy.assert_not_called()
+        publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
+            "event_type": "error", "payload": {"workflow_file_id": "deleted", "message": "workflow not found"},
+        })
+
+    @patch("task_worker.time.sleep", side_effect=KeyboardInterrupt)
+    @patch("task_worker.traceback.print_exc")
+    @patch("task_worker.print")
+    @patch("task_worker.set_worker_status")
+    @patch("task_worker.publish_to_queue")
+    @patch("task_worker.handle_task", side_effect=ValueError("invalid workflow JSON"))
+    @patch("task_worker.pop_from_queue", return_value={"version": "1.1", "event_type": "workflow", "payload": {"workflow_file_id": "file-1"}})
+    def test_file_failure_includes_file_id(self, pop, handle, publish, status, log, trace, sleep):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
+            task_worker.main()
+        self.assertEqual(publish.call_args.args[1], {
+            "event_type": "error", "payload": {"workflow_file_id": "file-1", "message": "invalid workflow JSON"},
+        })
+
     @patch("task_worker.time.sleep", side_effect=KeyboardInterrupt)
     @patch("task_worker.traceback.print_exc")
     @patch("task_worker.print")
@@ -200,7 +274,7 @@ class WorkerRoutingTest(unittest.TestCase):
     def test_workflow_failure_publishes_error_and_resets_status(
         self, pop, handle, publish, set_status, log, print_exc, sleep
     ):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
             "event_type": "error",
@@ -223,7 +297,7 @@ class WorkerRoutingTest(unittest.TestCase):
     def test_node_failure_reaches_error_event(
         self, pop, record, read, validate, parse, run, publish, set_status, log, print_exc, sleep
     ):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
             "event_type": "error", "payload": {"workflow_name": "selected", "message": "node failed"},
@@ -234,13 +308,13 @@ class WorkerRoutingTest(unittest.TestCase):
     @patch("task_worker.print")
     @patch("task_worker.set_worker_status")
     @patch("task_worker.publish_to_queue")
-    @patch("task_worker.read_bound_workflow_name", side_effect=RuntimeError("binding unavailable"))
+    @patch("task_worker.read_bound_workflow", side_effect=RuntimeError("binding unavailable"))
     @patch("task_worker.record_history")
     @patch("task_worker.pop_from_queue", return_value={"version": "1.1", "event_type": "terminal", "payload": {}})
     def test_binding_failure_publishes_error_without_workflow_name(
         self, pop, record, read_bound, publish, set_status, log, print_exc, sleep
     ):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
             "event_type": "error", "payload": {"message": "binding unavailable"},
@@ -256,7 +330,7 @@ class WorkerRoutingTest(unittest.TestCase):
     def test_failed_error_handler_does_not_publish_recursively(
         self, pop, handle, publish, set_status, log, print_exc, sleep
     ):
-        with self.assertRaises(KeyboardInterrupt):
+        with patch("task_worker.load_workspace_tools"), self.assertRaises(KeyboardInterrupt):
             task_worker.main()
         publish.assert_not_called()
 

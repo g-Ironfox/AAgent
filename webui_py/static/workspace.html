@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 工作区</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/workspace.css">
+  <link rel="stylesheet" href="/css/workspace-workflow.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AAgent 工作区"><span class="brand-mark" aria-hidden="true">A</span><span class="brand-name"><strong>AAgent</strong><small>WORKSPACE</small></span></a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航">
+        <a href="/">事件流</a><a href="/terminal.html">终端</a><a href="/bindings.html">绑定</a><a class="active" href="/workspace" aria-current="page">工作区</a>
+        <a href="/workspace/replay">检查点</a>
+        <a href="/logs">日志</a>
+      </nav>
+      <div class="workspace-state" aria-live="polite"><span>工作区</span><strong id="fileCount">读取中</strong></div>
+    </div>
+  </header>
+  <main class="workspace-main">
+    <section class="workspace-layout" aria-label="工作区">
+      <aside class="file-sidebar" aria-label="文件列表">
+        <header class="sidebar-heading"><div><p>WORKSPACE</p><h1>工作区</h1></div><div class="sidebar-tools"><button id="checkpointButton" class="checkpoint-button" type="button" title="创建工作区检查点">创建检查点</button><button id="restoreButton" class="checkpoint-button" type="button" title="从检查点恢复工作区">恢复</button><button id="createButton" class="create-button" type="button" title="新建文件" aria-label="新建文件">+</button></div></header>
+        <label class="file-search"><span class="sr-only">搜索文件</span><input id="searchInput" type="search" placeholder="搜索文件名" autocomplete="off"></label>
+        <div id="fileList" class="file-list" aria-live="polite"></div>
+      </aside>
+      <section class="file-editor" aria-label="文件编辑器">
+        <header class="editor-heading">
+          <div class="editor-title-wrap"><label for="fileName" class="sr-only">文件名</label><input id="fileName" class="file-name" maxlength="200" placeholder="未命名文件" disabled><div class="file-metadata"><span id="fileId" class="file-id"></span><span id="updatedAt"></span></div></div>
+          <div class="file-actions"><button id="workflowButton" class="tool-button" type="button" hidden aria-pressed="false" aria-controls="workflowPanel">Workflow 视图</button><button id="pinButton" class="tool-button" type="button" disabled title="钉住文件" aria-pressed="false">钉住</button><button id="downloadButton" class="tool-button" type="button" disabled title="下载 Markdown">下载</button><button id="deleteButton" class="tool-button danger" type="button" disabled title="删除文件">删除</button></div>
+        </header>
+        <div class="editor-content"><label for="fileContent" class="sr-only">文件内容</label><textarea id="fileContent" maxlength="1000000" placeholder="开始记录..." spellcheck="false" disabled></textarea><pre id="filePreview" class="file-preview" hidden></pre><section id="workflowPanel" class="workspace-workflow" aria-label="Workflow 可视化与元数据" hidden>
+          <div class="workflow-fields">
+            <span id="workflowVersion" class="workflow-version"></span>
+            <label class="workflow-field">Workflow 名称<input id="workflowName" disabled></label>
+            <label class="workflow-field">描述<textarea id="workflowDescription" placeholder="暂无描述" disabled></textarea></label>
+          </div>
+          <section class="workflow-canvas-preview" aria-labelledby="workflowCanvasTitle">
+            <header><div><p>CANVAS PREVIEW</p><h3 id="workflowCanvasTitle">完整画布</h3></div><button id="canvasExportButton" class="tool-button" type="button">导出画布</button><span id="workflowCanvasMeta" class="metadata-readonly"></span></header>
+            <div id="workflowCanvasPreview" class="workflow-canvas-preview-stage"></div>
+          </section>
+          <div class="metadata-heading"><div><p>DATA CONTRACT</p><h3>数据端口</h3></div><span class="metadata-readonly">只读</span></div>
+          <div class="metadata-columns">
+            <section class="metadata-port-section"><header><div><span class="metadata-port-mark input">IN</span><h4>Input</h4></div></header><div id="inputPorts" class="metadata-port-list"></div></section>
+            <section class="metadata-port-section"><header><div><span class="metadata-port-mark output">OUT</span><h4>Output</h4></div></header><div id="outputPorts" class="metadata-port-list"></div></section>
+          </div>
+          <section class="workflow-dependencies"><header><div><p>WORKFLOW DEPENDENCIES</p><h3>Workflows 依赖</h3></div><span id="dependencyCount" class="dependency-count"></span></header><div id="workflowDependencies" class="workflow-dependency-list"></div></section>
+          <section class="workflow-dependencies"><header><div><p>TOOLS</p><h3>Tool 依赖</h3></div><span id="remoteToolCount" class="dependency-count"></span></header><div id="remoteTools" class="workflow-dependency-list"></div></section>
+        </section><div id="fileEmpty" class="file-empty"><strong>选择一个文件</strong><span>或新建一个文件开始记录</span></div></div>
+        <footer class="editor-actions"><span id="saveStatus" class="save-status" role="status"></span><span id="characterCount" class="file-count">0 字</span><button id="cancelButton" class="tool-button" type="button" disabled hidden>取消</button><button id="editButton" class="primary-button" type="button" disabled>编辑</button></footer>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/workspace.js?v=4"></script>
+</body>
+</html>

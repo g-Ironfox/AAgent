@@ -340,6 +340,18 @@ class CallableWorkflowNodeTest(unittest.TestCase):
             [0, "workflow:messages", None],
         )
 
+        workflow["metadata"] = {"tools": [
+            {"name": "local_echo", "kind": "local", "input_ports": [], "output_ports": []},
+            {"name": "remote_echo", "kind": "remote", "input_ports": [], "output_ports": []},
+        ]}
+        workflow["nodes"][1]["arguments"]["tool_calls"] = True
+        parsed = parse_workflow(workflow)
+        self.assertEqual(parsed[1]["data_inputs"]["available-tools-in"], [None, None, None])
+        self.assertEqual(parsed[1]["_metadata_tools"], [
+            {"name": "local_echo", "kind": "local"},
+            {"name": "remote_echo", "kind": "remote"},
+        ])
+
         workflow["input_ports"][0]["type"] = "message"
         workflow["nodes"][0]["workflowPorts"][0]["type"] = "message"
         workflow["connections"][2]["type"] = "message"
@@ -672,13 +684,16 @@ class CallableWorkflowNodeTest(unittest.TestCase):
             {"fromId": "router", "fromPortId": "route-other", "toId": "call-summary", "toPortId": "control-in", "type": "control"},
             {"fromId": "router", "fromPortId": "branch$others", "toId": "output", "toPortId": "control-in", "type": "control"},
         ])
+        fallback = {**workflow["nodes"][-1], "id": "fallback-output"}
+        workflow["nodes"].append(fallback)
+        workflow["connections"][-1]["toId"] = "fallback-output"
         validate_workflow(workflow)
         parsed = parse_workflow(workflow)
-        self.assertEqual(parsed[1]["successors"], {"branch-其它": 2, "branch$others": 3})
+        self.assertEqual(parsed[1]["successors"], {"branch-其它": 2, "branch$others": 4})
         parsed[1]["data_inputs"]["content-in"][2] = "其它"
         self.assertEqual(workflow_router(1, parsed), 2)
         parsed[1]["data_inputs"]["content-in"][2] = "unmatched"
-        self.assertEqual(workflow_router(1, parsed), 3)
+        self.assertEqual(workflow_router(1, parsed), 4)
 
     def test_router_requires_input_even_with_builtin_fallback(self):
         node = {
@@ -864,6 +879,16 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
 
 class WorkflowExecutionTest(unittest.TestCase):
+    def test_llm_available_tools_input_accepts_only_list_content_when_enabled(self):
+        source = {"id": "tools", "type": "construct_list", "arguments": {"item_type": "content", "initial_value_count": 0}, "dataInputPorts": []}
+        target = {"id": "llm", "type": "llm", "arguments": {"tool_calls": True}}
+        connection = {"fromId": "tools", "fromPortId": "list-out", "toId": "llm", "toPortId": "available-tools-in", "type": "list-content"}
+        nodes = {"tools": source, "llm": target}
+        self.assertTrue(is_valid_connection(connection, nodes, [], []))
+        self.assertFalse(is_valid_connection({**connection, "type": "list-message"}, nodes, [], []))
+        target["arguments"]["tool_calls"] = False
+        self.assertFalse(is_valid_connection(connection, nodes, [], []))
+
     def test_construct_map_content_and_get(self):
         workflow_map = [
             {
@@ -993,6 +1018,97 @@ class WorkflowExecutionTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "llm messages input"):
                     workflow_llm(0, workflow_map)
 
+    def test_llm_passes_think_setting_to_model_request(self):
+        workflow_map = [
+            {
+                "id": "llm",
+                "type": "llm",
+                "arguments": {"model": "model-id", "think": False, "tools": []},
+                "successors": {"next": 1},
+                "data_inputs": {"messages-in": [None, None, [{"role": "user", "content": "hello"}]]},
+                "data_outputs": {"output": [[1, "result"]]},
+            },
+            {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}},
+        ]
+        fake_tools = type("ToolsModule", (), {"registered_tools": []})()
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("llm.chat_with_model", return_value=("answer", "hidden reasoning", [])) as chat:
+            self.assertEqual(workflow_llm(0, workflow_map), 1)
+
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}], "model-id", tools=[], think=False
+        )
+        self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "answer")
+
+    def test_llm_defaults_to_all_metadata_tools_and_dynamic_input_filters_them(self):
+        schemas = [
+            {"function": {"name": "local_echo"}},
+            {"function": {"name": "other_local"}},
+        ]
+        remote_schema = {"type": "function", "function": {"name": "remote_echo", "parameters": {}}}
+        fake_tools = type("ToolsModule", (), {"registered_tools": schemas})()
+        metadata_tools = [
+            {"name": "local_echo", "kind": "local"},
+            {"name": "other_local", "kind": "local"},
+            {"name": "remote_echo", "kind": "remote"},
+        ]
+        workflow_map = [{
+            "id": "llm", "type": "llm",
+            "arguments": {"model": "model-id", "think": False, "tool_calls": True, "tools": []},
+            "_metadata_tools": metadata_tools,
+            "successors": {"next": 1},
+            "data_inputs": {"messages-in": [None, None, [{"role": "user", "content": "hello"}]]},
+            "data_outputs": {"output": [[1, "result"]]},
+        }, {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("tool_server_client.get_remote_tool_schemas", return_value=[remote_schema]) as get_remote, \
+             patch("llm.chat_with_model", return_value=("answer", "", [])) as chat:
+            self.assertEqual(workflow_llm(0, workflow_map), 1)
+
+        get_remote.assert_called_once_with({"remote_echo"})
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}],
+            "model-id",
+            tools=[*schemas, remote_schema],
+            think=False,
+        )
+
+    def test_llm_dynamic_tools_accept_local_and_remote_metadata_tools(self):
+        local_schema = {"function": {"name": "local_echo"}}
+        remote_schema = {"type": "function", "function": {"name": "remote_echo"}}
+        fake_tools = type("ToolsModule", (), {"registered_tools": [local_schema]})()
+        workflow_map = [{
+            "id": "llm", "type": "llm", "arguments": {"model": "model-id", "tools": []},
+            "_metadata_tools": [{"name": "local_echo", "kind": "local"}, {"name": "remote_echo", "kind": "remote"}],
+            "successors": {"next": 1},
+            "data_inputs": {
+                "messages-in": [None, None, [{"role": "user", "content": "hello"}]],
+                "available-tools-in": [0, "list-out", ["remote_echo", "local_echo"]],
+            },
+        }, {"id": "next", "successors": {}, "data_inputs": {}, "data_outputs": {}}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("tool_server_client.get_remote_tool_schemas", return_value=[remote_schema]), \
+             patch("llm.chat_with_model", return_value=("answer", "", [])) as chat:
+            workflow_llm(0, workflow_map)
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}], "model-id",
+            tools=[local_schema, remote_schema], think=False,
+        )
+
+    def test_llm_rejects_tools_not_declared_in_metadata(self):
+        fake_tools = type("ToolsModule", (), {"registered_tools": [{"function": {"name": "local_echo"}}]})()
+        workflow_map = [{
+            "id": "llm", "type": "llm", "arguments": {"model": "model-id", "tools": []},
+            "_metadata_tools": [{"name": "local_echo", "kind": "local"}],
+            "data_inputs": {
+                "messages-in": [None, None, [{"role": "user", "content": "hello"}]],
+                "available-tools-in": [0, "list-out", ["remote_echo"]],
+            },
+        }, {}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), patch("llm.chat_with_model"):
+            with self.assertRaisesRegex(ValueError, "metadata.tools"):
+                workflow_llm(0, workflow_map)
+
     def test_list_append_outputs_new_list_without_mutating_input(self):
         for position, expected in (("start", ["new", "first"]), ("end", ["first", "new"])):
             with self.subTest(position=position):
@@ -1057,6 +1173,49 @@ class WorkflowExecutionTest(unittest.TestCase):
         ]
 
         self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "done"})
+
+    @patch("workflow_run_repository.record_workflow_run")
+    def test_run_workflow_map_records_workflow_inputs_and_outputs(self, record_run):
+        workflow_map = [
+            {
+                "id": "input", "name": "用户输入", "type": "input", "_workflow_call_stack": ["example"],
+                "workflowPorts": [{"id": "workflow:query", "name": "query"}],
+                "successors": {"next": 1}, "data_outputs": {"workflow:query": [[1, "workflow:result"]]},
+            },
+            {
+                "id": "output", "type": "output", "_workflow_call_stack": ["example"],
+                "workflowPorts": [{"id": "workflow:result", "name": "result"}],
+                "successors": {}, "data_inputs": {"workflow:result": [0, "workflow:query", "hello"]},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "hello"})
+        record = record_run.call_args.args[0]
+        self.assertEqual(record["workflow_name"], "example")
+        self.assertEqual(record["input"], {"query": "hello"})
+        self.assertEqual(record["output"], {"result": "hello"})
+        self.assertEqual(record["status"], "completed")
+        self.assertEqual([entry["node_type"] for entry in record["node_trace"]], ["input", "output"])
+        self.assertEqual(record["node_trace"][0]["node_name"], "用户输入")
+        self.assertEqual(record["node_trace"][0]["node_id"], "input")
+        self.assertIsNone(record["node_trace"][1]["node_name"])
+        self.assertTrue(all(entry["duration_ms"] >= 0 for entry in record["node_trace"]))
+
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("workflow_nodes.time.monotonic", side_effect=[0, 181, 182])
+    def test_run_workflow_map_stops_when_execution_exceeds_timeout(
+        self, monotonic, delete_contexts
+    ):
+        workflow_map = [{"id": "slow", "type": "test", "successors": {}}]
+        with patch("workflow_nodes.nodes_map", {"test": lambda current_id, _: current_id}):
+            with self.assertRaisesRegex(
+                TimeoutError, "workflow execution exceeded 180 seconds"
+            ):
+                run_workflow_map(workflow_map, 0)
+
+        self.assertEqual(monotonic.call_count, 2)
+        delete_contexts.assert_called_once_with(set())
 
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")
@@ -1146,12 +1305,14 @@ class WorkflowExecutionTest(unittest.TestCase):
                 run_workflow_map(workflow_map, 0)
 
     @patch("workflow_parser.parse_workflow")
-    @patch("workflow_parser._read_workflow")
+    @patch("workflow_parser._read_workspace_workflow_by_name")
     @patch("workflow_validator.validate_workflow")
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")
+    @patch("workflow_run_repository.record_workflow_run")
     def test_child_workflow_uses_and_cleans_independent_context_scope(
         self,
+        record_workflow_run,
         create_context,
         delete_contexts,
         validate_workflow,

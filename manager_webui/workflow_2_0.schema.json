@@ -81,6 +81,13 @@
             },
             "additionalProperties": false
           }
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/toolDependency"
+          }
         }
       },
       "additionalProperties": false
@@ -241,11 +248,13 @@
             "construct_list",
             "list_append",
             "foreach",
+            "while_pop",
             "history",
             "llm",
             "local_tool",
             "remote_sync_tool",
             "remote_async_tool",
+            "json_tool",
             "context_create",
             "context_read",
             "context_write",
@@ -257,7 +266,8 @@
             "struct_get",
             "struct_update",
             "struct_to_json",
-            "json_to_struct"
+            "json_to_struct",
+            "tool"
           ]
         },
         "name": {
@@ -460,20 +470,31 @@
             }
           },
           "else": {
-            "properties": {
-              "arguments": {
-                "type": "object",
-                "properties": {
-                  "value_type": {
-                    "enum": [
-                      "content",
-                      "message",
-                      "event",
-                      "map-content",
-                      "list-content",
-                      "list-message",
-                      "list-event"
-                    ]
+            "if": {
+              "properties": {
+                "type": {
+                  "not": {
+                    "const": "while_pop"
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "properties": {
+                    "value_type": {
+                      "enum": [
+                        "content",
+                        "message",
+                        "event",
+                        "map-content",
+                        "list-content",
+                        "list-message",
+                        "list-event"
+                      ]
+                    }
                   }
                 }
               }
@@ -487,7 +508,8 @@
                 "not": {
                   "enum": [
                     "context_read",
-                    "context_write"
+                    "context_write",
+                    "while_pop"
                   ]
                 }
               },
@@ -501,6 +523,137 @@
               "type",
               "arguments"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tool"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "tool",
+                  "parameters",
+                  "outputs"
+                ],
+                "properties": {
+                  "tool": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/toolPorts"
+                  },
+                  "outputs": {
+                    "$ref": "#/$defs/toolPorts"
+                  },
+                  "mode": {
+                    "const": "sync"
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "callback": {
+                    "type": "null"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "while_pop"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content",
+                          "list-message",
+                          "list-event"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  },
+                  "position": {
+                    "enum": [
+                      "start",
+                      "end"
+                    ],
+                    "default": "end"
+                  },
+                  "context_id_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ],
+                    "default": "port"
+                  },
+                  "context_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "context_id_source": {
+                          "const": "fixed"
+                        }
+                      },
+                      "required": [
+                        "context_id_source"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "context_id"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
           }
         }
       ]
@@ -556,6 +709,71 @@
         }
       },
       "additionalProperties": false
+    },
+    "toolDependency": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind",
+        "input_ports",
+        "output_ports"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "remote"
+          ]
+        },
+        "input_ports": {
+          "$ref": "#/$defs/toolPorts"
+        },
+        "output_ports": {
+          "$ref": "#/$defs/toolPorts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "toolPorts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "not": {
+              "enum": [
+                "control-in",
+                "control-out"
+              ]
+            }
+          },
+          "type": {
+            "enum": [
+              "content",
+              "message",
+              "event",
+              "map-content",
+              "list-content",
+              "list-message",
+              "list-event"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
     }
   }
 }

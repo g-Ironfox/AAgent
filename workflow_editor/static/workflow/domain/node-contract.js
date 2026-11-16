@@ -20,11 +20,14 @@ export const NODE_TYPES = new Set([
   'construct_list',
   'list_append',
   'foreach',
+  'while_pop',
   'history',
   'llm',
+  'tool',
   'local_tool',
   'remote_sync_tool',
   'remote_async_tool',
+  'json_tool',
   'context_create',
   'context_read',
   'context_write',
@@ -244,19 +247,24 @@ export function portsForNode(node) {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
-      { id: 'item-in', direction: 'input', type: node.item_type, label: '追加项', title: node.item_type, multiple: false },
+      { id: 'item-in', direction: 'input', type: node.item_type, color: structColor(node, node.item_type), label: '追加项', title: node.item_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
-  if (node.type === 'foreach') {
+  if (['foreach', 'while_pop'].includes(node.type)) {
+    const isPop = node.type === 'while_pop';
+    const itemType = isPop ? node.value_type?.replace(/^list-/, '') : node.item_type;
+    const inputPorts = isPop
+      ? ((node.context_id_source || 'port') === 'port' ? [{ id: 'context-id', direction: 'input', type: 'content', label: 'Context ID', title: node.value_type, multiple: false }] : [])
+      : [{ id: 'list-in', direction: 'input', type: listTypeForItem(itemType), color: structColor(node, listTypeForItem(itemType)), label: '列表', title: listTypeForItem(itemType), multiple: false }];
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发遍历', multiple: false },
       { id: 'loop-in', direction: 'input', type: 'control', label: '循环体结束', title: '循环体完成后返回', multiple: false },
-      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '列表遍历完成后继续', multiple: false },
+      ...inputPorts,
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: isPop ? 'Context 列表为空后继续' : '列表遍历完成后继续', multiple: false },
       { id: 'loop-out', direction: 'output', type: 'control', label: '循环体开始', title: '执行当前项的循环体', multiple: false },
-      { id: 'item-out', direction: 'output', type: node.item_type, color: structColor(node, node.item_type), label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
+      { id: 'item-out', direction: 'output', type: itemType, color: structColor(node, itemType), label: isPop ? '弹出项' : '当前项', title: `当前 ${itemType}`, multiple: true },
     ];
   }
   if (node.type === 'history') {
@@ -307,6 +315,16 @@ export function portsForNode(node) {
     }
     return ports;
   }
+  if (node.type === 'tool') {
+    const parameterPorts = (node.parameters || []).map((parameter) => ({ id: parameter.name, direction: 'input', type: parameter.type, label: parameter.name, title: `Tool parameter: ${parameter.name}`, multiple: false }));
+    const resultPorts = (node.outputs || []).map((output) => ({ id: output.name, direction: 'output', type: output.type, label: output.name, title: `Tool output: ${output.name}`, multiple: true }));
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+      ...parameterPorts,
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      ...resultPorts,
+    ];
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     const isRemote = node.type !== 'local_tool';
     const parameterPorts = (node.parameters || []).map((parameter) => ({
@@ -334,6 +352,17 @@ export function portsForNode(node) {
       ...resultPorts,
     ];
   }
+  if (node.type === 'json_tool') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+      { id: 'tool-name', direction: 'input', type: 'content', label: '工具名', title: '工具名称', multiple: false },
+      { id: 'arguments-json', direction: 'input', type: 'content', label: '参数 JSON', title: '工具参数 JSON 对象', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'error-out', direction: 'output', type: 'control', label: '错误', title: '工具调用失败', multiple: false },
+      { id: 'result-json', direction: 'output', type: 'content', label: '结果 JSON', title: '工具结果 JSON', multiple: true },
+      { id: 'error-json', direction: 'output', type: 'content', label: '错误 JSON', title: '工具调用错误信息', multiple: true },
+    ];
+  }
   if (node.type === 'workflow') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '调用 Workflow', multiple: false },
@@ -345,6 +374,7 @@ export function portsForNode(node) {
   const ports = [
     { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
     { id: 'messages-in', direction: 'input', type: 'list-message', label: 'Messages', title: 'Message 列表', multiple: false },
+    ...(node.tool_calls === true ? [{ id: 'available-tools-in', direction: 'input', type: 'list-content', label: '可用 Tools', title: '覆盖默认工具列表；名称必须来自 metadata.tools', multiple: false }] : []),
     { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
     { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },
   ];
@@ -410,6 +440,7 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'construct_event') return { id: createWorkflowId('construct-event'), type, name: `构造 Event ${number}`, event_type: 'event_type', ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
+  if (type === 'while_pop') return { id: createWorkflowId('while-pop'), type, name: `弹出 Context 列表 ${number}`, value_type: 'list-content', position: 'end', context_id_source: 'port', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
   if (type === 'history') return { id: createWorkflowId('history'), type, name: `召回 History ${number}`, event_types: ['terminal', 'response'], limit: 10, ...position };
   if (type === 'context_create') return { id: createWorkflowId('context-create'), type, name: `创建 Context ${number}`, value_type: 'content', ...position };
@@ -419,9 +450,11 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'session_read') return { id: createWorkflowId('session-read'), type, name: `读取 Session ${number}`, value_type: 'content', ...position };
   if (type === 'session_write') return { id: createWorkflowId('session-write'), type, name: `修改 Session ${number}`, value_type: 'content', ...position };
   if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
+  if (type === 'tool') return { id: createWorkflowId('tool'), type, name: `Tool ${number}`, tool: '', parameters: [], outputs: [], mode: 'sync', timeout_ms: 10000, callback: null, ...position };
   if (type === 'local_tool') return { id: createWorkflowId('local-tool'), type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
   if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
   if (type === 'remote_async_tool') return { id: createWorkflowId('remote-async-tool'), type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };
+  if (type === 'json_tool') return { id: createWorkflowId('json-tool'), type, name: 'JSON Tool ' + number, ...position };
   if (type === 'workflow' && configuration) {
     return {
       id: createWorkflowId('workflow'),

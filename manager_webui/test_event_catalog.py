@@ -18,7 +18,8 @@ class EventCatalogTest(unittest.TestCase):
             {"qq", "terminal", "workflow", "error", "response"},
         )
 
-        self.assertEqual(items["workflow"]["schema"]["properties"]["payload"]["required"], ["workflow_name"])
+        self.assertEqual(items["workflow"]["schema"]["properties"]["payload"]["anyOf"],
+                         [{"required": ["workflow_file_id"]}, {"required": ["workflow_name"]}])
         for event_type in ("qq", "terminal", "workflow", "error", "response"):
             schema = items[event_type]["schema"]
             self.assertIn("version", schema["required"])
@@ -26,6 +27,8 @@ class EventCatalogTest(unittest.TestCase):
         self.assertEqual(
             items["error"]["schema"]["properties"]["payload"]["required"], ["message"]
         )
+        self.assertIn("workflow_file_id", items["error"]["schema"]["properties"]["payload"]["properties"])
+        self.assertIn("workflow_name", items["error"]["schema"]["properties"]["payload"]["properties"])
         self.assertEqual(
             items["error"]["schema"]["properties"]["payload"]["properties"]["message"],
             {"type": "string"},

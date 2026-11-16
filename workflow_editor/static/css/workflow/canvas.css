@@ -4,10 +4,12 @@
 .canvas-grid { position:absolute; inset:0; min-width:1800px; min-height:1200px; background-color:#f5f6f3; background-image:linear-gradient(#dfe4df 1px,transparent 1px),linear-gradient(90deg,#dfe4df 1px,transparent 1px); background-size:24px 24px; }
 .connection-layer { position:absolute; z-index:1; inset:0; width:100%; height:100%; min-width:1800px; min-height:1200px; pointer-events:none; overflow:visible; }
 .connection-path { fill:none; stroke:#8b9991; stroke-width:2; }
+.connection-path.control { stroke:var(--green); }
 .connection-path[class*="struct:"] { stroke:var(--connection-color,#3a7d68); }
 .connection-path.content { stroke:var(--blue); stroke-dasharray:5 5; }
 .connection-path.message { stroke:#b75b18; stroke-dasharray:2 4; }
 .connection-path.event { stroke:#147d78; stroke-dasharray:2 4; }
+.connection-path.map-content { stroke:#46713f; }
 .connection-path.list-content { stroke:var(--workflow-list-content); stroke-dasharray:7 3; }
 .connection-path.list-message { stroke:#7a3e88; stroke-dasharray:7 3; }
 .connection-path.list-event { stroke:#147d78; stroke-dasharray:7 3; }
@@ -39,6 +41,7 @@
 .flow-node.construct_list { border-top-color:#176f73; }
 .flow-node.list_append { border-top-color:#27705b; }
 .flow-node.foreach { border-top-color:#9a5a24; }
+.flow-node.while_pop { border-top-color:#9a5a24; }
 .flow-node.history { border-top-color:#396a87; }
 .flow-node.context_create { border-top-color:#326b4b; }
 .flow-node.context_read { border-top-color:#376c78; }
@@ -85,3 +88,22 @@
 .node-port[data-port-type^="struct:"] { background:var(--port-color,#3a7d68); }
 .node-port[data-port-type^="list-struct:"] { background:var(--port-color,#3a7d68); }
 .clipboard-fallback { position:fixed; left:-10000px; top:0; opacity:0; }
+
+.flow-node.tool { border-top-color:var(--green); }
+
+/* Lifecycle compilation is a transient overlay; port/type colors stay intact. */
+.flow-node.lifecycle-colored { background:var(--lifecycle-fill); box-shadow:0 0 0 2px var(--lifecycle-color),0 3px 10px rgba(28,42,36,.08); }
+.lifecycle-badge { display:block; padding:5px 10px; border-top:1px solid var(--lifecycle-color); color:var(--lifecycle-color); background:var(--lifecycle-fill); font:700 10px Consolas,monospace; text-align:left; overflow-wrap:anywhere; }
+.lifecycle-panel { flex:none; padding:10px 14px; max-height:230px; overflow:auto; border-bottom:1px solid var(--line); background:var(--surface); }
+.lifecycle-panel[hidden] { display:none; }
+.lifecycle-panel header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.lifecycle-panel header strong { font-size:12px; }
+.lifecycle-panel p { margin:6px 0; color:var(--muted); font-size:10px; line-height:1.6; }
+.lifecycle-panel.has-errors header strong,.lifecycle-errors { color:#a32b36; }
+.lifecycle-scopes { display:flex; flex-wrap:wrap; gap:6px; }
+.lifecycle-scope { border:1px solid var(--lifecycle-color); border-radius:4px; padding:4px 7px; background:var(--lifecycle-fill); color:var(--lifecycle-color); font-size:10px; }
+.lifecycle-errors { margin:8px 0 0; padding-left:20px; font-size:11px; line-height:1.6; overflow-wrap:anywhere; }
+.lifecycle-errors:empty { display:none; }
+.connection-path.lifecycle-invalid { stroke:#c52c43; stroke-width:3.5; stroke-dasharray:5 3; }
+
+#compileLifecyclesButton,#clearLifecyclesButton { width:auto; padding:0 10px; white-space:nowrap; }

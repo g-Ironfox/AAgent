@@ -34,8 +34,11 @@ SUPPORTED_NODE_TYPES = {
     "construct_list",
     "list_append",
     "foreach",
+    "while_pop",
     "history",
     "llm",
+    "tool",
+    "json_tool",
     "local_tool",
     "remote_sync_tool",
     "remote_async_tool",
@@ -75,8 +78,11 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
+    "while_pop": {"value_type", "position", "context_id_source", "context_id"},
     "history": {"event_types", "limit"},
     "llm": {"model", "think", "tool_calls", "tools"},
+    "tool": {"tool", "parameters", "outputs", "mode", "timeout_ms", "callback"},
+    "json_tool": set(),
     "local_tool": {"tool", "parameters"},
     "remote_sync_tool": {"tool", "parameters", "outputs", "timeout_ms"},
     "remote_async_tool": {"tool", "parameters", "timeout_ms", "callback"},
@@ -106,15 +112,17 @@ def list_type_for_item(item_type: Any) -> str:
 
 def tool_parameter_names(node: dict[str, Any]) -> list[str]:
     parameters = node_argument(node, "parameters", [])
-    if node.get("type") in {"remote_sync_tool", "remote_async_tool"}:
+    if node.get("type") in {"remote_sync_tool", "remote_async_tool", "tool"}:
         return [parameter["name"] for parameter in parameters]
     return parameters
 
 
 def tool_parameter_type(node: dict[str, Any], name: str) -> str | None:
+    if node.get("type") == "json_tool":
+        return "content" if name in {"tool-name", "arguments-json"} else None
     if node.get("type") == "local_tool":
         return "content" if name in tool_parameter_names(node) else None
-    if node.get("type") in {"remote_sync_tool", "remote_async_tool"}:
+    if node.get("type") in {"remote_sync_tool", "remote_async_tool", "tool"}:
         return next(
             (parameter["type"] for parameter in node_argument(node, "parameters", []) if parameter["name"] == name),
             None,
@@ -123,8 +131,15 @@ def tool_parameter_type(node: dict[str, Any], name: str) -> str | None:
 
 
 def tool_output_type(node: dict[str, Any], name: str) -> str | None:
-    if node.get("type") == "local_tool" and name == "output":
-        return "content"
+    if node.get("type") == "json_tool":
+        return "content" if name in {"result-json", "error-json"} else None
+    if node.get("type") == "tool":
+        return next(
+            (output["type"] for output in node_argument(node, "outputs", []) if output["name"] == name),
+            None,
+        )
+    if node.get("type") == "local_tool":
+        return "content" if name == "output" else None
     if node.get("type") == "remote_sync_tool":
         return next(
             (output["type"] for output in node_argument(node, "outputs", []) if output["name"] == name),
@@ -179,7 +194,10 @@ def data_ports_for_node(
             outputs.add("reasoning")
         if node_argument(node, "tool_calls") is True:
             outputs.add("tool_calls")
-        return {"messages-in"}, outputs
+        inputs = {"messages-in"}
+        if node_argument(node, "tool_calls") is True:
+            inputs.add("available-tools-in")
+        return inputs, outputs
     if node_type == "construct_message":
         inputs = declared_inputs | {"content-in"}
         if node_argument(node, "role_source", "fixed") == "port":
@@ -218,8 +236,16 @@ def data_ports_for_node(
         return declared_inputs | {"list-in", "item-in"}, {"list-out"}
     if node_type == "foreach":
         return declared_inputs | {"list-in"}, {"item-out"}
+    if node_type == "while_pop":
+        id_inputs = {"context-id"} if node_argument(node, "context_id_source", "port") == "port" else set()
+        return id_inputs, {"item-out"}
     if node_type == "history":
         return declared_inputs, {"events"}
+    if node_type == "tool":
+        outputs = {output["name"] for output in node_argument(node, "outputs", [])}
+        return declared_inputs | set(tool_parameter_names(node)), outputs
+    if node_type == "json_tool":
+        return declared_inputs | {"tool-name", "arguments-json"}, {"result-json", "error-json"}
     if node_type == "local_tool":
         return declared_inputs | set(tool_parameter_names(node)), {"output"}
     if node_type == "remote_sync_tool":
@@ -275,6 +301,9 @@ def data_type_for_port(
         return node_argument(node, "item_type") if port_id == "item-in" else None
     if kind == "foreach":
         return f"list-{node_argument(node, 'item_type')}" if port_id == "list-in" else (node_argument(node, "item_type") if port_id == "item-out" else None)
+    if kind == "while_pop":
+        if port_id == "context-id": return "content"
+        if port_id == "item-out": return value_type.removeprefix("list-")
     if kind in {"context_create", "context_read", "context_write"}:
         if port_id in {"initial-value", "value-in", "value-out"}: return value_type
         if port_id == "context-id": return "content"
@@ -291,7 +320,9 @@ def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
         return {"control-in"}, {
             branch["id"] for branch in node_argument(node, "branches", [])
         } | {"branch$others"}
-    if node_type == "foreach":
+    if node_type == "json_tool":
+        return {"control-in"}, {"control-out", "error-out"}
+    if node_type in {"foreach", "while_pop"}:
         return {"control-in", "loop-in"}, {"control-out", "loop-out"}
     return {"control-in"}, {"control-out"}
 
@@ -357,9 +388,9 @@ def connection_validation_error(
             target_port = next(port for port in target_node.get("input_ports", []) if f"workflow:{port['name']}" == to_port)
             if connection_type != target_port["type"]:
                 return f"callable workflow input {to_port} requires {target_port['type']} data"
-        if target_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_parameter_type(target_node, to_port):
+        if target_node["type"] in {"tool", "local_tool", "remote_sync_tool", "remote_async_tool", "json_tool"} and connection_type != tool_parameter_type(target_node, to_port):
             return f"tool input {to_port} requires {tool_parameter_type(target_node, to_port)} data"
-        if source_node["type"] in {"local_tool", "remote_sync_tool", "remote_async_tool"} and connection_type != tool_output_type(source_node, from_port):
+        if source_node["type"] in {"tool", "local_tool", "remote_sync_tool", "remote_async_tool", "json_tool"} and connection_type != tool_output_type(source_node, from_port):
             return f"tool output {from_port} requires {tool_output_type(source_node, from_port)} data"
         if target_node["type"] in {"context_create", "context_write", "session_create", "session_write"}:
             value_port = "initial-value" if target_node["type"].endswith("create") else "value-in"
@@ -418,8 +449,10 @@ def connection_validation_error(
                 return f"deserialize_json output {from_port} requires {output_type} data"
         source_type = source_node["type"]
         target_type = target_node["type"]
-        if target_type == "llm" and connection_type != "list-message":
-            return "llm messages-in input requires list-message data"
+        if target_type == "llm":
+            expected_type = "list-message" if to_port == "messages-in" else "list-content"
+            if connection_type != expected_type:
+                return f"llm {to_port} input requires {expected_type} data"
         if target_type == "construct_message" and connection_type != "content":
             return f"construct_message {to_port} requires content data"
         if source_type == "construct_message" and connection_type != "message":

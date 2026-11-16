@@ -44,7 +44,7 @@ QQ 和 WebUI Terminal 都只是当前已经实现的事件源,并不是系统入
 
 ### 运行与调试
 
-终端页把输入直接投进主队列,配合事件流可以逐个节点核对输入输出。
+终端消息独立保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），不再从事件历史中筛选展示。用户输入保存后会优先投进主队列；Workflow 调用本地工具 `output_to_terminal(content)` 时，会直接向终端消息表追加 Agent 输出，无需发布 `response` 事件。普通 LLM 响应和工具调用仍可在事件流中检查。
 
 | 事件流 | 终端 |
 | --- | --- |
@@ -89,7 +89,7 @@ flowchart LR
     CallbackQueue --> CallbackAdapter[业务回调消费者 / 适配器]
     CallbackAdapter -.->|可选:转为 workflow Event| MainQueue
     Agent -->|写入| History[(MongoDB 事件历史)]
-    Agent -->|LPUSH workflow / response| MainQueue
+    Agent -->|LPUSH workflow / error| MainQueue
 ```
 
 - **事件源适配器** 负责接入外部输入并写入 `main_agent_queue`;新增来源优先直接生成 `event_type: "workflow"` 的标准 Event,其 payload 字段与画布 Input 端口同名即可进入现有执行链路。
@@ -128,6 +128,23 @@ docker compose logs -f agent qqbot
 ```
 
 启动后 Agent WebUI 在 `http://localhost:8081`,管理 WebUI 在 `http://localhost:8084`。
+
+在 Agent WebUI 的工作区中新建文件，将编辑器导出的 Workflow 2.0 JSON 保存为文件内容，再到「绑定」页选择该 Workspace 文件。绑定使用 `workflow_file_id`，文件改名不会失效，agent 每次执行读取当前文件内容（包括恢复检查点后的内容）。删除文件或写入无效 Workflow 会产生错误事件。已有按 `workflow_name` 的绑定和直接调用仍可执行；编辑旧绑定时需重新选择 Workspace 文件。子 Workflow 节点仍按管理库中的名称调用。
+
+工作区 checkpoint API 同时注册为 Local Tool，可在工具目录中选择：
+
+| 工具名 | 参数 | 用途 |
+| --- | --- | --- |
+| `workspace.list_checkpoints` | `before_seq?`、`limit?`（默认 50，范围 1–100）、`file_id?` | 分页列表，返回 `items`、`has_more`、`next_before_seq` |
+| `workspace.checkpoint_tree` | 无 | 分支树和当前 `head_seq` |
+| `workspace.get_parent_checkpoint` | `seq?`（默认当前 head） | 返回 `seq` 和 `parent_seq`，按分支祖先查询回滚目标 |
+| `workspace.checkpoint_diff` | `seq` | 相对于父 checkpoint 的文件差异 |
+| `workspace.create_checkpoint` | `name` | 保存当前工作区快照 |
+| `workspace.restore_checkpoint` | `seq` | 恢复整个工作区并更新文件 revision |
+
+`seq=0` 表示空工作区，恢复到 0 会清空工作区文件。工具复用 `WORKSPACE_API_URL`（默认 `http://webui_py:8081`）访问现有 API。
+
+回滚一步：先调用 `workspace.get_parent_checkpoint`（参数 `{}`），再将返回的 `parent_seq` 作为 `workspace.restore_checkpoint` 的 `seq`。第一个 checkpoint 的 `parent_seq` 为 `0`，可恢复为空工作区；当前已为空工作区时返回 `parent_seq: null`，此时没有更早的回滚目标。父序号按分支关系确定，恢复后再次查询使用新的当前 head。
 
 ### 环境变量
 
