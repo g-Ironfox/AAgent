@@ -71,18 +71,16 @@ function isNearBottom() {
 }
 
 function appendMessage(item) {
-  const event = item.event || {};
-  const type = event.event_type;
-  const payload = event.payload || {};
+  const isOutput = item.role === 'assistant';
   elements.empty?.remove();
   const article = document.createElement('article');
-  article.className = `terminal-message ${type === 'response' ? 'response-message' : 'command-message'}`;
+  article.className = `terminal-message ${isOutput ? 'response-message' : 'command-message'}`;
   article.dataset.id = item.id;
 
   const meta = document.createElement('div');
   meta.className = 'message-meta';
   const author = document.createElement('strong');
-  author.textContent = type === 'response' ? 'AGENT' : 'TERMINAL';
+  author.textContent = isOutput ? 'AGENT' : 'TERMINAL';
   const time = document.createElement('time');
   const sentAt = new Date(item.created_at);
   time.dateTime = item.created_at;
@@ -92,9 +90,7 @@ function appendMessage(item) {
   meta.append(author, time);
 
   const content = document.createElement('p');
-  content.textContent = type === 'response'
-    ? payload.content || (payload.tool_calls?.length ? '[工具调用]' : '[空响应]')
-    : payload.content || '[空命令]';
+  content.textContent = item.content;
   article.append(meta, content);
   elements.messageList.append(article);
 }
@@ -112,6 +108,7 @@ async function sendMessage() {
   try {
     const result = await submitTerminal(content);
     elements.queueName.textContent = result.queue;
+    appendHistory([result.message]);
     elements.input.value = '';
     elements.sendStatus.className = 'send-status success';
     elements.sendStatus.textContent = '已优先入队，等待消费';

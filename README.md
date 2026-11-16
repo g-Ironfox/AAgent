@@ -44,7 +44,7 @@ QQ 和 WebUI Terminal 都只是当前已经实现的事件源,并不是系统入
 
 ### 运行与调试
 
-终端页把输入直接投进主队列,配合事件流可以逐个节点核对输入输出。
+终端消息独立保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），不再从事件历史中筛选展示。用户输入保存后会优先投进主队列；Workflow 调用本地工具 `output_to_terminal(content)` 时，会直接向终端消息表追加 Agent 输出，无需发布 `response` 事件。普通 LLM 响应和工具调用仍可在事件流中检查。
 
 | 事件流 | 终端 |
 | --- | --- |

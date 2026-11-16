@@ -16,6 +16,7 @@ from event_bindings import create_event_bindings_router
 from file_store import FileStore, FileStoreUnavailableError
 from files import create_files_router
 from events import create_events_router
+from terminal import create_terminal_router
 from workflow_logs import create_workflow_logs_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -45,6 +46,7 @@ MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
+MONGO_TERMINAL_COLLECTION = env("MONGO_TERMINAL_COLLECTION", "terminal_messages")
 MONGO_WORKFLOW_LOG_COLLECTION = env("MONGO_WORKFLOW_LOG_COLLECTION", "workflow_logs")
 MONGO_EVENT_BINDING_COLLECTION = env("MONGO_EVENT_BINDING_COLLECTION", "event_bindings")
 MONGO_FILE_EVENT_COLLECTION = env("MONGO_FILE_EVENT_COLLECTION", "workspace_file_events")
@@ -72,6 +74,7 @@ if os.getenv("MONGO_USER"):
 mongo_client = MongoClient(**mongo_kwargs)
 database = mongo_client[MONGO_DATABASE]
 history: Collection = database[MONGO_HISTORY_COLLECTION]
+terminal_messages: Collection = database[MONGO_TERMINAL_COLLECTION]
 workflow_logs: Collection = database[MONGO_WORKFLOW_LOG_COLLECTION]
 event_bindings: Collection = database[MONGO_EVENT_BINDING_COLLECTION]
 file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
@@ -95,6 +98,16 @@ def create_config_indexes():
         event_bindings.create_index("event_type", unique=True, name="unique_event_binding_type")
     except PyMongoError as error:
         logger.error("failed to create configuration indexes: %s", error)
+
+
+@app.on_event("startup")
+def create_terminal_indexes():
+    try:
+        terminal_messages.create_index(
+            [("created_at", -1), ("_id", -1)], name="terminal_created_at_id"
+        )
+    except PyMongoError as error:
+        logger.error("failed to create terminal indexes: %s", error)
 
 
 @app.middleware("http")
@@ -154,6 +167,7 @@ def health():
 
 
 app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
+app.include_router(create_terminal_router(redis_client, terminal_messages, QUEUE_NAME))
 app.include_router(create_workflow_logs_router(workflow_logs))
 app.include_router(create_event_bindings_router(event_bindings, file_store))
 app.include_router(create_files_router(file_store))

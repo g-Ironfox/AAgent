@@ -8,22 +8,14 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from pymongo import DESCENDING
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
 from common import limit_error
 
-MAX_TERMINAL_RUNES = 4000
 MAX_EVENT_BODY_BYTES = 256 * 1024
-
-
-class TerminalRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    content: str
-    files: list[str] = Field(default_factory=list)
 
 
 class DeleteEventRequest(BaseModel):
@@ -351,49 +343,5 @@ def create_events_router(
             return {"updated": True, "status": "pending", "position": payload.position, "fingerprint": event_fingerprint(event)}
 
         return JSONResponse(status_code=400, content={"error": "不支持修改该状态的事件"})
-
-    @router.get("/api/terminal/history")
-    def terminal_history(limit: int = Query(150)):
-        error = limit_error(limit)
-        if error:
-            return error
-        try:
-            documents = list(
-                history.find({"event_type": {"$in": ["terminal", "response"]}})
-                .sort("_id", DESCENDING)
-                .limit(limit)
-            )
-        except PyMongoError:
-            return JSONResponse(status_code=503, content={"error": "终端历史暂时不可用"})
-
-        items = []
-        for document in reversed(documents):
-            object_id = document.get("_id")
-            created_at = document.get("created_at")
-            event = {key: value for key, value in document.items() if key not in {"_id", "created_at"}}
-            items.append({"id": str(object_id) if object_id else "", "created_at": created_at, "event": event})
-        return {"fetched_at": datetime.now(timezone.utc), "items": items}
-
-    @router.post("/api/terminal", status_code=201)
-    def submit_terminal(payload: TerminalRequest):
-        content = payload.content.strip()
-        if not content:
-            return JSONResponse(status_code=400, content={"error": "消息不能为空"})
-        if len(content) > MAX_TERMINAL_RUNES:
-            return JSONResponse(status_code=400, content={"error": "消息不能超过 4000 个字符"})
-        if payload.files:
-            return JSONResponse(status_code=400, content={"error": "暂不支持文件附件"})
-
-        event = {
-            "version": "1.1",
-            "event_type": "terminal",
-            "time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "payload": {"content": content, "files": []},
-        }
-        try:
-            redis_client.rpush(queue_name, json.dumps(event, ensure_ascii=False, separators=(",", ":")))
-        except redis.RedisError:
-            return JSONResponse(status_code=503, content={"error": "消息队列暂时不可用"})
-        return {"event": event, "queue": queue_name}
 
     return router
