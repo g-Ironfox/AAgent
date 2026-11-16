@@ -224,6 +224,40 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     _validate_lifecycles(node_by_id, connections)
 
 
+def validate_workflow_dependencies(workflow: dict[str, Any]) -> None:
+    """Ensure saved callable-workflow interfaces still match their targets."""
+    from workflow_parser import _read_workspace_workflow_by_name
+
+    dependencies: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for index, reference in enumerate(workflow.get("workflow_nodes", [])):
+        name = reference.get("name")
+        if isinstance(name, str) and name:
+            dependencies.setdefault(name, []).append((f"workflow_nodes[{index}]", reference))
+    for node in workflow.get("nodes", []):
+        if node.get("type") != "workflow":
+            continue
+        name = node.get("arguments", {}).get("workflow_name")
+        if isinstance(name, str) and name:
+            dependencies.setdefault(name, []).append((node.get("id", "workflow node"), node))
+
+    if not dependencies:
+        return
+
+    workflow_name = workflow.get("name", "<unnamed>")
+    for name, snapshots in dependencies.items():
+        target = _read_workspace_workflow_by_name(name)
+        for source, snapshot in snapshots:
+            for field in ("input_ports", "output_ports"):
+                saved = snapshot.get(field, [])
+                actual = target.get(field, [])
+                if saved != actual:
+                    raise WorkflowValidationError(
+                        f"workflow {workflow_name} dependency {name} at {source} "
+                        f"has stale {field}: saved={saved!r}, actual={actual!r}; "
+                        "refresh the workflow node metadata"
+                    )
+
+
 def _validate_lifecycles(
     nodes_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
 ) -> None:

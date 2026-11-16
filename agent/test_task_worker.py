@@ -153,7 +153,7 @@ class WorkerRoutingTest(unittest.TestCase):
         self.assertEqual(propagate.call_args_list[0].args[3], "selected")
         self.assertEqual(propagate.call_args_list[1].args[3], 42)
         self.assertEqual(propagate.call_args_list[2].args[3], event)
-        self.assertEqual(publish.call_args.args[1]["event_type"], "response")
+        publish.assert_not_called()
 
     @patch("task_worker._read_workflow", return_value={"name": "workflow"})
     @patch("task_worker.validate_workflow")
@@ -176,6 +176,7 @@ class WorkerRoutingTest(unittest.TestCase):
             "payload": {"workflow_name": "selected", "origin": origin},
         })
         self.assertEqual(propagate.call_args.args[3], origin)
+        publish.assert_not_called()
 
     @patch("task_worker._read_workflow", return_value={"name": "workflow"})
     @patch("task_worker.validate_workflow")
@@ -190,7 +191,7 @@ class WorkerRoutingTest(unittest.TestCase):
         task_worker.handle_task({"version": "1.1", "event_type": "workflow", "payload": {"workflow_name": "selected"}})
         read_workflow.assert_called_once_with("selected")
         propagate.assert_not_called()
-        self.assertEqual(publish.call_args.args[1]["event_type"], "response")
+        publish.assert_not_called()
 
     @patch("task_worker._read_workflow", side_effect=WorkflowParseError("workflow not found: deleted"))
     @patch("task_worker.publish_to_queue")
@@ -234,7 +235,7 @@ class WorkerRoutingTest(unittest.TestCase):
         validate.assert_called_once_with({"name": "from file"})
         self.assertEqual([call.args[3] for call in propagate.call_args_list], ["hello", origin])
         self.assertEqual(run.call_args.args[0][0]["_workflow_call_stack"], ["from file"])
-        self.assertEqual(publish.call_args.args[1], {"event_type": "response", "payload": {"content": "done"}})
+        publish.assert_not_called()
 
     @patch("task_worker._read_workspace_workflow", side_effect=WorkflowParseError("workflow file not found: deleted"))
     @patch("task_worker._read_workflow")

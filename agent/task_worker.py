@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from workflow_parser import WorkflowParseError, _read_workflow, _read_workspace_workflow, parse_workflow
-from workflow_validator import validate_workflow
+from workflow_validator import validate_workflow, validate_workflow_dependencies
 from workflow_nodes import propagate_workflow_output, run_workflow_map
 
 from history_repository import record_history
@@ -94,6 +94,7 @@ def handle_task(e: dict):
         })
         return
     validate_workflow(workflow_document)
+    validate_workflow_dependencies(workflow_document)
     workflow_map = parse_workflow(workflow_document)
     for node in workflow_map:
         node['_workflow_call_stack'] = [workflow_document['name']]
@@ -121,11 +122,7 @@ def handle_task(e: dict):
         )
     input_node['_workflow_input_values'] = workflow_inputs
 
-    output = run_workflow_map(workflow_map, start)
-    publish_to_queue(MAIN_AGENT_QUEUE_NAME, {
-        "event_type": "response",
-        "payload": {"content": output.get("content", output)},
-    })
+    run_workflow_map(workflow_map, start)
     
 
 def load_workspace_tools() -> None:

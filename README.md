@@ -89,7 +89,7 @@ flowchart LR
     CallbackQueue --> CallbackAdapter[业务回调消费者 / 适配器]
     CallbackAdapter -.->|可选:转为 workflow Event| MainQueue
     Agent -->|写入| History[(MongoDB 事件历史)]
-    Agent -->|LPUSH workflow / response| MainQueue
+    Agent -->|LPUSH workflow / error| MainQueue
 ```
 
 - **事件源适配器** 负责接入外部输入并写入 `main_agent_queue`;新增来源优先直接生成 `event_type: "workflow"` 的标准 Event,其 payload 字段与画布 Input 端口同名即可进入现有执行链路。

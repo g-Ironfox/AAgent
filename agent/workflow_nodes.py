@@ -898,7 +898,11 @@ def workflow_session_write(current_id: int, workflow_map: WorkflowMap) -> int:
 
 def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
     from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
-    from workflow_validator import validate_workflow
+    from workflow_validator import (
+        WorkflowValidationError,
+        validate_workflow,
+        validate_workflow_dependencies,
+    )
 
     parent_node = workflow_map[current_id]
     workflow_name = node_argument(parent_node, "workflow_name")
@@ -909,16 +913,17 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
 
     workflow_document = _read_workspace_workflow_by_name(workflow_name)
     validate_workflow(workflow_document)
-    if (
-        parent_node.get("input_ports", [])
-        != workflow_document.get("input_ports", [])
-        or parent_node.get("output_ports", [])
-        != workflow_document.get("output_ports", [])
-    ):
-        raise ValueError(
-            "callable workflow contract changed; refresh the workflow node metadata: "
-            f"{workflow_name}"
-        )
+    validate_workflow_dependencies(workflow_document)
+    for field in ("input_ports", "output_ports"):
+        saved = parent_node.get(field, [])
+        actual = workflow_document.get(field, [])
+        if saved != actual:
+            raise WorkflowValidationError(
+                f"workflow {call_stack[-1] if call_stack else workflow_name} "
+                f"dependency {workflow_name} at {parent_node.get('id', 'workflow node')} "
+                f"has stale {field}: saved={saved!r}, actual={actual!r}; "
+                "refresh the workflow node metadata"
+            )
 
     child_map = parse_workflow(workflow_document)
     child_input_id = next(

@@ -78,13 +78,7 @@ WebUI 要求去除首尾空白后的 `content` 非空且最多 4000 个字符，
 
 `payload.workflow_file_id` 为 Workspace 文件的稳定 ID，由绑定写入。路由移除原始 payload 中的 `workflow_file_id`、`workflow_name` 和 `origin`，写入绑定目标并将原事件设为 `origin`；其他原始 payload 字段保留。执行时从 Workspace 当前 generation 读取文件最新内容并解析为 Workflow JSON，文件改名不影响绑定，恢复检查点后使用恢复的文件内容。兼容已有按 `workflow_name` 从管理库读取的调用；同时提供两个字段时优先使用 `workflow_file_id`，文件读取失败不回退到名称。再按 Workflow Input 端口的 `name` 读取同名字段；缺失的字段传为 `None`。`workflow` 是唯一不查询事件绑定、直接执行的主 worker 类型。
 
-执行成功产生 `response`：
-
-```json
-{"version": "1.1", "event_type": "response", "payload": {"content": "Workflow 输出"}}
-```
-
-`content` 是 Workflow 最终输出的 `content` 字段（若没有则为整个输出），值不限定为字符串。目标 Workflow 不存在或处理时抛出异常产生 `error`：
+Workflow 执行成功后不会自动产生 `response` 事件；如需向终端展示输出，应由 Workflow 显式调用 `output_to_terminal`。目标 Workflow 不存在或处理时抛出异常产生 `error`：
 
 ```json
 {"version": "1.1", "event_type": "error", "payload": {"workflow_file_id": "workspace-file-id", "message": "workflow not found"}}
