@@ -174,6 +174,29 @@ class ToolNodeExecutionTest(unittest.TestCase):
         call_tool.assert_called_once_with("remote_echo", {}, "wait", 23000, None)
         self.assertEqual(target["data_inputs"]["result"][2], '{"ok":true}')
 
+    def test_json_tool_routes_unknown_tool_to_error_without_submitting_task(self):
+        node = {"id": "json-node", "type": "json_tool", "data_inputs": {
+            "tool-name": [None, None, "missing.tool"], "arguments-json": [None, None, "{}"],
+        }, "data_outputs": {"result-json": [[1, "result"]], "error-json": [[1, "error"]]},
+            "successors": {"next": 2, "error": 1}}
+        target = {"data_inputs": {"result": [0, "result-json", None], "error": [0, "error-json", None]}}
+        tools_module = types.ModuleType("tools.tool")
+        tools_module.execute_tool = Mock()
+        tools_module.tool_handlers = {}
+        response = Mock()
+        response.json.return_value = {"tools": []}
+        with patch.dict(sys.modules, {"tools.tool": tools_module}), \
+             patch("tool_server_client.requests.get", return_value=response), \
+             patch("tool_server_client.requests.post") as post:
+            self.assertEqual(workflow_json_tool(0, [node, target]), 1)
+        error = json.loads(target["data_inputs"]["error"][2])
+        self.assertEqual(error["tool"], "missing.tool")
+        self.assertEqual(error["error"]["type"], "ToolServerError")
+        self.assertIn("missing.tool", error["error"]["message"])
+        self.assertIsNone(target["data_inputs"]["result"][2])
+        post.assert_not_called()
+        tools_module.execute_tool.assert_not_called()
+
     def test_unified_local_tool_dispatches_from_metadata_kind(self):
         workflow_map = tool_workflow_map("tool", mode="sync", outputs=[{"name": "output", "type": "content"}])
         workflow_map[0]["_tool_kind"] = "local"
@@ -351,6 +374,27 @@ class ToolNodeExecutionTest(unittest.TestCase):
 
 
 class ToolServerClientTest(unittest.TestCase):
+    def setUp(self):
+        response = Mock()
+        response.json.return_value = {"tools": [{"name": "echo"}]}
+        self.get = self.enterContext(patch("tool_server_client.requests.get", return_value=response))
+
+    @patch("tool_server_client.requests.post")
+    def test_missing_tool_is_rejected_before_submitting_sync_or_async_task(self, post):
+        self.get.return_value.json.return_value = {"tools": []}
+        for mode in ("wait", "async"):
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(ToolServerError, "echo"):
+                    call_remote_tool("echo", {}, mode, 500)
+        post.assert_not_called()
+
+    @patch("tool_server_client.requests.post")
+    def test_registry_failure_prevents_task_submission(self, post):
+        self.get.side_effect = requests.ConnectionError("offline")
+        with self.assertRaisesRegex(ToolServerError, "remote tool schema request failed"):
+            call_remote_tool("echo", {}, "wait", 500)
+        post.assert_not_called()
+
     @patch("tool_server_client.requests.post")
     def test_completed_response_returns_result(self, post):
         response = Mock(status_code=200)
@@ -363,6 +407,8 @@ class ToolServerClientTest(unittest.TestCase):
             json={"arguments": {"value": "x"}, "mode": "wait", "timeout_ms": 500},
             timeout=(3, 5.5),
         )
+
+        self.get.assert_called_once_with("http://tool_server:8083/api/tools", timeout=(3, 10))
 
     @patch("tool_server_client.requests.post")
     def test_accepted_response_exposes_task_id(self, post):

@@ -1,4 +1,4 @@
-import { portsForNode } from './node-contract.js';
+import { createWorkflowId, portsForNode } from './node-contract.js';
 
 function endpointPort(node, portId, direction, type) {
   return portsForNode(node).find((port) => (
@@ -9,7 +9,7 @@ function endpointPort(node, portId, direction, type) {
 }
 
 export function isValidConnection(connection, nodes) {
-  if (!connection || typeof connection.id !== 'string') return false;
+  if (!connection || typeof connection.id !== 'string' || !connection.id.trim()) return false;
   if (!['control', 'content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(connection.type)
     && !/^(struct|list-struct):[A-Za-z_][A-Za-z0-9_]*$/.test(connection.type || '')) return false;
   const source = nodes.find((node) => node.id === connection.fromId);
@@ -22,7 +22,30 @@ export function isValidConnection(connection, nodes) {
 }
 
 export function filterValidConnections(connections, nodes) {
-  return (Array.isArray(connections) ? connections : []).filter((connection) => isValidConnection(connection, nodes));
+  const candidates = Array.isArray(connections) ? connections : [];
+  const reservedIds = new Set(candidates
+    .map((connection) => connection?.id)
+    .filter((id) => typeof id === 'string' && id.trim()));
+  const usedIds = new Set();
+  const valid = [];
+
+  for (const connection of candidates) {
+    if (!connection || typeof connection !== 'object' || Array.isArray(connection)) continue;
+    let normalized = connection;
+    if (typeof connection.id !== 'string' || !connection.id.trim() || usedIds.has(connection.id)) {
+      let id;
+      do {
+        id = createWorkflowId('connection');
+      } while (reservedIds.has(id) || usedIds.has(id));
+      normalized = { ...connection, id };
+    }
+    if (!isValidConnection(normalized, nodes)) continue;
+    usedIds.add(normalized.id);
+    reservedIds.add(normalized.id);
+    valid.push(normalized);
+  }
+
+  return valid;
 }
 
 export function reconcileConnections(state) {

@@ -173,7 +173,7 @@ def bocha_search(keyword):
 def execute_tool(id,tool,args,preserve_result=False):
     handler = tool_handlers.get(tool)
     if handler is None:
-        return f"未知工具: {tool}"
+        raise ValueError(f"未知工具: {tool}")
 
     result = handler(**args)
 

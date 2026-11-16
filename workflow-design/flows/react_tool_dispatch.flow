@@ -1,0 +1,308 @@
+{
+  "schema_version": "2.0",
+  "name": "react_tool_dispatch.flow",
+  "description": "解析一条 LLM tool_call JSON，执行已注册工具（包含工作区完整 CRUD），并在成功/失败两条独立路径中输出可读观察。输入和结果均保留 JSON 文本。",
+  "metadata": {
+    "structs": [],
+    "tools": []
+  },
+  "input_ports": [
+    {
+      "name": "tool_call_json",
+      "type": "content"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "observation",
+      "type": "content"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "input",
+      "type": "input",
+      "workflowPorts": [
+        {
+          "id": "workflow:tool_call_json",
+          "name": "tool_call_json",
+          "type": "content"
+        }
+      ],
+      "x": 0,
+      "y": 180,
+      "name": "接收一条工具调用请求"
+    },
+    {
+      "id": "parse_call",
+      "type": "deserialize_json",
+      "arguments": {
+        "outputs": [
+          {
+            "key": "function",
+            "type": "content"
+          }
+        ]
+      },
+      "x": 240,
+      "y": 180,
+      "name": "从请求中取出函数信息"
+    },
+    {
+      "id": "parse_function",
+      "type": "deserialize_json",
+      "arguments": {
+        "outputs": [
+          {
+            "key": "name",
+            "type": "content"
+          },
+          {
+            "key": "arguments",
+            "type": "content"
+          }
+        ]
+      },
+      "x": 480,
+      "y": 180,
+      "name": "取出工具名称和调用参数"
+    },
+    {
+      "id": "invoke",
+      "type": "json_tool",
+      "x": 720,
+      "y": 180,
+      "name": "按名称和参数执行工具"
+    },
+    {
+      "id": "format_success",
+      "type": "construct_content",
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "Tool call JSON: "
+          },
+          {
+            "type": "port",
+            "port_id": "call-json"
+          },
+          {
+            "type": "fixed",
+            "value": "\nTool result JSON: "
+          },
+          {
+            "type": "port",
+            "port_id": "result-json"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "call-json",
+        "result-json"
+      ],
+      "x": 960,
+      "y": 60,
+      "name": "整理工具请求和成功结果"
+    },
+    {
+      "id": "format_error",
+      "type": "construct_content",
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "Tool call JSON: "
+          },
+          {
+            "type": "port",
+            "port_id": "call-json"
+          },
+          {
+            "type": "fixed",
+            "value": "\nTool error JSON: "
+          },
+          {
+            "type": "port",
+            "port_id": "error-json"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "call-json",
+        "error-json"
+      ],
+      "x": 960,
+      "y": 360,
+      "name": "整理工具请求和错误原因"
+    },
+    {
+      "id": "success_output",
+      "type": "output",
+      "workflowPorts": [
+        {
+          "id": "workflow:observation",
+          "name": "observation",
+          "type": "content"
+        }
+      ],
+      "x": 1200,
+      "y": 60,
+      "name": "返回工具执行结果"
+    },
+    {
+      "id": "error_output",
+      "type": "output",
+      "workflowPorts": [
+        {
+          "id": "workflow:observation",
+          "name": "observation",
+          "type": "content"
+        }
+      ],
+      "x": 1200,
+      "y": 360,
+      "name": "返回工具失败原因"
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "input",
+      "fromPortId": "control-out",
+      "toId": "parse_call",
+      "toPortId": "control-in",
+      "type": "control",
+      "id": "react_tool_dispatch_edge_1"
+    },
+    {
+      "fromId": "parse_call",
+      "fromPortId": "control-out",
+      "toId": "parse_function",
+      "toPortId": "control-in",
+      "type": "control",
+      "id": "react_tool_dispatch_edge_2"
+    },
+    {
+      "fromId": "parse_function",
+      "fromPortId": "control-out",
+      "toId": "invoke",
+      "toPortId": "control-in",
+      "type": "control",
+      "id": "react_tool_dispatch_edge_3"
+    },
+    {
+      "fromId": "invoke",
+      "fromPortId": "control-out",
+      "toId": "format_success",
+      "toPortId": "control-in",
+      "type": "control",
+      "id": "react_tool_dispatch_edge_4"
+    },
+    {
+      "fromId": "invoke",
+      "fromPortId": "error-out",
+      "toId": "format_error",
+      "toPortId": "control-in",
+      "type": "control",
+      "id": "react_tool_dispatch_edge_5"
+    },
+    {
+      "fromId": "format_success",
+      "fromPortId": "control-out",
+      "toId": "success_output",
+      "toPortId": "control-in",
+      "type": "control",
+      "id": "react_tool_dispatch_edge_6"
+    },
+    {
+      "fromId": "format_error",
+      "fromPortId": "control-out",
+      "toId": "error_output",
+      "toPortId": "control-in",
+      "type": "control",
+      "id": "react_tool_dispatch_edge_7"
+    },
+    {
+      "fromId": "input",
+      "fromPortId": "workflow:tool_call_json",
+      "toId": "parse_call",
+      "toPortId": "content-in",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_8"
+    },
+    {
+      "fromId": "parse_call",
+      "fromPortId": "function",
+      "toId": "parse_function",
+      "toPortId": "content-in",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_9"
+    },
+    {
+      "fromId": "parse_function",
+      "fromPortId": "name",
+      "toId": "invoke",
+      "toPortId": "tool-name",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_10"
+    },
+    {
+      "fromId": "parse_function",
+      "fromPortId": "arguments",
+      "toId": "invoke",
+      "toPortId": "arguments-json",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_11"
+    },
+    {
+      "fromId": "input",
+      "fromPortId": "workflow:tool_call_json",
+      "toId": "format_success",
+      "toPortId": "call-json",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_12"
+    },
+    {
+      "fromId": "invoke",
+      "fromPortId": "result-json",
+      "toId": "format_success",
+      "toPortId": "result-json",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_13"
+    },
+    {
+      "fromId": "input",
+      "fromPortId": "workflow:tool_call_json",
+      "toId": "format_error",
+      "toPortId": "call-json",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_14"
+    },
+    {
+      "fromId": "invoke",
+      "fromPortId": "error-json",
+      "toId": "format_error",
+      "toPortId": "error-json",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_15"
+    },
+    {
+      "fromId": "format_success",
+      "fromPortId": "content-out",
+      "toId": "success_output",
+      "toPortId": "workflow:observation",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_16"
+    },
+    {
+      "fromId": "format_error",
+      "fromPortId": "content-out",
+      "toId": "error_output",
+      "toPortId": "workflow:observation",
+      "type": "content",
+      "id": "react_tool_dispatch_edge_17"
+    }
+  ],
+  "workflow_nodes": [],
+  "remote_tools": []
+}

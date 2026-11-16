@@ -616,7 +616,13 @@ export function normalizeImportedWorkflow(imported) {
 }
 
 export function parseWorkflowText(text) {
-  const workflow = migrateWorkflowToCurrentVersion(normalizeImportedWorkflow(JSON.parse(text)));
+  const imported = JSON.parse(text);
+  if (imported?.format === 'aagent.workflow-design/1') {
+    const entrypoint = typeof imported.entrypoint === 'string' && imported.entrypoint.trim()
+      ? imported.entrypoint : '入口 .flow 文件';
+    throw new Error(`这是多工作流设计包，不能作为单个 Workflow 导入。请先保存子工作流，再导入拆分后的 ${entrypoint}；原生文件的 schema_version 必须是字符串 "2.0"。`);
+  }
+  const workflow = migrateWorkflowToCurrentVersion(normalizeImportedWorkflow(imported));
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('内容不是有效的 Workflow JSON');
   if (workflow.schema_version !== WORKFLOW_SCHEMA_VERSION) throw new Error(`Workflow schema_version 必须是 ${WORKFLOW_SCHEMA_VERSION}`);
   if (typeof workflow.name !== 'string' || !workflow.name.trim()) throw new Error('Workflow 名称不能为空');

@@ -55,6 +55,8 @@ def call_remote_tool(
     timeout_ms: int,
     callback: dict[str, Any] | None = None,
 ) -> Any:
+    # Validate against the live registry before submitting a wait or async task.
+    get_remote_tool_schemas({tool})
     base_url = os.getenv("TOOL_SERVER_URL", "http://tool_server:8083").rstrip("/")
     request_body = {"arguments": arguments, "mode": mode, "timeout_ms": timeout_ms}
     if callback is not None:

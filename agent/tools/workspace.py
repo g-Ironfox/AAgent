@@ -32,7 +32,8 @@ def _request(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         if response.status_code == 409:
             raise ValueError(f"workspace file revision conflict; read the file again: {detail}")
         if response.status_code == 404:
-            raise ValueError(f"workspace file not found: {detail}")
+            resource = "checkpoint" if path.startswith("/checkpoints/") else "file"
+            raise ValueError(f"workspace {resource} not found: {detail}")
         raise RuntimeError(f"workspace request failed with HTTP {response.status_code}: {detail}")
     if not isinstance(payload, dict):
         raise RuntimeError("workspace API returned an invalid response")
@@ -142,3 +143,140 @@ def delete_workspace_file(file_id: str, revision: int) -> dict[str, Any]:
         f"/{quote(file_id, safe='')}",
         params={"revision": revision},
     )
+
+
+@tool(
+    "分页列出工作区 checkpoint，可按文件筛选；使用 next_before_seq 获取下一页",
+    {
+        "type": "object",
+        "properties": {
+            "before_seq": {"type": "integer", "minimum": 1},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50},
+            "file_id": {"type": "string"},
+        },
+        "additionalProperties": False,
+    },
+    name="workspace.list_checkpoints",
+    output_schema={
+        "type": "object",
+        "properties": {
+            "items": {"type": "array", "items": {"type": "object"}},
+            "has_more": {"type": "boolean"},
+            "next_before_seq": {"type": ["integer", "null"]},
+        },
+        "required": ["items", "has_more", "next_before_seq"],
+    },
+)
+def list_workspace_checkpoints(
+    before_seq: int | None = None, limit: int = 50, file_id: str | None = None
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"limit": limit}
+    if before_seq is not None:
+        params["before_seq"] = before_seq
+    if file_id is not None:
+        params["file_id"] = file_id
+    return _request("GET", "/checkpoints", params=params)
+
+
+@tool(
+    "读取工作区 checkpoint 分支树及当前 head_seq",
+    {"type": "object", "properties": {}, "additionalProperties": False},
+    name="workspace.checkpoint_tree",
+    output_schema={
+        "type": "object",
+        "properties": {
+            "items": {"type": "array", "items": {"type": "object"}},
+            "head_seq": {"type": ["integer", "null"]},
+        },
+        "required": ["items", "head_seq"],
+    },
+)
+def get_workspace_checkpoint_tree() -> dict[str, Any]:
+    return _request("GET", "/checkpoints/tree")
+
+
+@tool(
+    "获取 checkpoint 的父序号用于回滚；省略 seq 时查询当前 head。parent_seq=0 表示空工作区，可传给 restore_checkpoint；null 表示已无父 checkpoint",
+    {
+        "type": "object",
+        "properties": {"seq": {"type": "integer", "minimum": 0}},
+        "additionalProperties": False,
+    },
+    name="workspace.get_parent_checkpoint",
+    output_schema={
+        "type": "object",
+        "properties": {
+            "seq": {"type": "integer", "minimum": 0},
+            "parent_seq": {"type": ["integer", "null"], "minimum": 0},
+        },
+        "required": ["seq", "parent_seq"],
+    },
+)
+def get_parent_workspace_checkpoint(seq: int | str | None = None) -> dict[str, Any]:
+    # Local workflow ports carry content strings; JSON Tool calls carry integers.
+    if isinstance(seq, str):
+        seq = int(seq)
+    if seq is not None and (isinstance(seq, bool) or not isinstance(seq, int) or seq < 0):
+        raise ValueError("checkpoint seq must be a non-negative integer")
+    tree = get_workspace_checkpoint_tree()
+    if seq is None:
+        seq = tree["head_seq"] or 0
+    if seq == 0:
+        return {"seq": 0, "parent_seq": None}
+    for checkpoint in tree["items"]:
+        if checkpoint["seq"] == seq:
+            return {"seq": seq, "parent_seq": checkpoint["data"]["parent_seq"] or 0}
+    raise ValueError(f"workspace checkpoint not found: {seq}")
+
+
+@tool(
+    "读取 checkpoint 相对于父 checkpoint 的文件差异；seq=0 表示空工作区",
+    {
+        "type": "object",
+        "properties": {"seq": {"type": "integer", "minimum": 0}},
+        "required": ["seq"],
+        "additionalProperties": False,
+    },
+    name="workspace.checkpoint_diff",
+    output_schema={
+        "type": "object",
+        "properties": {
+            "seq": {"type": "integer"},
+            "parent_seq": {"type": ["integer", "null"]},
+            "changes": {"type": "array", "items": {"type": "object"}},
+        },
+        "required": ["seq", "parent_seq", "changes"],
+    },
+)
+def get_workspace_checkpoint_diff(seq: int) -> dict[str, Any]:
+    return _request("GET", f"/checkpoints/{seq}/diff")
+
+
+@tool(
+    "为当前工作区全部文件创建命名 checkpoint",
+    {
+        "type": "object",
+        "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 200}},
+        "required": ["name"],
+        "additionalProperties": False,
+    },
+    name="workspace.create_checkpoint",
+    output_schema={"type": "object"},
+)
+def create_workspace_checkpoint(name: str) -> dict[str, Any]:
+    return _request("POST", "/checkpoints", json={"name": name})
+
+
+@tool(
+    "将整个工作区恢复到指定 checkpoint，文件 revision 会更新；seq=0 会清空工作区",
+    {
+        "type": "object",
+        "properties": {"seq": {"type": "integer", "minimum": 0}},
+        "required": ["seq"],
+        "additionalProperties": False,
+    },
+    name="workspace.restore_checkpoint",
+    output_schema={"type": "object"},
+)
+def restore_workspace_checkpoint(seq: int) -> dict[str, Any]:
+    return _request("POST", f"/checkpoints/{seq}/restore")
