@@ -211,15 +211,23 @@ const workflowOption = {
   file_id: 'workflow-file', name: 'demo.json', input_ports: [{ name: 'text', type: 'content' }],
 };
 
-test('create dialog loads workflows and fills declared input names', async () => {
+test('create dialog loads workflows and prefills inputs from their declared types', async () => {
   const h = await harness([], undefined, [], {
-    options: async () => ({ items: [workflowOption] }),
+    options: async () => ({ items: [{ ...workflowOption, input_ports: [
+      { name: 'text', type: 'content' },
+      { name: 'prompt', type: 'message' },
+      { name: 'items', type: 'list-content' },
+      { name: 'messages', type: 'list-message' },
+      { name: 'values', type: 'map-content' },
+    ] }] }),
   });
   await vm.runInContext('openCreateProcess()', h.context);
   assert.equal(h.get('#createProcessDialog').open, true);
   assert.equal(h.get('#processWorkflowSelect').value, 'workflow-file');
   assert.equal(h.get('#processWorkflowSelect').children[0].textContent, 'demo.json');
-  assert.deepEqual(JSON.parse(h.get('#processInputs').value), { text: null });
+  assert.deepEqual(JSON.parse(h.get('#processInputs').value), {
+    text: '', prompt: { role: 'user', content: '' }, items: [], messages: [], values: {},
+  });
   assert.equal(h.get('#submitProcessButton').disabled, false);
 });
 

@@ -270,8 +270,17 @@ async function openCreateProcess() {
 
 function fillProcessInputs() {
   const workflow = state.workflows.find((item) => item.file_id === elements.workflowSelect.value);
+  const references = {
+    content: '',
+    message: { role: 'user', content: '' },
+    'list-content': [],
+    'list-message': [],
+    'map-content': {},
+  };
   elements.processInputs.value = JSON.stringify(Object.fromEntries(
-    (workflow?.input_ports || []).map((port) => [port.name, null])
+    (workflow?.input_ports || []).map((port) => [
+      port.name, Object.hasOwn(references, port.type) ? references[port.type] : null,
+    ])
   ), null, 2);
 }
 
