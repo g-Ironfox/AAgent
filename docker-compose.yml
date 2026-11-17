@@ -22,49 +22,6 @@ services:
       TOOL_CLIENT_MAX_WAIT_MS: ${TOOL_CLIENT_MAX_WAIT_MS:-10000}
       MONGO_SESSION_COLLECTION: ${MONGO_SESSION_COLLECTION:-sessions}
       MONGO_WORKSPACE_FILE_COLLECTION: ${MONGO_WORKSPACE_FILE_COLLECTION:-workspace_files}
-      MONGO_EVENT_BINDING_COLLECTION: ${MONGO_EVENT_BINDING_COLLECTION:-event_bindings}
-    networks:
-      - aagent_net
-
-  qqbot:
-    build: ./qqbot
-    container_name: qqbot_aagent
-    command: ["python", "listener.py"]
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      QQ_QUEUE_NAME: ${QQ_QUEUE_NAME:-qq:events}
-    networks:
-      - aagent_net
-
-  qqbot_consumer:
-    build: ./qqbot_consumer
-    container_name: qqbot_consumer_aagent
-    command: ["python", "queue_consumer.py"]
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      QQ_QUEUE_NAME: ${QQ_QUEUE_NAME:-qq:events}
-      MAIN_AGENT_QUEUE_NAME: ${MAIN_AGENT_QUEUE_NAME:-main_agent_queue}
-      QQ_WORKER_STATUS_KEY: ${QQ_WORKER_STATUS_KEY:-qq:worker:status}
-      MONGO_HOST: mongodb
-      MONGO_PORT: 27017
-      MONGO_USER: ${MONGO_USER}
-      MONGO_PASS: ${MONGO_PASS}
-      MONGO_DATABASE: ${MONGO_DATABASE:-agent}
-      QQ_HISTORY_COLLECTION: ${QQ_HISTORY_COLLECTION:-qq_event_history}
     networks:
       - aagent_net
 
@@ -83,16 +40,12 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MAIN_AGENT_QUEUE_NAME: ${MAIN_AGENT_QUEUE_NAME:-main_agent_queue}
-      AGENT_WORKER_STATUS_KEY: ${AGENT_WORKER_STATUS_KEY:-aagent:worker:status}
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_USER: ${MONGO_USER}
       MONGO_PASS: ${MONGO_PASS}
       MONGO_DATABASE: ${MONGO_DATABASE:-agent}
-      MONGO_HISTORY_COLLECTION: ${MONGO_HISTORY_COLLECTION:-event_history}
       MONGO_TERMINAL_COLLECTION: ${MONGO_TERMINAL_COLLECTION:-terminal_messages}
-      MONGO_EVENT_BINDING_COLLECTION: ${MONGO_EVENT_BINDING_COLLECTION:-event_bindings}
       MONGO_FILE_EVENT_COLLECTION: ${MONGO_FILE_EVENT_COLLECTION:-workspace_file_events}
       MONGO_WORKSPACE_FILE_COLLECTION: ${MONGO_WORKSPACE_FILE_COLLECTION:-workspace_files}
     ports:

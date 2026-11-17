@@ -39,7 +39,9 @@ class Element {
   scrollTo({ top }) { this.scrollTop = top; }
 }
 
-async function harness(items = [], submit = async () => {}, sessions = [], creation = {}) {
+async function harness(items = [], submit = async () => {}, sessions = [{
+  terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input',
+}], creation = {}) {
   const elements = new Map();
   const historyRequests = [];
   const document = {
@@ -57,7 +59,7 @@ async function harness(items = [], submit = async () => {}, sessions = [], creat
     },
     fetchTerminalSessions: async () => ({ sessions }),
     submitTerminal: submit,
-    fetchEventBindingWorkflowOptions: creation.options || (async () => ({ items: [] })),
+    fetchProcessWorkflowOptions: creation.options || (async () => ({ items: [] })),
     createProcess: creation.submit || (async () => {}),
     createAutoRefresh: () => ({ schedule() {} }),
   });
@@ -89,16 +91,15 @@ test('refresh deduplicates messages by stored ID', async () => {
 
 test('successful send shows persisted input before a later history refresh', async () => {
   const sent = [];
-  const h = await harness([], async (content) => {
-    sent.push(content);
-    return { queue: 'priority_queue', message: input };
+  const h = await harness([], async (...args) => {
+    sent.push(args);
+    return { message: input };
   });
   h.get('#messageInput').value = '  你好  ';
   await vm.runInContext('sendMessage()', h.context);
-  assert.deepEqual(sent, ['你好']);
+  assert.deepEqual(sent, [['你好', 'terminal-1']]);
   assert.equal(h.get('#messageList').children[0].dataset.id, '1');
   assert.equal(h.get('#messageInput').value, '');
-  assert.equal(h.get('#queueName').textContent, 'priority_queue');
   h.context.items = [input];
   vm.runInContext('appendHistory(items)', h.context);
   assert.equal(h.get('#messageList').children.length, 1);
@@ -122,7 +123,7 @@ test('loads available process terminals and reloads history after switching', as
   ];
   const h = await harness([], async () => ({}), sessions);
   const select = h.get('#terminalSelect');
-  assert.equal(select.children.length, 3);
+  assert.equal(select.children.length, 2);
   assert.equal(select.value, 'terminal-1');
   assert.equal(h.historyRequests.at(-1).terminalProcessId, 'terminal-1');
 
@@ -140,7 +141,7 @@ test('sends a message to the selected process terminal', async () => {
   ];
   const h = await harness([], async (...args) => {
     sent.push(args);
-    return { queue: 'main_agent_queue', message: input };
+    return { message: input };
   }, sessions);
   h.get('#messageInput').value = 'hello';
   await vm.runInContext('sendMessage()', h.context);
@@ -305,4 +306,17 @@ test('repeated submit while creation is pending creates only one process', async
   assert.equal(h.get('#sendButton').disabled, true);
   reject(new Error('offline'));
   await first;
+});
+
+test('no process terminals disables sending and never reads global history', async () => {
+  let sends = 0;
+  const h = await harness([], async () => { sends += 1; }, []);
+  assert.equal(h.historyRequests.length, 0);
+  assert.equal(h.get('#terminalSelect').children.length, 1);
+  assert.equal(h.get('#terminalSelect').children[0].textContent, '暂无进程终端');
+  assert.equal(h.get('#messageInput').disabled, true);
+  assert.equal(h.get('#sendButton').disabled, true);
+  h.get('#messageInput').value = 'hello';
+  await vm.runInContext('sendMessage()', h.context);
+  assert.equal(sends, 0);
 });

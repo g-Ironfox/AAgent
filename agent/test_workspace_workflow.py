@@ -5,7 +5,6 @@ from unittest.mock import call, patch
 
 from pymongo.errors import PyMongoError
 
-import task_worker
 from workflow_parser import (
     WorkflowParseError,
     _read_workspace_workflow,
@@ -97,21 +96,6 @@ class WorkspaceWorkflowTest(unittest.TestCase):
         self.workspace.find_one.side_effect = PyMongoError("down")
         with self.assertRaisesRegex(WorkflowParseError, "failed to read workspace"):
             _read_workspace_workflow("file-1")
-
-    @patch("task_worker.record_history")
-    @patch("task_worker.publish_to_queue")
-    def test_file_executes_through_real_validation_parser_and_runner(self, publish, record):
-        self.workspace.find_one.side_effect = [
-            {"generation": 1}, {"content": json.dumps(echo_workflow())},
-        ]
-        task_worker.handle_task({
-            "version": "1.1", "event_type": "workflow",
-            "payload": {"workflow_file_id": "file-1", "content": "hello from workspace"},
-        })
-        publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
-            "event_type": "response", "payload": {"content": "hello from workspace"},
-        })
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -148,13 +148,11 @@ class InitialAgentExecutionTest(unittest.TestCase):
              patch('workflow_run_repository.record_workflow_run'), \
              patch('tool_server_client.get_remote_tool_schemas',
                    side_effect=lambda names: [tool_schema(name) for name in sorted(names)]), \
-             patch('tool_server_client.call_remote_tool', side_effect=execute_remote), \
-             patch('queue_client.publish_to_queue') as publish:
+             patch('tool_server_client.call_remote_tool', side_effect=execute_remote):
             try:
                 return run_workflow_map(graph, start)
             finally:
                 self.assertEqual(self.redis.hashes, {}, 'all invocation Contexts must be cleaned up')
-                publish.assert_not_called()
 
     def test_three_tool_rounds_then_stop_with_the_model_final_answer(self):
         output = self.execute([

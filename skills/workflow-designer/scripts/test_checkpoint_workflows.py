@@ -51,7 +51,6 @@ class CheckpointWorkflowTest(unittest.TestCase):
         llm = type(sys)('llm')
         self.chat = Mock(return_value=('completed', None, []))
         llm.chat_with_model = self.chat
-        self.publish = Mock()
         self.execute_tool = Mock(wraps=self.registry.execute_tool)
         patches = [patch.dict(sys.modules, {'tools.tool': self.registry, 'llm': llm}),
             patch.object(self.registry, 'execute_tool', self.execute_tool),
@@ -59,14 +58,12 @@ class CheckpointWorkflowTest(unittest.TestCase):
             patch('workflow_context_repository.get_connection', return_value=self.redis),
             patch('workflow_parser._read_workspace_workflow_by_name', side_effect=lambda name: copy.deepcopy(self.docs[name])),
             patch('workflow_run_repository.record_workflow_run'),
-            patch('queue_client.publish_to_queue', self.publish),
             patch('tool_server_client.get_remote_tool_schemas', side_effect=lambda names: [tool_schema(n) for n in sorted(names)]),
             patch('tool_server_client.call_remote_tool', side_effect=ValueError('unknown remote tool'))]
         for item in patches:
             item.start()
             self.addCleanup(item.stop)
         self.addCleanup(lambda: self.assertEqual(self.redis.hashes, {}))
-        self.addCleanup(self.publish.assert_not_called)
 
     def api(self, method, path, **kwargs):
         self.api_calls.append((method, path, copy.deepcopy(kwargs)))

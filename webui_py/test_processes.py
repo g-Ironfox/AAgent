@@ -41,6 +41,28 @@ class ProcessCreationApiTest(unittest.TestCase):
         self.logs = MagicMock()
         router = create_processes_router(self.redis, self.store, self.logs)
         self.create = next(route.endpoint for route in router.routes if route.path == "/api/processes")
+        self.workflow_options = next(
+            route.endpoint for route in router.routes
+            if route.path == "/api/processes/workflow-options"
+        )
+
+    def test_workflow_options_are_listed_without_event_bindings(self):
+        valid = workflow_document()
+        self.store.list_files.return_value = [
+            {"file_id": "file-1", "name": "demo.json"},
+            {"file_id": "invalid", "name": "invalid.json"},
+        ]
+        self.store.get_file.side_effect = [
+            {"file_id": "file-1", "name": "demo.json", "content": json.dumps(valid)},
+            {"file_id": "invalid", "name": "invalid.json", "content": "not json"},
+        ]
+
+        result = self.workflow_options()
+
+        self.assertEqual(result["items"], [{
+            "file_id": "file-1", "name": "demo.json", "workflow_name": "Example",
+            "input_ports": valid["input_ports"], "output_ports": valid["output_ports"],
+        }])
 
     @patch("processes.initialize_process_pair")
     @patch("processes.build_workflow_process")

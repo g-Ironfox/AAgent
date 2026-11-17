@@ -32,8 +32,47 @@ class CreateProcessRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
 
 
+def _workflow_option(file: dict[str, Any]) -> dict[str, Any]:
+    try:
+        document = json.loads(file["content"])
+    except (ValueError, TypeError) as error:
+        raise ValueError("workflow file content must be valid JSON") from error
+    if not isinstance(document, dict) or document.get("schema_version") != "2.0":
+        raise ValueError("workflow file must use schema_version 2.0")
+    if not isinstance(document.get("name"), str) or any(
+        not isinstance(document.get(field), list)
+        for field in ("nodes", "connections", "input_ports", "output_ports")
+    ):
+        raise ValueError("workflow file is missing its name, nodes, connections, or ports")
+    for field in ("input_ports", "output_ports"):
+        if any(
+            not isinstance(port, dict)
+            or not isinstance(port.get("name"), str)
+            or not isinstance(port.get("type"), str)
+            for port in document[field]
+        ):
+            raise ValueError("workflow port declaration is invalid")
+    return {
+        "file_id": file["file_id"],
+        "name": file["name"],
+        "workflow_name": document["name"],
+        "input_ports": document["input_ports"],
+        "output_ports": document["output_ports"],
+    }
+
+
 def create_processes_router(redis_client, store, process_logs) -> APIRouter:
     router = APIRouter()
+
+    @router.get("/api/processes/workflow-options")
+    def list_workflow_options():
+        items = []
+        for file in store.list_files():
+            try:
+                items.append(_workflow_option(store.get_file(file["file_id"])))
+            except (FileMissingError, ValueError):
+                continue
+        return {"items": sorted(items, key=lambda item: (item["name"], item["file_id"]))}
 
     @router.post("/api/processes", status_code=201)
     def create_process(request: CreateProcessRequest):

@@ -2,7 +2,6 @@ import copy
 import unittest
 from unittest.mock import call, patch
 
-import task_worker
 from workflow_nodes import workflow_workflow
 from workflow_parser import WorkflowParseError, parse_workflow
 from workflow_validator import (
@@ -132,35 +131,9 @@ class WorkflowDependencyValidationTest(unittest.TestCase):
 
 class WorkflowDependencyExecutionTest(unittest.TestCase):
     def setUp(self):
-        for target in (
-            "task_worker.record_history", "task_worker.publish_to_queue",
-            "workflow_run_repository.record_workflow_run",
-        ):
-            patcher = patch(target)
-            patcher.start()
-            self.addCleanup(patcher.stop)
-
-    def test_worker_checks_unused_metadata_before_parsing_or_running(self):
-        workflow = empty_workflow()
-        workflow["workflow_nodes"] = [{
-            "name": "Child.flow", "input_ports": [], "output_ports": [],
-        }]
-        child = empty_workflow("Child")
-        child["output_ports"] = [{"name": "added", "type": "content"}]
-        for target_key, reader in (
-            ("workflow_name", "task_worker._read_workflow"),
-            ("workflow_file_id", "task_worker._read_workspace_workflow"),
-        ):
-            with self.subTest(target_key=target_key), patch(reader, return_value=workflow), patch(
-                "workflow_parser._read_workspace_workflow_by_name", return_value=child
-            ), patch("task_worker.parse_workflow") as parse, patch("task_worker.run_workflow_map") as run:
-                with self.assertRaisesRegex(WorkflowValidationError, "workflow_nodes.*output_ports"):
-                    task_worker.handle_task({
-                        "version": "1.1", "event_type": "workflow",
-                        "payload": {target_key: "selected"},
-                    })
-                parse.assert_not_called()
-                run.assert_not_called()
+        patcher = patch("workflow_run_repository.record_workflow_run")
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_child_checks_own_dependencies_before_parsing_or_running(self):
         parent = empty_workflow()
@@ -195,24 +168,6 @@ class WorkflowDependencyExecutionTest(unittest.TestCase):
                     workflow_workflow(1, parse_workflow(parent))
                 run.assert_not_called()
 
-    def test_matching_dependencies_execute_through_real_worker_and_child(self):
-        parent = empty_workflow()
-        add_child_call(parent)
-        parent["workflow_nodes"] = [{
-            "name": "Child.flow", "input_ports": [], "output_ports": [],
-        }]
-        child = empty_workflow("Child")
-        with patch("task_worker._read_workspace_workflow", return_value=parent), patch(
-            "workflow_parser._read_workspace_workflow_by_name", return_value=child
-        ) as read, patch("task_worker.publish_to_queue") as publish:
-            task_worker.handle_task({
-                "version": "1.1", "event_type": "workflow",
-                "payload": {"workflow_file_id": "parent-file"},
-            })
-            publish.assert_called_once_with(task_worker.MAIN_AGENT_QUEUE_NAME, {
-                "event_type": "response", "payload": {"content": {}},
-            })
-            self.assertEqual(read.call_args_list, [call("Child.flow"), call("Child.flow")])
 
 
 if __name__ == "__main__":

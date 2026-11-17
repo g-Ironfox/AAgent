@@ -195,7 +195,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 接口 `port` 必须恰含 `name`、`type`。名称非空；同一输入或输出接口数组内，端口名经去除首尾空白、忽略大小写后不得重复。依赖对象必须恰含 `name`、`input_ports`、`output_ports`；依赖名非空，同一依赖数组内不得重复，Remote Tool 名称比较时去除首尾空白并忽略大小写。
 
-`origin` 是可选 Workflow 输入接口名，其数据类型由端口声明决定。Input 节点对应端口 ID 为 `workflow:origin`。通过旧事件绑定入口触发 Workflow 时，`origin: event` 接收完整原始事件；`origin: content` 接收该事件的 JSON 文本。其他 Workflow 输入从事件的 `payload` 按端口名取值。直接创建进程时，所有输入（包括 `origin`）均按声明类型从创建请求传入。
+`origin` 是可选 Workflow 输入接口名，其数据类型由端口声明决定。Input 节点对应端口 ID 为 `workflow:origin`。创建进程时，所有输入（包括 `origin`）均按声明类型从请求的 `inputs` 传入。
 
 ### 9.2 节点对象和边界快照
 
@@ -222,7 +222,6 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `map_content_get` | 无 | `map-in: map-content`、`key-in: content` | `content-out: content` |
 | `split_event` | 无 | `event-in: event` | `type-out: content`、`payload-out: content` |
 | `construct_event` | `event_type` | `payload-in: content`，内容为 JSON object 文本 | `event-out: event` |
-| `publish_event` | 无 | `event-in: event` | 无 |
 | `output_to_terminal` | 无 | `content-in: content` | 无 |
 | `deserialize_json` | `outputs: [{key,type}]` | `content-in: content`，内容为 JSON object 文本 | 每个 key 一个对应 type 的端口 |
 | `construct_list` | `item_type`、`initial_value_count` | `<item_type>-in-0` 至 `<item_type>-in-(count-1)` | `list-out: list-<item_type>` |
@@ -247,7 +246,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 | 节点类型 | 必需参数 | 可选参数（缺省值） |
 | --- | --- | --- |
-| `input`、`output`、`map_content_get`、`split_event`、`publish_event`、`output_to_terminal` | 无 | 无 |
+| `input`、`output`、`map_content_get`、`split_event`、`output_to_terminal` | 无 | 无 |
 | `router` | `branches` | 无 |
 | `construct_message` | 无 | `role` (`user`)、`role_source` (`fixed`) |
 | `construct_content` | `append_items` | 无 |
@@ -282,7 +281,6 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `split_event` 要求 Event 含非空字符串 `event_type` 和 `payload`；字符串 payload 原样输出，非字符串 payload 输出为紧凑 JSON 文本。
 - `construct_event` 要求非空 event_type，且 payload-in 可解析为 JSON object；输出 Event 1.1 对象，version 固定为字符串 `1.1`。
 - `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
-- `publish_event` 只接受 version 为字符串 `1.1`、event_type 为非空字符串且 payload 为 object 的 Event；发布到 Agent 队列并继续当前控制流。
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为七种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
 - `construct_list.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message`、`list-event` 或 `list-struct:<id>`。
 - `list_append.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
@@ -329,11 +327,11 @@ Agent 和管理端在基本端口、类型及连接基数校验后执行静态�
 
 数据边的源空间必须等于目标空间或为其祖先；兄弟分支、不同循环体之间，以及子空间向父空间的数据连线均非法。Foreach 的 item-out 直接连接到循环外也非法。循环结果须通过 Context 显式写入并在外层读取；Context 节点的普通输出仍按节点空间校验，不能用 Context 写入节点的输出绕过循环边界。生命周期标签仅作为静态校验及编辑器预览状态，不写入 Workflow JSON。生命周期校验不额外证明同一空间内部的生产者执行顺序，也不改变运行时槽位的存储方式。
 
-Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据触发事件/调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子 Workflow 快照过期或递归调用均使执行失败。
+Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子 Workflow 快照过期或递归调用均使执行失败。
 
 子 Workflow 在当前调用栈内执行，并使用自身 Input/Output 边界，同时继承祖先调用的 Context 访问范围。Workflow 节点接口快照必须等于实际 Workflow 接口。调用链出现重复 Workflow 名称时拒绝递归。Struct 不能跨子 Workflow 接口传递，须显式 JSON 转换。
 
-`construct_event` 产生的 Event 以及 `publish_event` 接受的 Event 遵循 Event 1.1：JSON 对象含 `version` 字符串 `1.1`、非空字符串 `event_type` 和 object `payload`。作为 Struct 字段值或 Context 值递归校验的 `event` 还必须含非空字符串 `event_type` 和 `payload` 属性，但不额外要求 `version`。Event 节点之间按对象传值；只有显式 JSON 转换节点或规定的 payload 文本端口执行序列化/反序列化。`publish_event` 将事件发布到主 Agent 队列，由独立消费者调度，不在当前 Workflow 调用栈内递归启动。
+`construct_event` 产生的 Event 遵循 Event 1.1：JSON 对象含 `version` 字符串 `1.1`、非空字符串 `event_type` 和 object `payload`。作为 Struct 字段值或 Context 值递归校验的 `event` 还必须含非空字符串 `event_type` 和 `payload` 属性，但不额外要求 `version`。Event 节点之间按对象传值；只有显式 JSON 转换节点或规定的 payload 文本端口执行序列化/反序列化。Event 是图内数据类型，不会自动触发进程或工作流调度。
 
 ### 10.4 While Pop
 

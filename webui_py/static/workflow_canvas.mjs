@@ -18,7 +18,6 @@ const TYPE_COLORS = {
   json_to_struct: '#147d78',
   deserialize_json: '#61568a',
   split_event: '#147d78',
-  publish_event: '#b8483d',
   output_to_terminal: '#13775a',
   construct_list: '#176f73',
   list_append: '#27705b',

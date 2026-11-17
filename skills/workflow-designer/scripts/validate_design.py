@@ -1,7 +1,7 @@
 ﻿"""Validate a workflow-design result and optionally export native .flow files.
 
 This is local/offline validation. It neither deploys files nor verifies live
-model registrations, credentials, event bindings, or Provider availability.
+model registrations, credentials, process launch configuration, or Provider availability.
 """
 from __future__ import annotations
 

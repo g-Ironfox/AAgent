@@ -480,25 +480,6 @@ def workflow_split_event(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
-def workflow_publish_event(current_id: int, workflow_map: WorkflowMap) -> int:
-    node = workflow_map[current_id]
-    has_event, event = read_workflow_input(node, "event-in")
-    if not has_event:
-        raise ValueError(f"publish_event input is missing: node {node.get('id')}")
-    if (
-        not isinstance(event, dict)
-        or event.get("version") != "1.1"
-        or not isinstance(event.get("event_type"), str)
-        or not event["event_type"]
-        or not isinstance(event.get("payload"), dict)
-    ):
-        raise ValueError(f"publish_event input contains an invalid event: node {node.get('id')}")
-    from queue_client import MAIN_AGENT_QUEUE_NAME, publish_to_queue
-
-    publish_to_queue(MAIN_AGENT_QUEUE_NAME, event)
-    return next_successor(node)
-
-
 def _json_content(value: Any) -> str:
     if isinstance(value, str):
         return value
@@ -1006,7 +987,6 @@ nodes_map: dict[str, NodeHandler] = {
     "map_content_get": workflow_map_content_get,
     "construct_event": workflow_construct_event,
     "split_event": workflow_split_event,
-    "publish_event": workflow_publish_event,
     "output_to_terminal": workflow_output_to_terminal,
     "deserialize_json": workflow_deserialize_json,
     "construct_list": workflow_construct_list,

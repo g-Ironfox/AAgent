@@ -265,25 +265,6 @@ class ToolNodeExecutionTest(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowValidationError, "event_type"):
             validate_workflow(workflow)
 
-    def test_publish_event_is_registered_without_arguments(self):
-        self.assertIn("publish_event", SUPPORTED_NODE_TYPES)
-        self.assertEqual(NODE_ARGUMENT_FIELDS_BY_TYPE["publish_event"], set())
-        self.assertIn("publish_event", nodes_map)
-
-    def test_validator_accepts_publish_event_node(self):
-        workflow = valid_workflow({"id": "publish", "type": "publish_event"})
-        workflow["connections"].append({
-            "fromId": "input",
-            "fromPortId": "workflow:event",
-            "toId": "publish",
-            "toPortId": "event-in",
-            "type": "event",
-        })
-        workflow["input_ports"] = [{"name": "event", "type": "event"}]
-        workflow["nodes"][0]["workflowPorts"] = [{"id": "workflow:event", "name": "event", "type": "event"}]
-
-        validate_workflow(workflow)
-
     def test_local_tool_serializes_result(self):
         execute_tool = Mock()
         execute_tool.return_value = {"ok": True}
@@ -358,7 +339,7 @@ class ToolNodeExecutionTest(unittest.TestCase):
         call_tool.return_value = "task-8"
         callback = {
             "type": "redis",
-            "queue": "main_agent_queue",
+            "queue": "tool_result_callbacks",
             "event_type": "async_result",
             "on": ["completed", "failed"],
         }
@@ -441,7 +422,7 @@ class ToolServerClientTest(unittest.TestCase):
         post.return_value = response
         callback = {
             "type": "redis",
-            "queue": "main_agent_queue",
+            "queue": "tool_result_callbacks",
             "event_type": "async_result",
             "on": ["completed", "failed"],
         }
@@ -631,7 +612,7 @@ class ToolNodeValidationTest(unittest.TestCase):
                 "timeout_ms": 60000,
                 "callback": {
                     "type": "redis",
-                    "queue": "main_agent_queue",
+                    "queue": "tool_result_callbacks",
                     "event_type": "async_result",
                     "on": [],
                 },
@@ -651,7 +632,7 @@ class ToolNodeValidationTest(unittest.TestCase):
                 "timeout_ms": 60000,
                 "callback": {
                     "type": "redis",
-                    "queue": "main_agent_queue",
+                    "queue": "tool_result_callbacks",
                     "event_type": "async_result",
                     "on": [{"status": "completed"}],
                 },

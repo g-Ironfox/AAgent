@@ -19,9 +19,9 @@ description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含�
 6. foreach / while_pop 的四个控制端口 control-in、loop-out、loop-in、control-out 必须全部连接。loop-out 进入循环体；体末普通节点的 control-out 返回 loop-in；control-out 只用于列表耗尽后的后续流程。体内不能直接结束于 output，不能返回别的循环节点，不能从外部额外进入循环体。
 7. **封装是解决复杂控制流的方式**：需在 foreach / while_pop 中条件处理、执行 json_tool 或嵌套循环时，新建子 workflow，把分支放进子图，父图循环体只调用单出口的 workflow 节点。需“if/else 后继续统一处理”时，把整个 if/else 封装为子 workflow，各分支用独立 output 返回相同输出接口；父图调用结束后继续普通链。仅在每个分支里分别调用同一个后续 workflow，并不会令父图重新汇合。
 8. workflow 依赖图也必须是 DAG，禁止直接或间接递归调用。事件重入属于新的异步执行，不是同步递归。
-9. 同一次 invocation 内需要动态轮数时使用 while_pop；列表为空是停止条件，继续执行须由真实业务结果向队列补充元素。需要跨 invocation 重入时使用 construct_event → publish_event，通过统一事件队列进行下一次调度，不增加其他图内回边。事件方案每次执行须有停止条件，未停止时至多发出一次下一轮事件。
+9. 同一次 invocation 内需要动态轮数时使用 while_pop；列表为空是停止条件，继续执行须由真实业务结果向 Context 列表补充元素。跨进程调度由运行时负责，不生成事件发布节点或图内任意回边。
 10. 不得发明 while、if、switch、join、merge、parallel、python、script、http、delay、sleep、serialize_json 等节点。不存在通用表达式、模板执行器或任意代码节点。
-11. 本部署约定主入口工作区文件名始终为 initial_agent.flow，workflow.name 同样保持 initial_agent.flow。扩展机制只新增子图或独立事件处理图，不通过改名替换用户现有入口绑定。
+11. 本部署约定主入口工作区文件名始终为 initial_agent.flow，workflow.name 同样保持 initial_agent.flow。扩展机制只新增子图或独立工作流，不通过改名替换用户现有入口。
 
 ## 2. 最终 JSON 的交付契约
 
@@ -41,7 +41,7 @@ description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含�
 {"format":"aagent.workflow-design/1","status":"error","entrypoint":null,"workflows":[],"errors":[{"code":"MISSING_MODEL_ID","message":"需求需要 llm 节点，请在用户输入中提供已启用模型的真实 24 位十六进制注册 ID；模型名称不能替代注册 ID。"}]}
 ```
 
-常用 code：MISSING_MODEL_ID、UNKNOWN_TOOL、MISSING_DEPLOYMENT_CONFIG、UNSUPPORTED_REQUIREMENT、CONTRADICTORY_REQUIREMENT。普通业务数据（文本、列表、文档 ID、群号、session-id）通常可以设计为 workflow 输入，不必因为用户未填写运行时数据而失败。模型 ID、未知工具的完整接口、未知的事件绑定等不能假造。用户明确提供的新工具可作为本次附加目录，但须有准确名称、来源、参数 schema、结果 schema 和可用声明；仅说“调用搜索工具”不构成新工具定义。
+常用 code：MISSING_MODEL_ID、UNKNOWN_TOOL、MISSING_DEPLOYMENT_CONFIG、UNSUPPORTED_REQUIREMENT、CONTRADICTORY_REQUIREMENT。普通业务数据（文本、列表、文档 ID、群号、session-id）通常可以设计为 workflow 输入，不必因为用户未填写运行时数据而失败。模型 ID、未知工具的完整接口、未知的进程启动配置等不能假造。用户明确提供的新工具可作为本次附加目录，但须有准确名称、来源、参数 schema、结果 schema 和可用声明；仅说“调用搜索工具”不构成新工具定义。
 
 ready 表示图和完整依赖符合静态设计契约；实际执行仍要求部署的 MongoDB、Redis、启用模型及所用 Provider/凭据可用。不要声称已查询、部署、执行或验证这些外部条件。
 
@@ -113,7 +113,8 @@ Session 是 MongoDB 中跨调用保留的状态，仅支持七种公开类型，
 
 | type | arguments | 数据输入 → 数据输出 | 控制/行为 |
 | --- | --- | --- | --- |
-| input | 无 | 无 → workflow:<输入名> | 仅 control-out；数据来自调用方或触发事件 payload 同名字段 |
+| input | 无 | 无 → workflow:<输入名> | 仅 control-out；数据来自创建进程的 inputs 或子图调用方 |
+| output_to_terminal | 无 | content-in:content → 无 | 写入当前进程终端，继续 control-out；需要进程终端上下文 |
 | output | 无 | workflow:<输出名> → 无 | 仅 control-in；收集非 None 的输入后结束当前图；生成时每条路径都填齐承诺的输出 |
 | router | branches:[{id,name}]，可为空 | content-in:content → 无 | 只有 control-in 和各分支 ID 输出，以及固定 branch$others；没有 control-out |
 | workflow | workflow_name:精确工作区文件名 | workflow:<输入名> → workflow:<输出名> | 同步执行子 workflow，选中一个 output 返回后再走 control-out |
@@ -194,7 +195,7 @@ json_tool 输入 arguments-json 必须解析为 object；优先调用已注册�
 
 同步 Remote timeout_ms 默认 10000，最大通常 10000；异步默认 600000、最大通常 3600000；部署可进一步限制。主图执行预算约 180 秒（在节点之间检查，不是强制中断阻塞调用）。长视频转写通常采用 remote_async_tool，不应声称 10 秒内必完成。
 
-callback 若提供，恰为 `{"type":"redis","queue":"实际队列名","event_type":"实际事件类型","on":["completed","failed"]}`；on 为 working/completed/failed 的非空无重复子集，queue 长度 1–256，event_type 长度 1–128。回调不是原图的后继，不会暂停/恢复原图；专用回调队列没有主 worker 自动消费者。当前 Tool Server 回调对象为 {event_type,payload}，payload 含 task_id、tool、status、result、error、progress、message（未提供的结果/错误/进度字段可为 null）。**源码回调没有 version 字段**，而主 worker 强制要求 version:"1.1"；因此即使直接指定主队列并设置事件绑定，也会被主 worker 拒绝。异步继续执行需要已有的桥接消费者：补齐 Event 1.1 版本，匹配实际任务结果及已有路由，再触发新 workflow；原生 workflow JSON 无法自行部署该消费者。缺少桥接和路由配置时返回 MISSING_DEPLOYMENT_CONFIG，或仅交付“提交任务并返回 task_id”的明确需求。
+callback 若提供，恰为 `{"type":"redis","queue":"实际队列名","event_type":"实际事件类型","on":["completed","failed"]}`；on 为 working/completed/failed 的非空无重复子集，queue 长度 1–256，event_type 长度 1–128。Tool Server 的回调 outbox 独立于 Agent 进程调度；回调不会自动暂停或恢复原图，消费者须另行部署。没有实际消费者时，异步节点仅提交任务并返回 task_id；需求依赖自动续跑时返回 MISSING_DEPLOYMENT_CONFIG。
 
 ### 5.6 Context 与 Session 节点
 
@@ -250,7 +251,7 @@ struct_get 的 fallback 仅用于可选字段，必须同时 missing:"fallback"�
 | workspace.update_file | {file_id:字符串,name:字符串,content:字符串,revision:整数} | 工作区文件 API 对象 | 必须先读真实 revision；用 json_tool，冲突后重新读取；无条件重试会重复冲突 |
 | workspace.delete_file | {file_id:字符串,revision:整数} | {deleted:布尔值,file_id:字符串} | 必须先读 revision，用 json_tool；用户已授权完整工作区 CRUD 时，可按任务需要直接设计删除操作 |
 
-workspace.get_file/create_file/update_file 成功结果包含 file_id、name、content、pinned、created_at、updated_at、revision；前三者字符串，pinned 布尔值，时间为字符串，revision 整数。list_files.items 的文件项不包含 content。workspace.delete_file 的声明和实际返回均为 deleted/file_id，不包含新的 revision。创建工作区文件本身不会注册事件绑定，也不意味着注册了新的 Tool。 用户授予完整工作区 CRUD 权限时，执行型 Agent 的系统提示应明确允许列出、读取、创建、重命名、修改和删除工作区文件，按任务需要执行而无需逐次确认；同时在 llm.tools 和 metadata.tools 中提供全部五个 workspace 工具。update_file/delete_file 的 revision 为真实 JSON 整数，须通过 json_tool 参数 JSON 传递，不能伪装成 content 类型端口；完整 schema 仍由运行时注册表加载。
+workspace.get_file/create_file/update_file 成功结果包含 file_id、name、content、pinned、created_at、updated_at、revision；前三者字符串，pinned 布尔值，时间为字符串，revision 整数。list_files.items 的文件项不包含 content。workspace.delete_file 的声明和实际返回均为 deleted/file_id，不包含新的 revision。创建工作区文件本身不会创建进程，也不意味着注册了新的 Tool。 用户授予完整工作区 CRUD 权限时，执行型 Agent 的系统提示应明确允许列出、读取、创建、重命名、修改和删除工作区文件，按任务需要执行而无需逐次确认；同时在 llm.tools 和 metadata.tools 中提供全部五个 workspace 工具。update_file/delete_file 的 revision 为真实 JSON 整数，须通过 json_tool 参数 JSON 传递，不能伪装成 content 类型端口；完整 schema 仍由运行时注册表加载。
 
 ### 6.2 默认 Tool Provider Remote
 
@@ -291,38 +292,13 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
 回滚一步先获取父 checkpoint，再把 parent_seq 传给恢复工具。parent_seq=0 可恢复为空工作区；parent_seq=null 表示没有更早的回滚目标，不能传给恢复工具。恢复后重新读取文件 revision。恢复操作影响整个工作区，依照用户任务范围调用。
 
 
-### 6.3 当前 checkpoint 工作流约定
+## 7. 进程调度与业务循环
 
-已注册的是 workspace.* 工具；没有 rsi.status、rsi.execute、rsi.commit、rsi.rollback 等工具，不得生成依赖它们的图。本地 execute_tool 在名称未注册时抛错，不会返回成功文本；工具注册需重启实际执行任务的 Python worker，挂载新文件不等于内存中已注册。
+进程从 WebUI 的 POST /api/processes 创建，请求提供真实工作区 workflow_file_id 和 inputs。创建进程会同时分配终端进程；Workflow 的 origin 是普通可选输入，其类型由接口声明决定。
 
-initial_agent.flow 文件名和 workflow.name 保持不变。入口先用 construct_content 生成基线名称，再 tool(workspace.create_checkpoint) 保存执行前工作区，随后运行 while_pop ReAct；react_executor.flow 独立入口也保存基线。业务模型保留文件完整 CRUD，并增加只读 checkpoint 查询（list_checkpoints、checkpoint_tree、get_parent_checkpoint、checkpoint_diff），不向模型开放 create_checkpoint/restore_checkpoint；创建/恢复由确定性节点负责。
+单次图内的动态循环使用 while_pop，并由实际业务结果决定是否向 Context 列表补充元素。图内事件构造和拆分仅处理数据，不会自动创建进程或启动工作流。跨进程启动、等待与唤醒属于运行时能力，不得虚构尚未提供的节点或工具。
 
-独立 rsi_sidecar.flow 由用户绑定 error，接口 origin:event → content:content。split_event → router 仅处理 event_type=error；其他类型独立 output。error 分支通过 json_tool 调用 create_checkpoint 保存失败现场 → deserialize_json 读取该快照的真实 seq → json_tool 调用 get_parent_checkpoint(seq) → deserialize_json 取 parent_seq → router(parent_seq)。parent_seq 文本为 "null" 或 "0" 时分别走独立 output，跳过恢复，避免清空工作区；其他目标通过 json_tool 传给 restore_checkpoint 后返回结果。get_parent_checkpoint/restore_checkpoint 的 JSON 参数由可信工具产生的整数文本编码为 {"seq":整数}，不能拼接用户原文。三次 json_tool 的 error-out 均接独立错误输出，工具失败后停止，避免继续恢复及工具错误无限重入。每条分支独立结束，无汇合，不调用模型。失败现场新 checkpoint 的父版本是本次 restore 目标，不能省略失败快照后直接恢复执行前基线的父版本，否则会多退一版。
-
-restore_checkpoint 恢复**整个工作区文件**，包括业务文件和 workflow，文件 revision 会更新，后续写入必须重新读取。checkpoint 事件和 workspace.restore 事件保留，工作区外的执行日志不被 API 删除，外部消息等效果不撤销。仅文件快照不等于完整 Executor 节点轨迹，不能声称已经实现论文的完整事实日志、Iterator 全历史学习或 COOLDOWN 硬门控。当前流程不提供 run_id 关联、事件幂等或并发恢复原子门控，error 绑定应限定此单 Agent 工作区使用；不声称可安全地处理混合任务和延迟重放。当前 worker 对绑定 error 的 workflow 失败仍可能继续发 error；本 Sidecar 已将三次工具异常转为普通错误结果。若 JSON 解析或图执行本身异常，仍应检查 worker 错误链。本次不修改 worker。
-
-## 7. 事件调度与业务循环
-
-用户所说 workflow_queue 是**工作流事件调度通道**。当前代码没有名为 workflow_queue 的节点、参数或专用常量：construct_event 构造 Event，publish_event 发布到 MAIN_AGENT_QUEUE_NAME，默认 Redis List 名为 main_agent_queue；worker 从同一主队列消费。不要在节点上添加 queue:"workflow_queue"，也不要误把 workflow_nodes 当队列。
-
-事件必须是 `{"version":"1.1","event_type":"workflow","payload":{...}}`。payload 有两种目标：
-
-- workflow_file_id：真实工作区文件 ID；优先级高于 workflow_name，按工作区文件读取。可把目标文件 ID 作为当前 workflow 的必需业务输入，再放入事件 payload。
-- workflow_name：按管理端 Mongo workflow 集合中的 name 查找，**不同于**子调用按工作区文件名查找。仅创建 .flow 工作区文件并不保证这个名字能用于队列调度。未确认已登记时，不要用新编名字假装可触发。
-
-其余 payload 同名字段填根 input_ports。可选保留输入 origin 必须为 event 类型，对应 workflow:origin；外部事件经绑定转入 workflow 时，payload.origin 保存完整原始事件。其他输入不自动从 origin 的嵌套字段取值，需要 split_event/deserialize_json 明确解析。
-
-自定义 event_type 也可经管理端预先配置的 event binding 路由，但 workflow JSON 没有注册绑定的字段。不要假定任意自定义 event_type 自动启动当前 workflow。没有绑定信息时，优先直接 event_type=workflow + 真实 workflow_file_id。
-
-设计跨 invocation 的事件循环时：
-
-1. 单次图执行一个业务步骤，正常结束于 output。
-2. 用真实数据产生停止判定；router 根据已计算的标签路由。如果没有确定性计算原语，不能假装 router 会执行 step < max、加一、比较日期等表达式。
-3. 停止分支不发事件；继续分支用安全 JSON 序列化构造带目标及下一轮输入的 payload，再 construct_event(event_type="workflow") → publish_event → 独立 output。
-4. 跨轮状态放 Session 或 payload；显式保留目标文件 ID/关联 ID。不是同步返回下一轮结果，不把 publish_event 当等待节点。
-5. 没有内置延时、调度器、取消任务、原子去重或限流节点。要求定时、严格并发一致、确定性数值重试计数而无现成工具时返回 UNSUPPORTED_REQUIREMENT，不用 LLM 假冒这些保证。
-
-例如安全 payload 可用局部 Struct NextCall，字段 workflow_file_id:content、session_id:content、text:content；construct_struct → struct_to_json → construct_event → publish_event。若下一轮需要 max_attempts 等数值，本类型系统的 content 只会编码成字符串；除非双方约定字符串格式并有真正的比较/递增工具，不得宣称已实现次数限制。
+终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入接口当前仅保存消息，不自动触发工作流。
 
 ## 8. 设计与检查程序（只在内部执行）
 
@@ -461,57 +437,109 @@ per_item.flow 在内部 router 分支，并分别返回 result；collect.flow �
 }
 ```
 
-### 9.3 有停止条件的事件重入
+### 9.3 输出到进程终端
 
-调用方将**本文件的真实工作区 file_id**传入 target_workflow_file_id；text 可以含引号、换行，Struct 序列化会正确转义。should_continue="continue" 时通过主队列再执行一次，并将下一轮的 should_continue 固定为 "stop"；其他值直接结束。这个示例展示有限的事件重入，不是任意次数循环或计数器。事件发布返回只表示已提交，下一次执行的结果不会同步返回。
+进程输入 text 会原样写入该进程终端，同时作为 content 返回。终端由创建进程时分配，图内不声明全局终端或事件绑定。
 
 ```json
 {
   "format": "aagent.workflow-design/1",
   "status": "ready",
-  "entrypoint": "one_reentry.flow",
+  "entrypoint": "terminal_output.flow",
   "workflows": [
-    {"filename": "one_reentry.flow", "workflow": {
-      "schema_version": "2.0",
-      "name": "one_reentry.flow",
-      "description": "Requires the real workspace file ID of this file as target_workflow_file_id. continue schedules exactly one more invocation with should_continue=stop.",
-      "metadata": {"structs":[{"id":"NextCall","name":"NextCall","color":"#3A7D68","fields":[{"name":"workflow_file_id","type":"content","required":true},{"name":"target_workflow_file_id","type":"content","required":true},{"name":"text","type":"content","required":true},{"name":"should_continue","type":"content","required":true}]}],"tools":[]},
-      "input_ports": [{"name":"target_workflow_file_id","type":"content"},{"name":"text","type":"content"},{"name":"should_continue","type":"content"}],
-      "output_ports": [{"name":"content","type":"content"}],
-      "nodes": [
-        {"id":"input","type":"input","name":"接收工作流输入","x":0,"y":0,"workflowPorts":[{"id":"workflow:target_workflow_file_id","name":"target_workflow_file_id","type":"content"},{"id":"workflow:text","name":"text","type":"content"},{"id":"workflow:should_continue","name":"should_continue","type":"content"}]},
-        {"id":"route","type":"router","name":"判断是否继续","x":240,"y":0,"arguments":{"branches":[{"id":"again","name":"continue"}]}},
-        {"id":"stop_label","type":"construct_content","name":"构造停止标记","x":480,"y":0,"arguments":{"append_items":[{"type":"fixed","value":"stop"}]},"dataInputPorts":[]},
-        {"id":"payload","type":"construct_struct","name":"构造下一轮事件负载","x":720,"y":0,"arguments":{"struct_id":"NextCall"},"dataInputPorts":["workflow_file_id","target_workflow_file_id","text","should_continue"]},
-        {"id":"encode","type":"struct_to_json","name":"序列化事件负载","x":960,"y":0,"arguments":{"value_type":"struct:NextCall"},"dataInputPorts":["value-in"]},
-        {"id":"event","type":"construct_event","name":"构造工作流事件","x":0,"y":180,"arguments":{"event_type":"workflow"}},
-        {"id":"publish","type":"publish_event","name":"发布下一轮事件","x":240,"y":180},
-        {"id":"submitted","type":"output","name":"返回已提交状态","x":480,"y":180,"workflowPorts":[{"id":"workflow:content","name":"content","type":"content"}]},
-        {"id":"done","type":"output","name":"返回终止结果","x":720,"y":180,"workflowPorts":[{"id":"workflow:content","name":"content","type":"content"}]}
-      ],
-      "connections": [
-        {"fromId":"input","fromPortId":"control-out","toId":"route","toPortId":"control-in","type":"control"},
-        {"fromId":"route","fromPortId":"again","toId":"stop_label","toPortId":"control-in","type":"control"},
-        {"fromId":"route","fromPortId":"branch$others","toId":"done","toPortId":"control-in","type":"control"},
-        {"fromId":"stop_label","fromPortId":"control-out","toId":"payload","toPortId":"control-in","type":"control"},
-        {"fromId":"payload","fromPortId":"control-out","toId":"encode","toPortId":"control-in","type":"control"},
-        {"fromId":"encode","fromPortId":"control-out","toId":"event","toPortId":"control-in","type":"control"},
-        {"fromId":"event","fromPortId":"control-out","toId":"publish","toPortId":"control-in","type":"control"},
-        {"fromId":"publish","fromPortId":"control-out","toId":"submitted","toPortId":"control-in","type":"control"},
-        {"fromId":"input","fromPortId":"workflow:should_continue","toId":"route","toPortId":"content-in","type":"content"},
-        {"fromId":"input","fromPortId":"workflow:target_workflow_file_id","toId":"payload","toPortId":"workflow_file_id","type":"content"},
-        {"fromId":"input","fromPortId":"workflow:target_workflow_file_id","toId":"payload","toPortId":"target_workflow_file_id","type":"content"},
-        {"fromId":"input","fromPortId":"workflow:text","toId":"payload","toPortId":"text","type":"content"},
-        {"fromId":"stop_label","fromPortId":"content-out","toId":"payload","toPortId":"should_continue","type":"content"},
-        {"fromId":"payload","fromPortId":"struct-out","toId":"encode","toPortId":"value-in","type":"struct:NextCall"},
-        {"fromId":"encode","fromPortId":"content-out","toId":"event","toPortId":"payload-in","type":"content"},
-        {"fromId":"event","fromPortId":"event-out","toId":"publish","toPortId":"event-in","type":"event"},
-        {"fromId":"input","fromPortId":"workflow:text","toId":"submitted","toPortId":"workflow:content","type":"content"},
-        {"fromId":"input","fromPortId":"workflow:text","toId":"done","toPortId":"workflow:content","type":"content"}
-      ],
-      "workflow_nodes": [],
-      "remote_tools": []
-    }}
+    {
+      "filename": "terminal_output.flow",
+      "workflow": {
+        "schema_version": "2.0",
+        "name": "terminal_output.flow",
+        "description": "",
+        "metadata": {
+          "structs": [],
+          "tools": []
+        },
+        "input_ports": [
+          {
+            "name": "text",
+            "type": "content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "content",
+            "type": "content"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "input",
+            "type": "input",
+            "name": "接收工作流输入",
+            "x": 0,
+            "y": 0,
+            "workflowPorts": [
+              {
+                "id": "workflow:text",
+                "name": "text",
+                "type": "content"
+              }
+            ]
+          },
+          {
+            "id": "terminal",
+            "type": "output_to_terminal",
+            "name": "输出到进程终端",
+            "x": 240,
+            "y": 0
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "name": "返回处理结果",
+            "x": 480,
+            "y": 0,
+            "workflowPorts": [
+              {
+                "id": "workflow:content",
+                "name": "content",
+                "type": "content"
+              }
+            ]
+          }
+        ],
+        "connections": [
+          {
+            "fromId": "input",
+            "fromPortId": "control-out",
+            "toId": "terminal",
+            "toPortId": "control-in",
+            "type": "control"
+          },
+          {
+            "fromId": "input",
+            "fromPortId": "workflow:text",
+            "toId": "output",
+            "toPortId": "workflow:content",
+            "type": "content"
+          },
+          {
+            "fromId": "terminal",
+            "fromPortId": "control-out",
+            "toId": "output",
+            "toPortId": "control-in",
+            "type": "control"
+          },
+          {
+            "fromId": "input",
+            "fromPortId": "workflow:text",
+            "toId": "terminal",
+            "toPortId": "content-in",
+            "type": "content"
+          }
+        ],
+        "workflow_nodes": [],
+        "remote_tools": []
+      }
+    }
   ],
   "errors": []
 }

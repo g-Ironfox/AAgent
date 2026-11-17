@@ -1,4 +1,4 @@
-import { fetchTerminalHistory, fetchTerminalSessions, submitTerminal, fetchEventBindingWorkflowOptions, createProcess } from './api.js';
+import { fetchTerminalHistory, fetchTerminalSessions, submitTerminal, fetchProcessWorkflowOptions, createProcess } from './api.js';
 import { createAutoRefresh } from './auto-refresh.js';
 
 const state = {
@@ -33,7 +33,6 @@ const elements = {
   messageList: document.querySelector('#messageList'),
   empty: document.querySelector('#terminalEmpty'),
   latestButton: document.querySelector('#terminalLatestButton'),
-  queueName: document.querySelector('#queueName'),
   terminalSelect: document.querySelector('#terminalSelect'),
   title: document.querySelector('#terminalTitle'),
   lastRefresh: document.querySelector('#terminalLastRefresh'),
@@ -58,6 +57,12 @@ async function refreshStatus() {
     updateTerminalOptions(sessionResult.sessions || []);
     if (previousTerminalProcessId !== state.terminalProcessId) resetHistory();
     const terminalProcessId = state.terminalProcessId || '';
+    if (!terminalProcessId) {
+      resetHistory();
+      elements.lastRefresh.textContent = '暂无可用终端会话';
+      elements.lastRefresh.classList.remove('sync-error');
+      return;
+    }
     const snapshot = await fetchTerminalHistory(150, terminalProcessId);
     if (terminalProcessId !== state.terminalProcessId) return;
     appendHistory(snapshot.items);
@@ -89,9 +94,11 @@ function updateTerminalOptions(sessions) {
     state.terminalProcessId = '';
   }
 
-  const options = [document.createElement('option')];
-  options[0].value = '';
-  options[0].textContent = '全局终端';
+  const options = sessions.length ? [] : [document.createElement('option')];
+  if (!sessions.length) {
+    options[0].value = '';
+    options[0].textContent = '暂无进程终端';
+  }
   for (const session of sessions) {
     if (!session.terminal_process_id) continue;
     const option = document.createElement('option');
@@ -105,7 +112,7 @@ function updateTerminalOptions(sessions) {
   select.value = state.terminalProcessId;
   elements.title.textContent = state.terminalProcessId
     ? `进程终端 · ${state.terminalProcessId.slice(0, 8)}`
-    : '全局终端';
+    : '请先创建进程';
   state.terminalClosed = Boolean(
     state.terminalProcessId
     && sessions.find((session) => session.terminal_process_id === state.terminalProcessId)?.status === 'terminated'
@@ -114,8 +121,8 @@ function updateTerminalOptions(sessions) {
 }
 
 function updateComposerState() {
-  elements.input.disabled = state.sending || state.creating || state.terminalClosed;
-  elements.sendButton.disabled = state.sending || state.creating || state.terminalClosed;
+  elements.input.disabled = state.sending || state.creating || state.terminalClosed || !state.terminalProcessId;
+  elements.sendButton.disabled = state.sending || state.creating || state.terminalClosed || !state.terminalProcessId;
   elements.terminalSelect.disabled = state.sending || state.creating;
   elements.createButton.disabled = state.sending || state.creating;
 }
@@ -200,22 +207,21 @@ function appendMessage(item) {
 
 async function sendMessage() {
   const content = elements.input.value.trim();
-  if (!content || state.sending || state.creating || state.terminalClosed) return;
+  if (!content || !state.terminalProcessId || state.sending || state.creating || state.terminalClosed) return;
 
-  const targetTerminalProcessId = state.terminalProcessId || '';
+  const targetTerminalProcessId = state.terminalProcessId;
   state.sending = true;
   updateComposerState();
   elements.sendStatus.className = 'send-status';
-  elements.sendStatus.textContent = '正在入队…';
+  elements.sendStatus.textContent = '正在发送…';
 
   try {
     const result = await submitTerminal(content, targetTerminalProcessId);
     if (targetTerminalProcessId !== state.terminalProcessId) return;
-    elements.queueName.textContent = result.queue;
     appendHistory([result.message]);
     elements.input.value = '';
     elements.sendStatus.className = 'send-status success';
-    elements.sendStatus.textContent = '已优先入队，等待消费';
+    elements.sendStatus.textContent = '消息已保存';
     refreshStatus();
   } catch (error) {
     elements.sendStatus.className = 'send-status error';
@@ -236,7 +242,7 @@ async function openCreateProcess() {
   elements.workflowSelect.disabled = true;
   elements.createDialog.showModal();
   try {
-    const result = await fetchEventBindingWorkflowOptions();
+    const result = await fetchProcessWorkflowOptions();
     state.workflows = result.items || [];
     const previous = elements.workflowSelect.value;
     const options = state.workflows.map((workflow) => {

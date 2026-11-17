@@ -5,17 +5,17 @@
 
 ## 产品介绍
 
-以 **事件驱动与 Workflow 画布**为中心的个人 Agent 平台。不同事件源通过适配器写入统一主队列,Agent 将事件交给可视化编排的 Workflow 处理,再通过分布式 Tool Server 调用本地或远程工具。
+以 **进程调度与 Workflow 画布**为中心的个人 Agent 平台。用户通过 WebUI 创建工作流进程；Agent 调度器从 Redis 就绪列表读取可运行进程，并逐节点执行。Workflow 通过分布式 Tool Server 调用本地或远程工具。
 
-QQ 和 WebUI Terminal 都只是当前已经实现的事件源,并不是系统入口的固定边界。新的聊天平台、Webhook、定时任务或业务系统可以在适配器中直接生成标准 `workflow` Event 并写入主队列,无需修改 Workflow 执行器。
+每个工作流进程创建时都会分配独立的终端进程。终端消息按终端 ID 保存在 MongoDB；进程记录和就绪/阻塞状态保存在 Redis。
 
 设计上强调:
 
-- **可扩展** — 事件源、Workflow 节点与 Tool Provider 分别沿输入、编排和能力三个方向独立扩展;QQ 与 Terminal 只是两个现有适配器。
-- **弹性** — 队列、Agent、Tool Server、Provider、WebUI 都是独立进程与容器,可以单独重启、水平扩展或替换实现。
+- **可扩展** — 进程输入、Workflow 节点与 Tool Provider 分别沿调度、编排和能力三个方向扩展。
+- **弹性** — Agent、Tool Server、Provider、WebUI 都是独立进程与容器,可以单独重启或替换实现。
 - **灵活编排** — Workflow 不是固定的线性流水线:路由、循环、可变 Context、工具调用和子 Workflow 可以组合成复杂控制流,包括 ReAct 风格的“思考 → 行动 → 观察 → 再思考”。
 - **可自定义** — 业务能力由画布编排,节点、端口和状态都显式可见;多数流程变化不需要修改执行器代码。
-- **易于调试** — 事件与每个节点的出入参全量落库,WebUI 里可以直接看历史、看正在执行的事件、看队列里还在等什么。
+- **易于调试** — WebUI 可按进程查看终端消息和工作流运行日志。
 
 > 项目仍在过渡期,架构持续调整中。设计与实现冲突时以源码为准;`docs/废弃旧文档/` 里的方案已不代表当前行为。
 
@@ -35,7 +35,7 @@ QQ 和 WebUI Terminal 都只是当前已经实现的事件源,并不是系统入
 
 这些能力可以组合出不少巧妙的模式:
 
-- **ReAct** — workflow 单次完成 LLM、工具和 Context, 连续发布事件调用自身实现循环 ; 通过 history召回 让每轮 observation 回到下一轮 reasoning,退出条件由 Router 显式控制。
+- **ReAct** — 在 Workflow 内使用 while_pop、Context、LLM 和工具节点执行多轮推理，停止条件由业务结果和显式控制流决定。
 - **动态计划** — 根据中间结果选择、跳过或重复步骤,而不是在代码里写死一条执行路径。
 - **能力组合** — 把不同工具和子 Workflow 作为独立能力单元,按任务动态选择和编排。
 - **Multi-Agent** — 未来可以把不同角色建模为可复用的 Agent Workflow,通过事件、共享 Context 和子 Workflow 调用完成委派、协作、复核与交叉验证。比如与用户对接和长任务的分工。
@@ -44,11 +44,9 @@ QQ 和 WebUI Terminal 都只是当前已经实现的事件源,并不是系统入
 
 ### 运行与调试
 
-终端消息独立保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），不再从事件历史中筛选展示。用户输入保存后会优先投进主队列；Workflow 执行 `output_to_terminal` 节点时，会将 Agent 输出追加到当前进程的终端，无需发布 `response` 事件。普通 LLM 响应和工具调用仍可在事件流中检查。
+终端消息保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），并按进程终端隔离。用户输入仅保存到选定终端；Workflow 执行 `output_to_terminal` 节点时，将 Agent 输出追加到对应终端。
 
-| 事件流 | 终端 |
-| --- | --- |
-| ![事件流](docs/images/event-stream.png) | ![终端](docs/images/terminal.png) |
+![进程终端](docs/images/terminal.png)
 
 ### 管理
 
@@ -70,45 +68,30 @@ Tool Server 的详细介绍、接口配置与调用示例、完整功能演示�
 
 ```mermaid
 flowchart LR
-    subgraph Sources[可扩展事件源]
-        QQ[QQ / NapCat]
-        Terminal[WebUI Terminal]
-        Future[Webhook / 定时任务 / 其他平台]
-    end
-    QQ -->|WebSocket| QQAdapter[QQ 事件适配器]
-    QQAdapter -->|筛选并转换 Event| MainQueue[(统一主队列)]
-    Terminal -->|terminal Event| MainQueue
-    Future -.->|适配为 workflow Event| MainQueue
-    MainQueue -->|BRPOP| Agent[agent / task_worker]
-    Agent --> Workflow[绑定选定的 Workflow]
-    Workflow -->|HTTP: sync / async| ToolServer[tool_server]
-    ToolServer -->|同步结果 / task_id| Workflow
-    ToolServer <-->|WebSocket| Provider[tool_provider]
-    Provider --> Ext[QQ · Bilibili · 文档 · ...]
-    ToolServer -->|LPUSH callback Event| CallbackQueue[(专用回调队列)]
-    CallbackQueue --> CallbackAdapter[业务回调消费者 / 适配器]
-    CallbackAdapter -.->|可选:转为 workflow Event| MainQueue
-    Agent -->|写入| History[(MongoDB 事件历史)]
-    Agent -->|LPUSH workflow / error| MainQueue
+    WebUI[WebUI 创建进程] -->|写入进程和就绪列表| Redis[(Redis 进程表)]
+    Redis --> Scheduler[Agent 调度器]
+    Scheduler --> Executor[Workflow 执行器]
+    Executor -->|等待终端输入| Blocked[阻塞进程集合]
+    Terminal[进程专属终端] --> Messages[(MongoDB 终端消息)]
+    Executor -->|sync / async| ToolServer[tool_server]
+    ToolServer --> Provider[tool_provider]
+    Executor --> Logs[(MongoDB 进程运行日志)]
 ```
 
-- **事件源适配器** 负责接入外部输入并写入 `main_agent_queue`;新增来源优先直接生成 `event_type: "workflow"` 的标准 Event,其 payload 字段与画布 Input 端口同名即可进入现有执行链路。
-- **QQ** 是其中一个实现:`qqbot` 搬运 OneBot 事件到 `qq:events`(`LPUSH` / `BLPOP`,所以是 LIFO),`qqbot_consumer` 负责存档、筛选目标用户私聊并转发到主队列。
-- **WebUI Terminal** 是另一个实现:它直接构造 `terminal` Event 并以 `RPUSH` 写入主队列,因此当前任务结束后会优先被 `BRPOP` 取走。
-- **agent** 只依赖 Event 协议和主队列。当前内置 handler 会把 `qq` / `terminal` 转换成 `workflow` Event;新事件源直接产出 `workflow` Event 时,无需让 worker 了解其界面或传输协议。
-- **tool_server** 不只是被动返回结果:远程异步工具会先把 `task_id` 交还 Workflow,任务到达终态后还可以通过 outbox 向节点指定的 Redis 队列 `LPUSH` callback Event。回调类型由 `TOOL_CALLBACK_EVENT_TYPES` 限制,默认是 `async_result`。
-- **回调也是事件源**:专用消费者可以保存进度、通知客户端,也可以把回调适配成新的 `workflow` Event 再次进入编排,从而承接长任务续跑、阶段反馈和 Agent 间异步协作。当前主 worker 没有 `async_result` handler,所以原始回调不能直接写入 `main_agent_queue`,必须使用专用队列和对应消费者。
+- **进程表** 保存在 Redis；就绪进程由调度器逐个取出执行，阻塞进程等待其 wait_for 指定的进程结束或终端消息。
+- **终端** 是进程专属的被动进程。创建工作流进程时同时创建终端；用户从 WebUI 选择终端后可发送和查看消息。当前提交接口只保存消息，自动唤醒仍需单独接入。
+- **Workflow** 在进程上下文内执行，output_to_terminal 将输出写入当前进程关联的终端。
+- **tool_server** 管理工具注册、调用和异步任务状态。它的独立回调 outbox 不属于 Agent 进程调度队列。
 
 ## 服务与端口
 
 | 服务 | 端口 | 说明 |
 | --- | --- | --- |
-| `webui_py` | 8081 | Agent WebUI:事件流、终端、绑定、运行状态 |
+| `webui_py` | 8081 | Agent WebUI:进程终端、进程创建、工作区与运行日志 |
 | `workflow_editor` | 8082 | Workflow 可视化编辑器(独立服务,只导出 JSON) |
 | `tool_server` | 8083 | 工具注册、调用、任务状态与控制台 |
 | `manager_webui` | 8084 | 管理 WebUI:Workflow、文档、模型 |
-| `agent` | — | 工作流执行器,主队列消费者 |
-| `qqbot` / `qqbot_consumer` | — | 可选的 QQ 事件源:OneBot 接入与 Event 适配 |
+| `agent` | — | Redis 进程调度器与工作流执行器 |
 | `tool_provider` | — | 工具实际执行方,通过 WebSocket 注册到 Tool Server |
 | `redis` / `mongodb` | — | 队列与存储,仅在 dev 配置下暴露到宿主机 |
 
@@ -118,18 +101,18 @@ flowchart LR
 2. 复制环境变量模板并填写当前启用服务所需的配置;
 3. 构建并启动服务。
 
-QQ 不是必需入口。仅在启用 QQ 事件源时,才需要部署 NapNeko/NapCatQQ 并填写 `.env` 中的 `QQ_*` 配置;不启用时可以直接使用 WebUI Terminal 产生事件。
+进程由 Agent WebUI 创建；每个进程拥有独立终端，无需配置全局终端或事件绑定。
 
 ```powershell
 Copy-Item .env.example .env
 # 编辑 .env
 docker compose up --build -d
-docker compose logs -f agent qqbot
+docker compose logs -f agent webui_py
 ```
 
 启动后 Agent WebUI 在 `http://localhost:8081`,管理 WebUI 在 `http://localhost:8084`。
 
-在 Agent WebUI 的工作区中新建文件，将编辑器导出的 Workflow 2.0 JSON 保存为文件内容，再到「绑定」页选择该 Workspace 文件。绑定使用 `workflow_file_id`，文件改名不会失效，agent 每次执行读取当前文件内容（包括恢复检查点后的内容）。删除文件或写入无效 Workflow 会产生错误事件。已有按 `workflow_name` 的绑定和直接调用仍可执行；编辑旧绑定时需重新选择 Workspace 文件。子 Workflow 节点仍按管理库中的名称调用。
+在 Agent WebUI 工作区保存 Workflow 2.0 文件后，打开终端页创建进程并选择该工作流。创建请求直接携带 workflow_file_id 和输入值；调度器从 Redis 就绪列表执行进程。子 Workflow 节点按精确工作区文件名调用。
 
 工作区 checkpoint API 同时注册为 Local Tool，可在工具目录中选择：
 
@@ -153,18 +136,18 @@ docker compose logs -f agent qqbot
 | 分组 | 变量 |
 | --- | --- |
 | LLM | `DEEPSEEK_*`、`KIMI_*`、`ZAI_API_KEY`、`TAVILY_API_KEYS`、`BOCHA_*` |
-| QQ | `QQ_API_BASE_URL`、`QQ_API_TOKEN`、`QQ_WS_URI`、`QQ_WS_TOKEN`、`QQ_TARGET_USER_ID`、`QQ_BOT_ID` |
-| 队列 | `REDIS_*`、`QQ_QUEUE_NAME`、`MAIN_AGENT_QUEUE_NAME`、`AGENT_TOOLS_KEY`、`AGENT_WORKER_STATUS_KEY` |
+| 工具 Provider | QQ_API_BASE_URL、QQ_API_TOKEN（供 QQ 工具调用） |
+| 进程调度 | REDIS_*、AGENT_TOOLS_KEY、ProcessTable、ReadyProcesses、BlockedProcesses |
 | Tool | `TOOL_SERVER_URL`、`TOOL_MAX_WAIT_MS`、`TOOL_CLIENT_*`、`TOOL_PROVIDER_*`、`TOOL_MODULES` |
 | 存储 | `MONGO_*` 及各集合名 |
 
 ## 开发调试
 
-`docker-compose.dev.yml` 挂载宿主机源码,并让 `agent` / `qqbot` / `qqbot_consumer` 以 `sleep infinity` 启动,改完代码不用重建镜像,手动跑入口即可:
+`docker-compose.dev.yml` 挂载宿主机源码,并让 `agent` 以 `sleep infinity` 启动,改完代码不用重建镜像,手动跑入口即可:
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-docker compose exec agent python task_worker.py
+docker compose exec agent python main.py
 ```
 
 发布时不要叠加这个文件。
@@ -175,8 +158,6 @@ docker compose exec agent python task_worker.py
 
 ```
 agent/              Agent 运行时:Workflow 校验、解析、执行与节点实现
-qqbot/              可选 QQ 事件源:监听 OneBot WebSocket
-qqbot_consumer/     QQ Event 适配器:存档 + 筛选转发到主队列
 tool_server/        工具注册与调用中心,任务状态、回调投递
 tool_provider/      实际执行工具的 Provider(QQ / Bilibili / 文档)
 webui_py/           Agent WebUI(8081)

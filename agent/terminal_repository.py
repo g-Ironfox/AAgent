@@ -44,12 +44,11 @@ def get_terminal_collection():
     return _collection
 
 
-def append_terminal_output(content: str, terminal_process_id: str | None = None):
+def append_terminal_output(content: str, terminal_process_id: str):
     if not isinstance(content, str) or not content.strip():
         raise ValueError("终端输出内容必须是非空字符串")
     document = {"role": "assistant", "content": content, "created_at": datetime.now(timezone.utc)}
-    if terminal_process_id is not None:
-        if not isinstance(terminal_process_id, str) or not terminal_process_id.strip():
-            raise ValueError("terminal_process_id must be a non-empty string")
-        document["terminal_process_id"] = terminal_process_id
+    if not isinstance(terminal_process_id, str) or not terminal_process_id.strip():
+        raise ValueError("terminal_process_id must be a non-empty string")
+    document["terminal_process_id"] = terminal_process_id
     return get_terminal_collection().insert_one(document).inserted_id

@@ -85,7 +85,7 @@
         <label class="check-row"><input id="callbackInput" type="checkbox"><span>任务终态后发送 Redis 回调</span></label>
         <div id="callbackOptions" class="callback-options" hidden>
           <div class="form-row">
-            <label>Redis List key<input id="callbackQueueInput" type="text" value="main_agent_queue" maxlength="256"></label>
+            <label>Redis List key<input id="callbackQueueInput" type="text" value="tool:callback:events" maxlength="256"></label>
             <label>事件类型<input id="callbackEventTypeInput" type="text" value="async_result" maxlength="128"></label>
           </div>
           <fieldset class="callback-statuses">

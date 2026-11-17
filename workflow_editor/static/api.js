@@ -13,38 +13,6 @@ async function request(path, options = {}) {
   }
 }
 
-export function fetchEvents(limit = 150) {
-  return request(`/api/events?limit=${limit}`);
-}
-
-export function deleteEvent(payload) {
-  return request('/api/events', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-}
-
-export function updateEvent(payload) {
-  return request('/api/events', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-}
-
-export function fetchTerminalHistory(limit = 150) {
-  return request(`/api/terminal/history?limit=${limit}`);
-}
-
-export function submitTerminal(content) {
-  return request('/api/terminal', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, files: [] }),
-  });
-}
-
 export function fetchDocuments() {
   return request('/api/documents');
 }

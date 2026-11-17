@@ -10,15 +10,13 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="AAgent 事件流">
+    <a class="brand" href="/terminal.html" aria-label="AAgent 进程终端">
       <span class="brand-mark" aria-hidden="true">A</span>
       <span class="brand-name"><strong>AAgent</strong><small>TERMINAL CONSOLE</small></span>
     </a>
     <div class="top-actions">
       <nav class="page-nav" aria-label="页面导航">
-        <a href="/">事件流</a>
         <a class="active" href="/terminal.html" aria-current="page">终端</a>
-        <a href="/bindings.html">绑定</a>
         <a href="/workspace">工作区</a>
         <a href="/workspace/replay">检查点</a>
         <a href="/logs">日志</a>
@@ -39,13 +37,13 @@
       <header class="terminal-heading">
         <div>
           <p>TERMINAL · MONGODB</p>
-          <h1 id="terminalTitle">全局终端</h1>
+          <h1 id="terminalTitle">进程终端</h1>
         </div>
         <div class="terminal-heading-actions">
           <label class="terminal-picker" for="terminalSelect">
             <span>会话</span>
             <select id="terminalSelect" aria-label="选择终端">
-              <option value="">全局终端</option>
+              <option value="">暂无进程终端</option>
             </select>
           </label>
           <button id="createProcessButton" class="running-button create-process-button" type="button">创建进程</button>
@@ -53,10 +51,6 @@
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="m6 13 6 6 6-6"></path></svg>
             <span>跳到最新</span>
           </button>
-          <div class="queue-indicator">
-            <span>目标队列</span>
-            <strong id="queueName">main_agent_queue</strong>
-          </div>
         </div>
       </header>
 

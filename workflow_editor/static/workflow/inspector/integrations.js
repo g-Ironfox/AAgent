@@ -133,7 +133,7 @@ export function createIntegrationInspector(context) {
     const callback = node.callback ?? null;
     enabled.checked = callback !== null;
     options.hidden = callback === null;
-    options.querySelector('[data-callback-queue]').value = callback?.queue || 'main_agent_queue';
+    options.querySelector('[data-callback-queue]').value = callback?.queue || 'tool:callback:events';
     options.querySelector('[data-callback-event-type]').value = callback?.event_type || 'async_result';
     for (const input of options.querySelectorAll('[data-callback-status]')) {
       input.checked = callback?.on?.includes(input.value) ?? ['completed', 'failed'].includes(input.value);

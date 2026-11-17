@@ -75,7 +75,6 @@ test('All supported node types have a specific thumbnail accent', () => {
     construct_event: '#147d78',
     deserialize_json: '#61568a',
     map_content_get: '#326b4b',
-    publish_event: '#b8483d',
     session_create: '#187b70',
     session_read: '#28749c',
     session_write: '#ab6740',

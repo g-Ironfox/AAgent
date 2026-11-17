@@ -15,6 +15,7 @@ from validate_design import DesignError, REPO, export_design, read_json, unique_
 from workflow_parser import parse_workflow
 from workflow_nodes import propagate_workflow_output, run_workflow_map
 from workflow_validator import validate_workflow
+from terminal_repository import terminal_process_context
 
 SKILL = Path(__file__).resolve().parents[1] / "SKILL.md"
 
@@ -248,10 +249,11 @@ class WorkflowDesignTest(unittest.TestCase):
              patch("workflow_context_repository.write_context", side_effect=write), \
              patch("workflow_context_repository.delete_contexts", side_effect=delete), \
              patch("workflow_run_repository.record_workflow_run"), \
-             patch("queue_client.publish_to_queue") as publish:
+             patch("terminal_repository.append_terminal_output") as append, \
+             terminal_process_context("terminal-example"):
             output = run_workflow_map(graph, start)
         self.assertEqual(memory, {})
-        return output, publish
+        return output, append
 
     def test_collection_executes_child_branches_and_aggregates(self):
         output, _ = self.execute(self.examples[1], {"items": ["a", "skip", "b"]})
@@ -259,23 +261,11 @@ class WorkflowDesignTest(unittest.TestCase):
         output, _ = self.execute(self.examples[1], {"items": []})
         self.assertEqual(output, {"results": []})
 
-    def test_event_reentry_preserves_json_text_and_stops_next_round(self):
+    def test_output_is_written_only_to_the_process_terminal(self):
         text = 'quoted "text"\nnew line \\ backslash'
-        file_id = "actual-file-id-supplied-at-runtime"
-        output, published = self.execute(self.examples[2], {
-            "target_workflow_file_id": file_id, "text": text, "should_continue": "continue"})
+        output, append = self.execute(self.examples[2], {"text": text})
         self.assertEqual(output, {"content": text})
-        self.assertEqual(published.call_count, 1)
-        queue, event = published.call_args.args
-        self.assertIsInstance(queue, str)
-        self.assertEqual(event, {"version": "1.1", "event_type": "workflow", "payload": {
-            "workflow_file_id": file_id, "target_workflow_file_id": file_id,
-            "text": text, "should_continue": "stop"}})
-        # The real worker selects this same file, then maps declared inputs from payload.
-        next_inputs = {p["name"]: event["payload"][p["name"]] for p in self.examples[2]["workflows"][0]["workflow"]["input_ports"]}
-        output, published = self.execute(self.examples[2], next_inputs)
-        self.assertEqual(output, {"content": text})
-        published.assert_not_called()
+        append.assert_called_once_with(text, terminal_process_id="terminal-example")
 
 
 if __name__ == "__main__":
