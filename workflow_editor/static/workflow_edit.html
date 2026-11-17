@@ -115,6 +115,11 @@
             <div><strong>构造列表</strong><small>把同类型输入聚合为列表</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="list_get">
+            <span class="node-symbol list_get-symbol" aria-hidden="true">L[]</span>
+            <div><strong>按下标取元素</strong><small>按从 0 开始的下标读取列表元素</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="list_length">
             <span class="node-symbol list_length-symbol" aria-hidden="true">LEN</span>
             <div><strong>列表长度</strong><small>按所选列表类型计算元素个数，输出 number</small></div>
@@ -507,12 +512,22 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="list_getInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>输入列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>下标输入方式<select data-field="index_source"><option value="port">端口输入</option><option value="fixed">固定输入</option></select></label>
+      <label data-index-field hidden>下标<input data-field="index" type="number" min="0" step="1" required></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
   <template id="list_lengthInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>输入列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
-      <p class="field-hint">选择输入列表的数据类型；输出为 number，空列表长度为 0。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

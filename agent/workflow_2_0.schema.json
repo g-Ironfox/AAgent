@@ -248,6 +248,7 @@
             "construct_list",
             "list_append",
             "list_length",
+            "list_get",
             "foreach",
             "while_pop",
             "llm",
@@ -475,7 +476,8 @@
                   "not": {
                     "enum": [
                       "while_pop",
-                      "list_length"
+                      "list_length",
+                      "list_get"
                     ]
                   }
                 }
@@ -694,6 +696,77 @@
                   }
                 },
                 "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list_get"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content",
+                          "list-message"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  },
+                  "index_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
+                  },
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "index_source": {
+                          "const": "fixed"
+                        }
+                      },
+                      "required": [
+                        "index_source"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "index"
+                      ]
+                    }
+                  }
+                ]
               }
             }
           }

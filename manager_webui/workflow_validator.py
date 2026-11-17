@@ -19,6 +19,7 @@ from workflow_contract import (
     boundary_ports,
     connection_validation_error,
     control_ports_for_node,
+    is_number_value,
     node_argument,
 )
 from workflow_parser import WORKFLOW_SCHEMA_VERSION
@@ -458,10 +459,18 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             )
     elif node_type == "construct_list":
         _validate_construct_list(node, structs)
-    elif node_type == "list_length":
+    elif node_type in {"list_length", "list_get"}:
         value_type = node_argument(node, "value_type")
         if not isinstance(value_type, str) or not value_type.startswith("list-") or not _valid_item_type(value_type[5:], structs):
-            raise WorkflowValidationError("list_length value_type must be a supported list type")
+            raise WorkflowValidationError(f"{node_type} value_type must be a supported list type")
+        if node_type == "list_get":
+            source = node_argument(node, "index_source", "port")
+            if source not in {"fixed", "port"}:
+                raise WorkflowValidationError("list_get index_source must be 'fixed' or 'port'")
+            index = node_argument(node, "index")
+            if source == "fixed" or "index" in node.get("arguments", {}):
+                if not is_number_value(index) or index < 0 or (isinstance(index, float) and not index.is_integer()):
+                    raise WorkflowValidationError("list_get index must be a non-negative integer")
     elif node_type == "list_append":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(

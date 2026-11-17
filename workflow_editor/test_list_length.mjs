@@ -132,4 +132,5 @@ test('the node library and inspector expose list_length with an input list type 
   assert.match(template, /data-field="value_type"/);
   assert.match(template, /value="list-content"/);
   assert.match(template, /value="list-message"/);
+  assert.doesNotMatch(template, /<p\b[^>]*class="field-hint"/);
 });

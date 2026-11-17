@@ -74,6 +74,7 @@ test('All supported node types have a specific thumbnail accent', () => {
   const expectedColors = {
     deserialize_json: '#61568a',
     list_length: '#147d78',
+    list_get: '#326f91',
     map_content_get: '#326b4b',
     session_create: '#187b70',
     session_read: '#28749c',

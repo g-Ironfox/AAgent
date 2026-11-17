@@ -558,6 +558,34 @@ def workflow_construct_list(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
+def workflow_list_get(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+
+    node = workflow_map[current_id]
+    has_list, input_list = read_workflow_input(node, "list-in")
+    source = node_argument(node, "index_source", "port")
+    if source == "fixed":
+        index = node_argument(node, "index")
+        has_index = "index" in node.get("arguments", {})
+    elif source == "port":
+        has_index, index = read_workflow_input(node, "index-in")
+    else:
+        raise ValueError(f"list_get index_source must be 'fixed' or 'port': node {node.get('id')}")
+    if not has_list:
+        raise ValueError(f"list_get list input is missing: node {node.get('id')}")
+    if not isinstance(input_list, list):
+        raise ValueError(f"list_get input must be a list: node {node.get('id')}")
+    if not has_index:
+        raise ValueError(f"list_get index input is missing: node {node.get('id')}")
+    if not is_number_value(index) or index < 0 or (isinstance(index, float) and not index.is_integer()):
+        raise ValueError(f"list_get index must be a non-negative integer: node {node.get('id')}")
+    if index >= len(input_list):
+        raise ValueError(f"list_get index out of range: node {node.get('id')}, index {index}, length {len(input_list)}")
+    validate_value(node_argument(node, "value_type"), input_list, _struct_defs(node))
+    propagate_workflow_output(workflow_map, node, "item-out", input_list[int(index)])
+    return next_successor(node)
+
+
 def workflow_list_length(current_id: int, workflow_map: WorkflowMap) -> int:
     from workflow_structs import validate_value
 
@@ -1018,6 +1046,7 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,
     "list_length": workflow_list_length,
+    "list_get": workflow_list_get,
     "foreach": workflow_foreach,
     "while_pop": workflow_while_pop,
     "llm": workflow_llm,

@@ -48,6 +48,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .map_content_get-symbol { background:#326b4b; }
 .deserialize_json-symbol { background:#61568a; }
 .construct_list-symbol { background:#176f73; }
+.list_get-symbol { background:#326f91; }
 .list_length-symbol { background:#147d78; }
 .list_append-symbol { background:#27705b; }
 .foreach-symbol { background:#9a5a24; }
@@ -152,3 +153,4 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 
 .output_to_terminal-symbol { background:#13775a; }
 .wait_terminal_event-symbol { background:#13775a; }
+.read_terminal_input-symbol { background:#13775a; }

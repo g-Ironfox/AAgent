@@ -25,6 +25,7 @@ export function createInspector(elements, editor, markChanged) {
     integrations.prepare(node);
     renderInterfaceContract(node);
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
+      if (node.type === 'list_get' && ['index_source', 'index'].includes(field.dataset.field)) continue;
       field.value = node[field.dataset.field] || '';
       field.addEventListener('input', () => {
         node[field.dataset.field] = field.value;

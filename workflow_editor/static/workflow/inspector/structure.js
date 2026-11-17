@@ -11,7 +11,8 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'construct_list') bindConstructList(node, context);
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
-  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop', 'list_length'].includes(node.type)) bindContext(node, context);
+  if (node.type === 'list_get') bindListGet(node, context);
+  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop', 'list_length', 'list_get'].includes(node.type)) bindContext(node, context);
 }
 
 
@@ -301,10 +302,41 @@ function bindListAppend(node, context) {
   });
 }
 
+function bindListGet(node, context) {
+  const content = context.elements.inspectorContent;
+  const sourceField = content.querySelector('[data-field="index_source"]');
+  const indexField = content.querySelector('[data-field="index"]');
+  const indexContainer = content.querySelector('[data-index-field]');
+  sourceField.value = node.index_source === 'fixed' ? 'fixed' : 'port';
+  indexField.value = node.index ?? 0;
+  indexContainer.hidden = sourceField.value !== 'fixed';
+  sourceField.addEventListener('change', () => {
+    node.index_source = sourceField.value;
+    if (node.index_source === 'fixed' && node.index === undefined) node.index = 0;
+    indexContainer.hidden = node.index_source !== 'fixed';
+    commitStructureChange(node, context);
+  });
+  indexField.addEventListener('input', () => {
+    const index = indexField.value.trim() === '' ? NaN : Number(indexField.value);
+    indexField.setCustomValidity(Number.isInteger(index) && index >= 0 ? '' : '请输入非负整数');
+    if (Number.isInteger(index) && index >= 0) {
+      node.index = index;
+      commitStructureChange(node, context, false);
+    }
+  });
+  indexField.addEventListener('change', () => {
+    if (!indexField.checkValidity()) {
+      indexField.reportValidity();
+      indexField.value = node.index ?? 0;
+      indexField.setCustomValidity('');
+    }
+  });
+}
+
 function bindContext(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="value_type"]');
-  if (node.type.startsWith('context_') || ['while_pop', 'list_length'].includes(node.type)) addTypeOptions(typeField, { includeStructLists: true });
-  if (['while_pop', 'list_length'].includes(node.type)) {
+  if (node.type.startsWith('context_') || ['while_pop', 'list_length', 'list_get'].includes(node.type)) addTypeOptions(typeField, { includeStructLists: true });
+  if (['while_pop', 'list_length', 'list_get'].includes(node.type)) {
     for (const option of [...typeField.options]) {
       if (!option.value.startsWith('list-')) option.remove();
     }

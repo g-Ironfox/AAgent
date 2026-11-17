@@ -151,6 +151,8 @@ deserialize_json 对 content 输出：原值是字符串则保留；否则把该
 | foreach | item_type | list-in:列表类型 → item-out:元素类型 | 固定端口无需声明；控制端口见第 1 节 |
 | while_pop | value_type；可选 position、context_id_source、context_id | context-id:content → item-out:元素类型 | context_id_source="port" 时必须连 context-id；"fixed" 时不用此端口；控制端口与 foreach 相同 |
 
+list_get 节点必须配置 arguments.value_type 为 list-content、list-message 或已声明的 list-struct:<id>。list-in 接收对应列表，port 模式下 index-in:number 接收从 0 开始的非负整数下标（1.0 合法，不接受布尔值或数字字符串），item-out 输出对应类型的元素；有 control-in/control-out。输入缺失、类型不匹配或下标越界（含空列表）时报错，不修改原列表。 arguments.index_source 可选 port（默认）或 fixed：port 使用 index-in:number；fixed 必须配置 arguments.index 为非负整数，且不存在 index-in 端口。
+
 list_length 节点必须配置 arguments.value_type 为 list-content、list-message 或已声明的 list-struct:<id>。list-in 接收对应类型的列表，length-out 输出 number（元素个数，空列表为 0）；有 control-in/control-out，输入缺失或元素类型不匹配时报错，不修改原列表。
 
 item_type 允许 content、message、已声明 struct:<id>。对应列表类型为 list-content/list-message/list-struct:<id>。Struct 元素的动态端口 ID 例如 struct:profile-in-0。initial_value_count 为 0–20 的整数，生成时填齐全部 N 个输入；不要以增大 count 方式构造超过 20 项的字面列表，可逐步 append 或直接接受列表输入。foreach 按输入列表快照顺序串行遍历，空列表直接走 control-out；没有索引输出，没有 break/continue 节点，没有循环自带聚合输出，也不能动态增加本轮待遍历项。
