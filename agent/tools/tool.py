@@ -6,7 +6,6 @@ import requests
 
 from history_repository import get_recent_history
 from queue_client import redis_register_tool, redis_reset_tools
-from terminal_repository import append_terminal_output
 
 DEEPSEEK_BASE_URL = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
 DEEPSEEK_API_KEY = os.environ["DEEPSEEK_API_KEY"]
@@ -117,21 +116,6 @@ def tavily_search(keyword):
             print(f"Tavily 请求失败，切换下一个 Key: {e}")
 
     return {"results": []}
-
-@tool(
-    "输出到终端：将内容追加到终端消息表，供用户在终端页面查看",
-    {
-        "type": "object",
-        "properties": {
-            "content": {"type": "string", "description": "要输出到终端的内容"}
-        },
-        "required": ["content"]
-    },
-    output_schema={"type": "object", "properties": {"success": {"type": "boolean"}}}
-)
-def output_to_terminal(content):
-    append_terminal_output(content)
-    return {"success": True}
 
 @tool(
     "查询最近N条记录",

@@ -28,6 +28,24 @@ def _is_map_content(value: Any) -> bool:
     )
 
 
+def execute_node(current_id: int, workflow_map: WorkflowMap) -> int:
+    """Execute exactly one workflow node and return its successor index."""
+    if isinstance(current_id, bool) or not isinstance(current_id, int):
+        raise TypeError("current_id must be an integer node index")
+    if current_id == WORKFLOW_END:
+        raise ValueError("cannot execute the workflow end marker")
+    if current_id < 0 or current_id >= len(workflow_map):
+        raise ValueError(f"workflow node index out of range: {current_id}")
+    try:
+        node = workflow_map[current_id]
+    except IndexError as error:
+        raise ValueError(f"workflow node index out of range: {current_id}") from error
+    handler = nodes_map.get(node.get("type"))
+    if handler is None:
+        raise ValueError(f"unsupported workflow node type: {node.get('type')}")
+    return handler(current_id, workflow_map)
+
+
 def read_workflow_input(node: dict[str, Any], port_id: str) -> tuple[bool, Any]:
     input_slot = node.get("data_inputs", {}).get(port_id)
     if not isinstance(input_slot, list) or len(input_slot) != 3:
@@ -199,7 +217,6 @@ def run_workflow_map(
                     f"workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds"
                 )
             node = workflow_map[current_id]
-            handler = nodes_map.get(node.get("type"))
             node_started_at = datetime.now(timezone.utc)
             node_started_monotonic = time.monotonic()
             trace_entry = {
@@ -211,9 +228,7 @@ def run_workflow_map(
                 "status": "completed",
             }
             try:
-                if handler is None:
-                    raise ValueError(f"unsupported workflow node type: {node.get('type')}")
-                current_id = handler(current_id, workflow_map)
+                current_id = execute_node(current_id, workflow_map)
             except Exception as error:
                 trace_entry["status"] = "failed"
                 trace_entry["error"] = str(error)
@@ -246,6 +261,20 @@ def run_workflow_map(
 
 def workflow_input(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(workflow_map[current_id])
+
+
+def workflow_output_to_terminal(current_id: int, workflow_map: WorkflowMap) -> int:
+    from terminal_repository import append_terminal_output, current_terminal_process_id
+
+    node = workflow_map[current_id]
+    present, content = read_workflow_input(node, "content-in")
+    if not present or not isinstance(content, str) or not content.strip():
+        raise ValueError("output_to_terminal content-in requires non-empty text")
+    terminal_process_id = current_terminal_process_id.get()
+    if not terminal_process_id:
+        raise ValueError("output_to_terminal requires a process terminal")
+    append_terminal_output(content, terminal_process_id=terminal_process_id)
+    return next_successor(node)
 
 
 def workflow_output(current_id: int, workflow_map: WorkflowMap) -> int:
@@ -978,6 +1007,7 @@ nodes_map: dict[str, NodeHandler] = {
     "construct_event": workflow_construct_event,
     "split_event": workflow_split_event,
     "publish_event": workflow_publish_event,
+    "output_to_terminal": workflow_output_to_terminal,
     "deserialize_json": workflow_deserialize_json,
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,

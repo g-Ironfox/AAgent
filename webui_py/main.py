@@ -17,6 +17,7 @@ from file_store import FileStore, FileStoreUnavailableError
 from files import create_files_router
 from events import create_events_router
 from terminal import create_terminal_router
+from processes import create_processes_router
 from workflow_logs import create_workflow_logs_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -76,6 +77,7 @@ database = mongo_client[MONGO_DATABASE]
 history: Collection = database[MONGO_HISTORY_COLLECTION]
 terminal_messages: Collection = database[MONGO_TERMINAL_COLLECTION]
 workflow_logs: Collection = database[MONGO_WORKFLOW_LOG_COLLECTION]
+process_logs: Collection = database[env("MONGO_PROCESS_LOG_COLLECTION", "process_logs")]
 event_bindings: Collection = database[MONGO_EVENT_BINDING_COLLECTION]
 file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
 workspace_files: Collection = database[MONGO_WORKSPACE_FILE_COLLECTION]
@@ -105,6 +107,10 @@ def create_terminal_indexes():
     try:
         terminal_messages.create_index(
             [("created_at", -1), ("_id", -1)], name="terminal_created_at_id"
+        )
+        terminal_messages.create_index(
+            [("terminal_process_id", 1), ("created_at", -1), ("_id", -1)],
+            name="terminal_process_created_at_id",
         )
     except PyMongoError as error:
         logger.error("failed to create terminal indexes: %s", error)
@@ -137,6 +143,7 @@ async def request_logger(request: Request, call_next):
 @app.middleware("http")
 async def request_body_guard(request: Request, call_next):
     body_limits = {
+        ("POST", "/api/processes"): (MAX_EVENT_BODY_BYTES, "请求体不能超过 256 KB"),
         ("POST", "/api/terminal"): (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
         ("PUT", "/api/events"): (MAX_EVENT_BODY_BYTES, "请求体不能超过 256 KB"),
     }
@@ -168,6 +175,7 @@ def health():
 
 app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
 app.include_router(create_terminal_router(redis_client, terminal_messages, QUEUE_NAME))
+app.include_router(create_processes_router(redis_client, file_store, process_logs))
 app.include_router(create_workflow_logs_router(workflow_logs))
 app.include_router(create_event_bindings_router(event_bindings, file_store))
 app.include_router(create_files_router(file_store))

@@ -1,8 +1,8 @@
 const FETCH_TIMEOUT_MS = 5000;
 
-async function request(path, options = {}) {
+async function request(path, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(path, { cache: 'no-store', ...options, signal: controller.signal });
     const body = await response.json().catch(() => ({}));
@@ -38,15 +38,25 @@ export function updateEvent(payload) {
   });
 }
 
-export function fetchTerminalHistory(limit = 150) {
-  return request(`/api/terminal/history?limit=${limit}`);
+export function fetchTerminalSessions() {
+  return request('/api/terminal/sessions');
 }
 
-export function submitTerminal(content) {
+export function fetchTerminalHistory(limit = 150, terminalProcessId = '') {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (terminalProcessId) params.set('terminal_process_id', terminalProcessId);
+  return request(`/api/terminal/history?${params}`);
+}
+
+export function submitTerminal(content, terminalProcessId = '') {
   return request('/api/terminal', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, files: [] }),
+    body: JSON.stringify({
+      content,
+      files: [],
+      ...(terminalProcessId ? { terminal_process_id: terminalProcessId } : {}),
+    }),
   });
 }
 
@@ -76,4 +86,12 @@ export function updateEventBinding(bindingId, binding) {
 
 export function deleteEventBinding(bindingId) {
   return request(`/api/event-bindings/${encodeURIComponent(bindingId)}`, { method: 'DELETE' });
+}
+
+export function createProcess(workflowFileId, inputs) {
+  return request('/api/processes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workflow_file_id: workflowFileId, inputs }),
+  }, 30000);
 }

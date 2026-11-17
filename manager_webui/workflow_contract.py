@@ -30,6 +30,7 @@ SUPPORTED_NODE_TYPES = {
     "split_event",
     "construct_event",
     "publish_event",
+    "output_to_terminal",
     "deserialize_json",
     "construct_list",
     "list_append",
@@ -74,6 +75,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "split_event": set(),
     "construct_event": {"event_type"},
     "publish_event": set(),
+    "output_to_terminal": set(),
     "deserialize_json": {"outputs"},
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
@@ -222,6 +224,8 @@ def data_ports_for_node(
         return declared_inputs | {"map-in", "key-in"}, {"content-out"}
     if node_type == "split_event":
         return declared_inputs | {"event-in"}, {"type-out", "payload-out"}
+    if node_type == "output_to_terminal":
+        return declared_inputs | {"content-in"}, set()
     if node_type == "publish_event":
         return declared_inputs | {"event-in"}, set()
     if node_type == "construct_event":
@@ -409,6 +413,8 @@ def connection_validation_error(
             return "history events output requires list-event data"
         if target_node["type"] == "split_event" and (to_port != "event-in" or connection_type != "event"):
             return "split_event event-in requires event data"
+        if target_node["type"] == "output_to_terminal" and connection_type != "content":
+            return "output_to_terminal content-in requires content data"
         if target_node["type"] == "publish_event" and (to_port != "event-in" or connection_type != "event"):
             return "publish_event event-in requires event data"
         if source_node["type"] == "split_event":

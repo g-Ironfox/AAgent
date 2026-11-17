@@ -29,6 +29,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   deserialize_json: new Set(['outputs']),
   split_event: new Set(),
   publish_event: new Set(),
+  output_to_terminal: new Set(),
   construct_event: new Set(['event_type']),
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),

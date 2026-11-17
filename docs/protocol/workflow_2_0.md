@@ -195,7 +195,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 接口 `port` 必须恰含 `name`、`type`。名称非空；同一输入或输出接口数组内，端口名经去除首尾空白、忽略大小写后不得重复。依赖对象必须恰含 `name`、`input_ports`、`output_ports`；依赖名非空，同一依赖数组内不得重复，Remote Tool 名称比较时去除首尾空白并忽略大小写。
 
-`origin` 是保留的可选 Workflow 输入接口名，若存在，其类型必须为 `event`。Input 节点对应端口 ID 为 `workflow:origin`。外部事件绑定触发 Workflow 时，调度器构造 `event_type` 为 `workflow` 的 Event，并把完整原始事件放入 `payload.origin`；其他 Workflow 输入从该 Event 的 `payload` 按端口名取值。若直接传入的 Workflow Event 已带 `payload.origin`，使用该值；否则以该 Workflow Event 本身作为 origin。未声明 origin 输入时无需提供该值。
+`origin` 是可选 Workflow 输入接口名，其数据类型由端口声明决定。Input 节点对应端口 ID 为 `workflow:origin`。通过旧事件绑定入口触发 Workflow 时，`origin: event` 接收完整原始事件；`origin: content` 接收该事件的 JSON 文本。其他 Workflow 输入从事件的 `payload` 按端口名取值。直接创建进程时，所有输入（包括 `origin`）均按声明类型从创建请求传入。
 
 ### 9.2 节点对象和边界快照
 
@@ -223,6 +223,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `split_event` | 无 | `event-in: event` | `type-out: content`、`payload-out: content` |
 | `construct_event` | `event_type` | `payload-in: content`，内容为 JSON object 文本 | `event-out: event` |
 | `publish_event` | 无 | `event-in: event` | 无 |
+| `output_to_terminal` | 无 | `content-in: content` | 无 |
 | `deserialize_json` | `outputs: [{key,type}]` | `content-in: content`，内容为 JSON object 文本 | 每个 key 一个对应 type 的端口 |
 | `construct_list` | `item_type`、`initial_value_count` | `<item_type>-in-0` 至 `<item_type>-in-(count-1)` | `list-out: list-<item_type>` |
 | `list_append` | `item_type`、`position` | `list-in: list-<item_type>`、`item-in: <item_type>` | `list-out: list-<item_type>` |
@@ -246,7 +247,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 | 节点类型 | 必需参数 | 可选参数（缺省值） |
 | --- | --- | --- |
-| `input`、`output`、`map_content_get`、`split_event`、`publish_event` | 无 | 无 |
+| `input`、`output`、`map_content_get`、`split_event`、`publish_event`、`output_to_terminal` | 无 | 无 |
 | `router` | `branches` | 无 |
 | `construct_message` | 无 | `role` (`user`)、`role_source` (`fixed`) |
 | `construct_content` | `append_items` | 无 |
@@ -280,6 +281,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `map_content_get` 按 key 查值；查不到时执行失败。
 - `split_event` 要求 Event 含非空字符串 `event_type` 和 `payload`；字符串 payload 原样输出，非字符串 payload 输出为紧凑 JSON 文本。
 - `construct_event` 要求非空 event_type，且 payload-in 可解析为 JSON object；输出 Event 1.1 对象，version 固定为字符串 `1.1`。
+- `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
 - `publish_event` 只接受 version 为字符串 `1.1`、event_type 为非空字符串且 payload 为 object 的 Event；发布到 Agent 队列并继续当前控制流。
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为七种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
 - `construct_list.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message`、`list-event` 或 `list-struct:<id>`。

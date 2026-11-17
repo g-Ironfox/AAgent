@@ -95,6 +95,11 @@
             <div><strong>拆分 Event</strong><small>拆出事件类型与 Payload</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="output_to_terminal">
+            <span class="node-symbol output_to_terminal-symbol" aria-hidden="true">T&gt;</span>
+            <div><strong>输出到终端</strong><small>输出到当前进程的终端</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="publish_event">
             <span class="node-symbol publish_event-symbol" aria-hidden="true">E!</span>
             <div><strong>发布 Event</strong><small>投递至主 Agent 队列</small></div>
@@ -419,6 +424,15 @@
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="output_to_terminalInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <p class="node-help"><code>content-in</code> 写入当前进程终端后继续执行。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

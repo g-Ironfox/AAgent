@@ -15,6 +15,26 @@ from workflow_structs import StructValidationError, validate_struct_definitions
 
 
 class WorkflowSchemaVersionTest(unittest.TestCase):
+    def test_origin_input_accepts_declared_content_type(self):
+        workflow = {
+            "schema_version": WORKFLOW_SCHEMA_VERSION,
+            "name": "content_origin",
+            "input_ports": [{"name": "origin", "type": "content"}],
+            "output_ports": [],
+            "nodes": [
+                {"id": "input", "type": "input", "workflowPorts": [
+                    {"id": "workflow:origin", "name": "origin", "type": "content"},
+                ]},
+                {"id": "output", "type": "output", "workflowPorts": []},
+            ],
+            "connections": [{
+                "id": "control", "fromId": "input", "fromPortId": "control-out",
+                "toId": "output", "toPortId": "control-in", "type": "control",
+            }],
+        }
+
+        validate_workflow(workflow)
+
     def test_current_workflow_schema_version_is_2_0(self):
         self.assertEqual(WORKFLOW_SCHEMA_VERSION, "2.0")
 
@@ -126,6 +146,18 @@ class StructJsonConversionValidationTest(unittest.TestCase):
                         "arguments": {"value_type": value_type},
                     }]
                     _validate_workflow_schema(workflow)
+
+    def test_manager_schema_accepts_output_to_terminal_node(self):
+        workflow = {
+            "schema_version": "2.0",
+            "name": "terminal_output",
+            "input_ports": [],
+            "output_ports": [],
+            "nodes": [{"id": "terminal", "type": "output_to_terminal"}],
+            "connections": [],
+        }
+
+        _validate_workflow_schema(workflow)
 
     def test_declared_struct_conversion_nodes_pass_semantic_validation(self):
         structs = validate_struct_definitions([{

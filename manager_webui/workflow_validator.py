@@ -56,9 +56,6 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     for label, ports in (("input_ports", input_ports), ("output_ports", output_ports)):
         if any(port["type"].startswith(("struct:", "list-struct:")) for port in ports):
             raise WorkflowValidationError(f"workflow.{label} cannot expose Struct types; use JSON content")
-    origin_ports = [port for port in input_ports if port["name"] == "origin"]
-    if origin_ports and origin_ports[0]["type"] != "event":
-        raise WorkflowValidationError("workflow.input_ports origin must have type event")
     remote_tools = _validate_remote_tool_metadata(workflow)
     tools = _validate_tool_metadata(workflow)
     for reference in workflow.get("workflow_nodes", []):

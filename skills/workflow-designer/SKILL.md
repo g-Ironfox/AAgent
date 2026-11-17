@@ -242,7 +242,7 @@ struct_get 的 fallback 仅用于可选字段，必须同时 missing:"fallback"�
 | get_deepseek_balance | {} | {balance:数值} | 需要 DeepSeek 凭据；tool 输入 []、输出 balance:content，Local 序列化数字；余额可能为 null |
 | get_kimi_balance | {} | {balance:字符串} | 需要 Kimi 凭据；tool 输入 []、输出 balance:content |
 | tavily_search | {keyword:字符串} | {results:对象数组} | 需要 Tavily key；tool keyword:content → results:content（Local 将数组转 JSON 文本）；失败可能为空数组 |
-| output_to_terminal | {content:字符串} | {success:布尔值} | tool content:content → success:content；直接追加终端消息，不发送 response 事件 |
+| output_to_terminal | content-in:content | 无 | 追加到当前进程终端，不发送 response 事件 |
 | get_recent_records | {limit:整数} | {records:对象数组} | 使用 json_tool 传真实整数；普通历史优先 history，tool 的 "10" 不会自动变成 int |
 | workspace.list_files | {} | {items:对象数组,revision:整数} | 可用 tool 输出 items:content、revision:content |
 | workspace.get_file | {file_id:非空字符串} | 工作区文件 API 对象 | outputSchema 无一级 properties；tool 输出 output:content 得完整 JSON |

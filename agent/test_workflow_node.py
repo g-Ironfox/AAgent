@@ -879,6 +879,27 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
 
 class WorkflowExecutionTest(unittest.TestCase):
+    def test_origin_input_accepts_declared_content_type(self):
+        workflow = {
+            "schema_version": WORKFLOW_SCHEMA_VERSION,
+            "name": "content_origin",
+            "input_ports": [{"name": "origin", "type": "content"}],
+            "output_ports": [],
+            "nodes": [
+                {"id": "input", "type": "input", "workflowPorts": [
+                    {"id": "workflow:origin", "name": "origin", "type": "content"},
+                ]},
+                {"id": "output", "type": "output", "workflowPorts": []},
+            ],
+            "connections": [{
+                "fromId": "input", "fromPortId": "control-out",
+                "toId": "output", "toPortId": "control-in", "type": "control",
+            }],
+            "metadata": {"structs": []},
+        }
+
+        validate_workflow(workflow)
+
     def test_llm_available_tools_input_accepts_only_list_content_when_enabled(self):
         source = {"id": "tools", "type": "construct_list", "arguments": {"item_type": "content", "initial_value_count": 0}, "dataInputPorts": []}
         target = {"id": "llm", "type": "llm", "arguments": {"tool_calls": True}}

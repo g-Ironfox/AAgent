@@ -16,10 +16,11 @@ class TerminalApiTest(unittest.TestCase):
         self.queue = MagicMock()
         self.messages = MagicMock()
         router = create_terminal_router(self.queue, self.messages, "test_queue")
+        self.sessions = next(route.endpoint for route in router.routes if route.path == "/api/terminal/sessions")
         self.history = next(route.endpoint for route in router.routes if route.path.endswith("/history"))
         self.submit = next(route.endpoint for route in router.routes if route.path == "/api/terminal")
 
-    def test_history_reads_messages_in_chronological_order_without_event_filter(self):
+    def test_history_reads_global_messages_in_chronological_order(self):
         now = datetime.now(timezone.utc)
         first = {"_id": ObjectId(), "role": "user", "content": "hello", "created_at": now}
         second = {
@@ -28,7 +29,7 @@ class TerminalApiTest(unittest.TestCase):
         }
         self.messages.find.return_value.sort.return_value.limit.return_value = [second, first]
         result = self.history(2)
-        self.messages.find.assert_called_once_with({})
+        self.messages.find.assert_called_once_with({"terminal_process_id": {"$exists": False}})
         self.messages.find.return_value.sort.assert_called_once_with(
             [("created_at", DESCENDING), ("_id", DESCENDING)]
         )
@@ -36,6 +37,31 @@ class TerminalApiTest(unittest.TestCase):
         self.assertEqual([item["content"] for item in result["items"]], ["hello", "world"])
         self.assertEqual(result["items"][0]["id"], str(first["_id"]))
         self.assertNotIn("event", result["items"][1])
+
+    def test_history_filters_by_terminal_process(self):
+        self.messages.find.return_value.sort.return_value.limit.return_value = []
+
+        self.history(20, "terminal-1")
+
+        self.messages.find.assert_called_once_with({"terminal_process_id": "terminal-1"})
+
+    def test_terminal_sessions_lists_terminal_process_records(self):
+        self.queue.hgetall.return_value = {
+            "workflow-1": json.dumps({"process_id": "workflow-1", "process_type": "workflow"}),
+            "terminal-1": json.dumps({
+                "process_id": "terminal-1", "process_type": "terminal",
+                "parent_process_id": "workflow-1", "status": "waiting_for_input",
+                "start_time": "2026-11-17T00:00:00+00:00",
+            }),
+        }
+
+        result = self.sessions()
+
+        self.queue.hgetall.assert_called_once()
+        self.assertEqual(result["sessions"], [{
+            "terminal_process_id": "terminal-1", "parent_process_id": "workflow-1",
+            "status": "waiting_for_input", "start_time": "2026-11-17T00:00:00+00:00",
+        }])
 
     def test_send_persists_input_and_preserves_priority_event_queue(self):
         self.queue.rpush.side_effect = lambda *args: self.messages.insert_one.assert_called_once()
@@ -54,6 +80,35 @@ class TerminalApiTest(unittest.TestCase):
         self.assertEqual(event["event_type"], "terminal")
         self.assertEqual(event["payload"], {"content": "你好", "files": []})
         self.messages.delete_one.assert_not_called()
+
+    def test_send_scopes_message_and_event_to_selected_terminal(self):
+        self.queue.hget.return_value = json.dumps({
+            "process_id": "terminal-1", "process_type": "terminal",
+            "status": "waiting_for_input",
+        })
+
+        result = self.submit(TerminalRequest(
+            content="hello", terminal_process_id="terminal-1"
+        ))
+
+        document = self.messages.insert_one.call_args.args[0]
+        self.assertEqual(document["terminal_process_id"], "terminal-1")
+        self.assertEqual(result["message"]["terminal_process_id"], "terminal-1")
+        event = result["event"]
+        self.assertEqual(event["payload"]["terminal_process_id"], "terminal-1")
+
+    def test_send_rejects_terminated_terminal(self):
+        self.queue.hget.return_value = json.dumps({
+            "process_id": "terminal-1", "process_type": "terminal", "status": "terminated",
+        })
+
+        result = self.submit(TerminalRequest(
+            content="hello", terminal_process_id="terminal-1"
+        ))
+
+        self.assertEqual(result.status_code, 409)
+        self.messages.insert_one.assert_not_called()
+        self.queue.rpush.assert_not_called()
 
     def test_storage_failure_does_not_queue_command(self):
         self.messages.insert_one.side_effect = ServerSelectionTimeoutError("offline")

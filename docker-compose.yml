@@ -2,7 +2,7 @@ services:
   agent:
     build: ./agent
     container_name: agent_aagent
-    command: ["python", "task_worker.py"]
+    command: ["python", "main.py"]
     restart: unless-stopped
     depends_on:
       redis:
@@ -69,7 +69,9 @@ services:
       - aagent_net
 
   webui_py:
-    build: ./webui_py
+    build:
+      context: .
+      dockerfile: webui_py/Dockerfile
     container_name: webui_py_aagent
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081"]
     restart: unless-stopped

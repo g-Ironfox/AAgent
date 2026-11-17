@@ -1,4 +1,5 @@
 # agent/task_worker.py
+import json
 import os
 import time
 import traceback
@@ -115,7 +116,12 @@ def handle_task(e: dict):
     origin = e['payload'].get('origin', e)
     workflow_inputs = {}
     for port in workflow_ports:
-        value = origin if port['name'] == 'origin' else e['payload'].get(port['name'])
+        if port['name'] == 'origin':
+            value = origin
+            if port.get('type') == 'content' and not isinstance(value, str):
+                value = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+        else:
+            value = e['payload'].get(port['name'])
         workflow_inputs[port['name']] = value
         propagate_workflow_output(
             workflow_map, input_node, port['id'], value
@@ -123,7 +129,6 @@ def handle_task(e: dict):
     input_node['_workflow_input_values'] = workflow_inputs
 
     run_workflow_map(workflow_map, start)
-    
 
 def load_workspace_tools() -> None:
     from tools import workspace as _workspace_tools  # noqa: F401

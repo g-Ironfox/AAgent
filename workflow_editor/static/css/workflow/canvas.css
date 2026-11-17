@@ -107,3 +107,5 @@
 .connection-path.lifecycle-invalid { stroke:#c52c43; stroke-width:3.5; stroke-dasharray:5 3; }
 
 #compileLifecyclesButton,#clearLifecyclesButton { width:auto; padding:0 10px; white-space:nowrap; }
+
+.flow-node.output_to_terminal { border-top-color:#13775a; }

@@ -1,4 +1,5 @@
 import unittest
+import json
 from unittest.mock import patch
 
 from pymongo.errors import PyMongoError
@@ -177,6 +178,28 @@ class WorkerRoutingTest(unittest.TestCase):
         })
         self.assertEqual(propagate.call_args.args[3], origin)
         publish.assert_not_called()
+
+    @patch("task_worker._read_workflow", return_value={"name": "workflow"})
+    @patch("task_worker.validate_workflow")
+    @patch("task_worker.parse_workflow")
+    @patch("task_worker.propagate_workflow_output")
+    @patch("task_worker.run_workflow_map", return_value={})
+    @patch("task_worker.publish_to_queue")
+    @patch("task_worker.record_history")
+    def test_content_origin_receives_source_event_as_json_text(
+        self, record_history, publish, run, propagate, parse, validate, read_workflow
+    ):
+        parse.return_value = [{"type": "input", "workflowPorts": [
+            {"id": "workflow:origin", "name": "origin", "type": "content"},
+        ]}]
+        event = {"version": "1.1", "event_type": "source", "payload": {"text": "hello"}}
+
+        task_worker.handle_task({
+            "version": "1.1", "event_type": "workflow",
+            "payload": {"workflow_name": "selected", "origin": event},
+        })
+
+        self.assertEqual(propagate.call_args.args[3], json.dumps(event, ensure_ascii=False, separators=(",", ":")))
 
     @patch("task_worker._read_workflow", return_value={"name": "workflow"})
     @patch("task_worker.validate_workflow")

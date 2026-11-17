@@ -42,6 +42,13 @@
           <h1 id="terminalTitle">全局终端</h1>
         </div>
         <div class="terminal-heading-actions">
+          <label class="terminal-picker" for="terminalSelect">
+            <span>会话</span>
+            <select id="terminalSelect" aria-label="选择终端">
+              <option value="">全局终端</option>
+            </select>
+          </label>
+          <button id="createProcessButton" class="running-button create-process-button" type="button">创建进程</button>
           <button id="terminalLatestButton" class="running-button terminal-latest-button" type="button" title="跳到最新消息" aria-label="跳到最新消息">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="m6 13 6 6 6-6"></path></svg>
             <span>跳到最新</span>
@@ -53,6 +60,23 @@
         </div>
       </header>
 
+      <dialog id="createProcessDialog" class="process-dialog" aria-labelledby="createProcessTitle">
+        <form id="createProcessForm" class="process-form">
+          <header class="process-dialog-heading">
+            <h2 id="createProcessTitle">创建进程</h2>
+            <button id="closeProcessDialog" class="icon-button" type="button" aria-label="关闭">×</button>
+          </header>
+          <label for="processWorkflowSelect">工作流</label>
+          <select id="processWorkflowSelect" required><option value="">加载中…</option></select>
+          <label for="processInputs">输入参数（JSON 对象）</label>
+          <textarea id="processInputs" rows="5" placeholder="{}">{}</textarea>
+          <p id="processCreateStatus" class="send-status" role="status"></p>
+          <div class="process-dialog-actions">
+            <button id="cancelProcessDialog" class="running-button" type="button">取消</button>
+            <button id="submitProcessButton" class="send-button" type="submit">创建</button>
+          </div>
+        </form>
+      </dialog>
       <div id="messageList" class="message-list" aria-live="polite">
         <div id="terminalEmpty" class="terminal-empty">
           <span class="empty-mark" aria-hidden="true">A</span>

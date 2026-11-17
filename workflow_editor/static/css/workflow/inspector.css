@@ -21,6 +21,8 @@
 .port-contract code { font-size:8px; }
 .form-section label { display:grid; gap:6px; color:var(--muted); font-size:9px; }
 .form-section label[hidden] { display:none; }
+.form-section .node-help { margin:0; padding:8px 10px; color:var(--muted); border-left:2px solid var(--green); background:#f2f7f4; font-size:10px; line-height:1.55; }
+.form-section .node-help code { color:var(--ink); font:10px Consolas,monospace; }
 .form-section .checkbox-field { display:flex; align-items:center; gap:9px; }
 .checkbox-field span { display:grid; flex:1; gap:3px; }
 .checkbox-field small { color:var(--muted); font-size:8px; }

@@ -244,6 +244,7 @@
             "split_event",
             "construct_event",
             "publish_event",
+            "output_to_terminal",
             "deserialize_json",
             "construct_list",
             "list_append",

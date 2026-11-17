@@ -30,22 +30,8 @@ class LocalToolRegistryTest(unittest.TestCase):
             with patch.dict(sys.modules, {"tools.tool": cls.registry}):
                 spec.loader.exec_module(cls.workspace)
 
-    def test_terminal_tool_writes_directly_without_publishing_response_event(self):
-        with patch.object(self.registry, "append_terminal_output") as append_output, \
-             patch("queue_client.publish_to_queue") as publish:
-            result = self.registry.execute_tool(
-                "terminal", "output_to_terminal", {"content": "visible output"}, preserve_result=True
-            )
-        self.assertEqual(result, {"success": True})
-        append_output.assert_called_once_with("visible output")
-        publish.assert_not_called()
-
-    def test_terminal_tool_does_not_report_success_when_storage_fails(self):
-        with patch.object(self.registry, "append_terminal_output", side_effect=RuntimeError("offline")):
-            with self.assertRaisesRegex(RuntimeError, "offline"):
-                self.registry.execute_tool(
-                    "terminal", "output_to_terminal", {"content": "hello"}, preserve_result=True
-                )
+    def test_terminal_output_is_not_registered_as_a_local_tool(self):
+        self.assertNotIn("output_to_terminal", self.registry.tool_handlers)
 
     def test_unknown_local_tool_raises_in_both_result_modes(self):
         for preserve_result in (False, True):

@@ -23,15 +23,25 @@ class Element {
       contains: (name) => classes.has(name),
     };
   }
-  append(...children) { this.children.push(...children); }
+  append(...children) {
+    for (const child of children) child.parent = this;
+    this.children.push(...children);
+  }
+  replaceChildren(...children) { this.children = []; this.append(...children); }
+  setAttribute() {}
   addEventListener(type, listener) { this.listeners[type] = listener; }
-  remove() {}
+  remove() {
+    if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this);
+  }
   focus() {}
+  showModal() { this.open = true; }
+  close() { this.open = false; }
   scrollTo({ top }) { this.scrollTop = top; }
 }
 
-async function harness(items = [], submit = async () => {}) {
+async function harness(items = [], submit = async () => {}, sessions = [], creation = {}) {
   const elements = new Map();
+  const historyRequests = [];
   const document = {
     querySelector(selector) {
       if (!elements.has(selector)) elements.set(selector, new Element());
@@ -41,14 +51,20 @@ async function harness(items = [], submit = async () => {}) {
   };
   const context = vm.createContext({
     document,
-    fetchTerminalHistory: async () => ({ fetched_at: '2026-11-16T00:00:00Z', items }),
+    fetchTerminalHistory: async (limit, terminalProcessId) => {
+      historyRequests.push({ limit, terminalProcessId });
+      return { fetched_at: '2026-11-16T00:00:00Z', items };
+    },
+    fetchTerminalSessions: async () => ({ sessions }),
     submitTerminal: submit,
+    fetchEventBindingWorkflowOptions: creation.options || (async () => ({ items: [] })),
+    createProcess: creation.submit || (async () => {}),
     createAutoRefresh: () => ({ schedule() {} }),
   });
   vm.runInContext(source, context);
   await vm.runInContext('refreshStatus()', context);
-  await Promise.resolve();
-  return { get: (selector) => elements.get(selector), context };
+  while (vm.runInContext('state.loading', context)) await Promise.resolve();
+  return { get: (selector) => elements.get(selector), context, historyRequests };
 }
 
 const input = { id: '1', role: 'user', content: '你好', created_at: '2026-11-16T00:00:00Z' };
@@ -95,6 +111,198 @@ test('failed send preserves draft and does not append a message', async () => {
   assert.equal(h.get('#messageInput').value, 'draft');
   assert.equal(h.get('#messageInput').disabled, false);
   assert.equal(h.get('#sendButton').disabled, false);
-  assert.equal(h.get('#messageList').children.length, 0);
+  assert.equal(h.get('#messageList').children.filter((child) => child.dataset.id).length, 0);
   assert.equal(h.get('#sendStatus').textContent, 'storage offline');
+});
+
+test('loads available process terminals and reloads history after switching', async () => {
+  const sessions = [
+    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input' },
+    { terminal_process_id: 'terminal-2', parent_process_id: 'process-2', status: 'waiting_for_input' },
+  ];
+  const h = await harness([], async () => ({}), sessions);
+  const select = h.get('#terminalSelect');
+  assert.equal(select.children.length, 3);
+  assert.equal(select.value, 'terminal-1');
+  assert.equal(h.historyRequests.at(-1).terminalProcessId, 'terminal-1');
+
+  select.value = 'terminal-2';
+  select.listeners.change();
+  while (vm.runInContext('state.loading', h.context)) await Promise.resolve();
+  assert.equal(h.historyRequests.at(-1).terminalProcessId, 'terminal-2');
+  assert.equal(h.get('#terminalTitle').textContent, '进程终端 · terminal');
+});
+
+test('sends a message to the selected process terminal', async () => {
+  const sent = [];
+  const sessions = [
+    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input' },
+  ];
+  const h = await harness([], async (...args) => {
+    sent.push(args);
+    return { queue: 'main_agent_queue', message: input };
+  }, sessions);
+  h.get('#messageInput').value = 'hello';
+  await vm.runInContext('sendMessage()', h.context);
+  assert.deepEqual(sent, [['hello', 'terminal-1']]);
+});
+
+
+test('closed terminals stay readable but cannot send', async () => {
+  let sends = 0;
+  const sessions = [
+    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'terminated' },
+  ];
+  const h = await harness([], async () => { sends += 1; }, sessions);
+  h.get('#terminalSelect').value = 'terminal-1';
+  h.get('#terminalSelect').listeners.change();
+  while (vm.runInContext('state.loading', h.context)) await Promise.resolve();
+  assert.equal(h.historyRequests.at(-1).terminalProcessId, 'terminal-1');
+  assert.equal(h.get('#messageInput').disabled, true);
+  assert.equal(h.get('#sendButton').disabled, true);
+  h.get('#messageInput').value = 'not allowed';
+  await vm.runInContext('sendMessage()', h.context);
+  assert.equal(sends, 0);
+});
+
+test('switching terminals keeps separate drafts', async () => {
+  const sessions = [
+    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input' },
+    { terminal_process_id: 'terminal-2', parent_process_id: 'process-2', status: 'waiting_for_input' },
+  ];
+  const h = await harness([], async () => {}, sessions);
+  h.get('#messageInput').value = 'draft for first';
+  h.get('#terminalSelect').value = 'terminal-2';
+  h.get('#terminalSelect').listeners.change();
+  while (vm.runInContext('state.loading', h.context)) await Promise.resolve();
+  assert.equal(h.get('#messageInput').value, '');
+  h.get('#messageInput').value = 'draft for second';
+  h.get('#terminalSelect').value = 'terminal-1';
+  h.get('#terminalSelect').listeners.change();
+  while (vm.runInContext('state.loading', h.context)) await Promise.resolve();
+  assert.equal(h.get('#messageInput').value, 'draft for first');
+});
+
+test('late history from previous terminal never appears after switching', async () => {
+  const sessions = [
+    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input' },
+    { terminal_process_id: 'terminal-2', parent_process_id: 'process-2', status: 'waiting_for_input' },
+  ];
+  const h = await harness([], async () => {}, sessions);
+  let release;
+  h.context.fetchTerminalHistory = async (limit, id) => {
+    if (id === 'terminal-1') return new Promise((resolve) => { release = resolve; });
+    return { fetched_at: '2026-11-16T00:00:00Z', items: [{ ...output, id: 'new-terminal-message' }] };
+  };
+  const pendingRefresh = vm.runInContext('refreshStatus()', h.context);
+  while (!release) await Promise.resolve();
+  h.get('#terminalSelect').value = 'terminal-2';
+  h.get('#terminalSelect').listeners.change();
+  release({ fetched_at: '2026-11-16T00:00:00Z', items: [input] });
+  await pendingRefresh;
+  while (vm.runInContext('state.loading', h.context)) await Promise.resolve();
+  const rows = h.get('#messageList').children;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].dataset.id, 'new-terminal-message');
+});
+
+const workflowOption = {
+  file_id: 'workflow-file', name: 'demo.json', input_ports: [{ name: 'text', type: 'content' }],
+};
+
+test('create dialog loads workflows and fills declared input names', async () => {
+  const h = await harness([], undefined, [], {
+    options: async () => ({ items: [workflowOption] }),
+  });
+  await vm.runInContext('openCreateProcess()', h.context);
+  assert.equal(h.get('#createProcessDialog').open, true);
+  assert.equal(h.get('#processWorkflowSelect').value, 'workflow-file');
+  assert.equal(h.get('#processWorkflowSelect').children[0].textContent, 'demo.json');
+  assert.deepEqual(JSON.parse(h.get('#processInputs').value), { text: null });
+  assert.equal(h.get('#submitProcessButton').disabled, false);
+});
+
+test('create dialog explains when no workflow is available', async () => {
+  const h = await harness();
+  await vm.runInContext('openCreateProcess()', h.context);
+  assert.equal(h.get('#submitProcessButton').disabled, true);
+  assert.match(h.get('#processCreateStatus').textContent, /暂无工作流/);
+});
+
+test('creating a process posts inputs and selects its paired terminal', async () => {
+  const requests = [];
+  const sessions = [];
+  const h = await harness([], undefined, sessions, {
+    options: async () => ({ items: [workflowOption] }),
+    submit: async (file, inputs) => {
+      requests.push({ file, inputs: JSON.parse(JSON.stringify(inputs)) });
+      sessions.push({ terminal_process_id: 'new-terminal', parent_process_id: 'new-process', status: 'waiting_for_input' });
+      return { process_id: 'new-process', terminal_process_id: 'new-terminal' };
+    },
+  });
+  await vm.runInContext('openCreateProcess()', h.context);
+  h.get('#processInputs').value = '{"text":"hello"}';
+  await vm.runInContext('submitNewProcess()', h.context);
+  assert.deepEqual(requests, [{ file: 'workflow-file', inputs: { text: 'hello' } }]);
+  assert.equal(h.get('#terminalSelect').value, 'new-terminal');
+  assert.equal(h.get('#createProcessDialog').open, false);
+  assert.equal(h.historyRequests.at(-1).terminalProcessId, 'new-terminal');
+  assert.match(h.get('#sendStatus').textContent, /new-process/);
+});
+
+test('invalid creation input is rejected locally without posting', async () => {
+  let requests = 0;
+  const h = await harness([], undefined, [], { submit: async () => { requests++; } });
+  h.get('#processWorkflowSelect').value = 'file';
+  for (const value of ['{', '[]', 'null', '42']) {
+    h.get('#processInputs').value = value;
+    await vm.runInContext('submitNewProcess()', h.context);
+  }
+  assert.equal(requests, 0);
+  assert.match(h.get('#processCreateStatus').textContent, /JSON 对象/);
+});
+
+test('failed creation keeps form values and allows retry', async () => {
+  const h = await harness([], undefined, [], {
+    options: async () => ({ items: [workflowOption] }),
+    submit: async () => { throw new Error('Redis unavailable'); },
+  });
+  await vm.runInContext('openCreateProcess()', h.context);
+  h.get('#processInputs').value = '{"text":"draft"}';
+  await vm.runInContext('submitNewProcess()', h.context);
+  assert.equal(h.get('#createProcessDialog').open, true);
+  assert.equal(h.get('#processInputs').value, '{"text":"draft"}');
+  assert.equal(h.get('#submitProcessButton').disabled, false);
+  assert.equal(h.get('#terminalSelect').disabled, false);
+  assert.equal(h.get('#processCreateStatus').textContent, 'Redis unavailable');
+});
+
+test('creation timeout warns that the process may already exist', async () => {
+  const timeout = new Error('signal is aborted without reason');
+  timeout.name = 'AbortError';
+  const h = await harness([], undefined, [], {
+    options: async () => ({ items: [workflowOption] }),
+    submit: async () => { throw timeout; },
+  });
+  await vm.runInContext('openCreateProcess()', h.context);
+  await vm.runInContext('submitNewProcess()', h.context);
+  assert.match(h.get('#processCreateStatus').textContent, /请求超时/);
+  assert.match(h.get('#processCreateStatus').textContent, /可能已经创建/);
+  assert.equal(h.get('#createProcessDialog').open, true);
+});
+
+test('repeated submit while creation is pending creates only one process', async () => {
+  let requests = 0;
+  let reject;
+  const h = await harness([], undefined, [], {
+    submit: () => { requests++; return new Promise((_, fail) => { reject = fail; }); },
+  });
+  h.get('#processWorkflowSelect').value = 'file';
+  h.get('#processInputs').value = '{}';
+  const first = vm.runInContext('submitNewProcess()', h.context);
+  await vm.runInContext('submitNewProcess()', h.context);
+  assert.equal(requests, 1);
+  assert.equal(h.get('#sendButton').disabled, true);
+  reject(new Error('offline'));
+  await first;
 });
