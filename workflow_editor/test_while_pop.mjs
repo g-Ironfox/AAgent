@@ -39,7 +39,7 @@ test('while_pop defaults to a context ID input and tail pop with foreach control
 });
 
 test('typed list configuration determines the item output and Struct color', () => {
-  for (const [value_type, output] of [['list-content', 'content'], ['list-message', 'message'], ['list-event', 'event'], ['list-struct:task', 'struct:task']]) {
+  for (const [value_type, output] of [['list-content', 'content'], ['list-message', 'message'], ['list-struct:task', 'struct:task']]) {
     const node = { id: 'pop', type: 'while_pop', value_type };
     setNodeStructs([node], [task]);
     const item = portsForNode(node).find((port) => port.id === 'item-out');
@@ -51,7 +51,7 @@ test('typed list configuration determines the item output and Struct color', () 
 
 test('while_pop round-trips all list types and ID modes through both backends', () => {
   const workflows = [];
-  for (const kind of ['list-content', 'list-message', 'list-event', 'list-struct:task']) {
+  for (const kind of ['list-content', 'list-message', 'list-struct:task']) {
     for (const fixed of [false, true]) {
       assert.equal(loadSnapshot(fixture(kind, fixed)), true);
       const saved = workflowSnapshot();
@@ -107,13 +107,13 @@ test('while_pop inspector offers only lists and reconciles type and ID source ch
     option.remove = () => { this.options = this.options.filter((item) => item !== option); };
   } };
   globalThis.Option = class { constructor(text, value) { this.text = text; this.value = value; } };
-  for (const type of ['list-content', 'list-message', 'list-event']) typeField.add(new Option(type, type));
+  for (const type of ['list-content', 'list-message']) typeField.add(new Option(type, type));
   const source = field(); const id = field(); const idContainer = field();
   const fields = { '[data-field="value_type"]': typeField, '[data-field="context_id_source"]': source, '[data-field="context_id"]': id, '[data-context-id-field]': idContainer };
   let changes = 0;
   const context = { elements: { inspectorContent: { querySelector: (selector) => fields[selector] } }, markChanged() { changes += 1; }, editor: { renderNodes() {} }, renderInspector() {} };
   bindStructureInspector(node, context);
-  assert.deepEqual(typeField.options.map((option) => option.value), ['list-content', 'list-message', 'list-event', 'list-struct:task']);
+  assert.deepEqual(typeField.options.map((option) => option.value), ['list-content', 'list-message', 'list-struct:task']);
   assert.equal(idContainer.hidden, true);
   typeField.value = 'list-struct:task';
   typeField.handlers.change();

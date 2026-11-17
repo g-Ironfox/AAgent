@@ -7,7 +7,6 @@ const TYPE_COLORS = {
   output: '#7a3e88',
   router: '#c18413',
   construct_message: '#b75b18',
-  construct_event: '#147d78',
   construct_content: '#2f6f8f',
   construct_map_content: '#46713f',
   map_content_get: '#326b4b',
@@ -17,13 +16,11 @@ const TYPE_COLORS = {
   struct_to_json: '#61568a',
   json_to_struct: '#147d78',
   deserialize_json: '#61568a',
-  split_event: '#147d78',
   output_to_terminal: '#13775a',
   construct_list: '#176f73',
   list_append: '#27705b',
   foreach: '#9a5a24',
   while_pop: '#9a5a24',
-  history: '#396a87',
   tool: '#13775a',
   llm: '#356e9b',
   local_tool: '#13775a',
@@ -42,20 +39,16 @@ const CONNECTION_COLORS = {
   control: '#13775a',
   content: '#356e9b',
   message: '#b75b18',
-  event: '#147d78',
   'map-content': '#46713f',
   'list-content': '#d12f72',
   'list-message': '#7a3e88',
-  'list-event': '#147d78',
 };
 
 const CONNECTION_DASHES = {
   content: '5 5',
   message: '2 4',
-  event: '2 4',
   'list-content': '7 3',
   'list-message': '7 3',
-  'list-event': '7 3',
 };
 
 function escapeXml(value) {
@@ -132,7 +125,6 @@ function contractPortIds(node, direction, workflow) {
   }
   if (node.type === 'struct_to_json') return direction === 'input' ? ['control-in', 'value-in'] : ['control-out', 'content-out'];
   if (node.type === 'json_to_struct') return direction === 'input' ? ['control-in', 'content-in'] : ['control-out', 'value-out'];
-  if (node.type === 'split_event') return direction === 'input' ? ['control-in', 'event-in'] : ['control-out', 'type-out', 'payload-out'];
   if (node.type === 'construct_list') {
     const count = Number.isInteger(args.initial_value_count) ? args.initial_value_count : 1;
     const inputs = Array.from({ length: count }, (_, index) => `${args.item_type || 'content'}-in-${index}`);
@@ -141,7 +133,6 @@ function contractPortIds(node, direction, workflow) {
   if (node.type === 'list_append') return direction === 'input' ? ['control-in', 'list-in', 'item-in'] : ['control-out', 'list-out'];
   if (node.type === 'while_pop') return direction === 'input' ? ['control-in', 'loop-in', ...((node.arguments?.context_id_source || node.context_id_source || 'port') === 'port' ? ['context-id'] : [])] : ['control-out', 'loop-out', 'item-out'];
   if (node.type === 'foreach') return direction === 'input' ? ['control-in', 'loop-in', 'list-in'] : ['control-out', 'loop-out', 'item-out'];
-  if (node.type === 'history') return direction === 'input' ? ['control-in'] : ['control-out', 'events'];
   if (node.type === 'context_create') return direction === 'input' ? ['control-in', 'initial-value'] : ['control-out', 'context-id'];
   if (node.type === 'context_read') return direction === 'input' ? ['control-in', 'context-id'] : ['control-out', 'value-out'];
   if (node.type === 'context_write') return direction === 'input' ? ['control-in', 'context-id', 'value-in'] : ['control-out', 'context-id', 'value-out'];

@@ -82,8 +82,7 @@ Struct 值使用 JSON object 表示，属性名必须来自该 Struct 的字段�
 | --- | --- |
 | `content` | string |
 | `message` | object，且仅含 `role` 和 `content`；`role` 为 `system`、`user`、`assistant` 或 `tool`，`content` 为 string |
-| `event` | object，`event_type` 为非空 string，且存在 `payload` 属性；具体 Event 构造和发布节点还要求 Event 1.1 格式，见第 9.3 节 |
-| `list-content`、`list-message`、`list-event` | 对应值类型的数组 |
+| `list-content`、`list-message` | 对应值类型的数组 |
 | `map-content` | 属性名非空的 object，所有属性值均为 string |
 
 Struct 定义可引用其他已声明 Struct 或其列表，但定义之间不得循环引用。Agent 与管理端在接受 Workflow 时递归检查 Struct 声明；运行时 Struct 节点、Context 存取及 JSON 转换递归验证 Struct 值。一般数据边不会自动对所有内建类型进行全局递归校验。Struct 是结构化值，不等同于任意 JSON object。
@@ -189,8 +188,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | --- | --- |
 | `content` | 字符串 |
 | `message` | 仅含 `role` 和 `content` 的对象；role 为 `system`、`user`、`assistant`、`tool` 之一，content 为字符串 |
-| `event` | Workflow 内传播的 Event 对象，不自动转换成 JSON 字符串 |
-| `list-content`、`list-message`、`list-event` | 对应元素类型的数组 |
+| `list-content`、`list-message` | 对应元素类型的数组 |
 | `map-content` | 非空字符串键到字符串值的对象 |
 
 接口 `port` 必须恰含 `name`、`type`。名称非空；同一输入或输出接口数组内，端口名经去除首尾空白、忽略大小写后不得重复。依赖对象必须恰含 `name`、`input_ports`、`output_ports`；依赖名非空，同一依赖数组内不得重复，Remote Tool 名称比较时去除首尾空白并忽略大小写。
@@ -220,15 +218,12 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `construct_content` | `append_items` | 每个 port 项对应一个 content 输入 | `content-out: content` |
 | `construct_map_content` | `mappings` | 每个 port 条目对应一个 content 输入 | `map-out: map-content` |
 | `map_content_get` | 无 | `map-in: map-content`、`key-in: content` | `content-out: content` |
-| `split_event` | 无 | `event-in: event` | `type-out: content`、`payload-out: content` |
-| `construct_event` | `event_type` | `payload-in: content`，内容为 JSON object 文本 | `event-out: event` |
 | `output_to_terminal` | 无 | `content-in: content` | 无 |
 | `deserialize_json` | `outputs: [{key,type}]` | `content-in: content`，内容为 JSON object 文本 | 每个 key 一个对应 type 的端口 |
 | `construct_list` | `item_type`、`initial_value_count` | `<item_type>-in-0` 至 `<item_type>-in-(count-1)` | `list-out: list-<item_type>` |
 | `list_append` | `item_type`、`position` | `list-in: list-<item_type>`、`item-in: <item_type>` | `list-out: list-<item_type>` |
 | `foreach` | `item_type` | `list-in: list-<item_type>` | `item-out: <item_type>`；控制端口见第 10 节 |
 | `while_pop` | `value_type`、可选 `position`、`context_id_source`、`context_id` | port 模式下 `context-id: content` | `item-out: <value_type 去除 list- 前缀>`；控制端口同 Foreach |
-| `history` | `event_types`、`limit` | 无 | `events: list-event` |
 | `llm` | `model`、`think`、`tool_calls`、`tools` | `messages-in: list-message` | `output: content`；配置启用时有 `reasoning: content`、`tool_calls: list-content` |
 | `tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `mode`（仅 sync）、`timeout_ms` | 每个 parameters 端口 | 同步返回每个 outputs 端口 |
 | `local_tool`（兼容） | `tool`、`parameters: string[]` | 每个参数名一个 content 输入 | `output: content` |
@@ -246,18 +241,16 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 | 节点类型 | 必需参数 | 可选参数（缺省值） |
 | --- | --- | --- |
-| `input`、`output`、`map_content_get`、`split_event`、`output_to_terminal` | 无 | 无 |
+| `input`、`output`、`map_content_get`、`output_to_terminal` | 无 | 无 |
 | `router` | `branches` | 无 |
 | `construct_message` | 无 | `role` (`user`)、`role_source` (`fixed`) |
 | `construct_content` | `append_items` | 无 |
 | `construct_map_content` | `mappings` | 无 |
-| `construct_event` | `event_type` | 无 |
 | `deserialize_json` | `outputs` | 无 |
 | `construct_list` | `item_type`、`initial_value_count` | 无 |
 | `list_append` | `item_type`、`position` | 无 |
 | `foreach` | `item_type` | 无 |
 | `while_pop` | `value_type` (仅列表类型) | `position` (`end`)、`context_id_source` (`port`)、`context_id` (仅 fixed 模式使用) |
-| `history` | `event_types`、`limit` | 无 |
 | `llm` | 无 | `model`、`think`、`tool_calls`、`tools` |
 | `tool` | `tool`、`parameters`、`outputs` | `mode`（固定 `sync`）、`timeout_ms`、`callback`（仅 null） |
 | `local_tool` | `tool` | `parameters` (空数组) |
@@ -278,15 +271,12 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `construct_content.append_items` 必须为非空数组。每项是 object，`type` 必须为 `fixed` 或 `port`。固定项恰含 `type`、`value`，且 value 为字符串；端口项恰含 `type`、`port_id`，且 port_id 为非空字符串。端口 ID 不重复，且端口项 ID 集合与 `dataInputPorts` 一致。按条目顺序拼接；运行时缺失的端口值跳过，非字符串值转换为字符串。
 - `construct_map_content.mappings` 必须为非空数组。每项必须包含非空字符串 `key` 且 key 唯一。固定值项含 `key`、`value`，可以附 `value_source` 且其值必须为 `fixed`；value 为字符串。端口项恰含 `key`、`value_source`、`port_id`，其中 value_source 固定为 `port`，port_id 非空且唯一，不得为控制端口，并与 `dataInputPorts` 一致。端口运行值必须为已提供的字符串；输出保留条目顺序。
 - `map_content_get` 按 key 查值；查不到时执行失败。
-- `split_event` 要求 Event 含非空字符串 `event_type` 和 `payload`；字符串 payload 原样输出，非字符串 payload 输出为紧凑 JSON 文本。
-- `construct_event` 要求非空 event_type，且 payload-in 可解析为 JSON object；输出 Event 1.1 对象，version 固定为字符串 `1.1`。
 - `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为七种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
-- `construct_list.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message`、`list-event` 或 `list-struct:<id>`。
-- `list_append.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
-- `while_pop.value_type` 必须是 `list-content`、`list-message`、`list-event` 或本 Workflow 声明的 `list-struct:<id>`。每轮从 Context 列表原子弹出一项；`position` 为 `end`（默认，末尾）或 `start`（最前）。Context 为空时退出，详情见 10.4。
-- `foreach.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`。逐项输出列表元素，列表耗尽后退出循环；空列表直接退出。
-- `history.event_types` 必须为非空、不重复的 `terminal`/`response` 子集；limit 必须为 1 到 1000 的整数。
+- `construct_list.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message` 或 `list-struct:<id>`。
+- `list_append.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
+- `while_pop.value_type` 必须是 `list-content`、`list-message` 或本 Workflow 声明的 `list-struct:<id>`。每轮从 Context 列表原子弹出一项；`position` 为 `end`（默认，末尾）或 `start`（最前）。Context 为空时退出，详情见 10.4。
+- `foreach.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`。逐项输出列表元素，列表耗尽后退出循环；空列表直接退出。
 - `llm.model` 在管理端保存及执行时必须为有效且已启用模型标识；通用静态契约校验器不保证验证模型存在。`llm.tools` 是未连接动态工具输入时的可选默认工具子集；省略或为空时默认使用 `metadata.tools` 中的全部 Local 与 Remote Tool。工具名称必须在 `metadata.tools` 声明且对应完整 schema 可用；Local schema 来自 Agent 注册表，Remote schema 来自 Tool Server。`think` 控制模型请求是否启用推理以及 reasoning 输出端口是否存在，`tool_calls` 控制工具调用能力、`available-tools-in: list-content` 输入端口及 `tool_calls` 输出端口是否存在。动态输入为 metadata.tools 中任意 kind 的工具名称列表，接入后覆盖默认列表。think 关闭时按模型 Provider 发送对应的关闭参数。tool_calls 输出为 JSON 文本组成的 list-content；模型生成 tool_calls 不代表 Workflow 自动执行这些工具。
 - 新建工具使用统一的 `tool` 节点，来源由 `metadata.tools` 中同名声明的 `kind` 决定，取值为 `local` 或 `remote`。声明恰含 `name`、`kind`、`input_ports`、`output_ports`，名称去除首尾空白并忽略大小写后全局唯一（local/remote 也不能重名）。每侧最多 50 个端口，只允许七种内建数据类型，禁止 Struct 和保留控制端口名。
 - `tool.parameters` / `tool.outputs` 必须与声明的输入/输出端口数组完全一致；Tool 节点仅同步执行，`mode` 省略或固定为 `sync`，callback 只能省略或为 null。local 输入类型均为 content；当 Local Tool 提供 `outputSchema` 时，其一级 properties 对应具名输出端口，运行结果须为包含所有声明字段的对象；未提供 `outputSchema` 时兼容单个 `output:content`，非字符串结果序列化为 JSON 文本。remote 等待结果并遵循下述同步超时行为。
@@ -331,7 +321,6 @@ Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控�
 
 子 Workflow 在当前调用栈内执行，并使用自身 Input/Output 边界，同时继承祖先调用的 Context 访问范围。Workflow 节点接口快照必须等于实际 Workflow 接口。调用链出现重复 Workflow 名称时拒绝递归。Struct 不能跨子 Workflow 接口传递，须显式 JSON 转换。
 
-`construct_event` 产生的 Event 遵循 Event 1.1：JSON 对象含 `version` 字符串 `1.1`、非空字符串 `event_type` 和 object `payload`。作为 Struct 字段值或 Context 值递归校验的 `event` 还必须含非空字符串 `event_type` 和 `payload` 属性，但不额外要求 `version`。Event 节点之间按对象传值；只有显式 JSON 转换节点或规定的 payload 文本端口执行序列化/反序列化。Event 是图内数据类型，不会自动触发进程或工作流调度。
 
 ### 10.4 While Pop
 

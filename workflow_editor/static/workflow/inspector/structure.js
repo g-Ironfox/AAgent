@@ -11,7 +11,6 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'construct_list') bindConstructList(node, context);
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
-  if (node.type === 'history') bindHistory(node, context);
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop'].includes(node.type)) bindContext(node, context);
 }
 
@@ -21,7 +20,7 @@ function localStructs() { return state.metadata?.structs || []; }
 function addTypeOptions(select, { includeBuiltin = false, includeStructLists = false } = {}) {
   const existing = new Set([...select.options].map((option) => option.value));
   if (includeBuiltin) {
-    for (const type of ['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event']) {
+    for (const type of ['content', 'message', 'map-content', 'list-content', 'list-message']) {
       if (!existing.has(type)) select.add(new Option(type, type));
     }
   }
@@ -292,29 +291,6 @@ function bindForeach(node, context) {
   });
 }
 
-function bindHistory(node, context) {
-  const eventTypeFields = context.elements.inspectorContent.querySelectorAll('[data-history-event-type]');
-  const limitField = context.elements.inspectorContent.querySelector('[data-field="limit"]');
-  for (const field of eventTypeFields) {
-    field.checked = node.event_types.includes(field.value);
-    field.addEventListener('change', () => {
-      const selected = [...eventTypeFields].filter((option) => option.checked).map((option) => option.value);
-      if (!selected.length) {
-        field.checked = true;
-        return;
-      }
-      node.event_types = selected;
-      context.markChanged();
-    });
-  }
-  limitField.value = node.limit;
-  limitField.addEventListener('change', () => {
-    node.limit = Math.min(1000, Math.max(1, Number.parseInt(limitField.value, 10) || 1));
-    limitField.value = node.limit;
-    context.markChanged();
-  });
-}
-
 function bindListAppend(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="item_type"]');
   addTypeOptions(typeField);
@@ -370,7 +346,7 @@ function bindDeserializeJson(node, context) {
   node.outputs.forEach((output, index) => {
     const row = document.createElement('div');
     row.className = 'json-output-row';
-    row.innerHTML = '<span class="route-index"></span><input data-output-key maxlength="80" aria-label="JSON 键"><select data-output-type aria-label="输出类型"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select><button type="button" class="branch-delete" title="删除输出">×</button>';
+    row.innerHTML = '<span class="route-index"></span><input data-output-key maxlength="80" aria-label="JSON 键"><select data-output-type aria-label="输出类型"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select><button type="button" class="branch-delete" title="删除输出">×</button>';
     row.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
     const keyField = row.querySelector('[data-output-key]');
     const typeField = row.querySelector('[data-output-type]');

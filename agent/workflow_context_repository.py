@@ -16,10 +16,8 @@ from queue_client import get_connection
 CONTEXT_VALUE_TYPES = {
     "content",
     "message",
-    "event",
     "list-content",
     "list-message",
-    "list-event",
     "map-content",
 }
 
@@ -53,25 +51,12 @@ def _valid_value(value_type: str, value: Any, struct_definitions: dict[str, Any]
         return isinstance(value, list) and all(isinstance(item, str) for item in value)
     if value_type == "list-message":
         return isinstance(value, list) and all(_is_message(item) for item in value)
-    if value_type == "event":
-        return _is_event(value)
-    if value_type == "list-event":
-        return isinstance(value, list) and all(_is_event(item) for item in value)
     if value_type == "map-content":
         return isinstance(value, dict) and all(
             isinstance(key, str) and bool(key) and isinstance(item, str)
             for key, item in value.items()
         )
     return False
-
-
-def _is_event(value: Any) -> bool:
-    return (
-        isinstance(value, dict)
-        and isinstance(value.get("event_type"), str)
-        and bool(value["event_type"])
-        and "payload" in value
-    )
 
 
 def _ttl_seconds() -> int:

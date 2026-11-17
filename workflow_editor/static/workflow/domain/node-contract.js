@@ -1,4 +1,4 @@
-export const DATA_TYPES = new Set(['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event']);
+export const DATA_TYPES = new Set(['content', 'message', 'map-content', 'list-content', 'list-message']);
 
 export const NODE_TYPES = new Set([
   'input',
@@ -14,14 +14,11 @@ export const NODE_TYPES = new Set([
   'json_to_struct',
   'map_content_get',
   'deserialize_json',
-  'split_event',
-  'construct_event',
   'output_to_terminal',
   'construct_list',
   'list_append',
   'foreach',
   'while_pop',
-  'history',
   'llm',
   'tool',
   'local_tool',
@@ -194,28 +191,11 @@ export function portsForNode(node) {
       { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '查找到的 Content', multiple: true },
     ];
   }
-  if (node.type === 'split_event') {
-    return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发拆分', multiple: false },
-      { id: 'event-in', direction: 'input', type: 'event', label: 'Event', title: '待拆分的事件', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'type-out', direction: 'output', type: 'content', label: 'Type', title: '事件类型', multiple: true },
-      { id: 'payload-out', direction: 'output', type: 'content', label: 'Payload', title: '事件 Payload 对象', multiple: true },
-    ];
-  }
   if (node.type === 'output_to_terminal') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '输出到终端', multiple: false },
       { id: 'content-in', direction: 'input', type: 'content', label: 'content', title: '要输出的文本', multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '输出后继续', multiple: false },
-    ];
-  }
-  if (node.type === 'construct_event') {
-    return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '构造 Event', multiple: false },
-      { id: 'payload-in', direction: 'input', type: 'content', label: 'Payload JSON', title: 'JSON 对象字符串', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'event-out', direction: 'output', type: 'event', label: 'Event', title: '构造后的 Event', multiple: true },
     ];
   }
   if (node.type === 'deserialize_json') {
@@ -265,13 +245,6 @@ export function portsForNode(node) {
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: isPop ? 'Context 列表为空后继续' : '列表遍历完成后继续', multiple: false },
       { id: 'loop-out', direction: 'output', type: 'control', label: '循环体开始', title: '执行当前项的循环体', multiple: false },
       { id: 'item-out', direction: 'output', type: itemType, color: structColor(node, itemType), label: isPop ? '弹出项' : '当前项', title: `当前 ${itemType}`, multiple: true },
-    ];
-  }
-  if (node.type === 'history') {
-    return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发查询', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'events', direction: 'output', type: 'list-event', label: '事件', title: '最近的事件列表', multiple: true },
     ];
   }
   if (node.type === 'context_create' || node.type === 'session_create') {
@@ -435,14 +408,11 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   }
   if (type === 'map_content_get') return { id: createWorkflowId('map-content-get'), type, name: `Map 查找 ${number}`, ...position };
   if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
-  if (type === 'split_event') return { id: createWorkflowId('split-event'), type, name: `拆分 Event ${number}`, ...position };
   if (type === 'output_to_terminal') return { id: createWorkflowId('output-to-terminal'), type, name: `输出到终端 ${number}`, ...position };
-  if (type === 'construct_event') return { id: createWorkflowId('construct-event'), type, name: `构造 Event ${number}`, event_type: 'event_type', ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
   if (type === 'while_pop') return { id: createWorkflowId('while-pop'), type, name: `弹出 Context 列表 ${number}`, value_type: 'list-content', position: 'end', context_id_source: 'port', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
-  if (type === 'history') return { id: createWorkflowId('history'), type, name: `召回 History ${number}`, event_types: ['terminal', 'response'], limit: 10, ...position };
   if (type === 'context_create') return { id: createWorkflowId('context-create'), type, name: `创建 Context ${number}`, value_type: 'content', ...position };
   if (type === 'context_read') return { id: createWorkflowId('context-read'), type, name: `读取 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
   if (type === 'context_write') return { id: createWorkflowId('context-write'), type, name: `修改 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };

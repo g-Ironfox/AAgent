@@ -6,7 +6,6 @@ from workflow_parser import parse_workflow
 from workflow_parser import WORKFLOW_SCHEMA_VERSION, WorkflowParseError
 from workflow_nodes import (
     run_workflow_map,
-    workflow_construct_event,
     workflow_construct_map_content,
     workflow_map_content_get,
     workflow_construct_list,
@@ -14,7 +13,6 @@ from workflow_nodes import (
     workflow_deserialize_json,
     workflow_llm,
     workflow_router,
-    workflow_split_event,
 )
 from workflow_validator import WorkflowValidationError, validate_workflow
 
@@ -57,35 +55,6 @@ def callable_workflow_fixture() -> dict:
 
 
 class CallableWorkflowNodeTest(unittest.TestCase):
-    def test_construct_event_outputs_object_and_continues(self):
-        node = {
-            "id": "construct", "type": "construct_event",
-            "arguments": {"event_type": "tick"},
-            "successors": {"next": 1},
-            "data_inputs": {"payload-in": [2, "payload-out", '{"n":2,"nested":{"items":[true]}}']},
-            "data_outputs": {"event-out": [[1, "event-in"]]},
-        }
-        target = {"data_inputs": {"event-in": [0, "event-out", None]}}
-        self.assertEqual(workflow_construct_event(0, [node, target]), 1)
-        self.assertEqual(target["data_inputs"]["event-in"][2], {
-            "version": "1.1", "event_type": "tick", "payload": {"n": 2, "nested": {"items": [True]}},
-        })
-
-    def test_construct_event_rejects_invalid_payload(self):
-        for payload in (None, {}, "broken", "[]", '"text"', "null", "1"):
-            with self.subTest(payload=payload):
-                node = {
-                    "arguments": {"event_type": "tick"},
-                    "data_inputs": {"payload-in": [1, "output", payload]},
-                }
-                with self.assertRaisesRegex(ValueError, "payload"):
-                    workflow_construct_event(0, [node])
-
-    def test_construct_event_rejects_invalid_type(self):
-        for event_type in (None, "", "   ", 1):
-            with self.subTest(event_type=event_type):
-                with self.assertRaisesRegex(ValueError, "event_type"):
-                    workflow_construct_event(0, [{"arguments": {"event_type": event_type}}])
 
     def test_validator_rejects_workflow_without_schema_version(self):
         workflow = callable_workflow_fixture()
@@ -311,43 +280,6 @@ class CallableWorkflowNodeTest(unittest.TestCase):
         ):
             validate_workflow(workflow)
 
-    def test_validator_and_parser_accept_history_node(self):
-        workflow = {
-            "schema_version": WORKFLOW_SCHEMA_VERSION,
-            "name": "history_fixture",
-            "input_ports": [],
-            "output_ports": [{"name": "events", "type": "list-event"}],
-            "nodes": [
-                {"id": "input", "type": "input", "workflowPorts": []},
-                {
-                    "id": "history",
-                    "type": "history",
-                    "arguments": {"event_types": ["terminal", "response"], "limit": 5},
-                },
-                {
-                    "id": "output",
-                    "type": "output",
-                    "workflowPorts": [
-                        {"id": "workflow:events", "name": "events", "type": "list-event"}
-                    ],
-                },
-            ],
-            "connections": [
-                {"fromId": "input", "fromPortId": "control-out", "toId": "history", "toPortId": "control-in", "type": "control"},
-                {"fromId": "history", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
-                {"fromId": "history", "fromPortId": "events", "toId": "output", "toPortId": "workflow:events", "type": "list-event"},
-            ],
-        }
-
-        validate_workflow(workflow)
-        parsed = parse_workflow(workflow)
-
-        self.assertEqual(
-            parsed[1]["arguments"],
-            {"event_types": ["terminal", "response"], "limit": 5},
-        )
-        self.assertEqual(parsed[1]["data_outputs"]["events"], [[2, "workflow:events"]])
-
     def test_validator_and_parser_accept_map_content_nodes(self):
         workflow = {
             "schema_version": WORKFLOW_SCHEMA_VERSION,
@@ -392,121 +324,33 @@ class CallableWorkflowNodeTest(unittest.TestCase):
         self.assertEqual(parsed[2]["data_inputs"]["map-in"], [1, "map-out", None])
         self.assertEqual(parsed[2]["data_inputs"]["key-in"], [0, "workflow:key", None])
 
-    def test_validator_accepts_history_event_list_to_foreach(self):
-        workflow = {
-            "schema_version": WORKFLOW_SCHEMA_VERSION,
-            "name": "foreach_fixture",
-            "input_ports": [],
-            "output_ports": [],
-            "nodes": [
-                {"id": "input", "type": "input", "workflowPorts": []},
-                {
-                    "id": "history",
-                    "type": "history",
-                    "arguments": {"event_types": ["response"], "limit": 5},
-                },
-                {
-                    "id": "foreach",
-                    "type": "foreach",
-                    "arguments": {"item_type": "event"},
-                },
-                {"id": "output", "type": "output", "workflowPorts": []},
-            ],
-            "connections": [
-                {"fromId": "input", "fromPortId": "control-out", "toId": "history", "toPortId": "control-in", "type": "control"},
-                {"fromId": "history", "fromPortId": "control-out", "toId": "foreach", "toPortId": "control-in", "type": "control"},
-                {"fromId": "history", "fromPortId": "events", "toId": "foreach", "toPortId": "list-in", "type": "list-event"},
-                {"fromId": "foreach", "fromPortId": "loop-out", "toId": "foreach", "toPortId": "loop-in", "type": "control"},
-                {"fromId": "foreach", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
-            ],
-        }
-
-        validate_workflow(workflow)
-
-    def test_validator_and_parser_accept_split_event_node(self):
-        workflow = {
-            "schema_version": WORKFLOW_SCHEMA_VERSION,
-            "name": "split_event_fixture",
-            "input_ports": [{"name": "event", "type": "event"}],
-            "output_ports": [
-                {"name": "type", "type": "content"},
-                {"name": "payload", "type": "content"},
-            ],
-            "nodes": [
-                {
-                    "id": "input",
-                    "type": "input",
-                    "workflowPorts": [
-                        {"id": "workflow:event", "name": "event", "type": "event"}
-                    ],
-                },
-                {"id": "split", "type": "split_event", "arguments": {}},
-                {
-                    "id": "output",
-                    "type": "output",
-                    "workflowPorts": [
-                        {"id": "workflow:type", "name": "type", "type": "content"},
-                        {"id": "workflow:payload", "name": "payload", "type": "content"},
-                    ],
-                },
-            ],
-            "connections": [
-                {"fromId": "input", "fromPortId": "control-out", "toId": "split", "toPortId": "control-in", "type": "control"},
-                {"fromId": "split", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
-                {"fromId": "input", "fromPortId": "workflow:event", "toId": "split", "toPortId": "event-in", "type": "event"},
-                {"fromId": "split", "fromPortId": "type-out", "toId": "output", "toPortId": "workflow:type", "type": "content"},
-                {"fromId": "split", "fromPortId": "payload-out", "toId": "output", "toPortId": "workflow:payload", "type": "content"},
-            ],
-        }
-
-        validate_workflow(workflow)
-        parsed = parse_workflow(workflow)
-
-        self.assertEqual(parsed[1]["data_inputs"]["event-in"], [0, "workflow:event", None])
-        self.assertEqual(
-            parsed[1]["data_outputs"],
-            {
-                "type-out": [[2, "workflow:type"]],
-                "payload-out": [[2, "workflow:payload"]],
-            },
-        )
-
-        invalid_connection = dict(workflow["connections"][2], type="content")
-        self.assertFalse(
-            is_valid_connection(
-                invalid_connection,
-                {node["id"]: node for node in workflow["nodes"]},
-                workflow["input_ports"],
-                workflow["output_ports"],
-            )
-        )
-
-    def test_validator_rejects_history_limit_out_of_range(self):
-        workflow = callable_workflow_fixture()
-        workflow["nodes"][1] = {
-            "id": "history",
-            "type": "history",
-            "arguments": {"event_types": ["response"], "limit": 0},
-        }
-
-        with self.assertRaisesRegex(WorkflowValidationError, "limit must be an integer from 1 to 1000"):
-            validate_workflow(workflow)
-
-    def test_validator_rejects_invalid_history_event_types(self):
-        for event_types in ([], ["workflow"], ["response", "response"]):
-            with self.subTest(event_types=event_types):
+    def test_validator_rejects_removed_event_nodes(self):
+        from workflow_nodes import nodes_map
+        for node_type in ("split_event", "construct_event", "publish_event", "history"):
+            with self.subTest(node_type=node_type):
                 workflow = callable_workflow_fixture()
-                workflow["nodes"][1] = {
-                    "id": "history",
-                    "type": "history",
-                    "arguments": {"event_types": event_types, "limit": 10},
-                }
-
-                with self.assertRaisesRegex(
-                    WorkflowValidationError,
-                    "event_types must contain unique terminal or response values",
-                ):
+                workflow["nodes"][1] = {"id": "removed", "type": node_type, "arguments": {}}
+                with self.assertRaisesRegex(WorkflowValidationError, "nodes.1.type"):
                     validate_workflow(workflow)
+                self.assertNotIn(node_type, nodes_map)
+
+    def test_removed_event_values_are_rejected_before_context_or_session_storage(self):
+        from workflow_context_repository import WorkflowContextError, create_context
+        from workflow_session_repository import WorkflowSessionError, create_session
+        from workflow_nodes import _deserialize_json_value
+        for value_type, value in (("event", {"event_type": "message", "payload": {}}),
+                                  ("list-event", [{"event_type": "message", "payload": {}}])):
+            with self.subTest(value_type=value_type):
+                with self.assertRaises(ValueError):
+                    _deserialize_json_value(value, value_type)
+                with patch("workflow_context_repository.get_connection") as connection:
+                    with self.assertRaises(WorkflowContextError):
+                        create_context("invocation", value_type, value)
+                    connection.assert_not_called()
+                with patch("workflow_session_repository.get_session_collection") as collection:
+                    with self.assertRaises(WorkflowSessionError):
+                        create_session(value_type, value)
+                    collection.assert_not_called()
 
     def test_parser_uses_named_control_flow_dictionaries(self):
         workflow = {
@@ -1401,86 +1245,6 @@ class WorkflowExecutionTest(unittest.TestCase):
         self.assertEqual(len(workflow_map[2]["data_inputs"]["content-in"]), 3)
         self.assertEqual(input_items, ["first", "second", "third"])
         self.assertNotIn("_foreach_items", workflow_map[1])
-
-    @patch("history_repository.get_recent_history")
-    def test_history_node_returns_filtered_events(self, get_recent_history):
-        get_recent_history.return_value = [
-            {"event_type": "response", "payload": {"content": "first"}},
-            {"event_type": "response", "payload": {"content": "second"}},
-        ]
-        workflow_map = [
-            {
-                "id": "history",
-                "type": "history",
-                "arguments": {"event_types": ["terminal", "response"], "limit": 2},
-                "successors": {"next": 1},
-                "data_inputs": {},
-                "data_outputs": {"events": [[1, "workflow:events"]]},
-            },
-            {
-                "id": "output",
-                "type": "output",
-                "workflowPorts": [
-                    {"id": "workflow:events", "name": "events", "type": "list-event"}
-                ],
-                "successors": {},
-                "data_inputs": {"workflow:events": [0, "events", None]},
-                "data_outputs": {},
-            },
-        ]
-
-        self.assertEqual(
-            run_workflow_map(workflow_map, 0),
-            {
-                "events": [
-                    {"event_type": "response", "payload": {"content": "first"}},
-                    {"event_type": "response", "payload": {"content": "second"}},
-                ]
-            },
-        )
-        get_recent_history.assert_called_once_with(
-            limit=2,
-            event_types=["terminal", "response"],
-        )
-
-    def test_split_event_returns_type_and_payload(self):
-        event = {
-            "event_type": "response",
-            "payload": {"content": "hello"},
-        }
-        workflow_map = [
-            {
-                "id": "split",
-                "type": "split_event",
-                "successors": {"next": 1},
-                "data_inputs": {"event-in": [2, "item-out", event]},
-                "data_outputs": {
-                    "type-out": [[1, "workflow:type"]],
-                    "payload-out": [[1, "workflow:payload"]],
-                },
-            },
-            {
-                "id": "output",
-                "type": "output",
-                "workflowPorts": [
-                    {"id": "workflow:type", "name": "type", "type": "content"},
-                    {"id": "workflow:payload", "name": "payload", "type": "content"},
-                ],
-                "successors": {},
-                "data_inputs": {
-                    "workflow:type": [0, "type-out", None],
-                    "workflow:payload": [0, "payload-out", None],
-                },
-                "data_outputs": {},
-            },
-        ]
-
-        self.assertEqual(workflow_split_event(0, workflow_map), 1)
-        self.assertEqual(workflow_map[1]["data_inputs"]["workflow:type"][2], "response")
-        self.assertEqual(
-            workflow_map[1]["data_inputs"]["workflow:payload"][2],
-            '{"content":"hello"}',
-        )
 
     def test_deserialize_json_converts_content_and_list_content(self):
         workflow_map = [

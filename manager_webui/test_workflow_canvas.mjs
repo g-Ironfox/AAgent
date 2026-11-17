@@ -72,7 +72,6 @@ test('Struct and Struct-list connections use independent colors with legacy fall
 
 test('All supported node types have a specific thumbnail accent', () => {
   const expectedColors = {
-    construct_event: '#147d78',
     deserialize_json: '#61568a',
     map_content_get: '#326b4b',
     session_create: '#187b70',
@@ -86,7 +85,7 @@ test('All supported node types have a specific thumbnail accent', () => {
 });
 
 test('Built-in control and data connection colors match the workflow editor', () => {
-  const types = ['control', 'content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'];
+  const types = ['control', 'content', 'message', 'map-content', 'list-content', 'list-message'];
   const svg = workflowCanvasSvg({
     nodes: [{ id: 'source', type: 'input', x: 0, y: 0 }, { id: 'target', type: 'output', x: 300, y: 0 }],
     connections: types.map((type, index) => ({
@@ -97,7 +96,7 @@ test('Built-in control and data connection colors match the workflow editor', ()
   const colors = [...svg.matchAll(/<path d="[^"]+" fill="none" stroke="([^"]+)"/g)]
     .map((match) => match[1])
     .filter((color) => color !== '#dfe4df');
-  assert.deepEqual(colors, ['#13775a', '#356e9b', '#b75b18', '#147d78', '#46713f', '#d12f72', '#7a3e88', '#147d78']);
+  assert.deepEqual(colors, ['#13775a', '#356e9b', '#b75b18', '#46713f', '#d12f72', '#7a3e88']);
 });
 
 // Compare both SVG renderers with the editor's actual CSS to catch style drift.
@@ -130,7 +129,7 @@ for (const [surface, render] of [['manager', workflowCanvasSvg], ['workspace', w
   });
 
   test(`${surface}: connection colors, port colors and dash patterns match the editor CSS`, () => {
-    const types = ['control', 'content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event', 'struct:missing', 'list-struct:missing'];
+    const types = ['control', 'content', 'message', 'map-content', 'list-content', 'list-message', 'struct:missing', 'list-struct:missing'];
     for (const type of types) {
       const declarations = {
         ...editorDeclarations('.connection-path'),

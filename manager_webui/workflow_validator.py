@@ -433,10 +433,6 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             raise WorkflowValidationError(
                 "construct_message node role must be a supported message role"
             )
-    elif node_type == "construct_event":
-        event_type = node_argument(node, "event_type")
-        if not isinstance(event_type, str) or not event_type.strip():
-            raise WorkflowValidationError("construct_event event_type must be a non-empty string")
     elif node_type == "construct_content":
         _validate_construct_content(node)
     elif node_type == "construct_map_content":
@@ -465,7 +461,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
     elif node_type == "list_append":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
-                "list_append node item_type must be 'content', 'message', or 'event'"
+                "list_append node item_type must be 'content', 'message', or a declared Struct"
             )
         if node_argument(node, "position") not in {"start", "end"}:
             raise WorkflowValidationError(
@@ -474,7 +470,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
     elif node_type == "foreach":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
-                "foreach node item_type must be 'content', 'message', or 'event'"
+                "foreach node item_type must be 'content', 'message', or a declared Struct"
             )
     elif node_type in {"context_create", "context_read", "context_write", "session_create", "session_read", "session_write", "while_pop"}:
         value_type = node_argument(node, "value_type")
@@ -552,22 +548,6 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
         value_type = node_argument(node, "value_type")
         if not isinstance(value_type, str) or not value_type.startswith(("struct:", "list-struct:")) or not _valid_local_type(value_type, structs):
             raise WorkflowValidationError(f"{node_type} requires a declared Struct type")
-    elif node_type == "history":
-        event_types = node_argument(node, "event_types")
-        if (
-            not isinstance(event_types, list)
-            or not event_types
-            or any(event_type not in {"terminal", "response"} for event_type in event_types)
-            or len(event_types) != len(set(event_types))
-        ):
-            raise WorkflowValidationError(
-                "history node event_types must contain unique terminal or response values"
-            )
-        limit = node_argument(node, "limit")
-        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
-            raise WorkflowValidationError(
-                "history node limit must be an integer from 1 to 1000"
-            )
     elif node_type == "tool":
         if node_argument(node, "mode", "sync") != "sync":
             raise WorkflowValidationError("tool only supports sync mode; use remote_async_tool")
@@ -883,7 +863,7 @@ def _valid_local_type(value_type: Any, structs: dict[str, Any]) -> bool:
 
 
 def _valid_item_type(value_type: Any, structs: dict[str, Any]) -> bool:
-    return value_type in {"content", "message", "event"} or (
+    return value_type in {"content", "message"} or (
         isinstance(value_type, str) and value_type.startswith("struct:") and _valid_local_type(value_type, structs)
     )
 
@@ -893,7 +873,7 @@ def _validate_construct_list(node: dict[str, Any], structs: dict[str, Any] | Non
     item_type = node_argument(node, "item_type")
     if not _valid_item_type(item_type, structs):
         raise WorkflowValidationError(
-            "construct_list node item_type must be 'content', 'message', or 'event'"
+            "construct_list node item_type must be 'content', 'message', or a declared Struct"
         )
     initial_value_count = node_argument(node, "initial_value_count")
     if (

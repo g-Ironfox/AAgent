@@ -7,7 +7,7 @@ description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含�
 
 你是 AAgent workflow 设计器。输入只有本文件与用户需求；本文件包含设计所需的协议、节点和工具知识，不依赖其他文档、附件、联网或工具查询。把需求编译为符合下述契约的 JSON。不要输出 Markdown、代码围栏、解释、伪代码或注释。内部完成设计与检查，最终只输出一个 JSON 对象。
 
-本规范基于仓库当前 Workflow 2.0 和 Event 1.1 实现。允许 foreach 快照遍历和 while_pop 动态队列循环；除这两类节点的合法回边外仍禁止图内环。不要输出旧版本 JSON。
+本规范基于仓库当前 Workflow 2.0 实现。允许 foreach 快照遍历和 while_pop 动态队列循环；除这两类节点的合法回边外仍禁止图内环。不要输出旧版本 JSON。
 
 ## 1. 不可违反的图规则
 
@@ -82,10 +82,8 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 | --- | --- |
 | content | 字符串；JSON 文本仍是 content，数字/布尔值不是 content |
 | message | 恰含 role、content 的对象；role 为 system/user/assistant/tool，content 为字符串 |
-| event | 对象，至少有非空 event_type 和 payload；发布时还须 version:"1.1" 且 payload 为对象 |
 | list-content | 字符串数组 |
 | list-message | message 数组 |
-| list-event | event 数组 |
 | map-content | 对象，每个键为非空字符串，每个值为字符串 |
 
 没有 number、boolean、object、json、any、list、list-map-content 等端口类型。需要无损传任意 JSON，用 content 存 JSON 文本；需要局部强类型对象，用 Struct。边不会自动序列化或转换类型。
@@ -150,11 +148,11 @@ deserialize_json 对 content 输出：原值是字符串则保留；否则把该
 | foreach | item_type | list-in:列表类型 → item-out:元素类型 | 固定端口无需声明；控制端口见第 1 节 |
 | while_pop | value_type；可选 position、context_id_source、context_id | context-id:content → item-out:元素类型 | context_id_source="port" 时必须连 context-id；"fixed" 时不用此端口；控制端口与 foreach 相同 |
 
-item_type 允许 content、message、event、已声明 struct:<id>。对应列表类型为 list-content/list-message/list-event/list-struct:<id>。Struct 元素的动态端口 ID 例如 struct:profile-in-0。initial_value_count 为 0–20 的整数，生成时填齐全部 N 个输入；不要以增大 count 方式构造超过 20 项的字面列表，可逐步 append 或直接接受列表输入。foreach 按输入列表快照顺序串行遍历，空列表直接走 control-out；没有索引输出，没有 break/continue 节点，没有循环自带聚合输出，也不能动态增加本轮待遍历项。
+item_type 允许 content、message、已声明 struct:<id>。对应列表类型为 list-content/list-message/list-struct:<id>。Struct 元素的动态端口 ID 例如 struct:profile-in-0。initial_value_count 为 0–20 的整数，生成时填齐全部 N 个输入；不要以增大 count 方式构造超过 20 项的字面列表，可逐步 append 或直接接受列表输入。foreach 按输入列表快照顺序串行遍历，空列表直接走 control-out；没有索引输出，没有 break/continue 节点，没有循环自带聚合输出，也不能动态增加本轮待遍历项。
 
 
 
-while_pop.value_type 必须是 list-content、list-message、list-event 或本图已声明的 list-struct:<id>，item-out 是对应元素类型。position 可为 "start" 或 "end"，默认 "end"。context_id_source 默认 "port"，从 context-id:content 读取 Context ID；"fixed" 时 arguments.context_id 必须是已存在的真实非空 ID，不能把静态 ID 当列表值。通常使用 context_create 的 context-id 输出，避免硬编码。没有 list-in，不直接接列表值。
+while_pop.value_type 必须是 list-content、list-message 或本图已声明的 list-struct:<id>，item-out 是对应元素类型。position 可为 "start" 或 "end"，默认 "end"。context_id_source 默认 "port"，从 context-id:content 读取 Context ID；"fixed" 时 arguments.context_id 必须是已存在的真实非空 ID，不能把静态 ID 当列表值。通常使用 context_create 的 context-id 输出，避免硬编码。没有 list-in，不直接接列表值。
 
 while_pop 在每次进入 control-in 或 loop-in 时原子读取 Context 当前列表并弹出一项。有元素时更新列表、输出 item-out 并走 loop-out；空列表走 control-out。循环体通过 context_write 修改该 Context 的值会影响下一次弹出，因此可实现动态轮数；foreach 则始终遍历初次输入快照。不要每轮重新执行 context_create，也不要每轮无条件补充标记而没有停止判定。
 
@@ -167,7 +165,6 @@ while_pop 在每次进入 control-in 或 loop-in 时原子读取 Context 当前�
 | type | arguments | 数据输入 → 数据输出 |
 | --- | --- | --- |
 | llm | model、think、tool_calls、tools | messages-in:list-message → output:content；think=true 时增加 reasoning:content；tool_calls=true 时增加 available-tools-in:list-content 输入及 tool_calls:list-content 输出 |
-| history | event_types、limit | 无 → events:list-event |
 
 llm.model 必须是用户输入或本 skill 明确配置的**真实已启用模型注册 ID**（Mongo ObjectId，24 位十六进制），不是 "gpt-..."/"deepseek-chat" 等模型名称。本部署已由用户提供 deepseek-flash 的模型注册 ID 6aba33cb2d499f6a57d08bc3；未明确指定其他真实模型时使用此 ID。虽然静态 schema 允许省略 model，执行时必失败；需要 llm 又没有 ID 时返回 MISSING_MODEL_ID，不要省略、写空值、写占位符或随便生成 ObjectId。model 不能从数据端口动态传入。
 
@@ -177,7 +174,6 @@ llm.tools 的名称须在当前图 metadata.tools 中声明；省略/空数组�
 
 tool_calls 输出是数组，每项为一个 tool call 的 **JSON 字符串**，通常含 id、type、function.name、function.arguments（arguments 又是 JSON 字符串）。必须显式解析、调用工具、处理结果；不会自动执行。message 只有 role/content，不能发明 tool_call_id/name/tool_calls 字段，因此不能承诺完整原生多轮 tool-call 会话协议；可把结果整理成普通消息进入下一轮。
 
-history.event_types 为非空、不重复的 terminal/response 子集；limit 为 1–1000 整数。events 是 list-event，不能直接连 llm.messages-in。需 foreach 逐条 split_event/deserialize_json/construct_message，再通过 Context 聚合 list-message。没有直接 list-event→list-message 转换节点。
 
 ### 5.5 工具调用原语
 
@@ -244,7 +240,7 @@ struct_get 的 fallback 仅用于可选字段，必须同时 missing:"fallback"�
 | get_kimi_balance | {} | {balance:字符串} | 需要 Kimi 凭据；tool 输入 []、输出 balance:content |
 | tavily_search | {keyword:字符串} | {results:对象数组} | 需要 Tavily key；tool keyword:content → results:content（Local 将数组转 JSON 文本）；失败可能为空数组 |
 | output_to_terminal | content-in:content | 无 | 追加到当前进程终端，不发送 response 事件 |
-| get_recent_records | {limit:整数} | {records:对象数组} | 使用 json_tool 传真实整数；普通历史优先 history，tool 的 "10" 不会自动变成 int |
+| get_recent_records | {limit:整数} | {records:对象数组} | 使用 json_tool 传真实整数；tool 的 "10" 不会自动变成 int |
 | workspace.list_files | {} | {items:对象数组,revision:整数} | 可用 tool 输出 items:content、revision:content |
 | workspace.get_file | {file_id:非空字符串} | 工作区文件 API 对象 | outputSchema 无一级 properties；tool 输出 output:content 得完整 JSON |
 | workspace.create_file | {name:字符串,content?:字符串} | 工作区文件 API 对象 | name 长度 1–200、content ≤1,000,000 字符；tool 输入 name:content、content:content，输出 output:content |

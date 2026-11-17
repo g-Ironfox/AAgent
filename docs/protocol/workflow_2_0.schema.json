@@ -137,7 +137,7 @@
         },
         "type": {
           "type": "string",
-          "pattern": "^(content|message|event|list-content|list-message|list-event|map-content|struct:[A-Za-z_][A-Za-z0-9_]*|list-struct:[A-Za-z_][A-Za-z0-9_]*)$"
+          "pattern": "^(content|message|list-content|list-message|map-content|struct:[A-Za-z_][A-Za-z0-9_]*|list-struct:[A-Za-z_][A-Za-z0-9_]*)$"
         }
       },
       "additionalProperties": false
@@ -241,15 +241,12 @@
             "construct_content",
             "construct_map_content",
             "map_content_get",
-            "split_event",
-            "construct_event",
             "output_to_terminal",
             "deserialize_json",
             "construct_list",
             "list_append",
             "foreach",
             "while_pop",
-            "history",
             "llm",
             "local_tool",
             "remote_sync_tool",
@@ -441,11 +438,9 @@
                         "enum": [
                           "content",
                           "message",
-                          "event",
                           "map-content",
                           "list-content",
-                          "list-message",
-                          "list-event"
+                          "list-message"
                         ]
                       },
                       {
@@ -488,11 +483,9 @@
                       "enum": [
                         "content",
                         "message",
-                        "event",
                         "map-content",
                         "list-content",
-                        "list-message",
-                        "list-event"
+                        "list-message"
                       ]
                     }
                   }
@@ -603,8 +596,7 @@
                       {
                         "enum": [
                           "list-content",
-                          "list-message",
-                          "list-event"
+                          "list-message"
                         ]
                       },
                       {
@@ -694,10 +686,8 @@
                 "control",
                 "content",
                 "message",
-                "event",
                 "list-content",
                 "list-message",
-                "list-event",
                 "map-content"
               ]
             },
@@ -764,11 +754,9 @@
             "enum": [
               "content",
               "message",
-              "event",
               "map-content",
               "list-content",
-              "list-message",
-              "list-event"
+              "list-message"
             ]
           }
         },

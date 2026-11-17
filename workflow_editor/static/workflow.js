@@ -412,7 +412,7 @@ function renderStructDefinitions() {
 
       const type = document.createElement('select');
       type.setAttribute('aria-label', `${field.name} 字段类型`);
-      for (const builtin of ['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event']) {
+      for (const builtin of ['content', 'message', 'map-content', 'list-content', 'list-message']) {
         type.add(new Option(builtin, builtin));
       }
       for (const target of structDraft) {

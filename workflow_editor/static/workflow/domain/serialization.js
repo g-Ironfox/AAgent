@@ -27,14 +27,11 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   json_to_struct: new Set(['value_type']),
   map_content_get: new Set(),
   deserialize_json: new Set(['outputs']),
-  split_event: new Set(),
   output_to_terminal: new Set(),
-  construct_event: new Set(['event_type']),
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),
   while_pop: new Set(['value_type', 'position', 'context_id_source', 'context_id']),
-  history: new Set(['event_types', 'limit']),
   llm: new Set(['model', 'think', 'tool_calls', 'tools']),
   tool: new Set(['tool', 'parameters', 'outputs', 'mode', 'timeout_ms', 'callback']),
   local_tool: new Set(['tool', 'parameters']),
@@ -132,7 +129,7 @@ export const state = {
   metadata: { structs: [], tools: [] },
   nodes: structuredClone(initialNodes),
   connections: structuredClone(initialConnections),
-  input_ports: [{ name: 'origin', type: 'event' }],
+  input_ports: [],
   output_ports: [],
   workflow_nodes: [],
 };
@@ -178,7 +175,7 @@ export function resetWorkflow() {
     name: 'workflow',
     description: '',
     metadata: { structs: [], tools: [] },
-    input_ports: [{ name: 'origin', type: 'event' }],
+    input_ports: [],
     output_ports: [],
     workflow_nodes: [],
       nodes: initialNodes,
@@ -350,38 +347,35 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
         || !output.key
         || output.key === 'control-out'
         || outputKeys.has(output.key)
-        || !['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(output.type)
+        || !['content', 'message', 'map-content', 'list-content', 'list-message'].includes(output.type)
       ) return null;
       outputKeys.add(output.key);
       normalized.outputs.push({ key: output.key, type: output.type });
     }
   }
+  if (['construct_list', 'list_append', 'foreach'].includes(node.type) && node.item_type !== undefined
+    && !['content', 'message'].includes(node.item_type)
+    && !(/^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')
+      && structs.some((item) => item.id === node.item_type.slice('struct:'.length)))) return null;
   if (node.type === 'construct_list') {
-    normalized.item_type = (['content', 'message', 'event'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
+    normalized.item_type = (['content', 'message'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
     normalized.initial_value_count = Number.isInteger(node.initial_value_count) ? Math.min(20, Math.max(0, node.initial_value_count)) : 1;
     normalized.dataInputPorts = Array.from({ length: normalized.initial_value_count }, (_, index) => `${normalized.item_type}-in-${index}`);
   }
   if (node.type === 'list_append') {
-    normalized.item_type = (['content', 'message', 'event'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
+    normalized.item_type = (['content', 'message'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
     normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
-  if (node.type === 'foreach') normalized.item_type = (['content', 'message', 'event'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
-  if (node.type === 'history') {
-    normalized.event_types = Array.isArray(node.event_types)
-      ? [...new Set(node.event_types.filter((eventType) => ['terminal', 'response'].includes(eventType)))]
-      : [];
-    if (!normalized.event_types.length) return null;
-    normalized.limit = Number.isInteger(node.limit) ? Math.min(1000, Math.max(1, node.limit)) : 10;
-  }
+  if (node.type === 'foreach') normalized.item_type = (['content', 'message'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
   if (node.type === 'while_pop') {
-    if (!['list-content', 'list-message', 'list-event'].includes(node.value_type)
+    if (!['list-content', 'list-message'].includes(node.value_type)
       && !(/^list-struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.slice('list-struct:'.length)))) return null;
     normalized.value_type = node.value_type;
     normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) {
-    if (!['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(node.value_type)
+    if (!['content', 'message', 'map-content', 'list-content', 'list-message'].includes(node.value_type)
       && !((node.type.startsWith('context_')) && /^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.replace(/^list-/, '').slice('struct:'.length)))) return null;
     normalized.value_type = node.value_type;
@@ -431,7 +425,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
           || !parameter.name
           || parameter.name === 'control-in'
           || parameterNames.has(parameter.name)
-          || !['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(parameter.type)
+          || !['content', 'message', 'map-content', 'list-content', 'list-message'].includes(parameter.type)
         ) return null;
         parameterNames.add(parameter.name);
         normalized.parameters.push({ name: parameter.name, type: parameter.type });
@@ -450,7 +444,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
             || !output.name
             || output.name === 'control-out'
             || outputNames.has(output.name)
-            || !['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event'].includes(output.type)
+            || !['content', 'message', 'map-content', 'list-content', 'list-message'].includes(output.type)
           ) return null;
           outputNames.add(output.name);
           normalized.outputs.push({ name: output.name, type: output.type });
@@ -526,6 +520,17 @@ export function loadSnapshot(saved, metadata = null) {
     if (typeof workflowName !== 'string' || !workflowName.trim()) return false;
     const inputPorts = boundaryPorts(metadata?.input_ports ?? saved?.input_ports);
     const outputPorts = boundaryPorts(metadata?.output_ports ?? saved?.output_ports);
+    if (inputPorts.length !== (metadata?.input_ports ?? saved?.input_ports ?? []).length
+      || outputPorts.length !== (metadata?.output_ports ?? saved?.output_ports ?? []).length) return false;
+    for (const item of [...(saved.workflow_nodes || []), ...(saved.remote_tools || []), ...savedNodes]) {
+      for (const field of ['input_ports', 'output_ports', 'workflowPorts']) {
+        if (item[field] !== undefined && (!Array.isArray(item[field])
+          || item[field].some((port) => !port || !DATA_TYPES.has(port.type)))) return false;
+      }
+    }
+    if ((saved.connections || []).some((connection) => connection
+      && connection.type !== 'control' && !DATA_TYPES.has(connection.type)
+      && !/^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(connection.type || ''))) return false;
     const structDefinitions = validateStructDefinitions(saved?.metadata?.structs ?? []);
     const workflowNodes = callableWorkflowMetadata(saved);
     const callableWorkflows = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));

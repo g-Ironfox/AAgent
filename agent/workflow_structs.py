@@ -113,8 +113,6 @@ def _builtin(t: str, v: Any) -> bool:
     if t == "list-content": return isinstance(v, list) and all(isinstance(x, str) for x in v)
     if t == "message": return _message(v)
     if t == "list-message": return isinstance(v, list) and all(_message(x) for x in v)
-    if t == "event": return isinstance(v, dict) and isinstance(v.get("event_type"), str) and bool(v["event_type"]) and "payload" in v
-    if t == "list-event": return isinstance(v, list) and all(_builtin("event", x) for x in v)
     if t == "map-content": return isinstance(v, dict) and all(isinstance(k, str) and bool(k) and isinstance(x, str) for k, x in v.items())
     return False
 

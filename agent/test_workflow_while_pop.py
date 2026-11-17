@@ -54,7 +54,7 @@ def mock_pipeline(stored):
 
 class WhilePopValidationTest(unittest.TestCase):
     def test_valid_lists_and_defaults(self):
-        for kind in ("list-content", "list-message", "list-event"):
+        for kind in ("list-content", "list-message"):
             for position in (None, "start", "end"):
                 for fixed in (False, True):
                     with self.subTest(kind=kind, position=position, fixed=fixed):
@@ -214,9 +214,8 @@ class WhilePopExecutionTest(unittest.TestCase):
     def test_next_iteration_observes_changes_from_body(self):
         self.assertEqual(self.execute(["a", "b"], append_during_body=True), ["b", "new", "a"])
 
-    def test_message_and_event_items(self):
-        for kind, values in (("list-message", [{"role": "user", "content": "one"}, {"role": "assistant", "content": "two"}]),
-                             ("list-event", [{"event_type": "one", "payload": {}}, {"event_type": "two", "payload": {}}])):
+    def test_message_items(self):
+        for kind, values in (("list-message", [{"role": "user", "content": "one"}, {"role": "assistant", "content": "two"}]),):
             with self.subTest(kind=kind):
                 self.assertEqual(self.execute(values, kind=kind), values[::-1])
 

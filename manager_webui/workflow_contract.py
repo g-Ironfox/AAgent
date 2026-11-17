@@ -8,10 +8,8 @@ from typing import Any
 DATA_CONNECTION_TYPES = {
     "content",
     "message",
-    "event",
     "list-content",
     "list-message",
-    "list-event",
     "map-content",
 }
 SUPPORTED_NODE_TYPES = {
@@ -27,15 +25,12 @@ SUPPORTED_NODE_TYPES = {
     "struct_to_json",
     "json_to_struct",
     "map_content_get",
-    "split_event",
-    "construct_event",
     "output_to_terminal",
     "deserialize_json",
     "construct_list",
     "list_append",
     "foreach",
     "while_pop",
-    "history",
     "llm",
     "tool",
     "json_tool",
@@ -71,15 +66,12 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "struct_to_json": {"value_type"},
     "json_to_struct": {"value_type"},
     "map_content_get": set(),
-    "split_event": set(),
-    "construct_event": {"event_type"},
     "output_to_terminal": set(),
     "deserialize_json": {"outputs"},
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
     "foreach": {"item_type"},
     "while_pop": {"value_type", "position", "context_id_source", "context_id"},
-    "history": {"event_types", "limit"},
     "llm": {"model", "think", "tool_calls", "tools"},
     "tool": {"tool", "parameters", "outputs", "mode", "timeout_ms", "callback"},
     "json_tool": set(),
@@ -220,12 +212,8 @@ def data_ports_for_node(
         return declared_inputs | ({"value-in"} if node_type == "struct_to_json" else {"content-in"}), {"content-out" if node_type == "struct_to_json" else "value-out"}
     if node_type == "map_content_get":
         return declared_inputs | {"map-in", "key-in"}, {"content-out"}
-    if node_type == "split_event":
-        return declared_inputs | {"event-in"}, {"type-out", "payload-out"}
     if node_type == "output_to_terminal":
         return declared_inputs | {"content-in"}, set()
-    if node_type == "construct_event":
-        return {"payload-in"}, {"event-out"}
     if node_type == "deserialize_json":
         return {"content-in"}, {
             output["key"] for output in node_argument(node, "outputs", [])
@@ -239,8 +227,6 @@ def data_ports_for_node(
     if node_type == "while_pop":
         id_inputs = {"context-id"} if node_argument(node, "context_id_source", "port") == "port" else set()
         return id_inputs, {"item-out"}
-    if node_type == "history":
-        return declared_inputs, {"events"}
     if node_type == "tool":
         outputs = {output["name"] for output in node_argument(node, "outputs", [])}
         return declared_inputs | set(tool_parameter_names(node)), outputs
@@ -405,19 +391,8 @@ def connection_validation_error(
             expected_type = "content" if from_port in {"context-id", "session-id"} else node_argument(source_node, "value_type")
             if connection_type != expected_type:
                 return f"context/session output {from_port} requires {expected_type} data"
-        if source_node["type"] == "history" and (from_port != "events" or connection_type != "list-event"):
-            return "history events output requires list-event data"
-        if target_node["type"] == "split_event" and (to_port != "event-in" or connection_type != "event"):
-            return "split_event event-in requires event data"
         if target_node["type"] == "output_to_terminal" and connection_type != "content":
             return "output_to_terminal content-in requires content data"
-        if source_node["type"] == "split_event":
-            if from_port not in {"type-out", "payload-out"} or connection_type != "content":
-                return "split_event output requires content data"
-        if target_node["type"] == "construct_event" and connection_type != "content":
-            return "construct_event payload-in requires content data"
-        if source_node["type"] == "construct_event" and connection_type != "event":
-            return "construct_event event-out requires event data"
         if target_node["type"] == "deserialize_json" and (
             to_port != "content-in" or connection_type != "content"
         ):

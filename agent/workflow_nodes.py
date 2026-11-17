@@ -442,44 +442,6 @@ def workflow_map_content_get(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
-def workflow_construct_event(current_id: int, workflow_map: WorkflowMap) -> int:
-    node = workflow_map[current_id]
-    event_type = node_argument(node, "event_type")
-    if not isinstance(event_type, str) or not event_type.strip():
-        raise ValueError(f"construct_event event_type is invalid: node {node.get('id')}")
-    has_payload, payload_content = read_workflow_input(node, "payload-in")
-    if not has_payload or not isinstance(payload_content, str):
-        raise ValueError(f"construct_event payload input must be content: node {node.get('id')}")
-    try:
-        payload = json.loads(payload_content)
-    except json.JSONDecodeError as error:
-        raise ValueError(f"construct_event payload is invalid JSON: node {node.get('id')}") from error
-    if not isinstance(payload, dict):
-        raise ValueError(f"construct_event payload must be an object: node {node.get('id')}")
-    propagate_workflow_output(
-        workflow_map,
-        node,
-        "event-out",
-        {"version": "1.1", "event_type": event_type, "payload": payload},
-    )
-    return next_successor(node)
-
-
-def workflow_split_event(current_id: int, workflow_map: WorkflowMap) -> int:
-    node = workflow_map[current_id]
-    has_event, event = read_workflow_input(node, "event-in")
-    if not has_event:
-        raise ValueError(f"split_event input is missing: node {node.get('id')}")
-    if not isinstance(event, dict):
-        raise ValueError(f"split_event input must be an event object: node {node.get('id')}")
-    event_type = event.get("event_type")
-    if not isinstance(event_type, str) or not event_type or "payload" not in event:
-        raise ValueError(f"split_event input contains an invalid event: node {node.get('id')}")
-    propagate_workflow_output(workflow_map, node, "type-out", event_type)
-    propagate_workflow_output(workflow_map, node, "payload-out", _json_content(event["payload"]))
-    return next_successor(node)
-
-
 def _json_content(value: Any) -> str:
     if isinstance(value, str):
         return value
@@ -495,15 +457,6 @@ def _is_message(value: Any) -> bool:
     )
 
 
-def _is_event(value: Any) -> bool:
-    return (
-        isinstance(value, dict)
-        and isinstance(value.get("event_type"), str)
-        and bool(value["event_type"])
-        and "payload" in value
-    )
-
-
 def _deserialize_json_value(value: Any, value_type: str) -> Any:
     if value_type == "content":
         return _json_content(value)
@@ -511,11 +464,7 @@ def _deserialize_json_value(value: Any, value_type: str) -> Any:
         return [_json_content(item) for item in value]
     if value_type == "message" and _is_message(value):
         return value
-    if value_type == "event" and _is_event(value):
-        return value
     if value_type == "list-message" and isinstance(value, list) and all(_is_message(item) for item in value):
-        return value
-    if value_type == "list-event" and isinstance(value, list) and all(_is_event(item) for item in value):
         return value
     if value_type == "map-content" and _is_map_content(value):
         return dict(value)
@@ -619,18 +568,6 @@ def workflow_while_pop(current_id: int, workflow_map: WorkflowMap) -> int:
         return next_successor(node)
     propagate_workflow_output(workflow_map, node, "item-out", item)
     return next_successor(node, "item")
-
-
-def workflow_history(current_id: int, workflow_map: WorkflowMap) -> int:
-    from history_repository import get_recent_history
-
-    node = workflow_map[current_id]
-    events = get_recent_history(
-        limit=node_argument(node, "limit"),
-        event_types=node_argument(node, "event_types"),
-    )
-    propagate_workflow_output(workflow_map, node, "events", events)
-    return next_successor(node)
 
 
 def workflow_router(current_id: int, workflow_map: WorkflowMap) -> int:
@@ -985,15 +922,12 @@ nodes_map: dict[str, NodeHandler] = {
     "struct_to_json": workflow_struct_to_json,
     "json_to_struct": workflow_json_to_struct,
     "map_content_get": workflow_map_content_get,
-    "construct_event": workflow_construct_event,
-    "split_event": workflow_split_event,
     "output_to_terminal": workflow_output_to_terminal,
     "deserialize_json": workflow_deserialize_json,
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,
     "foreach": workflow_foreach,
     "while_pop": workflow_while_pop,
-    "history": workflow_history,
     "llm": workflow_llm,
     "tool": workflow_tool,
     "json_tool": workflow_json_tool,
