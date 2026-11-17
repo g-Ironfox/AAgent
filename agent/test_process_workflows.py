@@ -226,6 +226,9 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(len(processes), 3)
         self.assertTrue(all(item["status"] == "blocked" for item in processes.values()))
         leaf = processes["Leaf"]
+        self.assertEqual(leaf["current_node_id"], 1)
+        self.assertEqual(leaf["control_port"], "next")
+        self.assertNotIn("next_node_id", leaf)
         self.assertEqual(leaf["root_process_id"], root["process_id"])
         self.assertEqual(leaf["ancestor_invocation_ids"], [root["process_id"], processes["Middle"]["process_id"]])
         self.assertEqual(len({item["terminal_process_id"] for item in processes.values()}), 3)
@@ -253,6 +256,8 @@ class ProcessWorkflowTest(unittest.TestCase):
         root = self.start(document("Root", "Middle.flow"), text=" ")
         self.drain()
         leaf = next(item for item in self.workflows() if item["workflow_name"] == "Leaf")
+        self.assertEqual(leaf["current_node_id"], 1)
+        self.assertEqual(leaf["control_port"], "next")
         self.send(leaf)
         with self.assertLogs("main", level="ERROR"):
             self.drain()
@@ -358,6 +363,23 @@ class ProcessWorkflowTest(unittest.TestCase):
             self.drain()
         self.assertEqual(main.read_process(root["process_id"])["status"], "failed")
         self.assertFalse(self.redis.lists[r.READY_PROCESSES])
+
+    def test_process_cursor_resolves_successors_from_the_selected_control_port(self):
+        workflow = [
+            {"type": "router", "data_inputs": {"content-in": [None, "content", "yes"]},
+             "successors": {"branch-yes": 1, "branch$others": 2}},
+            {"type": "output"}, {"type": "output"},
+        ]
+        self.assertEqual(main._next_process_node(
+            {"current_node_id": -1, "control_port": None},
+            [{"type": "input"}, *workflow],
+        ), 0)
+        from workflow_nodes import execute_node
+        execute_node(0, workflow)
+        process = {"current_node_id": 0, "control_port": workflow[0]["_selected_control_port"]}
+        self.assertEqual(process["control_port"], "branch-yes")
+        self.assertEqual(main._next_process_node(process, workflow), 1)
+        self.assertNotIn("next_node_id", process)
 
     def test_wait_node_requires_scheduler_and_process_terminal(self):
         node = {"id": "wait", "type": "wait_terminal_event", "successors": {"next": 1}}

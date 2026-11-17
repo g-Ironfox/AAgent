@@ -7,6 +7,8 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from workflow_contract import is_number_value
 from uuid import uuid4
 
 from pymongo import MongoClient
@@ -15,6 +17,7 @@ from pymongo.errors import PyMongoError
 
 SESSION_VALUE_TYPES = {
     "content",
+    "number",
     "message",
     "list-content",
     "list-message",
@@ -41,6 +44,8 @@ def _is_message(value: Any) -> bool:
 
 
 def valid_value(value_type: str, value: Any) -> bool:
+    if value_type == "number":
+        return is_number_value(value)
     if value_type == "content":
         return isinstance(value, str)
     if value_type == "message":

@@ -34,6 +34,31 @@ class SessionApiTest(unittest.TestCase):
                 self.assertIsInstance(response, JSONResponse)
                 self.assertEqual(response.status_code, 400)
 
+    def test_numeric_sessions_keep_their_type_and_reject_invalid_numbers(self):
+        for value in (0, -12, 1.25):
+            with self.subTest(value=value):
+                created = self.routes["POST", "/api/sessions"](
+                    SessionValueRequest(value_type="number", value=value)
+                )
+                self.assertEqual(created["value"], value)
+                self.assertIs(type(created["value"]), type(value))
+                self.collection.find_one_and_update.return_value = {
+                    "_id": self.session_id, "value_type": "number", "value": value,
+                    "created_at": self.updated, "updated_at": self.updated,
+                }
+                updated = self.routes["PUT", "/api/sessions/{session_id}"](
+                    self.session_id, SessionValueRequest(value_type="number", value=value, updated_at=self.updated)
+                )
+                self.assertEqual(updated["value"], value)
+                self.assertIs(type(updated["value"]), type(value))
+        for value in (True, False, None, "12", [], {}, float("nan"), float("inf")):
+            with self.subTest(value=value):
+                response = self.routes["POST", "/api/sessions"](
+                    SessionValueRequest(value_type="number", value=value)
+                )
+                self.assertIsInstance(response, JSONResponse)
+                self.assertEqual(response.status_code, 400)
+
     def test_update_detects_concurrent_write(self):
         self.collection.find_one_and_update.return_value = None
         self.collection.find_one.return_value = {"_id": self.session_id}

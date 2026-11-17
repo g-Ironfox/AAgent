@@ -2,7 +2,9 @@ import { DATA_TYPES } from './node-contract.js';
 
 export function toolFromSchema(schema, kind) {
   const workflowType = (value) => DATA_TYPES.has(value?.['x-workflow-port-type'])
-    ? value['x-workflow-port-type'] : value?.type === 'array' ? 'list-content' : 'content';
+    ? value['x-workflow-port-type']
+    : ['number', 'integer'].includes(value?.type) ? 'number'
+      : value?.type === 'array' ? 'list-content' : 'content';
   const ports = (value, fallback = null) => {
     if (!value || typeof value !== 'object') return [];
     if (value.properties && typeof value.properties === 'object') {
@@ -13,7 +15,9 @@ export function toolFromSchema(schema, kind) {
   return {
     name: schema.name, kind,
     input_ports: kind === 'local'
-      ? Object.keys(schema.inputSchema?.properties || {}).map((name) => ({ name, type: 'content' }))
+      ? Object.entries(schema.inputSchema?.properties || {}).map(([name, item]) => ({
+        name, type: workflowType(item) === 'number' ? 'number' : 'content',
+      }))
       : ports(schema.inputSchema),
     output_ports: kind === 'local'
       ? schema.outputSchema ? ports(schema.outputSchema, 'output') : [{ name: 'output', type: 'content' }]

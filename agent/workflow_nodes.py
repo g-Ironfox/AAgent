@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
-from workflow_contract import node_argument, tool_parameter_names
+from workflow_contract import is_number_value, node_argument, tool_parameter_names, tool_parameter_type
 
 
 WorkflowMap = list[dict[str, Any]]
@@ -21,7 +21,6 @@ WorkflowMap = list[dict[str, Any]]
 class WorkflowStep:
     """A node's durable scheduling request, committed by the process executor."""
 
-    next_node_id: int
     wait_for: dict[str, str]
     child_process: dict[str, Any] | None = None
 
@@ -162,6 +161,7 @@ def next_successor(node: dict[str, Any], key: str = "next") -> int:
         raise ValueError(
             f"workflow successor is not connected: node {node.get('id')}, key {key}"
         )
+    node["_selected_control_port"] = key
     return successor
 
 
@@ -272,6 +272,7 @@ def run_workflow_map(
             node.pop("_workflow_invocation_id", None)
             node.pop("_workflow_ancestor_invocation_ids", None)
             node.pop("_workflow_context_ids", None)
+            node.pop("_selected_control_port", None)
 
 
 def workflow_input(current_id: int, workflow_map: WorkflowMap) -> int:
@@ -292,14 +293,26 @@ def workflow_output_to_terminal(current_id: int, workflow_map: WorkflowMap) -> i
     return next_successor(node)
 
 
+def workflow_read_terminal_input(current_id: int, workflow_map: WorkflowMap) -> int:
+    from terminal_repository import current_terminal_process_id, read_terminal_input
+
+    terminal_process_id = current_terminal_process_id.get()
+    if not terminal_process_id:
+        raise ValueError("read_terminal_input requires a process terminal")
+    node = workflow_map[current_id]
+    contents = read_terminal_input(terminal_process_id)
+    propagate_workflow_output(workflow_map, node, "list-out", contents)
+    return next_successor(node)
+
+
 def workflow_wait_terminal_event(current_id: int, workflow_map: WorkflowMap) -> WorkflowStep:
     from terminal_repository import current_terminal_process_id
 
     terminal_process_id = current_terminal_process_id.get()
     if not terminal_process_id:
         raise ValueError("wait_terminal_event requires a process terminal")
+    next_successor(workflow_map[current_id])
     return WorkflowStep(
-        next_successor(workflow_map[current_id]),
         {"kind": "terminal_message", "process_id": terminal_process_id},
     )
 
@@ -485,6 +498,8 @@ def _is_message(value: Any) -> bool:
 
 
 def _deserialize_json_value(value: Any, value_type: str) -> Any:
+    if value_type == "number" and is_number_value(value):
+        return value
     if value_type == "content":
         return _json_content(value)
     if value_type == "list-content" and isinstance(value, list):
@@ -540,6 +555,20 @@ def workflow_construct_list(current_id: int, workflow_map: WorkflowMap) -> int:
         if has_value:
             values.append(value)
     propagate_workflow_output(workflow_map, node, "list-out", values)
+    return next_successor(node)
+
+
+def workflow_list_length(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+
+    node = workflow_map[current_id]
+    has_list, input_list = read_workflow_input(node, "list-in")
+    if not has_list:
+        raise ValueError(f"list_length list input is missing: node {node.get('id')}")
+    if not isinstance(input_list, list):
+        raise ValueError(f"list_length input must be a list: node {node.get('id')}")
+    validate_value(node_argument(node, "value_type"), input_list, _struct_defs(node))
+    propagate_workflow_output(workflow_map, node, "length-out", len(input_list))
     return next_successor(node)
 
 
@@ -613,6 +642,8 @@ def _tool_arguments(node: dict[str, Any]) -> dict[str, Any]:
     for parameter in tool_parameter_names(node):
         has_value, value = read_workflow_input(node, parameter)
         if has_value:
+            if tool_parameter_type(node, parameter) == "number" and not is_number_value(value):
+                raise ValueError(f"tool parameter {parameter} must match number")
             arguments[parameter] = value
     return arguments
 
@@ -667,6 +698,8 @@ def workflow_local_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     for output in outputs:
         name = output["name"]
         value = values[name]
+        if output["type"] == "number" and not is_number_value(value):
+            raise ValueError(f"local tool output {name} must match number")
         if output["type"] == "content":
             value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
         elif output["type"] == "map-content" and not _is_map_content(value):
@@ -704,6 +737,8 @@ def workflow_remote_sync_tool(current_id: int, workflow_map: WorkflowMap) -> int
     result = _call_remote_node(node, "wait", "TOOL_CLIENT_DEFAULT_WAIT_MS", "10000")
     outputs = node_argument(node, "outputs", [])
     if len(outputs) == 1 and outputs[0]["name"] == "result":
+        if outputs[0]["type"] == "number" and not is_number_value(result):
+            raise ValueError("remote sync tool result must match number")
         if outputs[0]["type"] == "map-content" and not _is_map_content(result):
             raise ValueError("remote sync tool result must match map-content")
         propagate_workflow_output(workflow_map, node, "result", result)
@@ -713,6 +748,8 @@ def workflow_remote_sync_tool(current_id: int, workflow_map: WorkflowMap) -> int
             raise ValueError(f"remote sync tool result is missing outputs: {', '.join(missing)}")
         for output in outputs:
             value = result[output["name"]]
+            if output["type"] == "number" and not is_number_value(value):
+                raise ValueError(f"remote sync tool output {output['name']} must match number")
             if output["type"] == "map-content" and not _is_map_content(value):
                 raise ValueError(f"remote sync tool output {output['name']} must match map-content")
             propagate_workflow_output(workflow_map, node, output["name"], value)
@@ -936,11 +973,12 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int | Workf
                 process["invocation_id"],
             ],
             "workflow": json.dumps(child_map, ensure_ascii=False, allow_nan=False),
-            "current_node_id": child_input_id,
+            "current_node_id": WORKFLOW_END,
+            "control_port": None,
             "input": child_inputs,
         }
+        next_successor(parent_node)
         return WorkflowStep(
-            next_successor(parent_node),
             {"kind": "process_exit", "process_id": child_id},
             child,
         )
@@ -975,9 +1013,11 @@ nodes_map: dict[str, NodeHandler] = {
     "map_content_get": workflow_map_content_get,
     "output_to_terminal": workflow_output_to_terminal,
     "wait_terminal_event": workflow_wait_terminal_event,
+    "read_terminal_input": workflow_read_terminal_input,
     "deserialize_json": workflow_deserialize_json,
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,
+    "list_length": workflow_list_length,
     "foreach": workflow_foreach,
     "while_pop": workflow_while_pop,
     "llm": workflow_llm,

@@ -75,5 +75,6 @@ def build_workflow_process(document: dict, inputs: dict, file_id: str) -> dict:
         "call_stack": [document["name"]],
         "input": input_values,
         "workflow": json.dumps(workflow, ensure_ascii=False, allow_nan=False),
-        "current_node_id": start,
+        "current_node_id": -1,
+        "control_port": None,
     }

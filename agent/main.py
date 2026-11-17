@@ -346,6 +346,8 @@ def _resume_child_call(process: dict, workflow_map: list[dict]) -> None:
         validate_value(ports[name]['type'], value, node.get('_struct_definitions', {}))
         propagate_workflow_output(workflow_map, node, f'workflow:{name}', value)
     _finish_call_trace(process, 'completed')
+    process['current_node_id'] = pending['node_index']
+    process['control_port'] = 'next'
     process['pending_call'] = None
 
 
@@ -359,6 +361,24 @@ def _finish_call_trace(process: dict, status: str, error: str | None = None) -> 
     trace['elapsed_ms'] = round((now - _parse_start_time(trace['started_at'])).total_seconds() * 1000)
     if error:
         trace['error'] = error
+
+
+def _next_process_node(process: dict, workflow_map: list[dict]) -> int:
+    """Resolve the next node from the last completed node and selected port."""
+    completed_id = process['current_node_id']
+    if isinstance(completed_id, bool) or not isinstance(completed_id, int):
+        raise ValueError('invalid current_node_id')
+    if completed_id == WORKFLOW_END:
+        current_id = next((i for i, node in enumerate(workflow_map)
+                           if node.get('type') == 'input'), None)
+    elif 0 <= completed_id < len(workflow_map):
+        current_id = workflow_map[completed_id].get('successors', {}).get(process.get('control_port'))
+    else:
+        raise ValueError('invalid current_node_id')
+    if (isinstance(current_id, bool) or not isinstance(current_id, int)
+            or not 0 <= current_id < len(workflow_map)):
+        raise ValueError('invalid or disconnected workflow successor')
+    return current_id
 
 
 def Executor(process_id: str) -> dict:
@@ -390,9 +410,7 @@ def Executor(process_id: str) -> dict:
         if process['active_duration_ms'] > WORKFLOW_TIMEOUT_SECONDS * 1000:
             raise TimeoutError(f'workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds of active execution')
         _resume_child_call(process, workflow_map)
-        current_id = process['current_node_id']
-        if isinstance(current_id, bool) or not isinstance(current_id, int) or not 0 <= current_id < len(workflow_map):
-            raise ValueError(f'invalid current_node_id: {process_id}')
+        current_id = _next_process_node(process, workflow_map)
         for node in workflow_map:
             node['_workflow_invocation_id'] = process['invocation_id']
             node['_workflow_ancestor_invocation_ids'] = process['ancestor_invocation_ids']
@@ -414,7 +432,6 @@ def Executor(process_id: str) -> dict:
         process['status'] = 'ready'
         process['wait_for'] = None
         if isinstance(outcome, WorkflowStep):
-            process['current_node_id'] = outcome.next_node_id
             process['status'] = 'blocked'
             process['wait_for'] = outcome.wait_for
             child = outcome.child_process
@@ -426,8 +443,13 @@ def Executor(process_id: str) -> dict:
                     'trace_index': len(process['node_trace']),
                 }
                 trace.update(status='waiting', child_process_id=child['process_id'])
+            else:
+                # Waiting has no deferred output: this node completes before blocking.
+                process['current_node_id'] = current_id
+                process['control_port'] = node['_selected_control_port']
         else:
-            process['current_node_id'] = outcome
+            process['current_node_id'] = current_id
+            process['control_port'] = node.get('_selected_control_port')
             if outcome == WORKFLOW_END:
                 process.update(status='completed', result=node.pop('_workflow_result', {}))
     except Exception as error:
@@ -451,6 +473,7 @@ def Executor(process_id: str) -> dict:
                 node.pop('_workflow_invocation_id', None)
                 node.pop('_workflow_ancestor_invocation_ids', None)
                 node.pop('_workflow_context_ids', None)
+                node.pop('_selected_control_port', None)
         current_workflow_process.reset(process_token)
         current_persistent_invocation_id.reset(context_token)
     if isinstance(workflow_map, list):

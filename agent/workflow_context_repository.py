@@ -7,6 +7,8 @@ import os
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
+
+from workflow_contract import is_number_value
 from uuid import uuid4
 
 import redis
@@ -16,6 +18,7 @@ from queue_client import get_connection
 
 CONTEXT_VALUE_TYPES = {
     "content",
+    "number",
     "message",
     "list-content",
     "list-message",
@@ -44,6 +47,8 @@ def _valid_value(value_type: str, value: Any, struct_definitions: dict[str, Any]
             return True
         except ValueError:
             return False
+    if value_type == "number":
+        return is_number_value(value)
     if value_type == "content":
         return isinstance(value, str)
     if value_type == "message":

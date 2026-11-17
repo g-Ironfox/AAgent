@@ -458,6 +458,10 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             )
     elif node_type == "construct_list":
         _validate_construct_list(node, structs)
+    elif node_type == "list_length":
+        value_type = node_argument(node, "value_type")
+        if not isinstance(value_type, str) or not value_type.startswith("list-") or not _valid_item_type(value_type[5:], structs):
+            raise WorkflowValidationError("list_length value_type must be a supported list type")
     elif node_type == "list_append":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
@@ -675,8 +679,8 @@ def _validate_tool_metadata(workflow: dict[str, Any]) -> dict[str, dict[str, Any
             if any(port["name"] in {"control-in", "control-out"} for port in declaration[field]):
                 raise WorkflowValidationError("Tool ports cannot use reserved control port names")
         if declaration["kind"] == "local":
-            if any(port["type"] != "content" for port in declaration["input_ports"]):
-                raise WorkflowValidationError("local tool inputs must use content")
+            if any(port["type"] not in {"content", "number"} for port in declaration["input_ports"]):
+                raise WorkflowValidationError("local tool inputs must use content or number")
         tools[name] = declaration
     return tools
 

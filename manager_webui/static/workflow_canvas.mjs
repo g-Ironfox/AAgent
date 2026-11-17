@@ -18,8 +18,10 @@ const TYPE_COLORS = {
   deserialize_json: '#61568a',
   output_to_terminal: '#13775a',
   wait_terminal_event: '#13775a',
+  read_terminal_input: '#13775a',
   construct_list: '#176f73',
   list_append: '#27705b',
+  list_length: '#147d78',
   foreach: '#9a5a24',
   while_pop: '#9a5a24',
   tool: '#13775a',
@@ -39,6 +41,7 @@ const TYPE_COLORS = {
 const CONNECTION_COLORS = {
   control: '#13775a',
   content: '#356e9b',
+  number: '#147d78',
   message: '#b75b18',
   'map-content': '#46713f',
   'list-content': '#d12f72',
@@ -47,6 +50,7 @@ const CONNECTION_COLORS = {
 
 const CONNECTION_DASHES = {
   content: '5 5',
+  number: '9 3',
   message: '2 4',
   'list-content': '7 3',
   'list-message': '7 3',
@@ -131,6 +135,7 @@ function contractPortIds(node, direction, workflow) {
     const inputs = Array.from({ length: count }, (_, index) => `${args.item_type || 'content'}-in-${index}`);
     return direction === 'input' ? ['control-in', ...inputs] : ['control-out', 'list-out'];
   }
+  if (node.type === 'list_length') return direction === 'input' ? ['control-in', 'list-in'] : ['control-out', 'length-out'];
   if (node.type === 'list_append') return direction === 'input' ? ['control-in', 'list-in', 'item-in'] : ['control-out', 'list-out'];
   if (node.type === 'while_pop') return direction === 'input' ? ['control-in', 'loop-in', ...((node.arguments?.context_id_source || node.context_id_source || 'port') === 'port' ? ['context-id'] : [])] : ['control-out', 'loop-out', 'item-out'];
   if (node.type === 'foreach') return direction === 'input' ? ['control-in', 'loop-in', 'list-in'] : ['control-out', 'loop-out', 'item-out'];

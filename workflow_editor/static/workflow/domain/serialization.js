@@ -29,8 +29,10 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   deserialize_json: new Set(['outputs']),
   output_to_terminal: new Set(),
   wait_terminal_event: new Set(),
+  read_terminal_input: new Set(),
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
+  list_length: new Set(['value_type']),
   foreach: new Set(['item_type']),
   while_pop: new Set(['value_type', 'position', 'context_id_source', 'context_id']),
   llm: new Set(['model', 'think', 'tool_calls', 'tools']),
@@ -348,7 +350,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
         || !output.key
         || output.key === 'control-out'
         || outputKeys.has(output.key)
-        || !['content', 'message', 'map-content', 'list-content', 'list-message'].includes(output.type)
+        || !['content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(output.type)
       ) return null;
       outputKeys.add(output.key);
       normalized.outputs.push({ key: output.key, type: output.type });
@@ -368,15 +370,15 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
   if (node.type === 'foreach') normalized.item_type = (['content', 'message'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
-  if (node.type === 'while_pop') {
+  if (['while_pop', 'list_length'].includes(node.type)) {
     if (!['list-content', 'list-message'].includes(node.value_type)
       && !(/^list-struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.slice('list-struct:'.length)))) return null;
     normalized.value_type = node.value_type;
-    normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
+    if (node.type === 'while_pop') normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) {
-    if (!['content', 'message', 'map-content', 'list-content', 'list-message'].includes(node.value_type)
+    if (!['content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(node.value_type)
       && !((node.type.startsWith('context_')) && /^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.replace(/^list-/, '').slice('struct:'.length)))) return null;
     normalized.value_type = node.value_type;
@@ -426,7 +428,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
           || !parameter.name
           || parameter.name === 'control-in'
           || parameterNames.has(parameter.name)
-          || !['content', 'message', 'map-content', 'list-content', 'list-message'].includes(parameter.type)
+          || !['content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(parameter.type)
         ) return null;
         parameterNames.add(parameter.name);
         normalized.parameters.push({ name: parameter.name, type: parameter.type });
@@ -445,7 +447,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
             || !output.name
             || output.name === 'control-out'
             || outputNames.has(output.name)
-            || !['content', 'message', 'map-content', 'list-content', 'list-message'].includes(output.type)
+            || !['content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(output.type)
           ) return null;
           outputNames.add(output.name);
           normalized.outputs.push({ name: output.name, type: output.type });
@@ -545,7 +547,7 @@ export function loadSnapshot(saved, metadata = null) {
         if (!Array.isArray(tool[field]) || tool[field].some((port) => !port || typeof port.name !== 'string' || !port.name.trim() || ['control-in', 'control-out'].includes(port.name) || !DATA_TYPES.has(port.type))) return false;
         if (new Set(tool[field].map((port) => port.name.toLowerCase())).size !== tool[field].length) return false;
       }
-      if (tool.kind === 'local' && tool.input_ports.some((port) => port.type !== 'content')) return false;
+      if (tool.kind === 'local' && tool.input_ports.some((port) => !['content', 'number'].includes(port.type))) return false;
       remoteTools.push(structuredClone(tool));
     }
     const remoteToolsByName = new Map(remoteTools.map((tool) => [tool.name, tool]));

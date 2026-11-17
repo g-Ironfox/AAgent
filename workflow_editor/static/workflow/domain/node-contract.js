@@ -1,4 +1,4 @@
-export const DATA_TYPES = new Set(['content', 'message', 'map-content', 'list-content', 'list-message']);
+export const DATA_TYPES = new Set(['content', 'number', 'message', 'map-content', 'list-content', 'list-message']);
 
 export const NODE_TYPES = new Set([
   'input',
@@ -16,8 +16,10 @@ export const NODE_TYPES = new Set([
   'deserialize_json',
   'output_to_terminal',
   'wait_terminal_event',
+  'read_terminal_input',
   'construct_list',
   'list_append',
+  'list_length',
   'foreach',
   'while_pop',
   'llm',
@@ -192,6 +194,13 @@ export function portsForNode(node) {
       { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '查找到的 Content', multiple: true },
     ];
   }
+  if (node.type === 'read_terminal_input') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '读取终端用户输入', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '读取后继续', multiple: false },
+      { id: 'list-out', direction: 'output', type: 'list-content', label: '用户输入', title: '当前终端全部用户输入正文，按时间从早到晚', multiple: true },
+    ];
+  }
   if (node.type === 'wait_terminal_event') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '等待终端事件', multiple: false },
@@ -228,6 +237,14 @@ export function portsForNode(node) {
       ...itemPorts,
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: true },
+    ];
+  }
+  if (node.type === 'list_length') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '计算列表长度', multiple: false },
+      { id: 'list-in', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '列表', title: node.value_type, multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'length-out', direction: 'output', type: 'number', label: '长度', title: '列表元素个数', multiple: true },
     ];
   }
   if (node.type === 'list_append') {
@@ -415,9 +432,11 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   }
   if (type === 'map_content_get') return { id: createWorkflowId('map-content-get'), type, name: `Map 查找 ${number}`, ...position };
   if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
+  if (type === 'read_terminal_input') return { id: createWorkflowId('read-terminal-input'), type, name: `读取终端输入 ${number}`, ...position };
   if (type === 'wait_terminal_event') return { id: createWorkflowId('wait-terminal-event'), type, name: `等待终端事件 ${number}`, ...position };
   if (type === 'output_to_terminal') return { id: createWorkflowId('output-to-terminal'), type, name: `输出到终端 ${number}`, ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
+  if (type === 'list_length') return { id: createWorkflowId('list-length'), type, name: `列表长度 ${number}`, value_type: 'list-content', ...position };
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
   if (type === 'while_pop') return { id: createWorkflowId('while-pop'), type, name: `弹出 Context 列表 ${number}`, value_type: 'list-content', position: 'end', context_id_source: 'port', ...position };
   if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };

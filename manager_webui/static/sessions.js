@@ -21,6 +21,7 @@ let baseline = '';
 
 const roles = ['system', 'user', 'assistant', 'tool'];
 function initialValue(type) {
+  if (type === 'number') return 0;
   if (type === 'content') return '';
   if (type === 'map-content') return {};
   if (type.startsWith('list-')) return [];
@@ -45,6 +46,8 @@ function checkValue(type, value) {
 function checkItem(type, value, label) {
   if (type === 'content') {
     if (typeof value !== 'string') throw new Error(`${label}必须是文本`);
+  } else if (type === 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label}必须是有限数值`);
   } else if (type === 'message') {
     if (!value || Array.isArray(value) || typeof value !== 'object' ||
         Object.keys(value).sort().join(',') !== 'content,role' ||
@@ -74,6 +77,13 @@ function field(label, value, name, multiline = false) {
 function itemEditor(type, value) {
   const editor = document.createElement('div');
   editor.className = 'item-fields';
+  if (type === 'number') {
+    const wrapper = field('数值', value, 'number');
+    const input = wrapper.querySelector('input');
+    input.type = 'number';
+    input.step = 'any';
+    editor.append(wrapper);
+  }
   if (type === 'content') editor.append(field('内容', value, 'content', true));
   if (type === 'message') {
     const wrapper = document.createElement('label');
@@ -99,6 +109,7 @@ function itemEditor(type, value) {
 }
 function readItem(type, editor, label) {
   const get = (name) => editor.querySelector(`[data-field="${name}"]`).value;
+  if (type === 'number') return parseJson(get('number'), `${label}：`);
   if (type === 'content') return get('content');
   if (type === 'message') return { role: get('role'), content: get('content') };
   const payload = parseJson(get('payload'), `${label} payload：`);

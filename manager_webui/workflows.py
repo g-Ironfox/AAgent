@@ -37,7 +37,7 @@ class WorkflowPortMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=80)
-    type: Literal["content", "message", "map-content", "list-content", "list-message"]
+    type: Literal["content", "number", "message", "map-content", "list-content", "list-message"]
 
 
 class WorkflowRequest(BaseModel):

@@ -15,9 +15,11 @@ from pymongo import ReturnDocument
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
+from workflow_contract import is_number_value
+
 MAX_VALUE_BYTES = 1024 * 1024
 SESSION_ID_PATTERN = re.compile(r"^ses_[0-9a-f]{32}$")
-SESSION_VALUE_TYPES = {"content", "message", "event", "map-content", "list-content", "list-message", "list-event"}
+SESSION_VALUE_TYPES = {"content", "number", "message", "event", "map-content", "list-content", "list-message", "list-event"}
 
 
 def valid_value(value_type: str, value: Any) -> bool:
@@ -27,6 +29,8 @@ def valid_value(value_type: str, value: Any) -> bool:
     def event(item: Any) -> bool:
         return isinstance(item, dict) and isinstance(item.get("event_type"), str) and bool(item["event_type"]) and "payload" in item
 
+    if value_type == "number":
+        return is_number_value(value)
     if value_type == "content":
         return isinstance(value, str)
     if value_type == "message":

@@ -137,7 +137,7 @@
         },
         "type": {
           "type": "string",
-          "pattern": "^(content|message|list-content|list-message|map-content|struct:[A-Za-z_][A-Za-z0-9_]*|list-struct:[A-Za-z_][A-Za-z0-9_]*)$"
+          "pattern": "^(content|number|message|list-content|list-message|map-content|struct:[A-Za-z_][A-Za-z0-9_]*|list-struct:[A-Za-z_][A-Za-z0-9_]*)$"
         }
       },
       "additionalProperties": false
@@ -243,9 +243,11 @@
             "map_content_get",
             "output_to_terminal",
             "wait_terminal_event",
+            "read_terminal_input",
             "deserialize_json",
             "construct_list",
             "list_append",
+            "list_length",
             "foreach",
             "while_pop",
             "llm",
@@ -438,6 +440,7 @@
                       {
                         "enum": [
                           "content",
+                          "number",
                           "message",
                           "map-content",
                           "list-content",
@@ -470,7 +473,10 @@
               "properties": {
                 "type": {
                   "not": {
-                    "const": "while_pop"
+                    "enum": [
+                      "while_pop",
+                      "list_length"
+                    ]
                   }
                 }
               }
@@ -483,6 +489,7 @@
                     "value_type": {
                       "enum": [
                         "content",
+                        "number",
                         "message",
                         "map-content",
                         "list-content",
@@ -648,6 +655,48 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list_length"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content",
+                          "list-message"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
         }
       ]
     },
@@ -686,6 +735,7 @@
               "enum": [
                 "control",
                 "content",
+                "number",
                 "message",
                 "list-content",
                 "list-message",
@@ -754,6 +804,7 @@
           "type": {
             "enum": [
               "content",
+              "number",
               "message",
               "map-content",
               "list-content",

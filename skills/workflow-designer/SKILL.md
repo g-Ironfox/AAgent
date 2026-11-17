@@ -76,17 +76,18 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 
 ## 4. 类型、生命周期与状态
 
-七种公开数据类型：
+六种公开数据类型：
 
 | 类型 | 实际值 |
 | --- | --- |
 | content | 字符串；JSON 文本仍是 content，数字/布尔值不是 content |
+| number | 有限整数或浮点数；不接受 boolean、null、数字字符串及非有限值 |
 | message | 恰含 role、content 的对象；role 为 system/user/assistant/tool，content 为字符串 |
 | list-content | 字符串数组 |
 | list-message | message 数组 |
 | map-content | 对象，每个键为非空字符串，每个值为字符串 |
 
-没有 number、boolean、object、json、any、list、list-map-content 等端口类型。需要无损传任意 JSON，用 content 存 JSON 文本；需要局部强类型对象，用 Struct。边不会自动序列化或转换类型。
+number 是内建数值端口类型，支持有限整数和浮点数，可用于边界端口、Struct 字段、Tool、Context/Session 和 deserialize_json 输出；拒绝 boolean、null、数字字符串和非有限值，不会自动与 content 转换。没有 boolean、object、json、any、list、list-number、list-map-content 等端口类型。需要无损传任意 JSON，用 content 存 JSON 文本；需要局部强类型对象，用 Struct。边不会自动序列化或转换类型。
 
 生命周期：根图是一层；router 每个出口、json_tool 的成功/错误出口、foreach / while_pop 的 loop-out 分别产生子层；这两类循环的 control-out 留在父层。数据只能从同层或祖先层流向目标，禁止兄弟分支互传、子层传回父层。特别是 foreach / while_pop 的 item-out 仅在其体内可见；json_tool.result-json 只在成功链使用，error-json 只在错误链使用。
 
@@ -101,7 +102,7 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 
 Context 是本次 workflow invocation 的临时值槽，存于 Redis；默认 TTL 86400 秒、单值上限 1 MiB，可由部署调整。create 的 ID 省略时自动生成；显式 ID 必须非空白、尚不存在。ID 逐字符精确匹配，不能 trim。子 workflow 可以读写自身或祖先调用创建的 Context（显式传 ID），不能访问兄弟/无关执行创建的 Context。子调用退出仅清理自己创建的槽，祖先退出会清理祖先的槽。需要返回值时用正式输出接口，不返回子图自行创建的临时 Context ID。
 
-Session 是 MongoDB 中跨调用保留的状态，仅支持七种公开类型，ID 为 ses_ 加 32 位小写十六进制字符。通过 session_create 生成真实 ID，不手写假 ID；单值默认 1 MiB，完整替换式写入。事件触发的是新 invocation，不能带 Context ID 来维持跨事件状态，应使用 Session ID 或显式 payload。Session read+write 不是原子事务，不能据此承诺并发计数/去重。
+Session 是 MongoDB 中跨调用保留的状态，仅支持六种公开类型，ID 为 ses_ 加 32 位小写十六进制字符。通过 session_create 生成真实 ID，不手写假 ID；单值默认 1 MiB，完整替换式写入。事件触发的是新 invocation，不能带 Context ID 来维持跨事件状态，应使用 Session ID 或显式 payload。Session read+write 不是原子事务，不能据此承诺并发计数/去重。
 
 ## 5. 完整节点目录
 
@@ -114,6 +115,7 @@ Session 是 MongoDB 中跨调用保留的状态，仅支持七种公开类型，
 | input | 无 | 无 → workflow:<输入名> | 仅 control-out；数据来自创建进程的 inputs 或子图调用方 |
 | output_to_terminal | 无 | content-in:content → 无 | 写入当前进程终端，继续 control-out；需要进程终端上下文 |
 | wait_terminal_event | 无 | 无 → 无 | 挂起进程，当前终端收到消息后从 control-out 继续；根工作流和子工作流均支持 |
+| read_terminal_input | 无 | 无 → list-out:list-content | 读取当前进程终端全部用户输入正文，按时间升序；不删除历史，可接 Router 判断分支 |
 | output | 无 | workflow:<输出名> → 无 | 仅 control-in；收集非 None 的输入后结束当前图；生成时每条路径都填齐承诺的输出 |
 | router | branches:[{id,name}]，可为空 | content-in:content → 无 | 只有 control-in 和各分支 ID 输出，以及固定 branch$others；没有 control-out |
 | workflow | workflow_name:精确工作区文件名 | workflow:<输入名> → workflow:<输出名> | 创建子 workflow 进程并挂起父进程，子进程 output 返回后再走 control-out |
@@ -138,7 +140,7 @@ construct_map_content.mappings 固定项为 `{"key":"name","value":"字符串"}`
 
 deserialize_json 对 content 输出：原值是字符串则保留；否则把该值序列化成紧凑 JSON 文本。其他类型须与实际 JSON 值匹配。例：输入 `{"count":3,"nested":{"text":"hi"}}`，将 count、nested 均声明为 content，可得到字符串 "3" 和字符串 `{"text":"hi"}`；若想取 text，再接一个 deserialize_json，不能写 key="nested.text"。
 
-**安全生成 JSON 文本**：不要用 construct_content 拼接带任意用户文本的 JSON 字符串，这不处理引号、换行、反斜杠。优先声明一个 Struct → construct_struct → struct_to_json。需要任意动态 key 或 number/boolean 值而无适配工具时，不能声称原语有能力处理；可将已经编码的完整 JSON 对象文本作为输入并写明格式，或返回 UNSUPPORTED_REQUIREMENT。LLM 生成 JSON 不是确定性序列化器，且可能产生无法解析的输出。
+**安全生成 JSON 文本**：不要用 construct_content 拼接带任意用户文本的 JSON 字符串，这不处理引号、换行、反斜杠。优先声明一个 Struct → construct_struct → struct_to_json。number 值可通过 Struct 字段安全序列化。需要任意动态 key 或 boolean 值而无适配工具时，不能声称原语有能力处理；可将已经编码的完整 JSON 对象文本作为输入并写明格式，或返回 UNSUPPORTED_REQUIREMENT。LLM 生成 JSON 不是确定性序列化器，且可能产生无法解析的输出。
 
 ### 5.3 列表、foreach 与 while_pop
 
@@ -148,6 +150,8 @@ deserialize_json 对 content 输出：原值是字符串则保留；否则把该
 | list_append | item_type、position:"start"或"end" | list-in:列表类型、item-in:元素类型 → list-out:列表类型 | 固定端口无需声明；返回新列表，不修改上游列表 |
 | foreach | item_type | list-in:列表类型 → item-out:元素类型 | 固定端口无需声明；控制端口见第 1 节 |
 | while_pop | value_type；可选 position、context_id_source、context_id | context-id:content → item-out:元素类型 | context_id_source="port" 时必须连 context-id；"fixed" 时不用此端口；控制端口与 foreach 相同 |
+
+list_length 节点必须配置 arguments.value_type 为 list-content、list-message 或已声明的 list-struct:<id>。list-in 接收对应类型的列表，length-out 输出 number（元素个数，空列表为 0）；有 control-in/control-out，输入缺失或元素类型不匹配时报错，不修改原列表。
 
 item_type 允许 content、message、已声明 struct:<id>。对应列表类型为 list-content/list-message/list-struct:<id>。Struct 元素的动态端口 ID 例如 struct:profile-in-0。initial_value_count 为 0–20 的整数，生成时填齐全部 N 个输入；不要以增大 count 方式构造超过 20 项的字面列表，可逐步 append 或直接接受列表输入。foreach 按输入列表快照顺序串行遍历，空列表直接走 control-out；没有索引输出，没有 break/continue 节点，没有循环自带聚合输出，也不能动态增加本轮待遍历项。
 
@@ -184,9 +188,9 @@ tool_calls 输出是数组，每项为一个 tool call 的 **JSON 字符串**，
 | json_tool | 无 | tool-name:content、arguments-json:content → result-json:content、error-json:content | control-in；成功 control-out；错误 error-out；产生分支，禁止直接放 foreach / while_pop |
 | remote_async_tool | tool、parameters:port[]；可选 timeout_ms、callback | 参数同名端口 → task_id:content | 仅 Remote；没有 outputs/mode；立刻返回任务 ID，未得到最终结果 |
 
-metadata.tools 每项恰为 `{"name":"工具名","kind":"local或remote","input_ports":[...],"output_ports":[...]}`。去首尾空白、忽略大小写后名称全局唯一；每侧最多 50 端口，只允许七种公开类型，禁止控制端口名和 Struct。新图不用 legacy local_tool/remote_sync_tool。
+metadata.tools 每项恰为 `{"name":"工具名","kind":"local或remote","input_ports":[...],"output_ports":[...]}`。去首尾空白、忽略大小写后名称全局唯一；每侧最多 50 端口，只允许六种公开类型，禁止控制端口名和 Struct。新图不用 legacy local_tool/remote_sync_tool。
 
-tool 仅同步，mode 省略或 sync，callback 省略或 null。local 的所有输入类型必须是 content，但运行时不会自动把数字字符串变成 Python int，也不会把 "false" 变成 bool。local 的 content 输出会把非字符串结果 JSON 序列化；remote_sync 的 content 输出**不保证转换**，应直接使用真实字符串字段，不要将 Provider 返回的整数假标为 content。仅配置一个名为 result 的同步 Remote 输出时，运行器返回整个原始结果，不代表 content JSON 文本。
+tool 仅同步，mode 省略或 sync，callback 省略或 null。local 输入类型允许 content 和 number；数值 schema 自动映射为 number。运行时不会自动把数字字符串变成 Python int，也不会把 "false" 变成 bool。local 的 content 输出会把非字符串结果 JSON 序列化；remote_sync 的 content 输出**不保证转换**，应直接使用真实字符串字段，不要将 Provider 返回的整数假标为 content。仅配置一个名为 result 的同步 Remote 输出时，运行器返回整个原始结果，不代表 content JSON 文本。
 
 json_tool 输入 arguments-json 必须解析为 object；优先调用已注册同名 Local，否则通过 Tool Server 同步调用 Remote；成功结果被统一 JSON 序列化，适合复杂结果、number/boolean 参数与显式错误处理。它不要求在 metadata.tools 中声明，但工具仍必须实际存在且名称已知。参数 schema 仍须遵守。推荐把复杂 JSON 工具调用封装为子 workflow，然后在父图或 foreach / while_pop 体内调用该子 workflow。成功和错误各有独立 output；若错误应该整体失败，可以不连 error-out，让异常终止；即便如此它仍不能直接放进 foreach / while_pop。
 
@@ -242,6 +246,7 @@ struct_get 的 fallback 仅用于可选字段，必须同时 missing:"fallback"�
 | tavily_search | {keyword:字符串} | {results:对象数组} | 需要 Tavily key；tool keyword:content → results:content（Local 将数组转 JSON 文本）；失败可能为空数组 |
 | output_to_terminal | content-in:content | 无 | 追加到当前进程终端，不发送 response 事件 |
 | wait_terminal_event | 无 | 无 | 挂起等待当前终端消息，无数据端口 |
+| read_terminal_input | 无 | list-out:list-content | 读取当前终端全部已保存用户输入正文，按时间升序，不消费历史 |
 | get_recent_records | {limit:整数} | {records:对象数组} | 使用 json_tool 传真实整数；tool 的 "10" 不会自动变成 int |
 | workspace.list_files | {} | {items:对象数组,revision:整数} | 可用 tool 输出 items:content、revision:content |
 | workspace.get_file | {file_id:非空字符串} | 工作区文件 API 对象 | outputSchema 无一级 properties；tool 输出 output:content 得完整 JSON |
@@ -272,7 +277,7 @@ workspace.get_file/create_file/update_file 成功结果包含 file_id、name、c
 
 Document 恰含 id、title、content、pinned、created_at、updated_at；前三者字符串，pinned 布尔值，两个时间为字符串或 null。doc_id 为 Mongo 文档真实 ID，不能虚构；title 长度 1–200，文档 content 长度 ≤1,000,000。如果只需文档正文，可用 json_tool → deserialize_json(outputs=[{key:"content",type:"content"}])；若对数组每项处理，可先把 documents 声明为 content 得到整个数组 JSON 文本，但没有“任意对象数组→list-content”自动映射节点。仅当原始对象的所有字段类型都能由本地 Struct 精确表示时，才能用 json_to_struct 转成 Struct 列表；完整 Document 含 boolean/null，本类型系统不能直接表示，需真实的适配工具或另行约定的字符串 JSON 列表输入，不能直接声明成 list-content。
 
-有明确定义的安全 typed Remote 端口方案：bilibili.shorturl_to_bvid 输入 short_url:content、输出 bvid:content；bilibili.gain_content_from_bvid 输入 bvid:content、输出 text:content；qq 的输入均 content，但返回整数 message_id 应使用 json_tool 后解析为 content，不能直接当字符串使用。documents 的完整对象混有 null/boolean，不构造假 map-content；优先 json_tool。工具目录不是 workflow 的 metadata.tools 自动内容，只声明实际用到的 typed 或 LLM 可选工具。
+有明确定义的安全 typed Remote 端口方案：bilibili.shorturl_to_bvid 输入 short_url:content、输出 bvid:content；bilibili.gain_content_from_bvid 输入 bvid:content、输出 text:content；qq 的输入均 content，但返回整数 message_id 可声明为 number；使用 json_tool 时可经 deserialize_json 提取为 number，不能直接当字符串使用。documents 的完整对象混有 null/boolean，不构造假 map-content；优先 json_tool。工具目录不是 workflow 的 metadata.tools 自动内容，只声明实际用到的 typed 或 LLM 可选工具。
 
 ### 6.3 工作区 checkpoint 工具
 
@@ -296,7 +301,7 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
 
 单次图内的动态循环使用 while_pop，并由实际业务结果决定是否向 Context 列表补充元素。图内事件构造和拆分仅处理数据，不会自动创建进程或启动工作流。跨进程启动、等待与唤醒属于运行时能力，不得虚构尚未提供的节点或工具。
 
-终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入保存后会唤醒正在等待该终端 terminal_message 的进程。使用 wait_terminal_event 节点挂起，从下一节点恢复；无参数和数据端口，不输出消息正文，进入等待前的消息不会留作唤醒事件。子工作流通过独立进程执行，也支持该节点；需向该子进程自己的终端发消息。调试用同步 run_workflow_map 不支持挂起。
+终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入保存后会唤醒正在等待该终端 terminal_message 的进程。使用 wait_terminal_event 节点挂起，从下一节点恢复；无参数和数据端口，不输出消息正文，进入等待前的消息不会留作唤醒事件。后续使用 read_terminal_input 查询当前进程终端完整的用户输入正文列表（list-content，按时间升序、不消费历史），再将其连接到 Router 或其他数据节点进行判断。子工作流通过独立进程执行，也支持该节点；需向该子进程自己的终端发消息。调试用同步 run_workflow_map 不支持挂起。
 
 ## 8. 设计与检查程序（只在内部执行）
 

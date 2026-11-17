@@ -95,6 +95,11 @@
             <div><strong>等待终端事件</strong><small>挂起，收到当前终端消息后继续</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="read_terminal_input">
+            <span class="node-symbol read_terminal_input-symbol" aria-hidden="true">T&lt;</span>
+            <div><strong>读取终端输入</strong><small>获取当前终端全部用户输入列表</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="output_to_terminal">
             <span class="node-symbol output_to_terminal-symbol" aria-hidden="true">T&gt;</span>
             <div><strong>输出到终端</strong><small>输出到当前进程的终端</small></div>
@@ -108,6 +113,11 @@
           <button class="library-item" type="button" data-add-node="construct_list">
             <span class="node-symbol construct_list-symbol" aria-hidden="true">L</span>
             <div><strong>构造列表</strong><small>把同类型输入聚合为列表</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="list_length">
+            <span class="node-symbol list_length-symbol" aria-hidden="true">LEN</span>
+            <div><strong>列表长度</strong><small>按所选列表类型计算元素个数，输出 number</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="list_append">
@@ -197,7 +207,7 @@
           <div class="canvas-grid" aria-hidden="true"></div>
           <svg id="connectionLayer" class="connection-layer" aria-hidden="true"></svg>
           <div id="nodeLayer" class="node-layer"></div>
-          <div id="canvasLegend" class="canvas-legend" aria-label="数据类型图例"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="map-content-dot"></i>MAP-CONTENT</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span><span data-struct-legend class="canvas-legend-structs"></span></div>
+          <div id="canvasLegend" class="canvas-legend" aria-label="数据类型图例"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="number-dot"></i>NUMBER</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="map-content-dot"></i>MAP-CONTENT</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span><span data-struct-legend class="canvas-legend-structs"></span></div>
         </div>
       </section>
 
@@ -280,7 +290,7 @@
   <template id="metadataPortTemplate">
     <div class="metadata-port-row">
       <input data-metadata-port-name maxlength="80" required placeholder="port_name" aria-label="端口名称">
-      <select data-metadata-port-type aria-label="端口类型"><option value="content">content</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select>
+      <select data-metadata-port-type aria-label="端口类型"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select>
       <button type="button" data-remove-metadata-port title="删除接口" aria-label="删除接口">×</button>
     </div>
   </template>
@@ -409,7 +419,16 @@
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <p class="node-help">执行后挂起当前工作流进程；向关联终端发送一条消息后，从下一节点继续。子工作流拥有独立进程和终端，也支持等待。</p>
+      <p class="node-help">节点完成后挂起当前工作流进程；向关联终端发送一条消息后，从下一节点继续。使用“读取终端输入”获取用户输入，再由下游节点判断分支。子工作流拥有独立进程和终端，也支持等待。</p>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="read_terminal_inputInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <p class="node-help">读取当前进程终端中全部已保存的用户输入正文，按时间从早到晚输出到 <code>list-out: list-content</code>。不包含助手输出，不删除历史；没有输入时返回空列表。可接在等待终端事件之后读取，再由下游节点判断分支。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -488,6 +507,16 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="list_lengthInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>输入列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <p class="field-hint">选择输入列表的数据类型；输出为 number，空列表长度为 0。</p>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
   <template id="list_appendInspectorTemplate">
     <div data-interface-contract data-contract-status="输出新列表"></div>
     <section class="inspector-section form-section">
@@ -502,7 +531,7 @@
     <div data-interface-contract data-contract-status="当前调用创建，子 Workflow 可访问"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
       <label>Context ID（可选）<input data-field="context_id" maxlength="200" placeholder="留空则自动生成"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
@@ -512,7 +541,7 @@
     <div data-interface-contract data-contract-status="可读取当前及祖先调用的 Context"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
       <label>Context ID 来源<select data-field="context_id_source"><option value="port">通过端口输入</option><option value="fixed">固定文本</option></select></label>
       <label data-context-id-field>Context ID<input data-field="context_id" maxlength="200" placeholder="输入 Context ID"></label>
     </section>
@@ -523,7 +552,7 @@
     <div data-interface-contract data-contract-status="可修改当前及祖先调用的 Context"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
       <label>Context ID 来源<select data-field="context_id_source"><option value="port">通过端口输入</option><option value="fixed">固定文本</option></select></label>
       <label data-context-id-field>Context ID<input data-field="context_id" maxlength="200" placeholder="输入 Context ID"></label>
     </section>
@@ -534,7 +563,7 @@
     <div data-interface-contract data-contract-status="全局共享，永久保存"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -543,7 +572,7 @@
     <div data-interface-contract data-contract-status="按 Session ID 读取"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -552,7 +581,7 @@
     <div data-interface-contract data-contract-status="完整覆盖，永久保存"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

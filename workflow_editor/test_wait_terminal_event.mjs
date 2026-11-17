@@ -4,6 +4,16 @@ import { createNode, NODE_TYPES, portsForNode } from './static/workflow/domain/n
 import { isValidConnection } from './static/workflow/domain/connection-rules.js';
 import { loadSnapshot, workflowSnapshot } from './static/workflow/domain/serialization.js';
 
+test('read_terminal_input exposes a list-content output', () => {
+  assert.equal(NODE_TYPES.has('read_terminal_input'), true);
+  const node = createNode('read_terminal_input', [], { x: 100, y: 100 });
+  assert.deepEqual(portsForNode(node).map(({ id, type }) => ({ id, type })), [
+    { id: 'control-in', type: 'control' },
+    { id: 'control-out', type: 'control' },
+    { id: 'list-out', type: 'list-content' },
+  ]);
+});
+
 test('wait_terminal_event preserves control flow and round-trips without arguments or data ports', () => {
   assert.equal(NODE_TYPES.has('wait_terminal_event'), true);
   const input = { id: 'input', type: 'input', workflowPorts: [] };

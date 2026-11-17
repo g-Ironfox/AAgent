@@ -11,7 +11,7 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'construct_list') bindConstructList(node, context);
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
-  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop'].includes(node.type)) bindContext(node, context);
+  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop', 'list_length'].includes(node.type)) bindContext(node, context);
 }
 
 
@@ -20,7 +20,7 @@ function localStructs() { return state.metadata?.structs || []; }
 function addTypeOptions(select, { includeBuiltin = false, includeStructLists = false } = {}) {
   const existing = new Set([...select.options].map((option) => option.value));
   if (includeBuiltin) {
-    for (const type of ['content', 'message', 'map-content', 'list-content', 'list-message']) {
+    for (const type of ['content', 'number', 'message', 'map-content', 'list-content', 'list-message']) {
       if (!existing.has(type)) select.add(new Option(type, type));
     }
   }
@@ -303,8 +303,8 @@ function bindListAppend(node, context) {
 
 function bindContext(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="value_type"]');
-  if (node.type.startsWith('context_') || node.type === 'while_pop') addTypeOptions(typeField, { includeStructLists: true });
-  if (node.type === 'while_pop') {
+  if (node.type.startsWith('context_') || ['while_pop', 'list_length'].includes(node.type)) addTypeOptions(typeField, { includeStructLists: true });
+  if (['while_pop', 'list_length'].includes(node.type)) {
     for (const option of [...typeField.options]) {
       if (!option.value.startsWith('list-')) option.remove();
     }
@@ -346,7 +346,7 @@ function bindDeserializeJson(node, context) {
   node.outputs.forEach((output, index) => {
     const row = document.createElement('div');
     row.className = 'json-output-row';
-    row.innerHTML = '<span class="route-index"></span><input data-output-key maxlength="80" aria-label="JSON 键"><select data-output-type aria-label="输出类型"><option value="content">content</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select><button type="button" class="branch-delete" title="删除输出">×</button>';
+    row.innerHTML = '<span class="route-index"></span><input data-output-key maxlength="80" aria-label="JSON 键"><select data-output-type aria-label="输出类型"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select><button type="button" class="branch-delete" title="删除输出">×</button>';
     row.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
     const keyField = row.querySelector('[data-output-key]');
     const typeField = row.querySelector('[data-output-type]');

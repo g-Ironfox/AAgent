@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
 DATA_CONNECTION_TYPES = {
     "content",
+    "number",
     "message",
     "list-content",
     "list-message",
@@ -27,9 +29,11 @@ SUPPORTED_NODE_TYPES = {
     "map_content_get",
     "output_to_terminal",
     "wait_terminal_event",
+    "read_terminal_input",
     "deserialize_json",
     "construct_list",
     "list_append",
+    "list_length",
     "foreach",
     "while_pop",
     "llm",
@@ -69,9 +73,11 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "map_content_get": set(),
     "output_to_terminal": set(),
     "wait_terminal_event": set(),
+    "read_terminal_input": set(),
     "deserialize_json": {"outputs"},
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
+    "list_length": {"value_type"},
     "foreach": {"item_type"},
     "while_pop": {"value_type", "position", "context_id_source", "context_id"},
     "llm": {"model", "think", "tool_calls", "tools"},
@@ -89,6 +95,13 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "workflow": {"workflow_name"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
+
+
+def is_number_value(value: Any) -> bool:
+    """Accept JSON integers and finite floats, excluding booleans."""
+    return (isinstance(value, int) and not isinstance(value, bool)) or (
+        isinstance(value, float) and math.isfinite(value)
+    )
 
 
 def node_arguments(node: dict[str, Any]) -> dict[str, Any]:
@@ -214,6 +227,8 @@ def data_ports_for_node(
         return declared_inputs | ({"value-in"} if node_type == "struct_to_json" else {"content-in"}), {"content-out" if node_type == "struct_to_json" else "value-out"}
     if node_type == "map_content_get":
         return declared_inputs | {"map-in", "key-in"}, {"content-out"}
+    if node_type == "read_terminal_input":
+        return set(), {"list-out"}
     if node_type == "wait_terminal_event":
         return set(), set()
     if node_type == "output_to_terminal":
@@ -224,6 +239,8 @@ def data_ports_for_node(
         }
     if node_type == "construct_list":
         return declared_inputs, {"list-out"}
+    if node_type == "list_length":
+        return {"list-in"}, {"length-out"}
     if node_type == "list_append":
         return declared_inputs | {"list-in", "item-in"}, {"list-out"}
     if node_type == "foreach":
@@ -284,8 +301,12 @@ def data_type_for_port(
         return value_type if port_id == "value-in" else ("content" if port_id == "content-out" else None)
     if kind == "json_to_struct":
         return "content" if port_id == "content-in" else (value_type if port_id == "value-out" else None)
+    if kind == "read_terminal_input":
+        return "list-content" if port_id == "list-out" else None
     if kind == "construct_list":
         return f"list-{node_argument(node, 'item_type')}" if port_id == "list-out" else node_argument(node, "item_type")
+    if kind == "list_length":
+        return value_type if port_id == "list-in" else ("number" if port_id == "length-out" else None)
     if kind == "list_append":
         if port_id in {"list-in", "list-out"}: return f"list-{node_argument(node, 'item_type')}"
         return node_argument(node, "item_type") if port_id == "item-in" else None

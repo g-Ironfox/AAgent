@@ -412,7 +412,7 @@ function renderStructDefinitions() {
 
       const type = document.createElement('select');
       type.setAttribute('aria-label', `${field.name} 字段类型`);
-      for (const builtin of ['content', 'message', 'map-content', 'list-content', 'list-message']) {
+      for (const builtin of ['content', 'number', 'message', 'map-content', 'list-content', 'list-message']) {
         type.add(new Option(builtin, builtin));
       }
       for (const target of structDraft) {
@@ -752,8 +752,8 @@ elements.metadataForm.addEventListener('submit', (event) => {
   const outputPorts = readMetadataPorts('output_ports');
   const callableWorkflows = readCallableWorkflows();
   const remoteTools = readRemoteTools();
-  if (remoteTools.some((tool) => tool.kind === 'local' && tool.input_ports.some((port) => port.type !== 'content'))) {
-    elements.resourceState.textContent = 'Local Tool 的输入必须为 content';
+  if (remoteTools.some((tool) => tool.kind === 'local' && tool.input_ports.some((port) => !['content', 'number'].includes(port.type)))) {
+    elements.resourceState.textContent = 'Local Tool 的输入必须为 content 或 number';
     return;
   }
   const allPortLists = [inputPorts, outputPorts, ...callableWorkflows.flatMap((workflow) => [workflow.input_ports, workflow.output_ports]), ...remoteTools.flatMap((tool) => [tool.input_ports, tool.output_ports])];

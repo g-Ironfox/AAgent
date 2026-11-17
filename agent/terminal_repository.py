@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
-from pymongo import MongoClient
+from pymongo import ASCENDING, MongoClient
 
 current_terminal_process_id = ContextVar("terminal_process_id", default=None)
 
@@ -52,3 +52,20 @@ def append_terminal_output(content: str, terminal_process_id: str):
         raise ValueError("terminal_process_id must be a non-empty string")
     document["terminal_process_id"] = terminal_process_id
     return get_terminal_collection().insert_one(document).inserted_id
+
+
+def read_terminal_input(terminal_process_id: str) -> list[str]:
+    """Read all user input for one terminal, oldest first, without consuming it."""
+    if not isinstance(terminal_process_id, str) or not terminal_process_id.strip():
+        raise ValueError("terminal_process_id must be a non-empty string")
+    documents = get_terminal_collection().find(
+        {"terminal_process_id": terminal_process_id, "role": "user"},
+        {"content": 1},
+    ).sort([("created_at", ASCENDING), ("_id", ASCENDING)])
+    contents = []
+    for document in documents:
+        content = document.get("content")
+        if not isinstance(content, str):
+            raise ValueError("terminal user input content must be text")
+        contents.append(content)
+    return contents
