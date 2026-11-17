@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -59,6 +60,16 @@ def _valid_value(value_type: str, value: Any, struct_definitions: dict[str, Any]
     return False
 
 
+current_persistent_invocation_id = ContextVar("persistent_workflow_invocation", default=None)
+
+
+def _refresh_lifetime(pipeline, key: str, stored: dict) -> None:
+    if stored.get("persistent") == "1":
+        pipeline.persist(key)
+    else:
+        pipeline.expire(key, _ttl_seconds())
+
+
 def _ttl_seconds() -> int:
     return int(os.getenv("WORKFLOW_CONTEXT_TTL_SECONDS", "86400"))
 
@@ -112,16 +123,19 @@ def create_context(
         "created_at": now,
         "updated_at": now,
     }
+    persistent = current_persistent_invocation_id.get() == invocation_id
+    if persistent:
+        mapping["persistent"] = "1"
     try:
         created = get_connection().eval(
             "if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end "
             "redis.call('HSET', KEYS[1], unpack(ARGV, 1, #ARGV - 1)) "
-            "redis.call('EXPIRE', KEYS[1], ARGV[#ARGV]) "
+            "if tonumber(ARGV[#ARGV]) > 0 then redis.call('EXPIRE', KEYS[1], ARGV[#ARGV]) end "
             "return 1",
             1,
             key,
             *(argument for field_value in mapping.items() for argument in field_value),
-            str(_ttl_seconds()),
+            "0" if persistent else str(_ttl_seconds()),
         )
         if not created:
             raise WorkflowContextError("Context ID 已存在")
@@ -158,7 +172,7 @@ def read_context(
                 if not _valid_value(value_type, value, struct_definitions):
                     raise WorkflowContextError("Workflow Context Value 无效")
                 pipeline.multi()
-                pipeline.expire(key, _ttl_seconds())
+                _refresh_lifetime(pipeline, key, stored)
                 pipeline.execute()
                 return value
         except redis.WatchError:
@@ -198,7 +212,7 @@ def write_context(
                         "updated_at": datetime.now(timezone.utc).isoformat(),
                     },
                 )
-                pipeline.expire(key, _ttl_seconds())
+                _refresh_lifetime(pipeline, key, stored)
                 pipeline.execute()
                 return
         except redis.WatchError:
@@ -249,7 +263,7 @@ def pop_context(
                         "value": serialized,
                         "updated_at": datetime.now(timezone.utc).isoformat(),
                     })
-                pipeline.expire(key, _ttl_seconds())
+                _refresh_lifetime(pipeline, key, stored)
                 pipeline.execute()
                 return has_item, item
         except redis.WatchError:

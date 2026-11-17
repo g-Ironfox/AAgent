@@ -113,9 +113,10 @@ Session 是 MongoDB 中跨调用保留的状态，仅支持七种公开类型，
 | --- | --- | --- | --- |
 | input | 无 | 无 → workflow:<输入名> | 仅 control-out；数据来自创建进程的 inputs 或子图调用方 |
 | output_to_terminal | 无 | content-in:content → 无 | 写入当前进程终端，继续 control-out；需要进程终端上下文 |
+| wait_terminal_event | 无 | 无 → 无 | 挂起进程，当前终端收到消息后从 control-out 继续；根工作流和子工作流均支持 |
 | output | 无 | workflow:<输出名> → 无 | 仅 control-in；收集非 None 的输入后结束当前图；生成时每条路径都填齐承诺的输出 |
 | router | branches:[{id,name}]，可为空 | content-in:content → 无 | 只有 control-in 和各分支 ID 输出，以及固定 branch$others；没有 control-out |
-| workflow | workflow_name:精确工作区文件名 | workflow:<输入名> → workflow:<输出名> | 同步执行子 workflow，选中一个 output 返回后再走 control-out |
+| workflow | workflow_name:精确工作区文件名 | workflow:<输入名> → workflow:<输出名> | 创建子 workflow 进程并挂起父进程，子进程 output 返回后再走 control-out |
 
 router 按 content-in 与分支 **name 精确匹配**，fromPortId 则使用分支 **id**。不是条件表达式，不解析布尔值，不做大小写/空白规范化。每个普通 id/name 分别唯一非空；不使用 id=branch$others，不使用 name="$others"（会与内部兜底 successor 键冲突）。固定 branch$others 不写进 branches 数组，但始终必须连到独立处理链。没有值会报错，不会自动走兜底。
 
@@ -240,6 +241,7 @@ struct_get 的 fallback 仅用于可选字段，必须同时 missing:"fallback"�
 | get_kimi_balance | {} | {balance:字符串} | 需要 Kimi 凭据；tool 输入 []、输出 balance:content |
 | tavily_search | {keyword:字符串} | {results:对象数组} | 需要 Tavily key；tool keyword:content → results:content（Local 将数组转 JSON 文本）；失败可能为空数组 |
 | output_to_terminal | content-in:content | 无 | 追加到当前进程终端，不发送 response 事件 |
+| wait_terminal_event | 无 | 无 | 挂起等待当前终端消息，无数据端口 |
 | get_recent_records | {limit:整数} | {records:对象数组} | 使用 json_tool 传真实整数；tool 的 "10" 不会自动变成 int |
 | workspace.list_files | {} | {items:对象数组,revision:整数} | 可用 tool 输出 items:content、revision:content |
 | workspace.get_file | {file_id:非空字符串} | 工作区文件 API 对象 | outputSchema 无一级 properties；tool 输出 output:content 得完整 JSON |
@@ -294,7 +296,7 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
 
 单次图内的动态循环使用 while_pop，并由实际业务结果决定是否向 Context 列表补充元素。图内事件构造和拆分仅处理数据，不会自动创建进程或启动工作流。跨进程启动、等待与唤醒属于运行时能力，不得虚构尚未提供的节点或工具。
 
-终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入接口当前仅保存消息，不自动触发工作流。
+终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入保存后会唤醒正在等待该终端 terminal_message 的进程。使用 wait_terminal_event 节点挂起，从下一节点恢复；无参数和数据端口，不输出消息正文，进入等待前的消息不会留作唤醒事件。子工作流通过独立进程执行，也支持该节点；需向该子进程自己的终端发消息。调试用同步 run_workflow_map 不支持挂起。
 
 ## 8. 设计与检查程序（只在内部执行）
 

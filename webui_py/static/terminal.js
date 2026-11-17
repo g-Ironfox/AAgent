@@ -104,8 +104,14 @@ function updateTerminalOptions(sessions) {
     const option = document.createElement('option');
     option.value = session.terminal_process_id;
     const parent = String(session.parent_process_id || session.terminal_process_id);
-    const stateLabel = session.status === 'terminated' ? '已关闭' : '运行中';
-    option.textContent = `${parent.slice(0, 12)} · ${stateLabel}`;
+    const waitKind = session.wait_for?.kind;
+    const stateLabel = session.status === 'terminated' ? '已关闭'
+      : session.workflow_status === 'blocked'
+        ? (waitKind === 'process_exit' ? '等待子工作流' : '等待终端输入')
+        : '运行中';
+    const workflowLabel = session.workflow_name ? `${session.workflow_name} · ` : '';
+    const isChild = session.root_process_id && session.root_process_id !== session.parent_process_id;
+    option.textContent = `${isChild ? '↳ ' : ''}${workflowLabel}${parent.slice(0, 12)} · ${stateLabel}`;
     options.push(option);
   }
   select.replaceChildren(...options);

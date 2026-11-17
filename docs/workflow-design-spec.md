@@ -17,13 +17,13 @@
 | --- | --- |
 | 循环 | 允许 foreach / while_pop 体末回所属 loop-in；移除合法回边后其余图仍须为 DAG |
 | 分支 | 控制树不能汇合，不能共享后继或 output；foreach / while_pop 内不能直接放 router/json_tool/foreach/while_pop |
-| 分支后的统一步骤 | 把分支整体封装为子 workflow，各分支独立 output，父图调用后继续单一控制链 |
+| 分支后的统一步骤 | 把分支整体封装为子 workflow，各分支独立 output；workflow 节点创建子进程，父图等待结果后继续单一控制链 |
 | 数据生命周期 | 祖先可向子层供值，子层不能向外直连；循环聚合通过 Context 写入，再在外层重新读取 |
 | 子图交付 | workflow_nodes 只有名称和接口快照，不能携带子图定义；必须另外保存每份子图 |
 | 进程入口 | 创建接口使用真实工作区 workflow_file_id 和 inputs，不依赖事件绑定 |
 | 模型 | llm.model 是启用模型的真实 Mongo 注册 ID，没有默认模型或动态模型输入端口 |
-| 跨事件状态 | Context 随 invocation 清理；Session 可跨调用持久化，但读写不是原子事务 |
-| 异步工具回调 | Tool Server 的独立回调 outbox 保留；Agent 调度器没有自动消费该队列，不能宣称会恢复原图 |
+| 跨事件状态 | 进程 workflow 的 Context 在挂起时保留、进程终态时清理；Session 可跨调用持久化，但读写不是原子事务 |
+| 异步工具回调 | Tool Server 的独立回调 outbox 保留；Agent 调度器没有自动消费该队列，不能宣称会恢复原图。workflow 子调用与终端事件则由 Agent 父子进程调度支持 |
 
 类型和节点语义的主要依据是 [Workflow 2.0 协议](protocol/workflow_2_0.md)、[机器 Schema](../agent/workflow_2_0.schema.json)、[节点契约](../agent/workflow_contract.py)、[Struct 实现](../agent/workflow_structs.py) 与上述校验器/执行器。工具目录分别来自 [Local 注册表](../agent/tools/tool.py)、[工作区 Local 工具](../agent/tools/workspace.py)、[Remote 工具实现](../tool_provider/tools/)；回调限制依据 [Tool Server callback_event/callback_worker](../tool_server/main.py)，不是仅由协议文档推测。
 
@@ -72,3 +72,6 @@ python -m unittest discover -s skills/workflow-designer/scripts -p "test_*.py" -
 ## checkpoint 恢复
 
 工作区 checkpoint 工具保留，可由工作流显式调用。恢复会覆盖整个工作区文件并更新 revision，后续修改须重新读取文件。进程创建与终端均不使用事件绑定；错误不会通过旧事件队列自动启动恢复工作流。
+
+
+进程执行细节（父子 workflow、终端等待、Context 生命周期、取消和超时）以 [Workflow 2.0 协议 10.5 节](protocol/workflow_2_0.md#105-父子工作流进程调度) 为准。子 workflow 在进程调度器中独立运行；同步 `run_workflow_map` 仅供内嵌测试/工具使用，不能跨事件挂起。

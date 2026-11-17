@@ -15,6 +15,7 @@ export const NODE_TYPES = new Set([
   'map_content_get',
   'deserialize_json',
   'output_to_terminal',
+  'wait_terminal_event',
   'construct_list',
   'list_append',
   'foreach',
@@ -189,6 +190,12 @@ export function portsForNode(node) {
       { id: 'key-in', direction: 'input', type: 'content', label: 'Key', title: '查找键', multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '查找到的 Content', multiple: true },
+    ];
+  }
+  if (node.type === 'wait_terminal_event') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '等待终端事件', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '唤醒后继续', title: '收到当前终端消息后继续', multiple: false },
     ];
   }
   if (node.type === 'output_to_terminal') {
@@ -408,6 +415,7 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   }
   if (type === 'map_content_get') return { id: createWorkflowId('map-content-get'), type, name: `Map 查找 ${number}`, ...position };
   if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
+  if (type === 'wait_terminal_event') return { id: createWorkflowId('wait-terminal-event'), type, name: `等待终端事件 ${number}`, ...position };
   if (type === 'output_to_terminal') return { id: createWorkflowId('output-to-terminal'), type, name: `输出到终端 ${number}`, ...position };
   if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };

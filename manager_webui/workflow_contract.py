@@ -26,6 +26,7 @@ SUPPORTED_NODE_TYPES = {
     "json_to_struct",
     "map_content_get",
     "output_to_terminal",
+    "wait_terminal_event",
     "deserialize_json",
     "construct_list",
     "list_append",
@@ -67,6 +68,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "json_to_struct": {"value_type"},
     "map_content_get": set(),
     "output_to_terminal": set(),
+    "wait_terminal_event": set(),
     "deserialize_json": {"outputs"},
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
@@ -212,6 +214,8 @@ def data_ports_for_node(
         return declared_inputs | ({"value-in"} if node_type == "struct_to_json" else {"content-in"}), {"content-out" if node_type == "struct_to_json" else "value-out"}
     if node_type == "map_content_get":
         return declared_inputs | {"map-in", "key-in"}, {"content-out"}
+    if node_type == "wait_terminal_event":
+        return set(), set()
     if node_type == "output_to_terminal":
         return declared_inputs | {"content-in"}, set()
     if node_type == "deserialize_json":

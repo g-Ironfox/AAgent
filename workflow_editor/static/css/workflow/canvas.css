@@ -99,3 +99,4 @@
 #compileLifecyclesButton,#clearLifecyclesButton { width:auto; padding:0 10px; white-space:nowrap; }
 
 .flow-node.output_to_terminal { border-top-color:#13775a; }
+.flow-node.wait_terminal_event { border-top-color:#13775a; }

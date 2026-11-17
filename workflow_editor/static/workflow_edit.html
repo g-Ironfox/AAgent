@@ -90,6 +90,11 @@
             <div><strong>Map-Content 查找</strong><small>按键读取 Content</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="wait_terminal_event">
+            <span class="node-symbol wait_terminal_event-symbol" aria-hidden="true">WAIT</span>
+            <div><strong>等待终端事件</strong><small>挂起，收到当前终端消息后继续</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="output_to_terminal">
             <span class="node-symbol output_to_terminal-symbol" aria-hidden="true">T&gt;</span>
             <div><strong>输出到终端</strong><small>输出到当前进程的终端</small></div>
@@ -396,6 +401,15 @@
       <label class="checkbox-field"><input type="radio" name="role-source" value="fixed" data-role-source><span><strong>固定值</strong></span></label>
       <label class="checkbox-field"><input type="radio" name="role-source" value="port" data-role-source><span><strong>从 Port 导入</strong></span></label>
       <label>Role<select data-field="role"><option value="user">user</option><option value="system">system</option><option value="assistant">assistant</option><option value="tool">tool</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="wait_terminal_eventInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <p class="node-help">执行后挂起当前工作流进程；向关联终端发送一条消息后，从下一节点继续。子工作流拥有独立进程和终端，也支持等待。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

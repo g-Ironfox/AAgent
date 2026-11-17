@@ -242,6 +242,7 @@
             "construct_map_content",
             "map_content_get",
             "output_to_terminal",
+            "wait_terminal_event",
             "deserialize_json",
             "construct_list",
             "list_append",

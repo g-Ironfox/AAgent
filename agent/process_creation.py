@@ -14,6 +14,13 @@ def initialize_process_pair(process: dict) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     terminal_process_id = uuid4().hex
     process['process_type'] = 'workflow'
+    process.setdefault('root_process_id', process_id)
+    process.setdefault('invocation_id', process_id)
+    process.setdefault('ancestor_invocation_ids', [])
+    process.setdefault('context_ids', [])
+    process.setdefault('active_duration_ms', 0)
+    process.setdefault('node_trace', [])
+    process.setdefault('pending_call', None)
     process['start_time'] = now
     process['status'] = 'ready'
     process['wait_for'] = None
@@ -65,6 +72,8 @@ def build_workflow_process(document: dict, inputs: dict, file_id: str) -> dict:
         "parent_process_id": "user_interface",
         "workflow_file_id": file_id,
         "workflow_name": document["name"],
+        "call_stack": [document["name"]],
+        "input": input_values,
         "workflow": json.dumps(workflow, ensure_ascii=False, allow_nan=False),
         "current_node_id": start,
     }

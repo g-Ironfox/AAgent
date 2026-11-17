@@ -7,6 +7,8 @@ import copy
 import logging
 import os
 import time
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
@@ -15,7 +17,17 @@ from workflow_contract import node_argument, tool_parameter_names
 
 
 WorkflowMap = list[dict[str, Any]]
-NodeHandler = Callable[[int, WorkflowMap], int]
+@dataclass
+class WorkflowStep:
+    """A node's durable scheduling request, committed by the process executor."""
+
+    next_node_id: int
+    wait_for: dict[str, str]
+    child_process: dict[str, Any] | None = None
+
+
+current_workflow_process = ContextVar("workflow_process", default=None)
+NodeHandler = Callable[[int, WorkflowMap], int | WorkflowStep]
 WORKFLOW_END = -1
 WORKFLOW_TIMEOUT_SECONDS = 180
 logger = logging.getLogger("aagent.workflow")
@@ -28,7 +40,7 @@ def _is_map_content(value: Any) -> bool:
     )
 
 
-def execute_node(current_id: int, workflow_map: WorkflowMap) -> int:
+def execute_node(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
     """Execute exactly one workflow node and return its successor index."""
     if isinstance(current_id, bool) or not isinstance(current_id, int):
         raise TypeError("current_id must be an integer node index")
@@ -228,7 +240,10 @@ def run_workflow_map(
                 "status": "completed",
             }
             try:
-                current_id = execute_node(current_id, workflow_map)
+                outcome = execute_node(current_id, workflow_map)
+                if isinstance(outcome, WorkflowStep):
+                    raise ValueError("wait_terminal_event requires the process scheduler")
+                current_id = outcome
             except Exception as error:
                 trace_entry["status"] = "failed"
                 trace_entry["error"] = str(error)
@@ -275,6 +290,18 @@ def workflow_output_to_terminal(current_id: int, workflow_map: WorkflowMap) -> i
         raise ValueError("output_to_terminal requires a process terminal")
     append_terminal_output(content, terminal_process_id=terminal_process_id)
     return next_successor(node)
+
+
+def workflow_wait_terminal_event(current_id: int, workflow_map: WorkflowMap) -> WorkflowStep:
+    from terminal_repository import current_terminal_process_id
+
+    terminal_process_id = current_terminal_process_id.get()
+    if not terminal_process_id:
+        raise ValueError("wait_terminal_event requires a process terminal")
+    return WorkflowStep(
+        next_successor(workflow_map[current_id]),
+        {"kind": "terminal_message", "process_id": terminal_process_id},
+    )
 
 
 def workflow_output(current_id: int, workflow_map: WorkflowMap) -> int:
@@ -843,7 +870,7 @@ def workflow_session_write(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
-def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
+def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
     from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
     from workflow_validator import (
         WorkflowValidationError,
@@ -894,6 +921,30 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int:
             propagate_workflow_output(child_map, child_input, port["id"], value)
     child_input["_workflow_input_values"] = child_inputs
 
+    process = current_workflow_process.get()
+    if process is not None:
+        child_id = uuid4().hex
+        child = {
+            "process_id": child_id,
+            "parent_process_id": process["process_id"],
+            "root_process_id": process.get("root_process_id", process["process_id"]),
+            "workflow_name": workflow_document.get("name", workflow_name),
+            "workflow_reference": workflow_name,
+            "call_stack": next_call_stack,
+            "ancestor_invocation_ids": [
+                *process.get("ancestor_invocation_ids", []),
+                process["invocation_id"],
+            ],
+            "workflow": json.dumps(child_map, ensure_ascii=False, allow_nan=False),
+            "current_node_id": child_input_id,
+            "input": child_inputs,
+        }
+        return WorkflowStep(
+            next_successor(parent_node),
+            {"kind": "process_exit", "process_id": child_id},
+            child,
+        )
+
     output = run_workflow_map(
         child_map,
         child_input_id,
@@ -923,6 +974,7 @@ nodes_map: dict[str, NodeHandler] = {
     "json_to_struct": workflow_json_to_struct,
     "map_content_get": workflow_map_content_get,
     "output_to_terminal": workflow_output_to_terminal,
+    "wait_terminal_event": workflow_wait_terminal_event,
     "deserialize_json": workflow_deserialize_json,
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,

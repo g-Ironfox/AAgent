@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -8,8 +9,15 @@ from process_creation import initialize_process_pair
 
 from pymongo import ASCENDING, MongoClient
 
-from r import BLOCKED_PROCESSES, PROCESSTABLE, READY_PROCESSES, get_connection
-from workflow_nodes import WORKFLOW_END, execute_node
+from r import (
+    BLOCKED_PROCESSES, PROCESSTABLE, READY_PROCESSES, get_connection,
+    claim_process, commit_process, publish_process_pair, terminate_process_tree,
+    TERMINAL_STATUSES, wake_process as wake_process_record,
+)
+from workflow_nodes import (
+    WORKFLOW_END, WORKFLOW_TIMEOUT_SECONDS, WorkflowStep, current_workflow_process,
+    execute_node, propagate_workflow_output,
+)
 from terminal_repository import terminal_process_context
 
 MONGO_HOST = os.getenv('MONGO_HOST', 'mongodb')
@@ -174,10 +182,8 @@ def create_process(process: dict) -> dict:
     """Create a runnable process and its passive, process-scoped terminal."""
     terminal_process = initialize_process_pair(process)
 
-    write_process(process)
-    write_process(terminal_process)
+    publish_process_pair(get_connection(), process, terminal_process)
     _initialize_process_timing(process)
-    _enqueue_ready_process(process['process_id'])
     return process
 
 
@@ -204,22 +210,9 @@ def block_process(process_id: str, wait_for: dict) -> dict:
 
 def wake_process(process_id: str, source_process_id: str, event_kind: str) -> dict:
     """Wake a process only when the source process and event kind both match."""
-    if not isinstance(source_process_id, str) or not source_process_id:
-        raise ValueError('source_process_id must be a non-empty string')
-    if event_kind not in {'process_exit', 'terminal_message'}:
-        raise ValueError('unsupported process wake event kind')
-    process = read_process(process_id)
-    if (
-        process.get('status') != 'blocked'
-        or process.get('wait_for')
-        != {'kind': event_kind, 'process_id': source_process_id}
-    ):
-        return process
-    process['status'] = 'ready'
-    process['wait_for'] = None
-    write_process(process)
-    _enqueue_ready_process(process_id)
-    return process
+    return wake_process_record(
+        get_connection(), process_id, source_process_id, event_kind
+    )
 
 
 def _terminate_terminal_process(parent_process: dict) -> None:
@@ -256,137 +249,229 @@ def _terminate_terminal_process(parent_process: dict) -> None:
     client.srem(BLOCKED_PROCESSES, terminal_process_id)
 
 
-def Executor(process_id: str) -> dict:
-    process = read_process(process_id)
-
-    workflow_json = process.get('workflow')
-    if not isinstance(workflow_json, str):
-        raise ValueError(f'invalid workflow data: {process_id}')
+def _sync_process_observability(process: dict) -> None:
+    """Redis is authoritative; observability failures never change execution state."""
     try:
-        workflow_map = json.loads(workflow_json)
-    except (TypeError, ValueError) as error:
-        raise ValueError(f'invalid workflow data: {process_id}') from error
-    if not isinstance(workflow_map, list) or not all(
-        isinstance(node, dict) for node in workflow_map
-    ):
-        raise ValueError(f'invalid workflow data: {process_id}')
-
-    current_node_id = process.get('current_node_id')
-    if isinstance(current_node_id, bool) or not isinstance(current_node_id, int):
-        raise ValueError(f'invalid current_node_id: {process_id}')
-
-    if not process.get('start_time'):
-        raise ValueError(f'process start_time is missing: {process_id}')
-    process_start_time = _parse_start_time(process['start_time'])
-
-    node = (
-        workflow_map[current_node_id]
-        if 0 <= current_node_id < len(workflow_map)
-        else {}
-    )
-    node_started_at = datetime.now(timezone.utc)
-    node_started_monotonic = time.perf_counter()
-    try:
-        with terminal_process_context(process.get('terminal_process_id')):
-            next_node_id = execute_node(current_node_id, workflow_map)
-    except Exception:
-        node_finished_at = datetime.now(timezone.utc)
-        try:
-            _record_node_timing(
-                process,
-                node,
-                node_started_at,
-                node_finished_at,
-                round((time.perf_counter() - node_started_monotonic) * 1000),
-                'failed',
+        node_trace = copy.deepcopy(process.get('node_trace', []))
+        for entry in node_trace:
+            for field in ('started_at', 'finished_at'):
+                if entry.get(field):
+                    entry[field] = _parse_start_time(entry[field])
+        fields = {
+            'status': process['status'],
+            'parent_process_id': process.get('parent_process_id'),
+            'root_process_id': process.get('root_process_id'),
+            'workflow_name': process.get('workflow_name'),
+            'nodes': node_trace,
+            'active_duration_ms': process.get('active_duration_ms', 0),
+        }
+        if process.get('finished_at'):
+            finished_at = _parse_start_time(process['finished_at'])
+            fields.update(
+                finished_at=finished_at,
+                total_duration_ms=round((finished_at - _parse_start_time(process['start_time'])).total_seconds() * 1000),
+                error=process.get('error'),
             )
-        except Exception:
-            logger.exception('failed to record node timing for process %s', process_id)
-        raise
-    node_finished_at = datetime.now(timezone.utc)
-    try:
-        _record_node_timing(
-            process,
-            node,
-            node_started_at,
-            node_finished_at,
-            round((time.perf_counter() - node_started_monotonic) * 1000),
-            'completed',
+        _get_process_log_collection().update_one(
+            {'process_id': process['process_id']},
+            {'$setOnInsert': {
+                'process_id': process['process_id'],
+                'start_time': _parse_start_time(process['start_time']),
+            }, '$set': fields}, upsert=True,
         )
+        if process.get('status') in TERMINAL_STATUSES and process.get('workflow_name'):
+            from workflow_run_repository import record_process_workflow_run
+            record_process_workflow_run({
+                'run_id': process['invocation_id'],
+                'process_id': process['process_id'],
+                'parent_process_id': process.get('parent_process_id'),
+                'root_process_id': process.get('root_process_id'),
+                'workflow_name': process['workflow_name'],
+                'call_stack': process.get('call_stack', []),
+                'started_at': _parse_start_time(process['start_time']),
+                'finished_at': _parse_start_time(process['finished_at']),
+                'duration_ms': fields['total_duration_ms'],
+                'active_duration_ms': process.get('active_duration_ms', 0),
+                'status': process['status'],
+                'input': process.get('input', {}),
+                'output': process.get('result', {}),
+                'node_trace': process.get('node_trace', []),
+                'error': process.get('error'),
+            })
     except Exception:
-        logger.exception('failed to record node timing for process %s', process_id)
-    process['workflow'] = json.dumps(
-        workflow_map, ensure_ascii=False, allow_nan=False
-    )
-    process['current_node_id'] = next_node_id
-    if next_node_id == WORKFLOW_END:
-        process['status'] = 'completed'
-        try:
-            _record_process_completion(
-                process,
-                node_finished_at,
-                round(
-                    (node_finished_at - process_start_time).total_seconds() * 1000
-                ),
-            )
-        except Exception:
-            logger.exception('failed to record completion for process %s', process_id)
-    write_process(process)
-    if process.get('status') == 'completed':
-        try:
-            _terminate_terminal_process(process)
-        except Exception:
-            logger.exception(
-                'failed to terminate terminal process for %s', process_id
-            )
-    return process
+        logger.exception('failed to record process observations for %s', process['process_id'])
+
+
+def _cleanup_process_contexts(process: dict) -> None:
+    from workflow_context_repository import delete_contexts
+    try:
+        delete_contexts(set(process.get('context_ids', [])))
+    except Exception:
+        logger.exception('failed to clean up process Contexts: %s', process['process_id'])
+
+
+def terminate_process(process_id: str) -> dict:
+    changed = terminate_process_tree(get_connection(), process_id)
+    for process in changed:
+        if process.get('process_type') == 'workflow':
+            _cleanup_process_contexts(process)
+            _sync_process_observability(process)
+    return read_process(process_id)
+
+
+def _resume_child_call(process: dict, workflow_map: list[dict]) -> None:
+    pending = process.get('pending_call')
+    if not pending:
+        return
+    child = read_process(pending['child_process_id'])
+    if child.get('parent_process_id') != process['process_id']:
+        raise ValueError('child process has an invalid parent link')
+    status = child.get('status')
+    if status != 'completed':
+        raise ValueError(
+            f"child workflow {child.get('workflow_name')} ({child['process_id']}) "
+            f"{status}: {child.get('error', 'child did not complete successfully')}"
+        )
+    node = workflow_map[pending['node_index']]
+    if node.get('id') != pending['node_id'] or node.get('type') != 'workflow':
+        raise ValueError('pending child call does not match workflow node')
+    from workflow_structs import validate_value
+    result = child.get('result', {})
+    if not isinstance(result, dict):
+        raise ValueError('child workflow result must be an object')
+    ports = {port['name']: port for port in node.get('output_ports', [])}
+    if result.keys() - ports.keys():
+        raise ValueError('child workflow returned undeclared output')
+    for name, value in result.items():
+        validate_value(ports[name]['type'], value, node.get('_struct_definitions', {}))
+        propagate_workflow_output(workflow_map, node, f'workflow:{name}', value)
+    _finish_call_trace(process, 'completed')
+    process['pending_call'] = None
+
+
+def _finish_call_trace(process: dict, status: str, error: str | None = None) -> None:
+    pending = process.get('pending_call')
+    if not pending:
+        return
+    trace = process['node_trace'][pending['trace_index']]
+    now = datetime.now(timezone.utc)
+    trace.update(status=status, finished_at=now.isoformat())
+    trace['elapsed_ms'] = round((now - _parse_start_time(trace['started_at'])).total_seconds() * 1000)
+    if error:
+        trace['error'] = error
+
+
+def Executor(process_id: str) -> dict:
+    """Claim and execute one node, atomically publishing spawn/wait/exit effects."""
+    from workflow_context_repository import current_persistent_invocation_id
+
+    client = get_connection()
+    process, claimed = claim_process(client, process_id)
+    if not claimed:
+        return process
+    process.setdefault('invocation_id', process_id)
+    process.setdefault('root_process_id', process_id)
+    process.setdefault('ancestor_invocation_ids', [])
+    process.setdefault('context_ids', [])
+    process.setdefault('node_trace', [])
+    process.setdefault('active_duration_ms', 0)
+    workflow_map = []
+    context_ids = set(process['context_ids'])
+    child = child_terminal = None
+    trace = None
+    started = time.perf_counter()
+    process_token = current_workflow_process.set(process)
+    context_token = current_persistent_invocation_id.set(process['invocation_id'])
+    try:
+        _parse_start_time(process['start_time'])
+        workflow_map = json.loads(process['workflow'])
+        if not isinstance(workflow_map, list) or not all(isinstance(node, dict) for node in workflow_map):
+            raise ValueError(f'invalid workflow data: {process_id}')
+        if process['active_duration_ms'] > WORKFLOW_TIMEOUT_SECONDS * 1000:
+            raise TimeoutError(f'workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds of active execution')
+        _resume_child_call(process, workflow_map)
+        current_id = process['current_node_id']
+        if isinstance(current_id, bool) or not isinstance(current_id, int) or not 0 <= current_id < len(workflow_map):
+            raise ValueError(f'invalid current_node_id: {process_id}')
+        for node in workflow_map:
+            node['_workflow_invocation_id'] = process['invocation_id']
+            node['_workflow_ancestor_invocation_ids'] = process['ancestor_invocation_ids']
+            node['_workflow_context_ids'] = context_ids
+            node['_workflow_call_stack'] = process.get('call_stack', [])
+        node = workflow_map[current_id]
+        trace = {
+            'index': len(process['node_trace']) + 1,
+            'node_id': node.get('id'), 'node_name': node.get('name'),
+            'node_type': node.get('type'),
+            'started_at': datetime.now(timezone.utc).isoformat(),
+            'status': 'completed',
+        }
+        with terminal_process_context(process.get('terminal_process_id')):
+            outcome = execute_node(current_id, workflow_map)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        if process['active_duration_ms'] + elapsed_ms > WORKFLOW_TIMEOUT_SECONDS * 1000:
+            raise TimeoutError(f'workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds of active execution')
+        process['status'] = 'ready'
+        process['wait_for'] = None
+        if isinstance(outcome, WorkflowStep):
+            process['current_node_id'] = outcome.next_node_id
+            process['status'] = 'blocked'
+            process['wait_for'] = outcome.wait_for
+            child = outcome.child_process
+            if child is not None:
+                child_terminal = initialize_process_pair(child)
+                process['pending_call'] = {
+                    'node_id': node['id'], 'node_index': current_id,
+                    'child_process_id': child['process_id'],
+                    'trace_index': len(process['node_trace']),
+                }
+                trace.update(status='waiting', child_process_id=child['process_id'])
+        else:
+            process['current_node_id'] = outcome
+            if outcome == WORKFLOW_END:
+                process.update(status='completed', result=node.pop('_workflow_result', {}))
+    except Exception as error:
+        logger.exception('failed to execute process %s', process_id)
+        process.update(status='failed', wait_for=None, error=str(error))
+        child = child_terminal = None
+        _finish_call_trace(process, 'failed', str(error))
+        if trace is not None:
+            trace.update(status='failed', error=str(error))
+    finally:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        process['active_duration_ms'] += elapsed_ms
+        if trace is not None:
+            trace['duration_ms'] = round(elapsed_ms)
+            if trace['status'] != 'waiting':
+                trace['finished_at'] = datetime.now(timezone.utc).isoformat()
+            process['node_trace'].append(trace)
+        process['context_ids'] = sorted(context_ids)
+        for node in workflow_map if isinstance(workflow_map, list) else []:
+            if isinstance(node, dict):
+                node.pop('_workflow_invocation_id', None)
+                node.pop('_workflow_ancestor_invocation_ids', None)
+                node.pop('_workflow_context_ids', None)
+        current_workflow_process.reset(process_token)
+        current_persistent_invocation_id.reset(context_token)
+    if isinstance(workflow_map, list):
+        process['workflow'] = json.dumps(workflow_map, ensure_ascii=False, allow_nan=False)
+    if process['status'] in TERMINAL_STATUSES:
+        process['finished_at'] = datetime.now(timezone.utc).isoformat()
+    committed = commit_process(client, process, child, child_terminal)
+    if committed.get('status') in TERMINAL_STATUSES:
+        # Include Contexts created by an in-flight node after cancellation.
+        _cleanup_process_contexts(process)
+    if committed.get('execution_id') == process.get('execution_id') and committed.get('status') == process['status']:
+        _sync_process_observability(process)
+    return committed
 
 
 def schedule_once(timeout: int = 5) -> dict | None:
-    """Block for a runnable process, execute one node, then reschedule its state."""
+    """Take one runnable entry; Executor commits its state and queue effects."""
     item = get_connection().brpop(READY_PROCESSES, timeout=timeout)
     if item is None:
         return None
-    _, process_id = item
-    try:
-        process = Executor(process_id)
-    except Exception as error:
-        logger.exception('failed to execute process %s', process_id)
-        process = read_process(process_id)
-        process['status'] = 'failed'
-        process['error'] = str(error)
-        write_process(process)
-        try:
-            _terminate_terminal_process(process)
-        except Exception:
-            logger.exception(
-                'failed to terminate terminal process for failed process %s',
-                process_id,
-            )
-        try:
-            finished_at = datetime.now(timezone.utc)
-            start_time = _parse_start_time(process['start_time'])
-            _record_process_completion(
-                process,
-                finished_at,
-                round((finished_at - start_time).total_seconds() * 1000),
-                status='failed',
-            )
-        except Exception:
-            logger.exception('failed to record failed process %s', process_id)
-        return process
-
-    client = get_connection()
-    status = process.get('status')
-    if status == 'blocked':
-        client.sadd(BLOCKED_PROCESSES, process_id)
-    elif status == 'completed':
-        client.srem(BLOCKED_PROCESSES, process_id)
-    else:
-        process['status'] = 'ready'
-        write_process(process)
-        _enqueue_ready_process(process_id)
-    return process
+    return Executor(item[1])
 
 
 def Scheduler(timeout: int = 5) -> None:

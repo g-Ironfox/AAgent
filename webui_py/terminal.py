@@ -3,6 +3,8 @@
 import json
 import logging
 import os
+import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
 import redis
@@ -15,6 +17,11 @@ from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
 from common import limit_error
+
+_RUNTIME_PATH = Path(os.getenv("AGENT_RUNTIME_PATH", Path(__file__).resolve().parent.parent / "agent"))
+if str(_RUNTIME_PATH) not in sys.path:
+    sys.path.append(str(_RUNTIME_PATH))
+from r import wake_process
 
 MAX_TERMINAL_RUNES = 4000
 PROCESS_TABLE_KEY = os.getenv("ProcessTable", "processtable")
@@ -51,6 +58,14 @@ def create_terminal_router(redis_client: redis.Redis, messages: Collection) -> A
         except redis.RedisError:
             return JSONResponse(status_code=503, content={"error": "终端列表暂时不可用"})
         sessions = []
+        processes = {}
+        for process_id, raw in records.items():
+            try:
+                record = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(record, dict) and record.get("process_id") == process_id:
+                processes[process_id] = record
         for process_id, raw in records.items():
             try:
                 process = json.loads(raw)
@@ -63,12 +78,22 @@ def create_terminal_router(redis_client: redis.Redis, messages: Collection) -> A
                 or process["process_id"] != process_id
             ):
                 continue
-            sessions.append({
+            session = {
                 "terminal_process_id": process.get("process_id"),
                 "parent_process_id": process.get("parent_process_id"),
                 "status": process.get("status", "unknown"),
                 "start_time": process.get("start_time"),
-            })
+            }
+            owner = processes.get(process.get("parent_process_id"), {})
+            if owner.get("process_type") == "workflow":
+                session.update(
+                    workflow_name=owner.get("workflow_name"),
+                    workflow_status=owner.get("status"),
+                    workflow_parent_process_id=owner.get("parent_process_id"),
+                    root_process_id=owner.get("root_process_id"),
+                    wait_for=owner.get("wait_for"),
+                )
+            sessions.append(session)
         sessions.sort(key=lambda item: item.get("start_time") or "", reverse=True)
         return {"sessions": sessions}
 
@@ -133,6 +158,19 @@ def create_terminal_router(redis_client: redis.Redis, messages: Collection) -> A
             messages.insert_one(document)
         except PyMongoError:
             return JSONResponse(status_code=503, content={"error": "终端消息保存失败"})
+        parent_process_id = terminal_process.get("parent_process_id")
+        if isinstance(parent_process_id, str) and parent_process_id:
+            try:
+                wake_process(
+                    redis_client, parent_process_id, payload.terminal_process_id,
+                    "terminal_message",
+                )
+            except (redis.RedisError, KeyError, ValueError):
+                logger.exception("terminal message saved but process wakeup failed")
+                return JSONResponse(status_code=503, content={
+                    "error": "终端消息已保存，但唤醒工作流失败，请重试",
+                    "message": serialize_message(document) | {"created_at": now.isoformat()},
+                })
         return {"message": serialize_message(document)}
 
     return router

@@ -28,6 +28,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   map_content_get: new Set(),
   deserialize_json: new Set(['outputs']),
   output_to_terminal: new Set(),
+  wait_terminal_event: new Set(),
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   foreach: new Set(['item_type']),

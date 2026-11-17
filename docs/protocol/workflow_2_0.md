@@ -219,6 +219,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `construct_map_content` | `mappings` | 每个 port 条目对应一个 content 输入 | `map-out: map-content` |
 | `map_content_get` | 无 | `map-in: map-content`、`key-in: content` | `content-out: content` |
 | `output_to_terminal` | 无 | `content-in: content` | 无 |
+| `wait_terminal_event` | 无 | 无 | 无；仅 `control-in` / `control-out` |
 | `deserialize_json` | `outputs: [{key,type}]` | `content-in: content`，内容为 JSON object 文本 | 每个 key 一个对应 type 的端口 |
 | `construct_list` | `item_type`、`initial_value_count` | `<item_type>-in-0` 至 `<item_type>-in-(count-1)` | `list-out: list-<item_type>` |
 | `list_append` | `item_type`、`position` | `list-in: list-<item_type>`、`item-in: <item_type>` | `list-out: list-<item_type>` |
@@ -241,7 +242,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 | 节点类型 | 必需参数 | 可选参数（缺省值） |
 | --- | --- | --- |
-| `input`、`output`、`map_content_get`、`output_to_terminal` | 无 | 无 |
+| `input`、`output`、`map_content_get`、`output_to_terminal`、`wait_terminal_event` | 无 | 无 |
 | `router` | `branches` | 无 |
 | `construct_message` | 无 | `role` (`user`)、`role_source` (`fixed`) |
 | `construct_content` | `append_items` | 无 |
@@ -271,6 +272,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `construct_content.append_items` 必须为非空数组。每项是 object，`type` 必须为 `fixed` 或 `port`。固定项恰含 `type`、`value`，且 value 为字符串；端口项恰含 `type`、`port_id`，且 port_id 为非空字符串。端口 ID 不重复，且端口项 ID 集合与 `dataInputPorts` 一致。按条目顺序拼接；运行时缺失的端口值跳过，非字符串值转换为字符串。
 - `construct_map_content.mappings` 必须为非空数组。每项必须包含非空字符串 `key` 且 key 唯一。固定值项含 `key`、`value`，可以附 `value_source` 且其值必须为 `fixed`；value 为字符串。端口项恰含 `key`、`value_source`、`port_id`，其中 value_source 固定为 `port`，port_id 非空且唯一，不得为控制端口，并与 `dataInputPorts` 一致。端口运行值必须为已提供的字符串；输出保留条目顺序。
 - `map_content_get` 按 key 查值；查不到时执行失败。
+- `wait_terminal_event` 执行后保存工作流数据及下一节点索引，将当前进程设为 `blocked`，`wait_for` 指向关联终端的 `terminal_message`。终端输入成功保存后，仅唤醒来源和事件类型均匹配的进程，清除等待条件并重新入就绪队列，从下一节点继续。该节点无参数、无数据端口，不消费或输出消息正文；进入等待前的消息不缓存为待唤醒事件，终端输出也不唤醒。重复发送不会重复入队。根工作流和子工作流均通过进程调度器执行，均支持该节点。仅用于调试和同步调用的 `run_workflow_map` 遇到等待节点时明确报错，不能挂起。
 - `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为七种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
 - `construct_list.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message` 或 `list-struct:<id>`。
@@ -345,3 +347,20 @@ Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控�
 将创建 Context 节点的 `context-id` 输出接入此节点的 `context-id`；将 `loop-out` 接入循环体，循环体末尾返回 `loop-in`，`control-out` 接循环结束后的节点。初始列表 `["a", "b", "c"]` 在默认配置下传出 `"c"`、`"b"`、`"a"`，并留下空列表；改为 `start` 则传出 `"a"`、`"b"`、`"c"`。循环体可以修改同一 Context 列表，下一轮会使用修改后的值。
 
 While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out` 仅在循环体子空间可见，`context-id` 输入属于父空间，`control-out` 延续父空间；循环体禁止 Router、多控制出口节点和嵌套循环，必须返回自身的 `loop-in`。循环结果通过 Context 显式传递到外层。
+
+
+### 10.5 父子工作流进程调度
+
+在进程调度器中，每次 `workflow` 节点调用创建一个普通 workflow 子进程及独立终端。保留依赖、递归和接口校验，将节点输入复制到子图。父图保存 `control-out` 后继索引及 `pending_call`（调用节点 ID、索引、子进程 ID、日志索引），进入 `blocked`，等待 `{"kind":"process_exit","process_id":"<child>"}`。父进程保存、子进程及终端创建、子进程入队在同一 Redis 事务提交。
+
+调度器原子领取 `ready` 进程，设为 `running` 并记录本次 execution ID，每次只执行一个节点。完成后原子保存图、索引和状态，并更新就绪队列或阻塞集合。重复队列项不能执行 `running`、`blocked` 或终态进程；被终止的旧执行结果不能覆盖终态。多层调用重复相同规则，无需嵌套同步 runner。
+
+子进程执行到 `output` 时收集结果到进程的 `result`；保存终态、关闭自身终端、唤醒等待该子进程退出的父进程在同一事务提交。父进程下次被调度时先处理 `pending_call`，校验父子关系、状态与输出类型，从原调用节点的数据输出向下游传播，再清除 pending 并执行后继节点；不会重新执行调用节点或再次创建子进程。`failed` 和 `terminated` 同样唤醒父进程，父进程失败并保留子进程标识和错误，逐层传播。
+
+各进程有自己的 `terminal_process_id`。等待终端只匹配该终端的输入；向父终端发送消息不会唤醒正在等待子进程退出的父进程。终端列表展示工作流名称、子进程标识及等待状态。`wait_terminal_event` 仅负责唤醒，无消息数据输出。
+
+每个进程使用稳定的 `invocation_id`（缺省等于进程 ID），持久化 `context_ids` 和祖先 invocation ID 列表。每次节点执行临时恢复已有 Context 节点所需的运行作用域，保存工作流时剔除内存 set 等临时对象。子进程可沿用原有规则访问祖先 Context；自己创建的 Context 归自己所有。受进程管理的 Context 不设过期时间，挂起期间保留；进程完成、失败或显式终止时清理，Session 语义不变。
+
+执行超时按实际节点执行累计时间判断，终端等待、子进程等待和队列等待不计入；单个阻塞调用仍由其自身的工具或网络超时约束。进程日志分别记录总经过时间与 active_duration_ms。调用节点创建子进程后记为 waiting，接收子进程结果时再改为 completed 或 failed。取消入口 `terminate_process` 原子终止目标进程及仍活动的后代和终端，清理其 Context；若目标是子进程，则唤醒树外等待它的父进程。
+
+进程记录和队列依赖现有 Redis 持久化配置。当前不提供 worker 崩溃后自动重领 running 进程或任意外部副作用恰好一次的保证；execution ID 用于防止取消后的迟到提交，不是自动重试租约。受进程管理的 Context 需通过终态清理，不能仅删除进程记录。
