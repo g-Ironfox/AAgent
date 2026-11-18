@@ -40,7 +40,7 @@ class WorkflowSchemaVersionTest(unittest.TestCase):
     def test_current_workflow_schema_version_is_2_0(self):
         self.assertEqual(WORKFLOW_SCHEMA_VERSION, "2.0")
 
-    def test_workflow_files_reject_empty_but_preserve_whitespace(self):
+    def test_workflow_contract_ignores_legacy_name_and_accepts_absent_name(self):
         with self.assertRaises(ValidationError):
             WorkflowRequest.model_validate({"name": "", "schema_version": WORKFLOW_SCHEMA_VERSION})
 
@@ -51,8 +51,10 @@ class WorkflowSchemaVersionTest(unittest.TestCase):
             "output_ports": [],
             "nodes": [{"id": "output", "type": "output", "workflowPorts": []}],
         }
-        self.assertEqual(WorkflowRequest.model_validate(payload).name, "   ")
-        self.assertEqual(WorkflowMetadataPatchRequest(name="  ").name, "  ")
+        self.assertNotIn("name", WorkflowRequest.model_validate(payload).model_dump())
+        payload.pop("name")
+        self.assertNotIn("name", WorkflowRequest.model_validate(payload).model_dump())
+        self.assertNotIn("name", WorkflowMetadataPatchRequest(name="  ").model_dump())
 
     def test_accepts_current_version_and_rejects_past_and_future_versions(self):
         payload = {
@@ -322,11 +324,25 @@ class SubprocessWorkflowMigrationTest(unittest.TestCase):
         with self.assertRaises(ValidationError):
             WorkflowRequest.model_validate({**original, "subprocess_workflow_files": []})
 
+    def test_save_uses_the_path_filename_without_a_name_in_the_definition(self):
+        from workflows import create_workflows_router
+        document = self.legacy()
+        document.pop("name")
+        collection = MagicMock()
+        collection.find_one.return_value = None
+        router = create_workflows_router(MagicMock(), "tools", MagicMock(), collection)
+        endpoint = next(route.endpoint for route in router.routes if "POST" in route.methods)
+        response = endpoint("Parent.flow", WorkflowRequest.model_validate(document))
+        self.assertNotIn("name", response)
+        self.assertEqual(response["file_name"], "Parent.flow")
+        self.assertEqual(response["nodes"][1]["arguments"], {"workflow_file": "child.flow"})
+        collection.insert_one.assert_called_once()
+
     def test_metadata_save_rewrites_old_nodes_and_removes_old_mongo_field(self):
         from workflows import create_workflows_router
         original = {**self.legacy(), "_id": "id"}
         collection = MagicMock()
-        collection.find_one.side_effect = [original, None, original]
+        collection.find_one.side_effect = [original, original]
         router = create_workflows_router(MagicMock(), "tools", MagicMock(), collection)
         endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/metadata"))
         response = endpoint("Parent", WorkflowMetadataPatchRequest(name="Parent"))

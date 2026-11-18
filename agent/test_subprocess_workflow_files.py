@@ -88,7 +88,7 @@ class SubprocessWorkflowFileValidationTest(unittest.TestCase):
                         child[field] = copy.deepcopy(ports)
                         self.read.return_value = child
                         with self.assertRaises(WorkflowValidationError) as caught:
-                            validate_subprocess_workflow_files(workflow)
+                            validate_subprocess_workflow_files(workflow, "Parent.flow")
                         message = str(caught.exception)
                         for detail in ("Parent", "Child.flow", field, "saved=", "actual=", "refresh"):
                             self.assertIn(detail, message)
@@ -147,7 +147,7 @@ class WorkflowDependencyExecutionTest(unittest.TestCase):
         with patch(
             "workflow_parser._read_workspace_workflow_by_name", side_effect=[child, grandchild]
         ) as read, patch("workflow_parser.parse_workflow") as parse, patch("workflow_nodes.run_workflow_map") as run:
-            with self.assertRaisesRegex(WorkflowValidationError, "Child.*Grandchild.flow.*input_ports"):
+            with self.assertRaisesRegex(WorkflowValidationError, "Child.flow.*Grandchild.flow.*input_ports"):
                 workflow_spawn_and_wait_subprocess(1, parse_workflow(parent))
             read.assert_has_calls([call("Child.flow"), call("Grandchild.flow")])
             parse.assert_not_called()

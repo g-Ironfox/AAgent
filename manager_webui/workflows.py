@@ -43,8 +43,6 @@ class WorkflowPortMetadata(BaseModel):
 
 class WorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=MAX_WORKFLOW_DESCRIPTION_LENGTH)
     schema_version: Literal["2.0"]
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -61,18 +59,6 @@ class WorkflowRequest(BaseModel):
         return migrate_subprocess_workflow_format(value) if isinstance(value, dict) else value
 
 
-class WorkflowCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=120)
-
-
-class WorkflowRenameRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=120)
-
-
 class SubprocessWorkflowFileReference(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -84,8 +70,6 @@ class SubprocessWorkflowFileReference(BaseModel):
 
 class WorkflowMetadataPatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=120)
     subprocess_workflow_files: list[SubprocessWorkflowFileReference] | None = None
 
     @model_validator(mode="before")
@@ -103,9 +87,11 @@ class RemoteToolReference(BaseModel):
 
 
 def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
+    # The legacy registry key is transport identity, never Workflow metadata.
+    file_name = document.get("name", "")
     document = migrate_subprocess_workflow_format(document)
     return {
-        "name": document.get("name", ""),
+        "file_name": file_name,
         "description": document.get("description", ""),
         "schema_version": document.get("schema_version"),
         "metadata": document.get("metadata", {}),
@@ -138,10 +124,10 @@ def create_workflows_router(
             return {
                 "items": [
                     {
-                        "name": item.get("name", ""),
+                        "file_name": item.get("name", ""),
                         "description": item.get("description", ""),
                         "schema_version": item.get("schema_version"),
-                        "metadata": item.get("metadata", {}),
+                        "metadata": migrate_subprocess_workflow_format(item).get("metadata", {}),
                         "node_count": len(item.get("nodes", [])),
                         "connection_count": len(item.get("connections", [])),
                         "input_ports": item.get("input_ports", []),
@@ -182,15 +168,13 @@ def create_workflows_router(
 
     def save_workflow(name: str, payload: WorkflowRequest, overwrite: bool):
         if not name:
-            return JSONResponse(status_code=400, content={"error": "Workflow 名称不能为空"})
-        if payload.name != name:
-            return JSONResponse(status_code=400, content={"error": "请求路径名称必须与 Workflow JSON 的 name 一致"})
+            return JSONResponse(status_code=400, content={"error": "Workflow 文件名不能为空"})
         try:
             existing = workflows.find_one({"name": name})
             if overwrite and existing is None:
                 return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
             if not overwrite and existing is not None:
-                return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
+                return JSONResponse(status_code=409, content={"error": "Workflow 文件名已存在"})
             input_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.input_ports]
             output_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.output_ports]
             references = payload.subprocess_workflow_files
@@ -203,7 +187,7 @@ def create_workflows_router(
                 output_contract = workflow_port_values(reference.get("output_ports", []))
                 canonical_references.append({"name": reference["name"], "input_ports": input_contract, "output_ports": output_contract})
             values = payload.model_dump()
-            values.update({"name": name, "input_ports": input_ports, "output_ports": output_ports, "subprocess_workflow_files": canonical_references})
+            values.update({"input_ports": input_ports, "output_ports": output_ports, "subprocess_workflow_files": canonical_references})
             try:
                 validate_workflow(values)
             except WorkflowValidationError as error:
@@ -229,6 +213,7 @@ def create_workflows_router(
         now = datetime.now(timezone.utc)
         values["description"] = values["description"].strip()
         values["updated_at"] = now
+        values["name"] = name  # Legacy registry key; excluded from Workflow responses.
         try:
             if overwrite:
                 values["created_at"] = existing.get("created_at", now)
@@ -240,24 +225,21 @@ def create_workflows_router(
                 values["_id"] = result.inserted_id
                 document = values
         except DuplicateKeyError:
-            return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
+            return JSONResponse(status_code=409, content={"error": "Workflow 文件名已存在"})
         except PyMongoError:
             return JSONResponse(status_code=503, content={"error": "暂时无法保存 Workflow"})
         return workflow_response(document)
 
     @router.patch("/api/workflow/{name}/metadata")
     def update_workflow_metadata(name: str, payload: WorkflowMetadataPatchRequest):
-        # 改名和删除只作用于目标 Workflow，不级联改写其他引用处；全量同步代价大且没有功能收益。
-        next_name = payload.name
+        # The path identifies the registry entry; metadata only updates the file contract.
         try:
             existing = workflows.find_one({"name": name})
             if existing is None:
                 return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
-            if workflows.find_one({"name": next_name, "_id": {"$ne": existing["_id"]}}):
-                return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
             existing = migrate_subprocess_workflow_format(existing)
             updates = {
-                "name": next_name,
+                "metadata": existing.get("metadata", {}),
                 "nodes": existing.get("nodes", []),
                 "subprocess_workflow_files": existing.get("subprocess_workflow_files", []),
                 "updated_at": datetime.now(timezone.utc),

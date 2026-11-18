@@ -4,6 +4,8 @@
 
 规范根据当前工作区源码整理，目标版本为 Workflow 2.0。本文同时记录论文机制所需的运行时扩展；旧图仍使用原生 Workflow 2.0 契约。
 
+Workflow JSON 不包含根级 `name` 或 `metadata.name`。工作区文件记录的文件名是唯一身份来源；设计包使用外层 `filename`，子进程调用使用精确文件名。
+
 ## 已核实的执行链
 
 1. [processes.py](../webui_py/processes.py) 按工作区文件 ID 创建进程，校验并编译工作流，同时创建专属终端，将进程记录和就绪项写入 Redis。

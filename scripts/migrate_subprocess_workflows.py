@@ -94,11 +94,11 @@ def migrate_manager(base_url, apply=False):
     response.raise_for_status()
     count = 0
     for item in response.json()["items"]:
-        url = f"{base_url}/api/workflow/{quote(item['name'], safe='')}/metadata"
+        url = f"{base_url}/api/workflow/{quote(item.get('file_name', item.get('name', '')), safe='')}/metadata"
         # The metadata API rewrites nodes/references canonically and unsets the legacy field.
-        print(f"{'NORMALIZE' if apply else 'WOULD NORMALIZE'} manager:{item['name']}")
+        print(f"{'NORMALIZE' if apply else 'WOULD NORMALIZE'} manager:{item.get('file_name', item.get('name', ''))}")
         if apply:
-            response = requests.patch(url, json={"name": item["name"]}, timeout=(3, 30))
+            response = requests.patch(url, json={}, timeout=(3, 30))
             response.raise_for_status()
         count += 1
     return count

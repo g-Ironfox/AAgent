@@ -198,7 +198,7 @@
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
           <div class="canvas-context">
-            <div class="workflow-selector"><span>WORKFLOW</span><strong id="workflowNameDisplay">workflow</strong></div>
+            <div class="workflow-selector"><span>WORKFLOW FILE</span><strong id="workflowFileNameDisplay">workflow.flow</strong></div>
             <div class="canvas-meta"><span id="connectionCount">1 条连接</span><span id="workflowState"></span></div>
           </div>
           <div class="canvas-actions">
@@ -259,7 +259,6 @@
       </header>
       <div class="metadata-body">
         <div class="metadata-basics">
-          <label>Workflow 名称<input id="workflowName" maxlength="120" required value="workflow"></label>
           <label>描述<textarea id="workflowDescription" rows="4" maxlength="2000" placeholder="简要说明用途、输入输出或使用场景"></textarea></label>
         </div>
         <div class="metadata-columns">
@@ -702,6 +701,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=32"></script>
+  <script type="module" src="/workflow.js?v=33"></script>
 </body>
 </html>

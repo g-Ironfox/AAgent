@@ -1,11 +1,9 @@
-// Mirror the Manager renderer locally: both services deploy independently.
-// test_workspace_workflow.mjs checks that their renderers stay identical.
 import { workflowCanvasFilename, workflowCanvasSvg } from './workflow_canvas.mjs';
 import { editWorkflowMetadata, parseWorkflowFile, validateWorkflowMetadata } from './workflow-file.mjs';
 
-export function createWorkflowPanel({ onChange, onError }) {
+export function createWorkflowPanel({ onChange, onError, getFileName = () => 'workflow.flow' }) {
   const el = Object.fromEntries([
-    'workflowPanel', 'workflowVersion', 'workflowName', 'workflowDescription', 'workflowCanvasPreview',
+    'workflowPanel', 'workflowVersion', 'workflowDescription', 'workflowCanvasPreview',
     'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts', 'subprocessWorkflowFiles',
     'subprocessFileCount', 'remoteTools', 'remoteToolCount',
   ].map((id) => [id, document.getElementById(id)]));
@@ -70,7 +68,6 @@ export function createWorkflowPanel({ onChange, onError }) {
 
   function currentWorkflow() {
     return editWorkflowMetadata(original, {
-      name: el.workflowName.value,
       description: el.workflowDescription.value,
       subprocessFiles: subprocessFileInputs.map((input) => input.value),
     });
@@ -78,7 +75,7 @@ export function createWorkflowPanel({ onChange, onError }) {
 
   function renderCanvas(workflow) {
     try {
-      const parsed = new DOMParser().parseFromString(workflowCanvasSvg(workflow), 'image/svg+xml');
+      const parsed = new DOMParser().parseFromString(workflowCanvasSvg(workflow, getFileName()), 'image/svg+xml');
       const svg = parsed.documentElement;
       if (svg.nodeName === 'parsererror') throw new Error('画布 SVG 生成失败');
       // The WebUI CSP disallows inline styles; the matching rules live in the stylesheet.
@@ -102,16 +99,15 @@ export function createWorkflowPanel({ onChange, onError }) {
     renderCanvas(workflow);
   }
 
-  el.workflowName.addEventListener('input', sync);
   el.workflowDescription.addEventListener('input', sync);
   el.canvasExportButton.addEventListener('click', () => {
     if (!original || el.canvasExportButton.disabled) return;
     try {
       const workflow = currentWorkflow();
-      const url = URL.createObjectURL(new Blob([workflowCanvasSvg(workflow)], { type: 'image/svg+xml;charset=utf-8' }));
+      const url = URL.createObjectURL(new Blob([workflowCanvasSvg(workflow, getFileName())], { type: 'image/svg+xml;charset=utf-8' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = workflowCanvasFilename(workflow.name);
+      link.download = workflowCanvasFilename(getFileName());
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) { onError(error.message || '导出画布失败'); }
@@ -124,7 +120,6 @@ export function createWorkflowPanel({ onChange, onError }) {
       if (!original) return false;
       originalContent = JSON.stringify(JSON.parse(content)) === JSON.stringify(original) ? content : JSON.stringify(original, null, 2);
       el.workflowVersion.textContent = 'SCHEMA ' + original.schema_version + ' / VERSION ' + (original.version ?? 1);
-      el.workflowName.value = original.name;
       el.workflowDescription.value = original.description || '';
       renderPorts(el.inputPorts, original.input_ports);
       renderPorts(el.outputPorts, original.output_ports);
@@ -138,9 +133,9 @@ export function createWorkflowPanel({ onChange, onError }) {
     },
     setEditing(editing, busy) {
       disabled = !editing || busy;
-      for (const input of [el.workflowName, el.workflowDescription, ...subprocessFileInputs]) input.disabled = disabled;
+      for (const input of [el.workflowDescription, ...subprocessFileInputs]) input.disabled = disabled;
       el.canvasExportButton.disabled = busy;
     },
-    validate() { if (original) validateWorkflowMetadata(currentWorkflow()); },
+    validate() { if (original) { validateWorkflowMetadata(currentWorkflow()); sync(); } },
   };
 }

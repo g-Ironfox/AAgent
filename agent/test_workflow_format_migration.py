@@ -25,6 +25,22 @@ def legacy_workflow():
 
 
 class WorkflowFormatMigrationTest(unittest.TestCase):
+    def test_workflow_identity_is_external_and_legacy_names_are_removed(self):
+        document = empty_workflow()
+        document["metadata"] = {"name": "obsolete", "structs": [
+            {"id": "profile", "name": "Profile", "color": "#3A7D68", "fields": []}
+        ]}
+        before = copy.deepcopy(document)
+        canonical = migrate_subprocess_workflow_format(document)
+        self.assertNotIn("name", canonical)
+        self.assertNotIn("name", canonical["metadata"])
+        self.assertEqual(canonical["metadata"]["structs"][0]["name"], "Profile")
+        self.assertEqual(document, before)
+        validate_workflow(canonical)
+        validate_workflow(document)
+        self.assertEqual(parse_workflow(canonical), parse_workflow(document))
+
+
     def test_legacy_document_compiles_to_only_new_fields_without_mutation(self):
         original = legacy_workflow()
         before = copy.deepcopy(original)
@@ -86,11 +102,11 @@ class WorkflowFormatMigrationTest(unittest.TestCase):
             self.assertNotIn("workflow_nodes", json.loads(payload["content"]))
 
     def test_manager_migration_normalizes_existing_records_via_metadata_endpoint(self):
-        response = Mock(); response.json.return_value = {"items": [{"name": "Parent"}]}
+        response = Mock(); response.json.return_value = {"items": [{"file_name": "Parent"}]}
         with patch("requests.get", return_value=response), patch("requests.patch") as write:
             self.assertEqual(migrate_manager("http://manager", apply=True), 1)
             self.assertEqual(write.call_args.args, ("http://manager/api/workflow/Parent/metadata",))
-            self.assertEqual(write.call_args.kwargs["json"], {"name": "Parent"})
+            self.assertEqual(write.call_args.kwargs["json"], {})
 
     def test_design_envelope_is_migrated_without_renaming_files(self):
         source = {"format": "aagent.workflow-design/1", "entrypoint": "parent.flow", "workflows": [

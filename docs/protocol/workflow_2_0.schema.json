@@ -5,7 +5,6 @@
   "type": "object",
   "required": [
     "schema_version",
-    "name",
     "input_ports",
     "output_ports",
     "nodes",
@@ -14,9 +13,6 @@
   "properties": {
     "schema_version": {
       "const": "2.0"
-    },
-    "name": {
-      "type": "string"
     },
     "description": {
       "type": "string"

@@ -7,7 +7,7 @@ export function parseWorkflowFile(content) {
   try {
     const workflow = migrateSubprocessWorkflowFormat(JSON.parse(content));
     if (!object(workflow) || !['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '2.0'].includes(workflow.schema_version)
-      || typeof workflow.name !== 'string' || (workflow.description !== undefined && typeof workflow.description !== 'string')
+      || (workflow.description !== undefined && typeof workflow.description !== 'string')
       || !ports(workflow.input_ports) || !ports(workflow.output_ports)
       || !Array.isArray(workflow.nodes) || !workflow.nodes.every((node) => object(node) && typeof node.id === 'string')
       || !Array.isArray(workflow.connections) || !workflow.connections.every(object)) return null;
@@ -24,9 +24,9 @@ export function parseWorkflowFile(content) {
 }
 
 // Build from the original document so swaps/overlapping names are remapped atomically.
-export function editWorkflowMetadata(workflow, { name, description, subprocessFiles }) {
+export function editWorkflowMetadata(workflow, { description, subprocessFiles }) {
   workflow = migrateSubprocessWorkflowFormat(workflow);
-  const next = { ...workflow, name };
+  const next = { ...workflow };
   if (description !== (workflow.description || '')) next.description = description;
   const references = workflow.subprocess_workflow_files || [];
   const replacements = new Map();
@@ -47,7 +47,6 @@ export function editWorkflowMetadata(workflow, { name, description, subprocessFi
 }
 
 export function validateWorkflowMetadata(workflow) {
-  if (!workflow.name.trim()) throw new Error('Workflow 名称不能为空');
   const names = (workflow.subprocess_workflow_files || []).map((ref) => ref.name);
   if (names.some((name) => !name.trim())) throw new Error('子进程 Workflow 文件名不能为空');
   if (new Set(names).size !== names.length) throw new Error('子进程 Workflow 文件名不能重复');
@@ -56,6 +55,8 @@ export function validateWorkflowMetadata(workflow) {
 export function migrateSubprocessWorkflowFormat(workflow) {
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) return workflow;
   const next = structuredClone(workflow);
+  delete next.name;
+  if (next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata)) delete next.metadata.name;
   const stable = (value) => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
   if (Object.hasOwn(next, 'workflow_nodes')) {

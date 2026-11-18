@@ -46,13 +46,12 @@ const elements = {
   metadataButton: document.querySelector('#metadataButton'),
   metadataDialog: document.querySelector('#metadataDialog'),
   metadataForm: document.querySelector('#metadataForm'),
-  workflowName: document.querySelector('#workflowName'),
   workflowDescription: document.querySelector('#workflowDescription'),
   structDefinitions: document.querySelector('#structDefinitions'),
   structDefinitionsError: document.querySelector('#structDefinitionsError'),
   addStructButton: document.querySelector('#addStructButton'),
   canvasLegend: document.querySelector('#canvasLegend'),
-  workflowNameDisplay: document.querySelector('#workflowNameDisplay'),
+  workflowFileNameDisplay: document.querySelector('#workflowFileNameDisplay'),
   subprocessWorkflowFileList: document.querySelector('#subprocessWorkflowFileList'),
   addSubprocessWorkflowFileButton: document.querySelector('#addSubprocessWorkflowFileButton'),
   remoteToolList: document.querySelector('#remoteToolList'),
@@ -122,15 +121,18 @@ function currentCanvasViewport() {
   };
 }
 
-function importWorkflowText(text, source = '已导入') {
+let workflowFileName = 'workflow.flow';
+
+function importWorkflowText(text, source = '已导入', fileName = 'workflow.flow') {
   const workflow = parseWorkflowText(text);
   if (!loadSnapshot(workflow)) throw new Error('内容不是有效的 Workflow JSON');
+  workflowFileName = fileName;
   inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
   inspector.setMetadataTools(metadataToolReferences());
   resetUndoHistory();
   hasUnsavedChanges = true;
-  elements.workflowNameDisplay.textContent = state.name;
+  elements.workflowFileNameDisplay.textContent = workflowFileName;
   renderWorkflow();
   elements.workflowState.textContent = source;
   elements.workflowState.classList.remove('saved');
@@ -138,7 +140,6 @@ function importWorkflowText(text, source = '已导入') {
 
 function isPristineEditor() {
   return !hasUnsavedChanges
-    && state.name === 'workflow'
     && state.description === ''
     && state.input_ports.length === 0
     && state.output_ports.length === 0
@@ -194,7 +195,7 @@ loadSnapshot(workflowSnapshot());
 inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
 inspector.setRemoteToolReferences(remoteToolReferences());
 inspector.setMetadataTools(metadataToolReferences());
-elements.workflowNameDisplay.textContent = state.name;
+elements.workflowFileNameDisplay.textContent = workflowFileName;
 resetUndoHistory();
 
 document.addEventListener('keydown', (event) => {
@@ -212,7 +213,7 @@ document.addEventListener('keydown', (event) => {
   hasUnsavedChanges = true;
   elements.workflowState.textContent = '未保存';
   elements.workflowState.classList.remove('saved');
-  elements.workflowNameDisplay.textContent = state.name;
+  elements.workflowFileNameDisplay.textContent = workflowFileName;
   inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
   inspector.setMetadataTools(metadataToolReferences());
@@ -295,7 +296,6 @@ function renderMetadataPortList(collection) {
 }
 
 function renderMetadataDialog() {
-  elements.workflowName.value = state.name;
   elements.workflowDescription.value = state.description;
   renderMetadataPortList('input_ports');
   renderMetadataPortList('output_ports');
@@ -698,11 +698,12 @@ elements.metadataButton.addEventListener('click', () => {
 elements.clearButton.addEventListener('click', () => {
   if (hasUnsavedChanges && !window.confirm('清空会覆盖当前未保存的 Workflow，确定继续吗？')) return;
   if (!resetWorkflow()) return;
+  workflowFileName = 'workflow.flow';
   inspector.setSubprocessWorkflowFiles([]);
   inspector.setRemoteToolReferences([]);
   inspector.setMetadataTools([]);
   hasUnsavedChanges = true;
-  elements.workflowNameDisplay.textContent = state.name;
+  elements.workflowFileNameDisplay.textContent = workflowFileName;
   renderWorkflow();
   elements.workflowState.textContent = '已清空';
   elements.workflowState.classList.remove('saved');
@@ -789,7 +790,6 @@ elements.metadataForm.addEventListener('submit', (event) => {
   const previousSnapshot = workflowSnapshot();
   syncSubprocessWorkflowFileNodes(subprocessWorkflowFiles);
   syncRemoteToolNodes(remoteTools);
-  state.name = elements.workflowName.value.trim();
   state.description = elements.workflowDescription.value.trim();
   state.metadata = { ...(state.metadata || {}), structs };
   state.input_ports = inputPorts;
@@ -813,7 +813,7 @@ elements.metadataForm.addEventListener('submit', (event) => {
   inspector.setRemoteToolReferences(remoteToolReferences());
   inspector.setMetadataTools(metadataToolReferences());
   markChanged();
-  elements.workflowNameDisplay.textContent = state.name;
+  elements.workflowFileNameDisplay.textContent = workflowFileName;
   renderWorkflow();
   elements.metadataDialog.close();
 });
@@ -855,7 +855,7 @@ elements.importFileInput.addEventListener('change', async () => {
   elements.importFileInput.value = '';
   if (!file) return;
   try {
-    importWorkflowText(await file.text());
+    importWorkflowText(await file.text(), '已导入 ' + file.name, file.name);
   } catch (error) {
     elements.workflowState.textContent = error.message || '导入失败';
     elements.workflowState.classList.remove('saved');
@@ -951,8 +951,7 @@ elements.exportButton.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  const filename = state.name.replace(/[<>:"/\\|?*]+/g, '-').replace(/\s+/g, '-');
-  link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = workflowFileName;
   link.click();
   URL.revokeObjectURL(url);
 });

@@ -209,7 +209,7 @@ function nodeHeight(node, connections, workflow) {
   );
 }
 
-export function workflowCanvasSvg(workflow) {
+export function workflowCanvasSvg(workflow, fileName = 'Workflow') {
   const sourceNodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
   const connections = Array.isArray(workflow?.connections) ? workflow.connections : [];
   const minX = Math.min(0, ...sourceNodes.map((node) => safeCoordinate(node.x)));
@@ -263,11 +263,11 @@ export function workflowCanvasSvg(workflow) {
     </g>`;
   }).join('');
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(workflow?.name || 'Workflow')} 完整画布">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(fileName)} 完整画布">
     <defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#dfe4df" stroke-width="1"/></pattern></defs>
     <style>text{font-family:"Microsoft YaHei",sans-serif;fill:#17201d}.title{font-size:20px;font-weight:700}.meta,.node-type{font-family:Consolas,monospace;fill:#68736e}.meta{font-size:10px}.node-name{font-size:11px;font-weight:700}.node-type{font-size:8px}.ports text{font-family:Consolas,"Microsoft YaHei",sans-serif;font-size:8px;fill:#68736e}.ports circle{stroke:#fff;stroke-width:2}</style>
     <rect width="${width}" height="${height}" fill="#f5f6f3"/><rect width="${width}" height="${height}" fill="url(#grid)"/>
-    <g class="canvas-heading"><text x="${PADDING}" y="32" class="title">${escapeXml(workflow?.name || 'Workflow')}</text>
+    <g class="canvas-heading"><text x="${PADDING}" y="32" class="title">${escapeXml(fileName)}</text>
     <text x="${PADDING}" y="48" class="meta">${nodes.length} NODES / ${connections.length} CONNECTIONS / VERSION ${escapeXml(workflow?.version || 1)}</text></g>
     <g>${paths}</g><g>${cards}</g>
   </svg>`;

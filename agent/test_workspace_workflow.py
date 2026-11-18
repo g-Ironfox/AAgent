@@ -14,7 +14,7 @@ from workflow_parser import (
 
 def echo_workflow():
     return {
-        "schema_version": "2.0", "name": "workspace echo",
+        "schema_version": "2.0",
         "input_ports": [{"name": "content", "type": "content"}],
         "output_ports": [{"name": "content", "type": "content"}],
         "nodes": [
@@ -55,11 +55,11 @@ class WorkspaceWorkflowTest(unittest.TestCase):
 
     def test_updates_and_checkpoint_restores_are_loaded_each_time(self):
         self.workspace.find_one.side_effect = [
-            {"generation": 1}, {"content": '{"name":"before"}'},
-            {"generation": 1}, {"content": '{"name":"edited"}'},
-            {"generation": 2}, {"content": '{"name":"restored"}'},
+            {"generation": 1}, {"content": '{"description":"before"}'},
+            {"generation": 1}, {"content": '{"description":"edited"}'},
+            {"generation": 2}, {"content": '{"description":"restored"}'},
         ]
-        self.assertEqual([_read_workspace_workflow("file-1")["name"] for _ in range(3)],
+        self.assertEqual([_read_workspace_workflow("file-1")["description"] for _ in range(3)],
                          ["before", "edited", "restored"])
         self.assertEqual(self.workspace.find_one.call_args.args[0], {"_id": "2:file-1", "generation": 2})
 
@@ -70,7 +70,7 @@ class WorkspaceWorkflowTest(unittest.TestCase):
             {"generation": 3}, {"content": json.dumps(workflow)},
         ]
 
-        self.assertEqual(_read_workspace_workflow_by_name("Child.flow"), workflow)
+        self.assertEqual(_read_workspace_workflow_by_name("Child.flow"), {key: value for key, value in workflow.items() if key != "name"})
         self.workspace.find_one.assert_has_calls([
             call({"_id": "_workspace_current_state"}, {"generation": 1}),
             call({"name": "Child.flow", "generation": 3}, {"content": 1}),

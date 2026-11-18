@@ -20,7 +20,6 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 | 字段 | 必需 | 类型 | 含义 |
 | --- | --- | --- | --- |
 | `schema_version` | 是 | string | 固定为 `2.0` |
-| `name` | 是 | string | Workflow 名称 |
 | `description` | 否 | string | Workflow 描述 |
 | `metadata` | 否 | object | Workflow 局部元数据；`structs`、`tools` 缺省为空数组 |
 | `input_ports` | 是 | port[] | Workflow 输入接口 |
@@ -32,7 +31,7 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 
 端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
 
-规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`subprocess_workflow_files` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。`name` 长度为 1–120；`description` 最大长度 2000。`metadata` 允许 `structs`、`tools` 两个属性；二者缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`subprocess_workflow_files` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
+规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`subprocess_workflow_files` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。Workflow 根对象和 metadata 均不包含 `name`；文件名由工作区文件记录提供。旧文件的名称字段在兼容读取时移除，保存和导出不再生成。`description` 最大长度 2000。`metadata` 允许 `structs`、`tools` 两个属性；二者缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`subprocess_workflow_files` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
 
 对根对象的未知字段，管理端请求模型会拒绝；当前 Agent 所用 JSON Schema 没有在根层设置 `additionalProperties: false`，因此 Agent 单独进行 Schema 校验时不拒绝未知根字段。这是接收端行为差异，不改变本协议规定的根字段集合；需要严格互操作的生产者不得发送未知根字段。
 
@@ -111,7 +110,6 @@ Struct 节点都是普通控制流节点：每个节点有 `control-in` 和 `con
 ```json
 {
   "schema_version": "2.0",
-  "name": "profile_example",
   "description": "Construct a profile and read its display name",
   "metadata": {
     "structs": [
@@ -382,6 +380,6 @@ While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out`
 
 当前格式使用 `subprocess_workflow_files: [{name, input_ports, output_ports}]` 声明子进程 Workflow 文件；执行节点为 `type: "spawn_and_wait_subprocess"`，必需参数为 `arguments.workflow_file`。`name` 和 `workflow_file` 都是包含扩展名的精确工作区文件名，例如 `child.flow`。`workflow:<name>` 仍表示 Workflow 接口端口，连线 ID、节点 ID、输入输出、坐标和其他参数均保留。
 
-编辑器导入、工作区可视化编辑、管理端写入与读取、Agent 编译和已挂起进程恢复都将旧 `workflow_nodes`、`type: "workflow"` 和节点参数 `workflow_name` 转为上述格式。转换不修改输入对象；新旧字段同时出现且值冲突时拒绝读取或保存，避免静默覆盖。保存和导出只生成新格式；schema_version 继续使用字符串 `"2.0"`，相关服务应一起更新。进程记录中的 `workflow_name` 仍表示显示名称，不属于节点参数迁移。
+编辑器导入、工作区可视化编辑、管理端写入与读取、Agent 编译和已挂起进程恢复都将旧 `workflow_nodes`、`type: "workflow"` 和节点参数 `workflow_name` 转为上述格式。转换不修改输入对象；新旧字段同时出现且值冲突时拒绝读取或保存，避免静默覆盖。保存和导出只生成新格式；schema_version 继续使用字符串 `"2.0"`，相关服务应一起更新。进程记录中的 `workflow_name` 是兼容字段名，值取实际工作区文件名，不再读取 Workflow JSON 的名称。
 
 已有文件可使用 `python scripts/migrate_subprocess_workflows.py <路径>` 预览迁移，添加 `--apply` 写回；通过 `--workspace-url` 可批量迁移运行中工作区，使用文件 revision 做并发校验；`--manager-url` 可迁移管理端保存的 Workflow。历史检查点保留原始内容，恢复后可再次转换。

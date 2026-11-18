@@ -17,12 +17,13 @@ const el = Object.fromEntries([
   'createButton', 'checkpointButton', 'restoreButton', 'searchInput', 'fileList', 'fileCount', 'name', 'fileName',
   'fileContent', 'filePreview', 'fileEmpty', 'fileId', 'updatedAt',
   'pinButton', 'downloadButton', 'deleteButton', 'cancelButton', 'editButton',
-  'saveStatus', 'characterCount', 'workflowButton', 'workflowPanel', 'workflowVersion', 'workflowName', 'workflowDescription',
+  'saveStatus', 'characterCount', 'workflowButton', 'workflowPanel', 'workflowVersion', 'workflowDescription',
   'workflowCanvasPreview', 'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts', 'subprocessWorkflowFiles',
   'subprocessFileCount', 'remoteTools', 'remoteToolCount',
 ].map((id) => [id, document.getElementById(id)]));
 el.name = el.fileName;
 const workflowPanel = createWorkflowPanel({
+  getFileName: () => el.name.value.trim() || state.current?.name || 'workflow.flow',
   onChange(content) {
     el.fileContent.value = content;
     el.filePreview.textContent = content;
@@ -270,6 +271,11 @@ async function saveCurrent() {
     try { workflowPanel.validate(); }
     catch (error) { setStatus(error.message, 'error'); return; }
   }
+  const workflow = parseWorkflowFile(el.fileContent.value);
+  if (workflow && JSON.stringify(JSON.parse(el.fileContent.value)) !== JSON.stringify(workflow)) {
+    el.fileContent.value = JSON.stringify(workflow, null, 2) + '\n';
+    el.filePreview.textContent = el.fileContent.value;
+  }
   state.busy = true;
   setStatus('正在保存…');
   updateControls();
@@ -360,13 +366,15 @@ el.pinButton.addEventListener('click', togglePin);
 el.deleteButton.addEventListener('click', removeCurrent);
 el.downloadButton.addEventListener('click', () => {
   if (!state.current) return;
-  const isWorkflow = Boolean(parseWorkflowFile(state.current.content));
-  const blob = new Blob([state.current.content], { type: isWorkflow ? 'application/json;charset=utf-8' : 'text/markdown;charset=utf-8' });
+  const workflow = parseWorkflowFile(state.current.content);
+  const isWorkflow = Boolean(workflow);
+  const content = workflow ? JSON.stringify(workflow, null, 2) + '\n' : state.current.content;
+  const blob = new Blob([content], { type: isWorkflow ? 'application/json;charset=utf-8' : 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   const name = state.current.name || 'file';
-  link.download = isWorkflow ? (name.endsWith('.json') ? name : name + '.json') : name + '.md';
+  link.download = isWorkflow ? name : name + '.md';
   link.click();
   URL.revokeObjectURL(url);
 });

@@ -165,7 +165,7 @@ def document(name, child=None, wait=False, output_terminal=False):
         previous = "term"
     nodes.append({"id": "out", "type": "output", "workflowPorts": [{"id": "workflow:text", **PORTS[0]}]})
     connections += [edge(previous, "out"), edge(data_source, "out", "workflow:text", "workflow:text", "content")]
-    return {"schema_version": "2.0", "name": name, "input_ports": PORTS, "output_ports": PORTS,
+    return {"schema_version": "2.0", "input_ports": PORTS, "output_ports": PORTS,
             "nodes": nodes, "connections": connections, "metadata": {"structs": []},
             "subprocess_workflow_files": [{"name": child, "input_ports": PORTS, "output_ports": PORTS}] if child else []}
 
@@ -198,7 +198,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.submit = next(route.endpoint for route in router.routes if route.path == "/api/terminal")
 
     def start(self, workflow, text="hello", inputs=None):
-        process = build_workflow_process(workflow, inputs if inputs is not None else {"text": text}, "root-file")
+        process = build_workflow_process(workflow, inputs if inputs is not None else {"text": text}, "root-file", "Root.flow")
         return main.create_process(process)
 
     def drain(self):
@@ -217,6 +217,21 @@ class ProcessWorkflowTest(unittest.TestCase):
     def send(self, process, text="continue"):
         return self.submit(TerminalRequest(content=text, terminal_process_id=process["terminal_process_id"]))
 
+    def test_root_identity_and_self_recursion_use_the_external_filename(self):
+        graph = document("ignored display name", "Root.flow")
+        graph["name"] = "outdated display name"
+        self.documents = {"Root.flow": graph}
+        root = self.start(graph)
+        self.assertEqual(root["workflow_name"], "Root.flow")
+        self.assertEqual(root["workflow_file"], "Root.flow")
+        self.assertEqual(root["call_stack"], ["Root.flow"])
+        with self.assertLogs(main.logger, level="ERROR"):
+            self.drain()
+        process = main.read_process(root["process_id"])
+        self.assertEqual(process["status"], "failed")
+        self.assertIn("Root.flow -> Root.flow", process["error"])
+        self.assertEqual(len(self.workflows()), 1)
+
     def test_nested_child_waits_and_returns_without_recreating_calls(self):
         self.documents = {"Middle.flow": document("Middle", "Leaf.flow"),
                           "Leaf.flow": document("Leaf", wait=True, output_terminal=True)}
@@ -225,12 +240,12 @@ class ProcessWorkflowTest(unittest.TestCase):
         processes = {item["workflow_name"]: item for item in self.workflows()}
         self.assertEqual(len(processes), 3)
         self.assertTrue(all(item["status"] == "blocked" for item in processes.values()))
-        leaf = processes["Leaf"]
+        leaf = processes["Leaf.flow"]
         self.assertEqual(leaf["current_node_id"], 1)
         self.assertEqual(leaf["control_port"], "next")
         self.assertNotIn("next_node_id", leaf)
         self.assertEqual(leaf["root_process_id"], root["process_id"])
-        self.assertEqual(leaf["ancestor_invocation_ids"], [root["process_id"], processes["Middle"]["process_id"]])
+        self.assertEqual(leaf["ancestor_invocation_ids"], [root["process_id"], processes["Middle.flow"]["process_id"]])
         self.assertEqual(len({item["terminal_process_id"] for item in processes.values()}), 3)
         # Parent terminal messages cannot satisfy a wait on child exit.
         self.send(root)
@@ -261,7 +276,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         pending_node["arguments"]["workflow_name"] = pending_node["arguments"].pop("workflow_file")
         parent["workflow"] = json.dumps(compiled)
         self.redis.hset(r.PROCESSTABLE, root["process_id"], json.dumps(parent))
-        child = next(item for item in self.workflows() if item["workflow_name"] == "Child")
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         self.send(child)
         self.drain()
         restored = main.read_process(root["process_id"])
@@ -277,7 +292,7 @@ class ProcessWorkflowTest(unittest.TestCase):
                           "Leaf.flow": document("Leaf", wait=True, output_terminal=True)}
         root = self.start(document("Root", "Middle.flow"), text=" ")
         self.drain()
-        leaf = next(item for item in self.workflows() if item["workflow_name"] == "Leaf")
+        leaf = next(item for item in self.workflows() if item["workflow_name"] == "Leaf.flow")
         self.assertEqual(leaf["current_node_id"], 1)
         self.assertEqual(leaf["control_port"], "next")
         self.send(leaf)
@@ -293,7 +308,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.documents = {"Child.flow": document("Child", wait=True)}
         root = self.start(document("Root", "Child.flow"))
         self.drain()
-        child = next(item for item in self.workflows() if item["workflow_name"] == "Child")
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         self.send(child)
         claimed, ok = r.claim_process(self.redis, child["process_id"])
         self.assertTrue(ok)
@@ -309,7 +324,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.documents = {"Child.flow": document("Child", wait=True)}
         root = self.start(document("Root", "Child.flow"))
         self.drain()
-        child = next(item for item in self.workflows() if item["workflow_name"] == "Child")
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         main.terminate_process(child["process_id"])
         self.assertEqual(main.read_process(root["process_id"])["status"], "ready")
         with self.assertLogs("main", level="ERROR"):

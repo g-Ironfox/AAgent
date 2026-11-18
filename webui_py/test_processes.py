@@ -12,7 +12,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 
 def workflow_document():
     return {
-        "schema_version": "2.0", "name": "Example",
+        "schema_version": "2.0",
         "input_ports": [{"name": "text", "type": "content"}],
         "output_ports": [{"name": "text", "type": "content"}],
         "nodes": [
@@ -60,7 +60,7 @@ class ProcessCreationApiTest(unittest.TestCase):
         result = self.workflow_options()
 
         self.assertEqual(result["items"], [{
-            "file_id": "file-1", "name": "demo.json", "workflow_name": "Example",
+            "file_id": "file-1", "name": "demo.json", "workflow_name": "demo.json",
             "input_ports": valid["input_ports"], "output_ports": valid["output_ports"],
         }])
 
@@ -80,11 +80,11 @@ class ProcessCreationApiTest(unittest.TestCase):
         }
         build.return_value = process
         initialize.return_value = terminal
-        self.store.get_file.return_value = {"content": '{"schema_version":"2.0"}'}
+        self.store.get_file.return_value = {"name": "demo.flow", "content": '{"schema_version":"2.0"}'}
 
         result = self.create(CreateProcessRequest(workflow_file_id="file1", inputs={"text": "hello"}))
 
-        build.assert_called_once_with({"schema_version": "2.0"}, {"text": "hello"}, "file1")
+        build.assert_called_once_with({"schema_version": "2.0"}, {"text": "hello"}, "file1", "demo.flow")
         pipeline = self.redis.pipeline.return_value.__enter__.return_value
         pipeline.hset.assert_called_once()
         _, kwargs = pipeline.hset.call_args
@@ -97,7 +97,7 @@ class ProcessCreationApiTest(unittest.TestCase):
         self.logs.update_one.assert_called_once()
 
     def test_invalid_input_does_not_write_to_redis(self):
-        self.store.get_file.return_value = {"content": "{}"}
+        self.store.get_file.return_value = {"name": "demo.flow", "content": "{}"}
         with patch("processes.build_workflow_process", side_effect=ValueError("invalid workflow")):
             result = self.create(CreateProcessRequest(workflow_file_id="f1"))
         self.assertIsInstance(result, JSONResponse)
@@ -112,7 +112,7 @@ class ProcessCreationApiTest(unittest.TestCase):
 
     def test_full_compilation_initializes_runnable_workflow_and_terminal(self):
         from workflow_nodes import execute_node
-        self.store.get_file.return_value = {"content": json.dumps(workflow_document())}
+        self.store.get_file.return_value = {"name": "demo.flow", "content": json.dumps(workflow_document())}
         result = self.create(CreateProcessRequest(workflow_file_id="file1", inputs={"text": "hello"}))
         self.assertIsInstance(result, dict)
         pipeline = self.redis.pipeline.return_value.__enter__.return_value
@@ -139,14 +139,14 @@ class ProcessCreationApiTest(unittest.TestCase):
         ]
         for content, inputs in cases:
             with self.subTest(content=content, inputs=inputs):
-                self.store.get_file.return_value = {"content": content}
+                self.store.get_file.return_value = {"name": "demo.flow", "content": content}
                 result = self.create(CreateProcessRequest(workflow_file_id="file1", inputs=inputs))
                 self.assertEqual(result.status_code, 400)
         self.redis.pipeline.assert_not_called()
         self.logs.update_one.assert_not_called()
 
     def test_redis_failure_returns_service_unavailable(self):
-        self.store.get_file.return_value = {"content": json.dumps(workflow_document())}
+        self.store.get_file.return_value = {"name": "demo.flow", "content": json.dumps(workflow_document())}
         pipeline = self.redis.pipeline.return_value.__enter__.return_value
         pipeline.execute.side_effect = RedisConnectionError("offline")
         with self.assertLogs("processes", level="ERROR"):
@@ -155,7 +155,7 @@ class ProcessCreationApiTest(unittest.TestCase):
         self.logs.update_one.assert_not_called()
 
     def test_timing_failure_does_not_hide_successful_creation(self):
-        self.store.get_file.return_value = {"content": json.dumps(workflow_document())}
+        self.store.get_file.return_value = {"name": "demo.flow", "content": json.dumps(workflow_document())}
         self.logs.update_one.side_effect = ServerSelectionTimeoutError("offline")
         with self.assertLogs("processes", level="ERROR"):
             result = self.create(CreateProcessRequest(workflow_file_id="file1"))

@@ -129,7 +129,6 @@ function compactNodeArguments(node) {
 }
 
 export const state = {
-  name: 'workflow',
   description: '',
   metadata: { structs: [], tools: [] },
   nodes: structuredClone(initialNodes),
@@ -163,7 +162,6 @@ export function workflowSnapshot() {
   setNodeStructs(state.nodes, state.metadata.structs);
   return structuredClone({
     schema_version: WORKFLOW_SCHEMA_VERSION,
-    name: state.name,
     description: state.description,
     metadata: state.metadata,
     input_ports: state.input_ports,
@@ -177,13 +175,12 @@ export function workflowSnapshot() {
 export function resetWorkflow() {
   return loadSnapshot({
     schema_version: WORKFLOW_SCHEMA_VERSION,
-    name: 'workflow',
     description: '',
     metadata: { structs: [], tools: [] },
     input_ports: [],
     output_ports: [],
     subprocess_workflow_files: [],
-      nodes: initialNodes,
+    nodes: initialNodes,
     connections: initialConnections,
   });
 }
@@ -531,8 +528,6 @@ export function loadSnapshot(saved, metadata = null) {
     if (saved?.schema_version !== WORKFLOW_SCHEMA_VERSION) return false;
     const savedNodes = Array.isArray(saved) ? saved : saved?.nodes;
     if (!Array.isArray(savedNodes)) return false;
-    const workflowName = metadata?.name ?? saved?.name;
-    if (typeof workflowName !== 'string' || !workflowName.trim()) return false;
     const inputPorts = boundaryPorts(metadata?.input_ports ?? saved?.input_ports);
     const outputPorts = boundaryPorts(metadata?.output_ports ?? saved?.output_ports);
     if (inputPorts.length !== (metadata?.input_ports ?? saved?.input_ports ?? []).length
@@ -603,7 +598,6 @@ export function loadSnapshot(saved, metadata = null) {
       const output = createNode('output', nodes, { output_ports: outputPorts.map(({ id, ...port }) => port) });
       if (output) nodes.push(output);
     }
-    state.name = workflowName.trim().slice(0, 120);
     const description = metadata?.description ?? saved?.description;
     state.description = typeof description === 'string' ? description.trim().slice(0, 2000) : '';
     state.metadata = { ...(saved?.metadata ?? {}), structs: structDefinitions, tools: remoteTools };
@@ -627,7 +621,6 @@ export function normalizeImportedWorkflow(imported) {
   if (!main) throw new Error('Workflow 集合为空');
   return {
     ...imported.workflows[main],
-    name: imported.workflows[main].name || main,
     subprocess_workflow_files: entries
       .filter(([name]) => name !== main)
       .map(([name, file]) => ({ name, input_ports: file.input_ports || [], output_ports: file.output_ports || [] })),
@@ -645,7 +638,6 @@ export function parseWorkflowText(text) {
   const workflow = migrateWorkflowToCurrentVersion(normalizeImportedWorkflow(imported));
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('内容不是有效的 Workflow JSON');
   if (workflow.schema_version !== WORKFLOW_SCHEMA_VERSION) throw new Error(`Workflow schema_version 必须是 ${WORKFLOW_SCHEMA_VERSION}`);
-  if (typeof workflow.name !== 'string' || !workflow.name.trim()) throw new Error('Workflow 名称不能为空');
   if (!Array.isArray(workflow.nodes) || !Array.isArray(workflow.connections)) throw new Error('Workflow 缺少节点或连接数据');
   return workflow;
 }
@@ -653,6 +645,8 @@ export function parseWorkflowText(text) {
 export function migrateSubprocessWorkflowFormat(workflow) {
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) return workflow;
   const next = structuredClone(workflow);
+  delete next.name;
+  if (next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata)) delete next.metadata.name;
   const stable = (value) => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
   if (Object.hasOwn(next, 'workflow_nodes')) {

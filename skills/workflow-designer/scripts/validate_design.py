@@ -22,7 +22,7 @@ FORMAT = "aagent.workflow-design/1"
 FILENAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,114}\.flow")
 MODEL_ID = re.compile(r"[0-9a-fA-F]{24}")
 ROOT_FIELDS = {
-    "schema_version", "name", "description", "metadata", "input_ports",
+    "schema_version", "description", "metadata", "input_ports",
     "output_ports", "nodes", "connections", "subprocess_workflow_files", "remote_tools",
 }
 
@@ -52,7 +52,7 @@ def read_json(path: Path) -> Any:
                       parse_constant=reject_constant)
 
 
-def check_execution_order(workflow: dict[str, Any]) -> None:
+def check_execution_order(workflow: dict[str, Any], filename: str) -> None:
     """A data producer must precede the consumer on its control path.
 
     Native lifecycle validation handles branch/loop visibility. Remove only
@@ -77,12 +77,12 @@ def check_execution_order(workflow: dict[str, Any]) -> None:
             seen.add(current)
             current = parents.get(current)
         require(current == edge["fromId"],
-                f"{workflow['name']}: data source must execute before target: "
+                f"{filename}: data source must execute before target: "
                 f"{edge['fromId']}.{edge['fromPortId']} -> "
                 f"{edge['toId']}.{edge['toPortId']}")
 
 
-def check_required_data(workflow: dict[str, Any]) -> None:
+def check_required_data(workflow: dict[str, Any], filename: str) -> None:
     """Close native static-validation gaps for ordinary required value inputs.
 
     Tool parameter requiredness lives in the external tool schema, so it cannot
@@ -104,10 +104,10 @@ def check_required_data(workflow: dict[str, Any]) -> None:
             required = {f["name"] for f in structs[args["struct_id"]]["fields"] if f["required"]}
         if kind == "router":
             require(all(branch["name"] != "$others" for branch in args["branches"]),
-                    f"{workflow['name']}: router branch name $others collides with fallback")
+                    f"{filename}: router branch name $others collides with fallback")
         missing = sorted(p for p in required if (node["id"], p) not in connected)
         require(not missing,
-                f"{workflow['name']}: required data inputs missing: node {node['id']}, ports {missing}")
+                f"{filename}: required data inputs missing: node {node['id']}, ports {missing}")
 
 
 def validate_design(result: Any) -> list[dict[str, Any]]:
@@ -143,7 +143,6 @@ def validate_design(result: Any) -> list[dict[str, Any]]:
         workflow = item["workflow"]
         require(isinstance(workflow, dict) and set(workflow) == ROOT_FIELDS,
                 f"{filename}: native workflow fields do not match this skill")
-        require(workflow["name"] == filename, f"{filename}: name must equal filename")
         validate_workflow(workflow)
         require(workflow["remote_tools"] == [], f"{filename}: use metadata.tools")
         for node in workflow["nodes"]:
@@ -161,8 +160,8 @@ def validate_design(result: Any) -> list[dict[str, Any]]:
         encoded = json.dumps(workflow, ensure_ascii=False, allow_nan=False)
         require(len(encoded.encode("utf-8")) <= 512 * 1024,
                 f"{filename}: exceeds workflow API 512 KiB limit")
-        check_required_data(workflow)
-        check_execution_order(workflow)
+        check_required_data(workflow, filename)
+        check_execution_order(workflow, filename)
         by_name[filename] = workflow
     require(result["entrypoint"] in by_name, "entrypoint is not included")
 

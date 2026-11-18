@@ -980,7 +980,7 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
 
     workflow_document = _read_workspace_workflow_by_name(workflow_file)
     validate_workflow(workflow_document)
-    validate_subprocess_workflow_files(workflow_document)
+    validate_subprocess_workflow_files(workflow_document, workflow_file)
     for field in ("input_ports", "output_ports"):
         saved = parent_node.get(field, [])
         actual = workflow_document.get(field, [])
@@ -1021,7 +1021,7 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
             "process_id": child_id,
             "parent_process_id": process["process_id"],
             "root_process_id": process.get("root_process_id", process["process_id"]),
-            "workflow_name": workflow_document.get("name", workflow_file),
+            "workflow_name": workflow_file,
             "workflow_file": workflow_file,
             "call_stack": next_call_stack,
             "ancestor_invocation_ids": [

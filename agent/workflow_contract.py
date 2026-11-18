@@ -524,10 +524,13 @@ def filter_connections(
 
 
 def migrate_subprocess_workflow_format(workflow: dict[str, Any]) -> dict[str, Any]:
-    """Return a canonical copy; reject ambiguous old/new configuration."""
+    """Normalize legacy fields without mutation; Workflow identity comes from its file."""
     from copy import deepcopy
 
     migrated = deepcopy(workflow)
+    migrated.pop("name", None)
+    if isinstance(migrated.get("metadata"), dict):
+        migrated["metadata"].pop("name", None)
     if "workflow_nodes" in migrated:
         old = migrated.pop("workflow_nodes")
         if "subprocess_workflow_files" in migrated and migrated["subprocess_workflow_files"] != old:

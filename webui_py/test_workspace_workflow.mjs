@@ -7,7 +7,7 @@ import { workflowCanvasFilename, workflowCanvasSvg } from './static/workflow_can
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const workflow = () => ({
-  schema_version: '2.0', name: 'parent', description: 'description', version: 3,
+  schema_version: '2.0', description: 'description', version: 3,
   input_ports: [{ name: 'question', type: 'content' }], output_ports: [],
   subprocess_workflow_files: [
     { name: 'child-a', input_ports: [{ name: 'question', type: 'content' }], output_ports: [], extra: 'keep' },
@@ -65,14 +65,14 @@ test('legacy dependency keys and absent optional fields survive edits', () => {
   assert.equal(updated.nodes[1].arguments.workflow_file, 'new-child');
 });
 
-test('metadata rejects empty names and duplicate dependency names', () => {
-  assert.throws(() => validateWorkflowMetadata({ ...workflow(), name: '  ' }), /名称不能为空/);
+test('metadata accepts nameless workflows and rejects invalid subprocess filenames', () => {
+  assert.doesNotThrow(() => validateWorkflowMetadata(workflow()));
   assert.throws(() => validateWorkflowMetadata({ ...workflow(), subprocess_workflow_files: [{ name: ' ' }] }), /文件名不能为空/);
   assert.throws(() => validateWorkflowMetadata({ ...workflow(), subprocess_workflow_files: [{ name: 'same' }, { name: 'same' }] }), /不能重复/);
 });
 
-test('standalone WebUI canvas escapes workflow names and renders control connections', () => {
-  const svg = workflowCanvasSvg({ ...workflow(), name: '<script>alert(1)</script>' });
+test('standalone WebUI canvas escapes filenames and renders control connections', () => {
+  const svg = workflowCanvasSvg(workflow(), '<script>alert(1)</script>.flow');
   assert.ok(!svg.includes('<script>'));
   assert.ok(svg.includes('&lt;script&gt;'));
   assert.match(svg, /stroke="#13775a"/);
@@ -167,7 +167,7 @@ test('view switching preserves exact text, renders ports and strips inline SVG s
   await h.fire('workflowButton');
   assert.equal(h.get('workflowPanel').hidden, false);
   assert.equal(h.get('filePreview').hidden, true);
-  assert.equal(h.get('workflowName').disabled, true);
+  assert.equal(h.get('workflowDescription').disabled, true);
   assert.equal(h.get('workflowCanvasMeta').textContent, '4 节点 / 1 连接');
   assert.equal(h.get('inputPorts').children[0].children[0].textContent, 'question');
   assert.equal(h.get('remoteToolCount').textContent, '1 项');
@@ -182,7 +182,6 @@ test('view switching preserves exact text, renders ports and strips inline SVG s
 test('metadata edits round-trip through raw JSON and save using the file revision', async () => {
   const h = await harness();
   await h.fire('workflowButton'); await h.fire('editButton');
-  await h.input('workflowName', 'new-parent');
   await h.input('workflowDescription', 'new description');
   await h.input(h.dependency(0), 'new-child');
   await h.fire('workflowButton');
@@ -196,9 +195,9 @@ test('metadata edits round-trip through raw JSON and save using the file revisio
   assert.equal(h.calls[0].revision, 4);
   assert.equal(h.calls[0].name, 'flow.json');
   const saved = JSON.parse(h.stored.get('flow').content);
-  assert.equal(saved.name, 'new-parent'); assert.equal(saved.description, 'raw edit');
+  assert.equal(Object.hasOwn(saved, 'name'), false); assert.equal(saved.description, 'raw edit');
   assert.deepEqual(saved.metadata, workflow().metadata);
-  assert.equal(h.get('workflowName').disabled, true);
+  assert.equal(h.get('workflowDescription').disabled, true);
   assert.equal(h.get('cancelButton').hidden, true);
 });
 
@@ -206,12 +205,12 @@ test('cancel restores metadata and the exact original JSON; reverting all fields
   const content = JSON.stringify(workflow(), null, 4) + '\n';
   const h = await harness([file('flow', content)]);
   await h.fire('workflowButton'); await h.fire('editButton');
-  await h.input('workflowName', 'changed'); await h.input('workflowName', 'parent');
+  await h.input('workflowDescription', 'changed'); await h.input('workflowDescription', 'description');
   assert.equal(h.get('fileContent').value, content);
   assert.equal(h.get('editButton').disabled, true);
   await h.input(h.dependency(0), 'new-child'); await h.fire('cancelButton');
   assert.equal(h.get('fileContent').value, content);
-  assert.equal(h.get('workflowName').value, 'parent');
+  assert.equal(h.get('workflowDescription').value, 'description');
   assert.equal(h.dependency(0).value, 'child-a');
   assert.equal(h.calls.length, 0);
 });
@@ -219,15 +218,13 @@ test('cancel restores metadata and the exact original JSON; reverting all fields
 test('validation and revision conflict keep the draft and editor available', async () => {
   const h = await harness();
   await h.fire('workflowButton'); await h.fire('editButton');
-  await h.input('workflowName', ' '); await h.fire('editButton');
-  assert.equal(h.calls.length, 0); assert.match(h.get('saveStatus').textContent, /名称不能为空/);
-  await h.input('workflowName', 'renamed'); await h.input(h.dependency(0), 'child-b'); await h.fire('editButton');
+  await h.input('workflowDescription', 'renamed'); await h.input(h.dependency(0), 'child-b'); await h.fire('editButton');
   assert.equal(h.calls.length, 0); assert.match(h.get('saveStatus').textContent, /不能重复/);
   await h.input(h.dependency(0), 'new-child');
   h.settings.saveError = 'revision conflict'; await h.fire('editButton');
-  assert.equal(h.get('workflowName').value, 'renamed');
+  assert.equal(h.get('workflowDescription').value, 'renamed');
   assert.equal(h.dependency(0).value, 'new-child');
-  assert.equal(h.get('workflowName').disabled, false);
+  assert.equal(h.get('workflowDescription').disabled, false);
   assert.match(h.get('saveStatus').textContent, /revision conflict/);
   h.settings.saveError = null; await h.fire('editButton');
   assert.equal(h.stored.get('flow').revision, 5);
@@ -235,9 +232,9 @@ test('validation and revision conflict keep the draft and editor available', asy
 
 test('invalid JSON and ordinary files hide the toggle, and dirty-file selection can be declined', async () => {
   const h = await harness([file('flow'), file('notes', 'plain text')]);
-  await h.fire('workflowButton'); await h.fire('editButton'); await h.input('workflowName', 'draft');
+  await h.fire('workflowButton'); await h.fire('editButton'); await h.input('workflowDescription', 'draft');
   h.settings.confirm = false; await h.fire(h.get('fileList').children[1]);
-  assert.equal(h.get('workflowName').value, 'draft');
+  assert.equal(h.get('workflowDescription').value, 'draft');
   h.settings.confirm = true; await h.fire(h.get('fileList').children[1]);
   assert.equal(h.get('workflowPanel').hidden, true); assert.equal(h.get('workflowButton').hidden, true);
   await h.fire('editButton'); await h.input('fileContent', JSON.stringify(workflow()));
@@ -266,7 +263,7 @@ test('downloads workflow JSON and canvas SVG without changing the saved document
 });
 
 
-test('Ctrl+S saves metadata and filename together without changing the Workflow name implicitly', async () => {
+test('Ctrl+S saves metadata and filename without adding a Workflow name', async () => {
   const h = await harness(); await h.fire('workflowButton'); await h.fire('editButton');
   await h.input('workflowDescription', 'keyboard save'); await h.input('fileName', 'renamed-file.json');
   let prevented = false;
@@ -275,7 +272,7 @@ test('Ctrl+S saves metadata and filename together without changing the Workflow 
   assert.equal(prevented, true);
   assert.equal(h.calls.length, 1);
   assert.equal(h.calls[0].name, 'renamed-file.json');
-  assert.equal(JSON.parse(h.calls[0].content).name, 'parent');
+  assert.equal(Object.hasOwn(JSON.parse(h.calls[0].content), 'name'), false);
   assert.equal(JSON.parse(h.calls[0].content).description, 'keyboard save');
 });
 
@@ -288,4 +285,32 @@ test('removing the last workflow and creating an empty file clear the visual edi
   assert.equal(h.get('workflowButton').hidden, true);
   assert.equal(h.get('fileContent').hidden, false);
   assert.equal(h.get('fileContent').value, '');
+});
+
+test('renaming a legacy Workflow file strips obsolete identity on save and exports the current filename', async () => {
+  const old = { ...workflow(), name: 'obsolete title', metadata: { ...workflow().metadata, name: 'obsolete metadata title' } };
+  const h = await harness([file('flow', JSON.stringify(old))]);
+  await h.fire('workflowButton'); await h.fire('editButton');
+  await h.input('fileName', 'renamed.flow'); await h.fire('editButton');
+  const saved = JSON.parse(h.calls[0].content);
+  assert.equal(Object.hasOwn(saved, 'name'), false);
+  assert.equal(Object.hasOwn(saved.metadata, 'name'), false);
+  assert.deepEqual(saved.metadata.structs, old.metadata.structs);
+  await h.fire('canvasExportButton'); await h.fire('downloadButton');
+  assert.match(h.downloads[0].download, /^renamed\.flow-\d{4}-\d{2}-\d{2}-canvas\.svg$/);
+  assert.match(await h.blobs[0].text(), /renamed\.flow/);
+  assert.equal(h.downloads[1].download, 'renamed.flow');
+  assert.equal(Object.hasOwn(JSON.parse(await h.blobs[1].text()), 'name'), false);
+});
+
+test('saving a legacy Workflow in text view removes obsolete names without changing file identity', async () => {
+  const old = { ...workflow(), name: 'old title', metadata: { ...workflow().metadata, name: 'old metadata title' } };
+  const h = await harness([file('flow', JSON.stringify(old))]);
+  await h.fire('editButton');
+  await h.input('fileName', 'text-edited.flow'); await h.fire('editButton');
+  const saved = JSON.parse(h.calls[0].content);
+  assert.equal(h.calls[0].name, 'text-edited.flow');
+  assert.equal(Object.hasOwn(saved, 'name'), false);
+  assert.equal(Object.hasOwn(saved.metadata, 'name'), false);
+  assert.deepEqual(saved.nodes, old.nodes);
 });

@@ -227,7 +227,7 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     _validate_lifecycles(node_by_id, connections)
 
 
-def validate_subprocess_workflow_files(workflow: dict[str, Any]) -> None:
+def validate_subprocess_workflow_files(workflow: dict[str, Any], file_name: str = "<workflow file>") -> None:
     """Ensure subprocess file interface snapshots still match their targets."""
     workflow = migrate_subprocess_workflow_format(workflow)
     from workflow_parser import _read_workspace_workflow_by_name
@@ -247,7 +247,6 @@ def validate_subprocess_workflow_files(workflow: dict[str, Any]) -> None:
     if not references:
         return
 
-    workflow_name = workflow.get("name", "<unnamed>")
     for name, snapshots in references.items():
         target = _read_workspace_workflow_by_name(name)
         for source, snapshot in snapshots:
@@ -256,7 +255,7 @@ def validate_subprocess_workflow_files(workflow: dict[str, Any]) -> None:
                 actual = target.get(field, [])
                 if saved != actual:
                     raise WorkflowValidationError(
-                        f"workflow {workflow_name} subprocess Workflow file {name} at {source} "
+                        f"workflow {file_name} subprocess Workflow file {name} at {source} "
                         f"has stale {field}: saved={saved!r}, actual={actual!r}; "
                         "refresh the subprocess Workflow file metadata"
                     )

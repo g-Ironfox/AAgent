@@ -21,7 +21,7 @@ description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含�
 8. 子进程 Workflow 文件引用关系也必须是 DAG，禁止直接或间接递归调用。事件重入属于新的异步执行，不是同步递归。
 9. 同一次 invocation 内需要动态轮数时使用 while_pop；列表为空是停止条件，继续执行须由真实业务结果向 Context 列表补充元素。跨进程调度由运行时负责，不生成事件发布节点或图内任意回边。
 10. 不得发明 while、if、switch、join、merge、parallel、python、script、http、delay、sleep、serialize_json 等节点。不存在通用表达式、模板执行器或任意代码节点。
-11. 本部署约定主入口工作区文件名始终为 initial_agent.flow，workflow.name 同样保持 initial_agent.flow。扩展机制只新增子进程 Workflow 文件或独立工作流，不通过改名替换用户现有入口。
+11. 本部署约定主入口工作区文件名始终为 initial_agent.flow；Workflow JSON 不含 name。扩展机制只新增子进程 Workflow 文件或独立工作流，不通过改名替换用户现有入口。
 
 ## 2. 最终 JSON 的交付契约
 
@@ -33,7 +33,7 @@ description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含�
 {"format":"aagent.workflow-design/1","status":"ready","entrypoint":"main.flow","workflows":[],"errors":[]}
 ```
 
-上面的空 workflows 仅解释字段；真正 ready 时必须非空并包含入口及其所有依赖。每项恰为 `{"filename":"main.flow","workflow":{...完整原生图...}}`。filename 使用 `^[A-Za-z_][A-Za-z0-9_-]{0,114}\.flow$`，不含路径；为简化命名，workflow.name 必须等于 filename。entrypoint 必须精确对应一项 filename。所有新建 workflow 的定义都必须给出；不要假定用户已保存某个子进程 Workflow 文件。数组按依赖先、父图后的顺序排列。无子进程文件时也使用此信封且仅含一项。用户明确要求原生图时，说明性的文字仍不输出；只有在用户明确覆盖信封契约且无需新建子进程 Workflow 文件时才直接输出原生图。
+上面的空 workflows 仅解释字段；真正 ready 时必须非空并包含入口及其所有依赖。每项恰为 `{"filename":"main.flow","workflow":{...完整原生图...}}`。filename 使用 `^[A-Za-z_][A-Za-z0-9_-]{0,114}\.flow$`，不含路径；Workflow JSON 不含 name，身份由 filename 提供。entrypoint 必须精确对应一项 filename。所有新建 workflow 的定义都必须给出；不要假定用户已保存某个子进程 Workflow 文件。数组按依赖先、父图后的顺序排列。无子进程文件时也使用此信封且仅含一项。用户明确要求原生图时，说明性的文字仍不输出；只有在用户明确覆盖信封契约且无需新建子进程 Workflow 文件时才直接输出原生图。
 
 缺少设计期必要配置或能力不足时，输出同一信封、status 为 error、entrypoint 为 null、workflows 为空、errors 为非空数组。每个错误恰含 code、message 两个字符串；message 写明缺什么及原因。不要用无效图充当成功结果，也不要把错误说明当成 workflow 的正常输出。
 
@@ -50,7 +50,6 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 每个 workflow 输出以下根字段，不输出其他根字段：
 
 - schema_version：字符串 "2.0"。
-- name：等于文件名，1–120 字符。
 - description：字符串，最长 2000 字符。简述输入输出、所需部署条件及业务行为，不存放可执行配置。
 - metadata：`{"structs":[],"tools":[]}`，按实际用途填充。
 - input_ports、output_ports：接口数组，每项恰为 `{"name":"text","type":"content"}`；每侧最多 50 项。名称 1–80 字符，同侧去首尾空白、忽略大小写后不得重名；生成时使用无首尾空白的名称。
@@ -336,7 +335,6 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
   "workflows": [
     {"filename": "echo.flow", "workflow": {
       "schema_version": "2.0",
-      "name": "echo.flow",
       "description": "",
       "metadata": {"structs":[],"tools":[]},
       "input_ports": [{"name":"text","type":"content"}],
@@ -369,7 +367,6 @@ per_item.flow 在内部 router 分支，并分别返回 result；collect.flow �
   "workflows": [
     {"filename": "per_item.flow", "workflow": {
       "schema_version": "2.0",
-      "name": "per_item.flow",
       "description": "",
       "metadata": {"structs":[],"tools":[]},
       "input_ports": [{"name":"text","type":"content"}],
@@ -398,7 +395,6 @@ per_item.flow 在内部 router 分支，并分别返回 result；collect.flow �
     }},
     {"filename": "collect.flow", "workflow": {
       "schema_version": "2.0",
-      "name": "collect.flow",
       "description": "",
       "metadata": {"structs":[],"tools":[]},
       "input_ports": [{"name":"items","type":"list-content"}],
@@ -459,7 +455,6 @@ per_item.flow 在内部 router 分支，并分别返回 result；collect.flow �
       "filename": "terminal_output.flow",
       "workflow": {
         "schema_version": "2.0",
-        "name": "terminal_output.flow",
         "description": "",
         "metadata": {
           "structs": [],

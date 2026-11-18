@@ -38,7 +38,7 @@ def initialize_process_pair(process: dict) -> dict:
     return terminal_process
 
 
-def build_workflow_process(document: dict, inputs: dict, file_id: str) -> dict:
+def build_workflow_process(document: dict, inputs: dict, file_id: str, file_name: str) -> dict:
     from workflow_nodes import propagate_workflow_output
     from workflow_parser import parse_workflow
     from workflow_structs import validate_struct_definitions, validate_value
@@ -46,9 +46,11 @@ def build_workflow_process(document: dict, inputs: dict, file_id: str) -> dict:
 
     from workflow_contract import migrate_subprocess_workflow_format
 
+    if not isinstance(file_name, str) or not file_name.strip():
+        raise ValueError("工作流文件名不能为空")
     document = migrate_subprocess_workflow_format(document)
     validate_workflow(document)
-    validate_subprocess_workflow_files(document)
+    validate_subprocess_workflow_files(document, file_name)
     ports = document["input_ports"]
     unknown = set(inputs) - {port["name"] for port in ports}
     if unknown:
@@ -62,7 +64,7 @@ def build_workflow_process(document: dict, inputs: dict, file_id: str) -> dict:
     if start is None:
         raise ValueError("工作流缺少 input 节点")
     for node in workflow:
-        node["_workflow_call_stack"] = [document["name"]]
+        node["_workflow_call_stack"] = [file_name]
     input_node = workflow[start]
     input_values = {}
     for port in input_node.get("workflowPorts", []):
@@ -74,8 +76,9 @@ def build_workflow_process(document: dict, inputs: dict, file_id: str) -> dict:
         "process_id": uuid4().hex,
         "parent_process_id": "user_interface",
         "workflow_file_id": file_id,
-        "workflow_name": document["name"],
-        "call_stack": [document["name"]],
+        "workflow_name": file_name,
+        "workflow_file": file_name,
+        "call_stack": [file_name],
         "input": input_values,
         "workflow": json.dumps(workflow, ensure_ascii=False, allow_nan=False),
         "current_node_id": -1,

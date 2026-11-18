@@ -74,3 +74,20 @@ test('editor and workspace reject conflicting legacy/new references and targets'
     assert.doesNotThrow(() => migrate(equal));
   }
 });
+
+test('Workflow definitions use external filenames and discard only legacy identity fields', () => {
+  const original = legacy();
+  original.metadata.name = 'obsolete metadata title';
+  const before = structuredClone(original);
+  const parsed = parseWorkflowText(JSON.stringify(original));
+  assert.equal(Object.hasOwn(parsed, 'name'), false);
+  assert.equal(Object.hasOwn(parsed.metadata, 'name'), false);
+  assert.equal(loadSnapshot(parsed), true);
+  const snapshot = workflowSnapshot();
+  assert.equal(Object.hasOwn(snapshot, 'name'), false);
+  assert.equal(snapshot.nodes[1].name, 'Run child');
+  assert.equal(snapshot.subprocess_workflow_files[0].name, 'child.flow');
+  assert.equal(parseWorkflowFile(JSON.stringify(snapshot)).schema_version, '2.0');
+  assert.deepEqual(original, before);
+  assert.deepEqual(parseWorkflowText(JSON.stringify(snapshot)), snapshot);
+});

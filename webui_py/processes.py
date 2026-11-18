@@ -39,11 +39,11 @@ def _workflow_option(file: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("workflow file content must be valid JSON") from error
     if not isinstance(document, dict) or document.get("schema_version") != "2.0":
         raise ValueError("workflow file must use schema_version 2.0")
-    if not isinstance(document.get("name"), str) or any(
+    if any(
         not isinstance(document.get(field), list)
         for field in ("nodes", "connections", "input_ports", "output_ports")
     ):
-        raise ValueError("workflow file is missing its name, nodes, connections, or ports")
+        raise ValueError("workflow file is missing its nodes, connections, or ports")
     for field in ("input_ports", "output_ports"):
         if any(
             not isinstance(port, dict)
@@ -55,7 +55,7 @@ def _workflow_option(file: dict[str, Any]) -> dict[str, Any]:
     return {
         "file_id": file["file_id"],
         "name": file["name"],
-        "workflow_name": document["name"],
+        "workflow_name": file["name"],
         "input_ports": document["input_ports"],
         "output_ports": document["output_ports"],
     }
@@ -84,7 +84,7 @@ def create_processes_router(redis_client, store, process_logs) -> APIRouter:
             document = json.loads(file["content"])
             if not isinstance(document, dict):
                 raise ValueError("工作流文件必须是 JSON 对象")
-            process = build_workflow_process(document, request.inputs, request.workflow_file_id)
+            process = build_workflow_process(document, request.inputs, request.workflow_file_id, file["name"])
             terminal = initialize_process_pair(process)
             records = {
                 item["process_id"]: json.dumps(item, ensure_ascii=False, allow_nan=False)

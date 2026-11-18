@@ -85,7 +85,6 @@ class WorkflowDesignTest(unittest.TestCase):
         design = copy.deepcopy(self.examples[0])
         first = design["workflows"][0]["workflow"]
         second = copy.deepcopy(first)
-        second["name"] = "second.flow"
         for graph, target in [(first, "second.flow"), (second, "echo.flow")]:
             graph["nodes"].insert(1, {"id": "call", "type": "spawn_and_wait_subprocess",
                 "name": "调用子进程",
@@ -101,7 +100,7 @@ class WorkflowDesignTest(unittest.TestCase):
                 {"fromId": "call", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
                 {"fromId": "input", "fromPortId": "workflow:text", "toId": "call", "toPortId": "workflow:text", "type": "content"},
                 {"fromId": "call", "fromPortId": "workflow:content", "toId": "output", "toPortId": "workflow:content", "type": "content"}]
-        design["workflows"].append({"filename": second["name"], "workflow": second})
+        design["workflows"].append({"filename": "second.flow", "workflow": second})
         with self.assertRaisesRegex(DesignError, "recursive subprocess Workflow file reference"):
             validate_design(design)
 
