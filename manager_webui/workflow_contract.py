@@ -35,6 +35,7 @@ SUPPORTED_NODE_TYPES = {
     "list_append",
     "list_length",
     "list_get",
+    "list_slice",
     "foreach",
     "while_pop",
     "llm",
@@ -80,6 +81,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "list_append": {"item_type", "position"},
     "list_length": {"value_type"},
     "list_get": {"value_type", "index_source", "index"},
+    "list_slice": {"value_type"},
     "foreach": {"item_type"},
     "while_pop": {"value_type", "position", "context_id_source", "context_id"},
     "llm": {"model", "think", "tool_calls", "tools"},
@@ -246,6 +248,8 @@ def data_ports_for_node(
         return inputs, {"item-out"}
     if node_type == "list_length":
         return {"list-in"}, {"length-out"}
+    if node_type == "list_slice":
+        return {"list-in", "start-in", "stop-in", "step-in"}, {"list-out"}
     if node_type == "list_append":
         return declared_inputs | {"list-in", "item-in"}, {"list-out"}
     if node_type == "foreach":
@@ -317,6 +321,8 @@ def data_type_for_port(
         return None
     if kind == "list_length":
         return value_type if port_id == "list-in" else ("number" if port_id == "length-out" else None)
+    if kind == "list_slice":
+        return value_type if port_id in {"list-in", "list-out"} else ("number" if port_id in {"start-in", "stop-in", "step-in"} else None)
     if kind == "list_append":
         if port_id in {"list-in", "list-out"}: return f"list-{node_argument(node, 'item_type')}"
         return node_argument(node, "item_type") if port_id == "item-in" else None

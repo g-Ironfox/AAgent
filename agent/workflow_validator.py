@@ -493,7 +493,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             )
     elif node_type == "construct_list":
         _validate_construct_list(node, structs)
-    elif node_type in {"list_length", "list_get"}:
+    elif node_type in {"list_length", "list_get", "list_slice"}:
         value_type = node_argument(node, "value_type")
         if not isinstance(value_type, str) or not value_type.startswith("list-") or not _valid_item_type(value_type[5:], structs):
             raise WorkflowValidationError(f"{node_type} value_type must be a supported list type")

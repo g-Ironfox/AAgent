@@ -36,6 +36,7 @@
 .flow-node.remote_async_tool { border-top-color:#b47a22; }
 .flow-node.construct_list { border-top-color:#176f73; }
 .flow-node.list_get { border-top-color:#326f91; }
+.flow-node.list_slice { border-top-color:#3b745f; }
 .flow-node.list_length { border-top-color:#147d78; }
 .flow-node.list_append { border-top-color:#27705b; }
 .flow-node.foreach { border-top-color:#9a5a24; }

@@ -120,6 +120,11 @@
             <div><strong>按下标取元素</strong><small>按从 0 开始的下标读取列表元素</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="list_slice">
+            <span class="node-symbol list_slice-symbol" aria-hidden="true">L[:]</span>
+            <div><strong>列表切片</strong><small>按起点、终点和步长截取列表</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="list_length">
             <span class="node-symbol list_length-symbol" aria-hidden="true">LEN</span>
             <div><strong>列表长度</strong><small>按所选列表类型计算元素个数，输出 number</small></div>
@@ -524,6 +529,15 @@
   </template>
 
   <template id="list_lengthInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>输入列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="list_sliceInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>

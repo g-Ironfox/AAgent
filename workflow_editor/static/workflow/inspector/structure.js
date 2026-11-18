@@ -12,7 +12,7 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
   if (node.type === 'list_get') bindListGet(node, context);
-  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop', 'list_length', 'list_get'].includes(node.type)) bindContext(node, context);
+  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) bindContext(node, context);
 }
 
 
@@ -335,8 +335,8 @@ function bindListGet(node, context) {
 
 function bindContext(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="value_type"]');
-  if (node.type.startsWith('context_') || ['while_pop', 'list_length', 'list_get'].includes(node.type)) addTypeOptions(typeField, { includeStructLists: true });
-  if (['while_pop', 'list_length', 'list_get'].includes(node.type)) {
+  if (node.type.startsWith('context_') || ['while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) addTypeOptions(typeField, { includeStructLists: true });
+  if (['while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) {
     for (const option of [...typeField.options]) {
       if (!option.value.startsWith('list-')) option.remove();
     }

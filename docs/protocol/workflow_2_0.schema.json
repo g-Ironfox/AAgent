@@ -249,6 +249,7 @@
             "list_append",
             "list_length",
             "list_get",
+            "list_slice",
             "foreach",
             "while_pop",
             "llm",
@@ -477,7 +478,8 @@
                     "enum": [
                       "while_pop",
                       "list_length",
-                      "list_get"
+                      "list_get",
+                      "list_slice"
                     ]
                   }
                 }
@@ -663,6 +665,48 @@
             "properties": {
               "type": {
                 "const": "list_length"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content",
+                          "list-message"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list_slice"
               }
             },
             "required": [

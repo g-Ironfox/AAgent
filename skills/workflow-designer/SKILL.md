@@ -153,6 +153,9 @@ deserialize_json 对 content 输出：原值是字符串则保留；否则把该
 
 list_get 节点必须配置 arguments.value_type 为 list-content、list-message 或已声明的 list-struct:<id>。list-in 接收对应列表，port 模式下 index-in:number 接收从 0 开始的非负整数下标（1.0 合法，不接受布尔值或数字字符串），item-out 输出对应类型的元素；有 control-in/control-out。输入缺失、类型不匹配或下标越界（含空列表）时报错，不修改原列表。 arguments.index_source 可选 port（默认）或 fixed：port 使用 index-in:number；fixed 必须配置 arguments.index 为非负整数，且不存在 index-in 端口。
 
+list_slice 节点必须配置 arguments.value_type 为 list-content、list-message 或已声明的 list-struct:<id>。list-in 与 list-out 为同一列表类型；可选 start-in、stop-in、step-in 接收整数 number，未连接按 None 处理。按 Python list[start:stop:step] 语义切片，支持负下标及负步长，步长为 0 或边界非整数时报错，不修改输入。
+
+
 list_length 节点必须配置 arguments.value_type 为 list-content、list-message 或已声明的 list-struct:<id>。list-in 接收对应类型的列表，length-out 输出 number（元素个数，空列表为 0）；有 control-in/control-out，输入缺失或元素类型不匹配时报错，不修改原列表。
 
 item_type 允许 content、message、已声明 struct:<id>。对应列表类型为 list-content/list-message/list-struct:<id>。Struct 元素的动态端口 ID 例如 struct:profile-in-0。initial_value_count 为 0–20 的整数，生成时填齐全部 N 个输入；不要以增大 count 方式构造超过 20 项的字面列表，可逐步 append 或直接接受列表输入。foreach 按输入列表快照顺序串行遍历，空列表直接走 control-out；没有索引输出，没有 break/continue 节点，没有循环自带聚合输出，也不能动态增加本轮待遍历项。

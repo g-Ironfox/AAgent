@@ -33,6 +33,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   list_length: new Set(['value_type']),
+  list_slice: new Set(['value_type']),
   list_get: new Set(['value_type', 'index_source', 'index']),
   foreach: new Set(['item_type']),
   while_pop: new Set(['value_type', 'position', 'context_id_source', 'context_id']),
@@ -371,7 +372,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
     normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
   if (node.type === 'foreach') normalized.item_type = (['content', 'message'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
-  if (['while_pop', 'list_length', 'list_get'].includes(node.type)) {
+  if (['while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) {
     if (!['list-content', 'list-message'].includes(node.value_type)
       && !(/^list-struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.slice('list-struct:'.length)))) return null;

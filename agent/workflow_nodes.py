@@ -600,6 +600,34 @@ def workflow_list_length(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
+def workflow_list_slice(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+
+    node = workflow_map[current_id]
+    has_list, input_list = read_workflow_input(node, "list-in")
+    if not has_list:
+        raise ValueError(f"list_slice list input is missing: node {node.get('id')}")
+    if not isinstance(input_list, list):
+        raise ValueError(f"list_slice input must be a list: node {node.get('id')}")
+    validate_value(node_argument(node, "value_type"), input_list, _struct_defs(node))
+    bounds = []
+    for name in ("start", "stop", "step"):
+        has_value, value = read_workflow_input(node, f"{name}-in")
+        if not has_value:
+            bounds.append(None)
+        elif isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"list_slice {name} must be an integer: node {node.get('id')}")
+        else:
+            bounds.append(value)
+    start, stop, step = bounds
+    try:
+        output = input_list[slice(start, stop, step)]
+    except ValueError as error:
+        raise ValueError(f"list_slice step cannot be zero: node {node.get('id')}") from error
+    propagate_workflow_output(workflow_map, node, "list-out", output)
+    return next_successor(node)
+
+
 def workflow_list_append(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     has_list, input_list = read_workflow_input(node, "list-in")
@@ -1047,6 +1075,7 @@ nodes_map: dict[str, NodeHandler] = {
     "list_append": workflow_list_append,
     "list_length": workflow_list_length,
     "list_get": workflow_list_get,
+    "list_slice": workflow_list_slice,
     "foreach": workflow_foreach,
     "while_pop": workflow_while_pop,
     "llm": workflow_llm,
