@@ -6,10 +6,8 @@ import json
 import copy
 import logging
 import os
-import time
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -163,116 +161,6 @@ def next_successor(node: dict[str, Any], key: str = "next") -> int:
         )
     node["_selected_control_port"] = key
     return successor
-
-
-def run_workflow_map(
-    workflow_map: WorkflowMap,
-    start: int,
-    *,
-    ancestor_invocation_ids: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    from workflow_context_repository import WorkflowContextError, delete_contexts
-
-    invocation_id = uuid4().hex
-    context_ids: set[str] = set()
-    started_at = time.monotonic()
-    started_at_utc = datetime.now(timezone.utc)
-    node_trace: list[dict[str, Any]] = []
-    for node in workflow_map:
-        node["_workflow_invocation_id"] = invocation_id
-        node["_workflow_ancestor_invocation_ids"] = ancestor_invocation_ids
-        node["_workflow_context_ids"] = context_ids
-    input_node = workflow_map[start]
-    workflow_inputs: dict[str, Any] = copy.deepcopy(input_node.get("_workflow_input_values", {}))
-    for port in input_node.get("workflowPorts", []):
-        if port["name"] in workflow_inputs:
-            continue
-        targets = input_node.get("data_outputs", {}).get(port["id"], [])
-        if not targets:
-            workflow_inputs[port["name"]] = None
-            continue
-        target_id, target_port = targets[0]
-        slot = workflow_map[target_id].get("data_inputs", {}).get(target_port)
-        workflow_inputs[port["name"]] = copy.deepcopy(slot[2]) if isinstance(slot, list) and len(slot) == 3 else None
-
-    def record_run(status: str, output: dict[str, Any], error: str | None = None) -> None:
-        call_stack = input_node.get("_workflow_call_stack", [])
-        workflow_name = call_stack[-1] if call_stack else input_node.get("_workflow_name")
-        if not workflow_name:
-            return
-        try:
-            from workflow_run_repository import record_workflow_run
-
-            record_workflow_run({
-                "run_id": invocation_id,
-                "workflow_name": workflow_name,
-                "call_stack": call_stack,
-                "started_at": started_at_utc,
-                "finished_at": datetime.now(timezone.utc),
-                "duration_ms": round((time.monotonic() - started_at) * 1000),
-                "status": status,
-                "input": workflow_inputs,
-                "output": output,
-                "node_trace": node_trace,
-                "error": error,
-            })
-        except Exception:
-            logger.exception("failed to record workflow run: %s", invocation_id)
-
-    try:
-        current_id = start
-        result: dict[str, Any] | None = None
-        while current_id != WORKFLOW_END:
-            elapsed = time.monotonic() - started_at
-            if elapsed > WORKFLOW_TIMEOUT_SECONDS:
-                raise TimeoutError(
-                    f"workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds"
-                )
-            node = workflow_map[current_id]
-            node_started_at = datetime.now(timezone.utc)
-            node_started_monotonic = time.monotonic()
-            trace_entry = {
-                "index": len(node_trace) + 1,
-                "node_id": node.get("id"),
-                "node_name": node.get("name"),
-                "node_type": node.get("type"),
-                "started_at": node_started_at,
-                "status": "completed",
-            }
-            try:
-                outcome = execute_node(current_id, workflow_map)
-                if isinstance(outcome, WorkflowStep):
-                    raise ValueError("wait_terminal_event requires the process scheduler")
-                current_id = outcome
-            except Exception as error:
-                trace_entry["status"] = "failed"
-                trace_entry["error"] = str(error)
-                raise
-            finally:
-                trace_entry["finished_at"] = datetime.now(timezone.utc)
-                trace_entry["duration_ms"] = round(
-                    (time.monotonic() - node_started_monotonic) * 1000
-                )
-                node_trace.append(trace_entry)
-            node_result = node.pop("_workflow_result", None)
-            if isinstance(node_result, dict):
-                result = node_result
-        result = result or {}
-        record_run("completed", result)
-        return result
-    except Exception as error:
-        record_run("failed", {}, str(error))
-        raise
-    finally:
-        try:
-            delete_contexts(context_ids)
-        except WorkflowContextError:
-            logger.exception("failed to clean up Workflow Contexts")
-        for node in workflow_map:
-            node.pop("_workflow_invocation_id", None)
-            node.pop("_workflow_ancestor_invocation_ids", None)
-            node.pop("_workflow_context_ids", None)
-            node.pop("_selected_control_port", None)
 
 
 def workflow_input(current_id: int, workflow_map: WorkflowMap) -> int:
@@ -963,7 +851,11 @@ def workflow_session_write(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
-def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
+def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMap) -> WorkflowStep:
+    process = current_workflow_process.get()
+    if process is None:
+        raise ValueError("spawn_and_wait_subprocess requires the process scheduler")
+
     from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
     from workflow_validator import (
         WorkflowValidationError,
@@ -1012,46 +904,29 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
         child_inputs[port["name"]] = value if has_value else None
         if has_value:
             propagate_workflow_output(child_map, child_input, port["id"], value)
-    child_input["_workflow_input_values"] = child_inputs
 
-    process = current_workflow_process.get()
-    if process is not None:
-        child_id = uuid4().hex
-        child = {
-            "process_id": child_id,
-            "parent_process_id": process["process_id"],
-            "root_process_id": process.get("root_process_id", process["process_id"]),
-            "workflow_name": workflow_file,
-            "workflow_file": workflow_file,
-            "call_stack": next_call_stack,
-            "ancestor_invocation_ids": [
-                *process.get("ancestor_invocation_ids", []),
-                process["invocation_id"],
-            ],
-            "workflow": json.dumps(child_map, ensure_ascii=False, allow_nan=False),
-            "current_node_id": WORKFLOW_END,
-            "control_port": None,
-            "input": child_inputs,
-        }
-        next_successor(parent_node)
-        return WorkflowStep(
-            {"kind": "process_exit", "process_id": child_id},
-            child,
-        )
-
-    output = run_workflow_map(
-        child_map,
-        child_input_id,
-        ancestor_invocation_ids=(
-            *parent_node.get("_workflow_ancestor_invocation_ids", ()),
-            parent_node["_workflow_invocation_id"],
-        ),
+    child_id = uuid4().hex
+    child = {
+        "process_id": child_id,
+        "parent_process_id": process["process_id"],
+        "root_process_id": process.get("root_process_id", process["process_id"]),
+        "workflow_name": workflow_file,
+        "workflow_file": workflow_file,
+        "call_stack": next_call_stack,
+        "ancestor_invocation_ids": [
+            *process.get("ancestor_invocation_ids", []),
+            process["invocation_id"],
+        ],
+        "workflow": json.dumps(child_map, ensure_ascii=False, allow_nan=False),
+        "current_node_id": WORKFLOW_END,
+        "control_port": None,
+        "input": child_inputs,
+    }
+    next_successor(parent_node)
+    return WorkflowStep(
+        {"kind": "process_exit", "process_id": child_id},
+        child,
     )
-    for name, value in output.items():
-        propagate_workflow_output(
-            workflow_map, parent_node, f"workflow:{name}", value
-        )
-    return next_successor(parent_node)
 
 
 nodes_map: dict[str, NodeHandler] = {

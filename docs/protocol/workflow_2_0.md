@@ -280,7 +280,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `construct_content.append_items` 必须为非空数组。每项是 object，`type` 必须为 `fixed` 或 `port`。固定项恰含 `type`、`value`，且 value 为字符串；端口项恰含 `type`、`port_id`，且 port_id 为非空字符串。端口 ID 不重复，且端口项 ID 集合与 `dataInputPorts` 一致。按条目顺序拼接；运行时缺失的端口值跳过，非字符串值转换为字符串。
 - `construct_map_content.mappings` 必须为非空数组。每项必须包含非空字符串 `key` 且 key 唯一。固定值项含 `key`、`value`，可以附 `value_source` 且其值必须为 `fixed`；value 为字符串。端口项恰含 `key`、`value_source`、`port_id`，其中 value_source 固定为 `port`，port_id 非空且唯一，不得为控制端口，并与 `dataInputPorts` 一致。端口运行值必须为已提供的字符串；输出保留条目顺序。
 - `map_content_get` 按 key 查值；查不到时执行失败。
-- `wait_terminal_event` 执行后保存工作流数据，将自身记录为最近完成节点并把进程设为 `blocked`，`wait_for` 指向关联终端的 `terminal_message`。终端输入成功保存后，仅唤醒来源和事件类型均匹配的进程，清除等待条件并重新入就绪队列，从下一节点继续。该节点无参数、无数据端口，不消费或输出消息正文；进入等待前的消息不缓存为待唤醒事件，终端输出也不唤醒。`read_terminal_input` 将当前进程终端所有已保存的 `role=user` 消息正文按时间升序读取为 `list-content`；不含助手输出、不删除记录，无消息时输出空列表。重复发送不会重复入队。根工作流和子进程均通过进程调度器执行，均支持该节点。仅用于调试和同步调用的 `run_workflow_map` 遇到等待节点时明确报错，不能挂起。
+- `wait_terminal_event` 执行后保存工作流数据，将自身记录为最近完成节点并把进程设为 `blocked`，`wait_for` 指向关联终端的 `terminal_message`。终端输入成功保存后，仅唤醒来源和事件类型均匹配的进程，清除等待条件并重新入就绪队列，从下一节点继续。该节点无参数、无数据端口，不消费或输出消息正文；进入等待前的消息不缓存为待唤醒事件，终端输出也不唤醒。`read_terminal_input` 将当前进程终端所有已保存的 `role=user` 消息正文按时间升序读取为 `list-content`；不含助手输出、不删除记录，无消息时输出空列表。重复发送不会重复入队。根工作流和子进程均通过进程调度器执行，均支持该节点。
 - `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为六种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
 - `construct_list.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message` 或 `list-struct:<id>`。
@@ -332,7 +332,7 @@ Agent 和管理端在基本端口、类型及连接基数校验后执行静态�
 
 Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子进程 Workflow 文件快照过期或递归调用均使执行失败。
 
-`spawn_and_wait_subprocess`（拉起并等待子进程）按 `arguments.workflow_file` 指定的精确工作区文件名加载 Workflow 文件，创建独立进程和终端，并阻塞父进程直到子进程退出。节点的输入复制到子进程 Input，子进程 Output 收集的结果在退出后传回节点输出，再沿 control-out 继续。文件声明和节点接口快照必须与目标文件当前接口一致；进程调用链中重复的文件引用会触发递归检查。Struct 不能跨进程接口传递，须显式转换为 JSON。同步调试入口 `run_workflow_map` 使用相同接口契约在当前调用栈执行，仅用于测试和工具内嵌，不支持跨事件挂起。
+`spawn_and_wait_subprocess`（拉起并等待子进程）按 `arguments.workflow_file` 指定的精确工作区文件名加载 Workflow 文件，创建独立进程和终端，并阻塞父进程直到子进程退出。节点的输入复制到子进程 Input，子进程 Output 收集的结果在退出后传回节点输出，再沿 control-out 继续。文件声明和节点接口快照必须与目标文件当前接口一致；进程调用链中重复的文件引用会触发递归检查。Struct 不能跨进程接口传递，须显式转换为 JSON。该节点必须在进程调度上下文中执行；缺少上下文立即报错，不在当前调用栈执行子工作流。
 
 
 ### 10.4 While Pop

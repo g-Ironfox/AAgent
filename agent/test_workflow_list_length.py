@@ -4,7 +4,8 @@ import json
 import unittest
 
 from workflow_contract import data_ports_for_node, data_type_for_port
-from workflow_nodes import propagate_workflow_output, run_workflow_map, workflow_list_length
+from test_support import run_scheduled_workflow
+from workflow_nodes import propagate_workflow_output, workflow_list_length
 from workflow_parser import parse_workflow
 from workflow_structs import validate_struct_definitions
 from workflow_validator import WorkflowValidationError, _validate_workflow_schema, validate_workflow
@@ -69,7 +70,7 @@ class WorkflowListLengthTest(unittest.TestCase):
                     graph = parse_workflow(workflow)
                     payload = json.dumps(value) if value_type.startswith("list-struct:") else value
                     propagate_workflow_output(graph, graph[0], "workflow:items", payload)
-                    output = run_workflow_map(graph, 0)
+                    output = run_scheduled_workflow(graph, 0)
                     self.assertEqual(output, {"length": len(value)})
                     self.assertIs(type(output["length"]), int)
                     self.assertEqual(value, original)

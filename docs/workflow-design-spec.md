@@ -76,4 +76,4 @@ python -m unittest discover -s skills/workflow-designer/scripts -p "test_*.py" -
 工作区 checkpoint 工具保留，可由工作流显式调用。恢复会覆盖整个工作区文件并更新 revision，后续修改须重新读取文件。进程创建与终端均不使用事件绑定；错误不会通过旧事件队列自动启动恢复工作流。
 
 
-进程执行细节（父子进程、终端等待、Context 生命周期、取消和超时）以 [Workflow 2.0 协议 10.5 节](protocol/workflow_2_0.md#105-父子进程调度) 为准。子进程在调度器中独立运行；同步 `run_workflow_map` 仅供内嵌测试/工具使用，不能跨事件挂起。
+进程执行细节（父子进程、终端等待、Context 生命周期、取消和超时）以 [Workflow 2.0 协议 10.5 节](protocol/workflow_2_0.md#105-父子进程调度) 为准。根工作流和子进程统一通过进程调度器执行，不提供独立的同步执行入口。

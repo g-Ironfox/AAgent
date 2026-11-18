@@ -34,10 +34,6 @@ def get_workflow_log_collection():
     return _collection
 
 
-def record_workflow_run(run: dict[str, Any]):
-    return get_workflow_log_collection().insert_one(run).inserted_id
-
-
 def record_process_workflow_run(run: dict[str, Any]) -> None:
     """A durable process invocation has exactly one final workflow log record."""
     get_workflow_log_collection().update_one(

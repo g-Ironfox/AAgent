@@ -11,7 +11,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 from validate_design import REPO, read_json, validate_design
-from workflow_nodes import propagate_workflow_output, run_workflow_map
+from test_support import run_scheduled_workflow
+from workflow_nodes import propagate_workflow_output
 from workflow_parser import parse_workflow
 
 
@@ -98,7 +99,6 @@ class InitialAgentExecutionTest(unittest.TestCase):
         start = next(i for i, n in enumerate(graph) if n['type'] == 'input')
         origin = {'version': '1.1', 'event_type': 'user',
                   'payload': {'content': 'Investigate this task "quoted"\nwith a newline'}}
-        graph[start]['_workflow_input_values'] = {'origin': origin}
         propagate_workflow_output(graph, graph[start], 'workflow:origin', origin)
         iterator = iter(responses)
 
@@ -145,12 +145,12 @@ class InitialAgentExecutionTest(unittest.TestCase):
              patch('workflow_parser._read_workspace_workflow_by_name',
                    side_effect=lambda name: copy.deepcopy(documents[name])), \
              patch('workflow_context_repository.get_connection', return_value=self.redis), \
-             patch('workflow_run_repository.record_workflow_run'), \
+             patch('workflow_run_repository.record_process_workflow_run'), \
              patch('tool_server_client.get_remote_tool_schemas',
                    side_effect=lambda names: [tool_schema(name) for name in sorted(names)]), \
              patch('tool_server_client.call_remote_tool', side_effect=execute_remote):
             try:
-                return run_workflow_map(graph, start)
+                return run_scheduled_workflow(graph, start, inputs={'origin': origin})
             finally:
                 self.assertEqual(self.redis.hashes, {}, 'all invocation Contexts must be cleaned up')
 

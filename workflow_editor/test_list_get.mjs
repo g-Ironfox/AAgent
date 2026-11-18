@@ -127,7 +127,8 @@ for workflow in cases["valid"]:
     validate_workflow(workflow)
     if sys.argv[1] != "agent": continue
     from workflow_parser import parse_workflow
-    from workflow_nodes import propagate_workflow_output, run_workflow_map
+    from workflow_nodes import propagate_workflow_output
+    from test_support import run_scheduled_workflow
     arguments = next(node for node in workflow["nodes"] if node["type"] == "list_get")["arguments"]
     value_type = arguments["value_type"]
     values = ["first", "last"] if value_type == "list-content" else [{"role":"user","content":"first"}, {"role":"assistant","content":"last"}] if value_type == "list-message" else [{"name":"first"}, {"name":"last"}]
@@ -136,7 +137,7 @@ for workflow in cases["valid"]:
         payload = json.dumps(values) if value_type.startswith("list-struct:") else values
         propagate_workflow_output(graph, graph[0], "workflow:items", payload)
         propagate_workflow_output(graph, graph[0], "workflow:index", index)
-        result = run_workflow_map(graph, 0)["result"]
+        result = run_scheduled_workflow(graph, 0)["result"]
         if value_type.startswith("list-struct:"): result = json.loads(result)
         expected_index = arguments["index"] if arguments.get("index_source") == "fixed" else index
         assert result == values[int(expected_index)]

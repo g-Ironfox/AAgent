@@ -6,136 +6,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from redis.exceptions import WatchError
+from test_support import MemoryRedis
 
 import main
 import r
 from process_creation import build_workflow_process
-from workflow_nodes import WorkflowStep, workflow_wait_terminal_event, run_workflow_map
+from workflow_nodes import WorkflowStep, workflow_wait_terminal_event
 from terminal_repository import terminal_process_context
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "webui_py"))
 from terminal import TerminalRequest, create_terminal_router
-
-
-class MemoryRedis:
-    def __init__(self):
-        self.hashes = {}
-        self.lists = {}
-        self.sets = {}
-        self.versions = {}
-        self.expirations = {}
-        self.before_execute = None
-
-    def _changed(self, key):
-        self.versions[key] = self.versions.get(key, 0) + 1
-
-    def hget(self, key, field):
-        return self.hashes.get(key, {}).get(field)
-
-    def hgetall(self, key):
-        return dict(self.hashes.get(key, {}))
-
-    def hexists(self, key, field):
-        return field in self.hashes.get(key, {})
-
-    def hset(self, key, field=None, value=None, mapping=None):
-        self.hashes.setdefault(key, {}).update(mapping if mapping is not None else {field: value})
-        self._changed(key)
-        return 1
-
-    def lpush(self, key, value):
-        self.lists.setdefault(key, []).insert(0, value)
-        self._changed(key)
-        return len(self.lists[key])
-
-    def lrem(self, key, count, value):
-        self.lists[key] = [item for item in self.lists.get(key, []) if item != value]
-        self._changed(key)
-        return 0
-
-    def brpop(self, key, timeout=0):
-        if not self.lists.get(key):
-            return None
-        self._changed(key)
-        return key, self.lists[key].pop()
-
-    def sadd(self, key, value):
-        self.sets.setdefault(key, set()).add(value)
-        self._changed(key)
-        return 1
-
-    def srem(self, key, value):
-        self.sets.setdefault(key, set()).discard(value)
-        self._changed(key)
-        return 1
-
-    def expire(self, key, ttl):
-        self.expirations[key] = ttl
-        self._changed(key)
-        return True
-
-    def persist(self, key):
-        self.expirations.pop(key, None)
-        self._changed(key)
-        return True
-
-    def delete(self, *keys):
-        for key in keys:
-            self.hashes.pop(key, None)
-            self.sets.pop(key, None)
-            self.expirations.pop(key, None)
-            self._changed(key)
-        return len(keys)
-
-    def eval(self, script, key_count, key, *args):
-        # Context creation is the only Lua operation used by these scenarios.
-        if key in self.hashes:
-            return 0
-        self.hset(key, mapping=dict(zip(args[:-1:2], args[1:-1:2])))
-        if int(args[-1]) > 0:
-            self.expire(key, int(args[-1]))
-        return 1
-
-    def pipeline(self, transaction=True):
-        return MemoryPipeline(self)
-
-
-class MemoryPipeline:
-    def __init__(self, client):
-        self.client = client
-        self.watched = {}
-        self.queued = True
-        self.commands = []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.commands.clear()
-
-    def watch(self, *keys):
-        self.watched = {key: self.client.versions.get(key, 0) for key in keys}
-        self.queued = False
-
-    def multi(self):
-        self.queued = True
-
-    def execute(self):
-        hook, self.client.before_execute = self.client.before_execute, None
-        if hook:
-            hook()
-        if any(self.client.versions.get(key, 0) != version for key, version in self.watched.items()):
-            raise WatchError("concurrent update")
-        return [getattr(self.client, name)(*args, **kwargs) for name, args, kwargs in self.commands]
-
-    def __getattr__(self, name):
-        def command(*args, **kwargs):
-            if self.queued:
-                self.commands.append((name, args, kwargs))
-                return self
-            return getattr(self.client, name)(*args, **kwargs)
-        return command
 
 
 PORTS = [{"name": "text", "type": "content"}]
@@ -425,8 +305,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         with terminal_process_context("terminal"):
             outcome = workflow_wait_terminal_event(0, [node])
             self.assertIsInstance(outcome, WorkflowStep)
-            with self.assertRaisesRegex(ValueError, "process scheduler"):
-                run_workflow_map([node], 0)
+            self.assertEqual(outcome.wait_for, {"kind": "terminal_message", "process_id": "terminal"})
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import copy
 import unittest
+from test_support import run_scheduled_workflow
 
 from workflow_structs import StructValidationError, validate_struct_definitions, validate_value
 from workflow_validator import WorkflowValidationError, _validate_workflow_schema, validate_workflow
@@ -103,7 +104,7 @@ class WorkflowStructTest(unittest.TestCase):
                 {"fromId": "get_name", "fromPortId": "value-out", "toId": "output", "toPortId": "workflow:result", "type": "content"},
             ],
         }
-        from workflow_nodes import propagate_workflow_output, run_workflow_map
+        from workflow_nodes import propagate_workflow_output
         from workflow_parser import parse_workflow
 
         for name in ("profile", "Legacy display name"):
@@ -113,7 +114,7 @@ class WorkflowStructTest(unittest.TestCase):
                 workflow_map = parse_workflow(workflow)
                 self.assertEqual(workflow_map[0]["_struct_definitions"]["profile"]["name"], name)
                 propagate_workflow_output(workflow_map, workflow_map[0], "workflow:display_name", "Ada Lovelace")
-                self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "Ada Lovelace"})
+                self.assertEqual(run_scheduled_workflow(workflow_map, 0), {"result": "Ada Lovelace"})
 
     def test_json_conversion_schema_accepts_declared_struct_types(self):
         workflow = {

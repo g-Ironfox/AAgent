@@ -5,7 +5,8 @@ import unittest
 
 from test_workflow_list_length import TASK, fixture as length_fixture
 from workflow_contract import data_ports_for_node, data_type_for_port
-from workflow_nodes import propagate_workflow_output, run_workflow_map
+from test_support import run_scheduled_workflow
+from workflow_nodes import propagate_workflow_output
 from workflow_parser import parse_workflow
 from workflow_validator import WorkflowValidationError, validate_workflow
 
@@ -43,7 +44,7 @@ class WorkflowListSliceTest(unittest.TestCase):
         propagate_workflow_output(graph, graph[0], "workflow:items", payload)
         for name, value in (bounds or {}).items():
             propagate_workflow_output(graph, graph[0], f"workflow:{name}", value)
-        result = run_workflow_map(graph, 0)
+        result = run_scheduled_workflow(graph, 0)
         slice_node = next(node for node in graph if node["id"] == "slice")
         sliced = next(node for node in graph if node["id"] == "measure")["data_inputs"]["list-in"][2]
         return result, sliced

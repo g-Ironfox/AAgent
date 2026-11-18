@@ -4,8 +4,8 @@ from unittest.mock import patch
 from workflow_contract import is_valid_connection
 from workflow_parser import parse_workflow
 from workflow_parser import WORKFLOW_SCHEMA_VERSION, WorkflowParseError
+from test_support import run_scheduled_workflow
 from workflow_nodes import (
-    run_workflow_map,
     workflow_construct_map_content,
     workflow_map_content_get,
     workflow_construct_list,
@@ -952,13 +952,13 @@ class WorkflowExecutionTest(unittest.TestCase):
                     },
                 ]
 
-                result = run_workflow_map(workflow_map, 0)["result"]
+                result = run_scheduled_workflow(workflow_map, 0)["result"]
 
                 self.assertEqual(result, expected)
                 self.assertIsNot(result, input_items)
                 self.assertEqual(input_items, ["first"])
 
-    def test_run_workflow_map_traverses_to_output(self):
+    def test_run_scheduled_workflow_traverses_to_output(self):
         workflow_map = [
             {
                 "id": "input",
@@ -987,10 +987,10 @@ class WorkflowExecutionTest(unittest.TestCase):
             },
         ]
 
-        self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "done"})
+        self.assertEqual(run_scheduled_workflow(workflow_map, 0), {"result": "done"})
 
-    @patch("workflow_run_repository.record_workflow_run")
-    def test_run_workflow_map_records_workflow_inputs_and_outputs(self, record_run):
+    @patch("workflow_run_repository.record_process_workflow_run")
+    def test_run_scheduled_workflow_records_workflow_inputs_and_outputs(self, record_run):
         workflow_map = [
             {
                 "id": "input", "name": "用户输入", "type": "input", "_workflow_call_stack": ["example"],
@@ -1005,7 +1005,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             },
         ]
 
-        self.assertEqual(run_workflow_map(workflow_map, 0), {"result": "hello"})
+        self.assertEqual(run_scheduled_workflow(workflow_map, 0), {"result": "hello"})
         record = record_run.call_args.args[0]
         self.assertEqual(record["workflow_name"], "example")
         self.assertEqual(record["input"], {"query": "hello"})
@@ -1018,23 +1018,23 @@ class WorkflowExecutionTest(unittest.TestCase):
         self.assertTrue(all(entry["duration_ms"] >= 0 for entry in record["node_trace"]))
 
     @patch("workflow_context_repository.delete_contexts")
-    @patch("workflow_nodes.time.monotonic", side_effect=[0, 181, 182])
-    def test_run_workflow_map_stops_when_execution_exceeds_timeout(
-        self, monotonic, delete_contexts
+    @patch("main.time.perf_counter", side_effect=[0, 181, 182])
+    def test_run_scheduled_workflow_stops_when_execution_exceeds_timeout(
+        self, perf_counter, delete_contexts
     ):
         workflow_map = [{"id": "slow", "type": "test", "successors": {}}]
-        with patch("workflow_nodes.nodes_map", {"test": lambda current_id, _: current_id}):
+        with patch.dict("workflow_nodes.nodes_map", {"test": lambda current_id, _: current_id}):
             with self.assertRaisesRegex(
                 TimeoutError, "workflow execution exceeded 180 seconds"
             ):
-                run_workflow_map(workflow_map, 0)
+                run_scheduled_workflow(workflow_map, 0)
 
-        self.assertEqual(monotonic.call_count, 2)
+        self.assertEqual(perf_counter.call_count, 3)
         delete_contexts.assert_called_once_with(set())
 
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")
-    def test_run_workflow_map_cleans_created_contexts_on_success(
+    def test_run_scheduled_workflow_cleans_created_contexts_on_success(
         self, create_context, delete_contexts
     ):
         create_context.return_value = "ctx-parent"
@@ -1057,7 +1057,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             },
         ]
 
-        self.assertEqual(run_workflow_map(workflow_map, 0), {})
+        self.assertEqual(run_scheduled_workflow(workflow_map, 0), {})
 
         invocation_id = create_context.call_args.args[0]
         self.assertIsInstance(invocation_id, str)
@@ -1069,7 +1069,7 @@ class WorkflowExecutionTest(unittest.TestCase):
 
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")
-    def test_run_workflow_map_cleans_created_contexts_on_failure(
+    def test_run_scheduled_workflow_cleans_created_contexts_on_failure(
         self, create_context, delete_contexts
     ):
         create_context.return_value = "ctx-failed"
@@ -1085,7 +1085,7 @@ class WorkflowExecutionTest(unittest.TestCase):
         ]
 
         with self.assertRaisesRegex(ValueError, "workflow successor is not connected"):
-            run_workflow_map(workflow_map, 0)
+            run_scheduled_workflow(workflow_map, 0)
 
         delete_contexts.assert_called_once_with({"ctx-failed"})
 
@@ -1105,8 +1105,8 @@ class WorkflowExecutionTest(unittest.TestCase):
             }
         ]
 
-        with self.assertLogs("aagent.workflow", level="ERROR"):
-            self.assertEqual(run_workflow_map(workflow_map, 0), {})
+        with self.assertLogs("main", level="ERROR"):
+            self.assertEqual(run_scheduled_workflow(workflow_map, 0), {})
 
     @patch("workflow_context_repository.delete_contexts")
     def test_cleanup_failure_does_not_replace_workflow_error(self, delete_contexts):
@@ -1115,19 +1115,19 @@ class WorkflowExecutionTest(unittest.TestCase):
         delete_contexts.side_effect = WorkflowContextError("cleanup failed")
         workflow_map = [{"id": "broken", "type": "missing"}]
 
-        with self.assertLogs("aagent.workflow", level="ERROR"):
+        with self.assertLogs("main", level="ERROR"):
             with self.assertRaisesRegex(ValueError, "unsupported workflow node type"):
-                run_workflow_map(workflow_map, 0)
+                run_scheduled_workflow(workflow_map, 0)
 
     @patch("workflow_parser.parse_workflow")
     @patch("workflow_parser._read_workspace_workflow_by_name")
     @patch("workflow_validator.validate_workflow")
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")
-    @patch("workflow_run_repository.record_workflow_run")
+    @patch("workflow_run_repository.record_process_workflow_run")
     def test_child_workflow_uses_and_cleans_independent_context_scope(
         self,
-        record_workflow_run,
+        record_process_workflow_run,
         create_context,
         delete_contexts,
         validate_workflow,
@@ -1192,7 +1192,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             },
         ]
 
-        self.assertEqual(run_workflow_map(parent_map, 0), {})
+        self.assertEqual(run_scheduled_workflow(parent_map, 0), {})
 
         parent_invocation = create_context.call_args_list[0].args[0]
         child_invocation = create_context.call_args_list[1].args[0]
@@ -1203,7 +1203,7 @@ class WorkflowExecutionTest(unittest.TestCase):
         )
         validate_workflow.assert_called_once_with(child_document)
 
-    def test_run_workflow_map_completes_foreach_in_one_call(self):
+    def test_scheduled_workflow_completes_foreach(self):
         input_items = ["first", "second", "third"]
         workflow_map = [
             {
@@ -1237,7 +1237,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             },
         ]
 
-        self.assertEqual(run_workflow_map(workflow_map, 0), {})
+        self.assertEqual(run_scheduled_workflow(workflow_map, 0), {})
         self.assertEqual(
             workflow_map[2]["data_inputs"]["content-in"],
             [1, "item-out", "third"],

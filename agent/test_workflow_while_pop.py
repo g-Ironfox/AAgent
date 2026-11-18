@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, patch
 import redis
 
 from workflow_context_repository import WorkflowContextError, pop_context, write_context
-from workflow_nodes import nodes_map, propagate_workflow_output, run_workflow_map
+from test_support import run_scheduled_workflow
+from workflow_nodes import next_successor, nodes_map, propagate_workflow_output
 from workflow_parser import parse_workflow
 from workflow_structs import validate_struct_definitions
 from workflow_validator import WorkflowValidationError, validate_workflow
@@ -187,7 +188,7 @@ class WhilePopExecutionTest(unittest.TestCase):
             seen.append(item)
             if append_during_body and len(seen) == 1:
                 write_context("queue", stored["invocation_id"], kind, json.loads(stored["value"]) + ["new"])
-            return current_map[index]["successors"]["next"]
+            return next_successor(current_map[index])
         workflow_map[3]["data_inputs"] = {"item": [2, "item-out", None]}
         workflow_map[2]["data_outputs"]["item-out"] = [[3, "item"]]
         def capture(index, current_map):
@@ -196,7 +197,7 @@ class WhilePopExecutionTest(unittest.TestCase):
         with patch("workflow_context_repository.create_context", side_effect=create), \
              patch("workflow_context_repository.get_connection", return_value=client), \
              patch.dict(nodes_map, {"construct_content": capture}):
-            result = run_workflow_map(workflow_map, 0)
+            result = run_scheduled_workflow(workflow_map, 0)
         client.delete.assert_called_once_with("workflow-context:queue")
         self.assertEqual(result, {"remaining": []})
         self.assertEqual(json.loads(stored["value"]), [])

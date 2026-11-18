@@ -7,9 +7,10 @@ from unittest.mock import Mock, patch
 
 from workflow_contract import is_number_value
 from workflow_context_repository import WorkflowContextError, _serialize as serialize_context
+from test_support import run_scheduled_workflow
 from workflow_nodes import (
     _deserialize_json_value, _tool_arguments, propagate_workflow_output,
-    run_workflow_map, workflow_local_tool, workflow_remote_sync_tool,
+    workflow_local_tool, workflow_remote_sync_tool,
 )
 from workflow_parser import parse_workflow
 from workflow_session_repository import WorkflowSessionError, _serialize as serialize_session
@@ -96,7 +97,7 @@ class WorkflowNumberTest(unittest.TestCase):
                     graph = parse_workflow(workflow)
                     payload = json.dumps({"value": value}) if deserialize else value
                     propagate_workflow_output(graph, graph[0], "workflow:value", payload)
-                    result = run_workflow_map(graph, 0)["result"]
+                    result = run_scheduled_workflow(graph, 0)["result"]
                     self.assertEqual(result, value)
                     self.assertIs(type(result), type(value))
         for payload in ('{"value":true}', '{"value":"12"}', '{"value":null}',
@@ -104,7 +105,7 @@ class WorkflowNumberTest(unittest.TestCase):
             with self.subTest(payload=payload), self.assertRaisesRegex(ValueError, "type mismatch"):
                 graph = parse_workflow(workflow_fixture(True))
                 propagate_workflow_output(graph, graph[0], "workflow:value", payload)
-                run_workflow_map(graph, 0)
+                run_scheduled_workflow(graph, 0)
 
     def test_number_cannot_connect_to_content(self):
         workflow = workflow_fixture()

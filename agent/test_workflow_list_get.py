@@ -5,7 +5,8 @@ import unittest
 
 from test_workflow_list_length import TASK, fixture as length_fixture
 from workflow_contract import data_ports_for_node, data_type_for_port
-from workflow_nodes import propagate_workflow_output, run_workflow_map, workflow_list_get
+from test_support import run_scheduled_workflow
+from workflow_nodes import propagate_workflow_output, workflow_list_get
 from workflow_parser import parse_workflow
 from workflow_structs import validate_struct_definitions
 from workflow_validator import WorkflowValidationError, validate_workflow
@@ -68,7 +69,7 @@ class WorkflowListGetTest(unittest.TestCase):
                     payload = json.dumps(values) if value_type.startswith("list-struct:") else values
                     propagate_workflow_output(graph, graph[0], "workflow:items", payload)
                     propagate_workflow_output(graph, graph[0], "workflow:index", index)
-                    result = run_workflow_map(graph, 0)["result"]
+                    result = run_scheduled_workflow(graph, 0)["result"]
                     if value_type.startswith("list-struct:"): result = json.loads(result)
                     self.assertEqual(result, values[int(index)])
                     self.assertIs(type(result), type(values[int(index)]))
@@ -162,7 +163,7 @@ class WorkflowListGetIndexSourceTest(unittest.TestCase):
                     self.assertNotIn("index-in", next(node for node in graph if node.get("id") == "get")["data_inputs"])
                     payload = json.dumps(values) if value_type.startswith("list-struct:") else values
                     propagate_workflow_output(graph, graph[0], "workflow:items", payload)
-                    result = run_workflow_map(graph, 0)["result"]
+                    result = run_scheduled_workflow(graph, 0)["result"]
                     if value_type.startswith("list-struct:"): result = json.loads(result)
                     self.assertEqual(result, values[int(index)])
 

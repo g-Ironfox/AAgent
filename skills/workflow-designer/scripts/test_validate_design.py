@@ -13,7 +13,8 @@ from unittest.mock import patch
 
 from validate_design import DesignError, REPO, export_design, read_json, unique_object, validate_design
 from workflow_parser import parse_workflow
-from workflow_nodes import propagate_workflow_output, run_workflow_map
+from test_support import run_scheduled_workflow
+from workflow_nodes import propagate_workflow_output
 from workflow_validator import validate_workflow
 from terminal_repository import terminal_process_context
 
@@ -222,7 +223,6 @@ class WorkflowDesignTest(unittest.TestCase):
         workflow = docs[design["entrypoint"]]
         graph = parse_workflow(workflow)
         start = next(i for i, n in enumerate(graph) if n["type"] == "input")
-        graph[start]["_workflow_input_values"] = copy.deepcopy(inputs)
         for key, value in inputs.items():
             propagate_workflow_output(graph, graph[start], "workflow:" + key, value)
         memory = {}
@@ -247,10 +247,9 @@ class WorkflowDesignTest(unittest.TestCase):
              patch("workflow_context_repository.read_context", side_effect=read), \
              patch("workflow_context_repository.write_context", side_effect=write), \
              patch("workflow_context_repository.delete_contexts", side_effect=delete), \
-             patch("workflow_run_repository.record_workflow_run"), \
-             patch("terminal_repository.append_terminal_output") as append, \
-             terminal_process_context("terminal-example"):
-            output = run_workflow_map(graph, start)
+             patch("workflow_run_repository.record_process_workflow_run"), \
+             patch("terminal_repository.append_terminal_output") as append:
+            output = run_scheduled_workflow(graph, start, inputs=inputs)
         self.assertEqual(memory, {})
         return output, append
 
@@ -262,7 +261,10 @@ class WorkflowDesignTest(unittest.TestCase):
 
     def test_output_is_written_only_to_the_process_terminal(self):
         text = 'quoted "text"\nnew line \\ backslash'
-        output, append = self.execute(self.examples[2], {"text": text})
+        with terminal_process_context("unrelated-terminal"), patch("process_creation.uuid4") as terminal_id:
+            terminal_id.return_value.hex = "terminal-example"
+            output, append = self.execute(self.examples[2], {"text": text})
+        terminal_id.assert_called_once_with()
         self.assertEqual(output, {"content": text})
         append.assert_called_once_with(text, terminal_process_id="terminal-example")
 

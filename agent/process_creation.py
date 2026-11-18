@@ -71,7 +71,6 @@ def build_workflow_process(document: dict, inputs: dict, file_id: str, file_name
         value = inputs.get(port["name"])
         input_values[port["name"]] = value
         propagate_workflow_output(workflow, input_node, port["id"], value)
-    input_node["_workflow_input_values"] = input_values
     return {
         "process_id": uuid4().hex,
         "parent_process_id": "user_interface",

@@ -6,7 +6,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from workflow_context_repository import WorkflowContextError
-from workflow_nodes import propagate_workflow_output, run_workflow_map
+from test_support import run_scheduled_workflow
+from workflow_nodes import propagate_workflow_output
 from workflow_parser import parse_workflow
 from workflow_validator import validate_workflow
 
@@ -133,9 +134,9 @@ class ChildContextTest(unittest.TestCase):
         with patch("workflow_context_repository.get_connection", return_value=client), \
              patch("workflow_parser._read_workspace_workflow_by_name", side_effect=read_document), \
              patch("workflow_nodes.propagate_workflow_output", side_effect=propagate), \
-             patch("workflow_run_repository.record_workflow_run") as record:
+             patch("workflow_run_repository.record_process_workflow_run") as record:
             try:
-                result = run_workflow_map(compiled, 0)
+                result = run_scheduled_workflow(compiled, 0)
             finally:
                 self.assertEqual(store, {})
                 self.assertEqual(cleanups, [{"workflow-context:child-local"}, {"workflow-context:root-list"}])

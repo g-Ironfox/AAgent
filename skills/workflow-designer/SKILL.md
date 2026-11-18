@@ -305,7 +305,7 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
 
 单次图内的动态循环使用 while_pop，并由实际业务结果决定是否向 Context 列表补充元素。图内事件构造和拆分仅处理数据，不会自动创建进程或启动工作流。跨进程启动、等待与唤醒属于运行时能力，不得虚构尚未提供的节点或工具。
 
-终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入保存后会唤醒正在等待该终端 terminal_message 的进程。使用 wait_terminal_event 节点挂起，从下一节点恢复；无参数和数据端口，不输出消息正文，进入等待前的消息不会留作唤醒事件。后续使用 read_terminal_input 查询当前进程终端完整的用户输入正文列表（list-content，按时间升序、不消费历史），再将其连接到 Router 或其他数据节点进行判断。子进程通过独立进程执行，也支持该节点；需向该子进程自己的终端发消息。调试用同步 run_workflow_map 不支持挂起。
+终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入保存后会唤醒正在等待该终端 terminal_message 的进程。使用 wait_terminal_event 节点挂起，从下一节点恢复；无参数和数据端口，不输出消息正文，进入等待前的消息不会留作唤醒事件。后续使用 read_terminal_input 查询当前进程终端完整的用户输入正文列表（list-content，按时间升序、不消费历史），再将其连接到 Router 或其他数据节点进行判断。子进程通过独立进程执行，也支持该节点；需向该子进程自己的终端发消息。所有工作流均通过进程调度器执行，不提供独立的同步执行入口。
 
 ## 8. 设计与检查程序（只在内部执行）
 

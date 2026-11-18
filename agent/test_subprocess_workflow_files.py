@@ -1,8 +1,9 @@
 import copy
+import json
 import unittest
 from unittest.mock import call, patch
 
-from workflow_nodes import workflow_spawn_and_wait_subprocess
+from workflow_nodes import WorkflowStep, current_workflow_process, workflow_spawn_and_wait_subprocess
 from workflow_parser import WorkflowParseError, parse_workflow
 from workflow_validator import (
     WorkflowValidationError,
@@ -131,9 +132,45 @@ class SubprocessWorkflowFileValidationTest(unittest.TestCase):
 
 class WorkflowDependencyExecutionTest(unittest.TestCase):
     def setUp(self):
-        patcher = patch("workflow_run_repository.record_workflow_run")
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        token = current_workflow_process.set({"process_id": "parent", "invocation_id": "parent"})
+        self.addCleanup(current_workflow_process.reset, token)
+
+    def test_missing_scheduler_fails_before_loading_or_parsing_child(self):
+        parent = empty_workflow()
+        add_child_call(parent)
+        graph = parse_workflow(parent)
+        token = current_workflow_process.set(None)
+        try:
+            with patch("workflow_parser._read_workspace_workflow_by_name") as read, patch(
+                "workflow_parser.parse_workflow"
+            ) as parse:
+                with self.assertRaisesRegex(ValueError, "requires the process scheduler"):
+                    workflow_spawn_and_wait_subprocess(1, graph)
+                read.assert_not_called()
+                parse.assert_not_called()
+        finally:
+            current_workflow_process.reset(token)
+
+    def test_child_execution_is_deferred_to_scheduler(self):
+        parent = empty_workflow()
+        add_child_call(parent)
+        graph = parse_workflow(parent)
+        graph[1]["_workflow_call_stack"] = ["Parent.flow"]
+        with patch("workflow_parser._read_workspace_workflow_by_name", return_value=empty_workflow()) as read, patch(
+            "workflow_nodes.execute_node"
+        ) as execute:
+            step = workflow_spawn_and_wait_subprocess(1, graph)
+        read.assert_called_once_with("Child.flow")
+        execute.assert_not_called()
+        self.assertIsInstance(step, WorkflowStep)
+        child = step.child_process
+        self.assertEqual(step.wait_for, {"kind": "process_exit", "process_id": child["process_id"]})
+        self.assertEqual(child["parent_process_id"], "parent")
+        self.assertEqual(child["ancestor_invocation_ids"], ["parent"])
+        self.assertEqual(child["call_stack"], ["Parent.flow", "Child.flow"])
+        self.assertEqual(child["current_node_id"], -1)
+        self.assertEqual([node["type"] for node in json.loads(child["workflow"])], ["input", "output"])
+        self.assertNotIn("_workflow_result", graph[1])
 
     def test_child_checks_own_dependencies_before_parsing_or_running(self):
         parent = empty_workflow()
@@ -146,12 +183,11 @@ class WorkflowDependencyExecutionTest(unittest.TestCase):
         grandchild["input_ports"] = [{"name": "added", "type": "content"}]
         with patch(
             "workflow_parser._read_workspace_workflow_by_name", side_effect=[child, grandchild]
-        ) as read, patch("workflow_parser.parse_workflow") as parse, patch("workflow_nodes.run_workflow_map") as run:
+        ) as read, patch("workflow_parser.parse_workflow") as parse:
             with self.assertRaisesRegex(WorkflowValidationError, "Child.flow.*Grandchild.flow.*input_ports"):
                 workflow_spawn_and_wait_subprocess(1, parse_workflow(parent))
             read.assert_has_calls([call("Child.flow"), call("Grandchild.flow")])
             parse.assert_not_called()
-            run.assert_not_called()
 
     def test_child_interface_is_rechecked_at_call_time(self):
         parent = empty_workflow()
@@ -163,10 +199,8 @@ class WorkflowDependencyExecutionTest(unittest.TestCase):
             child["nodes"][-1]["workflowPorts"] = [
                 {"id": "workflow:added", "name": "added", "type": "content"},
             ]
-            with patch("workflow_nodes.run_workflow_map") as run:
-                with self.assertRaisesRegex(WorkflowValidationError, "call-child.*output_ports"):
-                    workflow_spawn_and_wait_subprocess(1, parse_workflow(parent))
-                run.assert_not_called()
+            with self.assertRaisesRegex(WorkflowValidationError, "call-child.*output_ports"):
+                workflow_spawn_and_wait_subprocess(1, parse_workflow(parent))
 
 
 
