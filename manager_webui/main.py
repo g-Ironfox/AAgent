@@ -15,14 +15,12 @@ from pymongo.errors import PyMongoError
 from documents import create_documents_router
 from models import create_models_router
 from sessions import create_sessions_router
-from workflows import create_workflows_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("aagent.manager_webui")
 
 MAX_MODEL_BODY_BYTES = 16 * 1024
 MAX_DOCUMENT_BODY_BYTES = 1024 * 1024
-MAX_WORKFLOW_BODY_BYTES = 512 * 1024
 MAX_SESSION_BODY_BYTES = 1024 * 1024 + 4096
 
 
@@ -39,13 +37,11 @@ def redis_address() -> str:
 
 REDIS_ADDRESS = redis_address()
 REDIS_DB = int(env("REDIS_DB", "0"))
-TOOLS_KEY = env("AGENT_TOOLS_KEY", "aagent:tools")
 MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_DOCUMENT_COLLECTION = env("MONGO_DOCUMENT_COLLECTION", "documents")
 MONGO_MODEL_COLLECTION = env("MONGO_MODEL_COLLECTION", "models")
-MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
 MONGO_SESSION_COLLECTION = env("MONGO_SESSION_COLLECTION", "sessions")
 
 redis_client = redis.Redis.from_url(
@@ -71,7 +67,6 @@ mongo_client = MongoClient(**mongo_kwargs)
 database = mongo_client[MONGO_DATABASE]
 documents: Collection = database[MONGO_DOCUMENT_COLLECTION]
 model_configs: Collection = database[MONGO_MODEL_COLLECTION]
-workflows: Collection = database[MONGO_WORKFLOW_COLLECTION]
 sessions: Collection = database[MONGO_SESSION_COLLECTION]
 
 app = FastAPI(title="AAgent Manager WebUI")
@@ -81,10 +76,6 @@ app = FastAPI(title="AAgent Manager WebUI")
 def create_config_indexes():
     try:
         model_configs.create_index("name", unique=True, name="unique_model_name")
-        if "unique_workflow_key" in workflows.index_information():
-            workflows.drop_index("unique_workflow_key")
-        workflows.update_many({"key": {"$exists": True}}, {"$unset": {"key": ""}})
-        workflows.create_index("name", unique=True, name="unique_workflow_name")
         sessions.create_index("updated_at", name="session_updated_at")
     except PyMongoError as error:
         logger.error("failed to create manager indexes: %s", error)
@@ -125,8 +116,6 @@ async def request_body_guard(request: Request, call_next):
         request.url.path == "/api/models" or request.url.path.startswith("/api/models/")
     ):
         body_limit = (MAX_MODEL_BODY_BYTES, "模型配置请求体不能超过 16 KB")
-    if request.method in {"POST", "PUT"} and request.url.path.startswith("/api/workflow/"):
-        body_limit = (MAX_WORKFLOW_BODY_BYTES, "Workflow 请求体不能超过 512 KB")
     if request.method in {"POST", "PUT"} and request.url.path.startswith("/api/sessions"):
         body_limit = (MAX_SESSION_BODY_BYTES, "Session 请求体不能超过 1 MB")
     if body_limit:
@@ -152,7 +141,6 @@ def health():
 
 
 app.include_router(create_models_router(model_configs))
-app.include_router(create_workflows_router(redis_client, TOOLS_KEY, model_configs, workflows))
 app.include_router(create_documents_router(documents))
 app.include_router(create_sessions_router(sessions))
 

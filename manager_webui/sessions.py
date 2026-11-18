@@ -15,7 +15,7 @@ from pymongo import ReturnDocument
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
-from workflow_contract import is_number_value
+from common import is_number_value
 
 MAX_VALUE_BYTES = 1024 * 1024
 SESSION_ID_PATTERN = re.compile(r"^ses_[0-9a-f]{32}$")
