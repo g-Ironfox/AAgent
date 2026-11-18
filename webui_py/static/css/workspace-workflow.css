@@ -1,4 +1,3 @@
-/* Metadata and canvas presentation follows manager_webui/static/css/workflows.css. */
 .workflow-canvas-preview { padding-bottom:16px; border-bottom:1px solid var(--line); background:#fff; }
 .workflow-canvas-preview > header { min-height:58px; padding:10px 15px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .workflow-canvas-preview > header p { margin:0 0 4px; color:#785d9b; font:700 9px Consolas,monospace; }

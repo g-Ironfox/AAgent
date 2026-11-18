@@ -50,11 +50,9 @@
 
 ### 管理
 
-管理 WebUI 负责 Workflow 的落地(编辑器只导出 JSON)、契约快照、依赖关系和 LLM 模型注册表。
+管理 WebUI 提供 Sessions、文档和 LLM 模型注册表管理。Workflow 文件在工作区中管理，并通过 Workflow 编辑器设计和导出。
 
-| Workflow 管理 | 模型注册表 |
-| --- | --- |
-| ![Workflow 管理](docs/images/workflow-manager.png) | ![模型注册表](docs/images/model-registry.png) |
+![模型注册表](docs/images/model-registry.png)
 
 ### Tool Server
 
@@ -90,7 +88,7 @@ flowchart LR
 | `webui_py` | 8081 | Agent WebUI:进程终端、进程创建、工作区与运行日志 |
 | `workflow_editor` | 8082 | Workflow 可视化编辑器(独立服务,只导出 JSON) |
 | `tool_server` | 8083 | 工具注册、调用、任务状态与控制台 |
-| `manager_webui` | 8084 | 管理 WebUI:Workflow、文档、模型 |
+| `manager_webui` | 8084 | 管理 WebUI:Sessions、文档、模型 |
 | `agent` | — | Redis 进程调度器与工作流执行器 |
 | `tool_provider` | — | 工具实际执行方,通过 WebSocket 注册到 Tool Server |
 | `redis` / `mongodb` | — | 队列与存储,仅在 dev 配置下暴露到宿主机 |

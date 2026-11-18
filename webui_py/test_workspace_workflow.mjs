@@ -71,9 +71,7 @@ test('metadata rejects empty names and duplicate dependency names', () => {
   assert.throws(() => validateWorkflowMetadata({ ...workflow(), subprocess_workflow_files: [{ name: 'same' }, { name: 'same' }] }), /不能重复/);
 });
 
-test('standalone WebUI canvas stays identical to the Manager renderer', async () => {
-  assert.equal(await readFile(new URL('./static/workflow_canvas.mjs', import.meta.url), 'utf8'),
-    await readFile(new URL('../manager_webui/static/workflow_canvas.mjs', import.meta.url), 'utf8'));
+test('standalone WebUI canvas escapes workflow names and renders control connections', () => {
   const svg = workflowCanvasSvg({ ...workflow(), name: '<script>alert(1)</script>' });
   assert.ok(!svg.includes('<script>'));
   assert.ok(svg.includes('&lt;script&gt;'));
