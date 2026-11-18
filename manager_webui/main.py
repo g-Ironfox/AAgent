@@ -161,7 +161,7 @@ static_directory = Path(__file__).parent / "static"
 
 @app.get("/", include_in_schema=False)
 def manager_home():
-    return FileResponse(static_directory / "workflows.html")
+    return FileResponse(static_directory / "sessions.html")
 
 
 class RevalidatingStaticFiles(StaticFiles):
