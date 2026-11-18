@@ -6,12 +6,12 @@ import { editWorkflowMetadata, parseWorkflowFile, validateWorkflowMetadata } fro
 export function createWorkflowPanel({ onChange, onError }) {
   const el = Object.fromEntries([
     'workflowPanel', 'workflowVersion', 'workflowName', 'workflowDescription', 'workflowCanvasPreview',
-    'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts', 'workflowDependencies',
-    'dependencyCount', 'remoteTools', 'remoteToolCount',
+    'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts', 'subprocessWorkflowFiles',
+    'subprocessFileCount', 'remoteTools', 'remoteToolCount',
   ].map((id) => [id, document.getElementById(id)]));
   let original = null;
   let originalContent = '';
-  let dependencyInputs = [];
+  let subprocessFileInputs = [];
   let disabled = true;
 
   function element(tag, className, text) {
@@ -32,10 +32,10 @@ export function createWorkflowPanel({ onChange, onError }) {
   }
 
   function contract(title, direction, ports) {
-    const section = element('section', 'dependency-contract');
+    const section = element('section', 'reference-contract');
     const heading = element('h5');
     heading.append(element('span', 'metadata-port-mark ' + direction, direction === 'input' ? 'IN' : 'OUT'), title);
-    const list = element('div', 'dependency-contract-ports');
+    const list = element('div', 'reference-contract-ports');
     renderPorts(list, ports);
     section.append(heading, list);
     return section;
@@ -43,25 +43,25 @@ export function createWorkflowPanel({ onChange, onError }) {
 
   function renderReferences(container, references, editable) {
     container.replaceChildren();
-    if (!references.length) container.append(element('p', 'metadata-port-empty', editable ? '无 Workflows 依赖' : '无 Tool 依赖'));
+    if (!references.length) container.append(element('p', 'metadata-port-empty', editable ? '无子进程 Workflow 文件' : '无 Tool 依赖'));
     references.forEach((reference, index) => {
-      const item = element('article', 'workflow-dependency-item');
+      const item = element('article', 'workflow-reference-item');
       const heading = element('header');
-      const identity = element('div', 'workflow-dependency-identity');
+      const identity = element('div', 'workflow-reference-identity');
       identity.append(element('span', 'metadata-port-mark ' + (editable ? 'workflow' : 'remote-tool'), editable ? 'WF' : reference.kind === 'local' ? 'LT' : 'RT'));
-      const name = reference.name ?? reference.workflow_name;
+      const name = reference.name;
       if (editable) {
-        const input = element('input', 'dependency-name-input');
+        const input = element('input', 'reference-name-input');
         input.type = 'text';
         input.value = name;
         input.disabled = disabled;
-        input.setAttribute('aria-label', '依赖 Workflow ' + (index + 1) + ' 名称');
+        input.setAttribute('aria-label', '子进程 Workflow 文件 ' + (index + 1) + ' 名称');
         input.addEventListener('input', sync);
-        dependencyInputs.push(input);
+        subprocessFileInputs.push(input);
         identity.append(input);
       } else identity.append(element('strong', '', name));
       heading.append(identity);
-      const contracts = element('div', 'dependency-contracts');
+      const contracts = element('div', 'reference-contracts');
       contracts.append(contract('Input', 'input', reference.input_ports), contract('Output', 'output', reference.output_ports));
       item.append(heading, contracts);
       container.append(item);
@@ -72,7 +72,7 @@ export function createWorkflowPanel({ onChange, onError }) {
     return editWorkflowMetadata(original, {
       name: el.workflowName.value,
       description: el.workflowDescription.value,
-      dependencies: dependencyInputs.map((input) => input.value),
+      subprocessFiles: subprocessFileInputs.map((input) => input.value),
     });
   }
 
@@ -120,25 +120,25 @@ export function createWorkflowPanel({ onChange, onError }) {
   return {
     setContent(content) {
       original = parseWorkflowFile(content);
-      originalContent = content;
-      dependencyInputs = [];
+      subprocessFileInputs = [];
       if (!original) return false;
+      originalContent = JSON.stringify(JSON.parse(content)) === JSON.stringify(original) ? content : JSON.stringify(original, null, 2);
       el.workflowVersion.textContent = 'SCHEMA ' + original.schema_version + ' / VERSION ' + (original.version ?? 1);
       el.workflowName.value = original.name;
       el.workflowDescription.value = original.description || '';
       renderPorts(el.inputPorts, original.input_ports);
       renderPorts(el.outputPorts, original.output_ports);
-      renderReferences(el.workflowDependencies, original.workflow_nodes || [], true);
+      renderReferences(el.subprocessWorkflowFiles, original.subprocess_workflow_files || [], true);
       const tools = [...(original.metadata?.tools || []), ...(original.remote_tools || []).map((tool) => ({ ...tool, kind: 'remote' }))];
       renderReferences(el.remoteTools, tools, false);
-      el.dependencyCount.textContent = (original.workflow_nodes?.length || 0) + ' 项';
+      el.subprocessFileCount.textContent = (original.subprocess_workflow_files?.length || 0) + ' 项';
       el.remoteToolCount.textContent = tools.length + ' 项';
       renderCanvas(original);
       return true;
     },
     setEditing(editing, busy) {
       disabled = !editing || busy;
-      for (const input of [el.workflowName, el.workflowDescription, ...dependencyInputs]) input.disabled = disabled;
+      for (const input of [el.workflowName, el.workflowDescription, ...subprocessFileInputs]) input.disabled = disabled;
       el.canvasExportButton.disabled = busy;
     },
     validate() { if (original) validateWorkflowMetadata(currentWorkflow()); },

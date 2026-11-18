@@ -10,6 +10,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from workflow_contract import (
+    migrate_subprocess_workflow_format,
     DATA_CONNECTION_TYPES,
     NODE_ARGUMENT_FIELDS,
     NODE_ARGUMENT_FIELDS_BY_TYPE,
@@ -36,6 +37,10 @@ _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
 
 def validate_workflow(workflow: dict[str, Any]) -> None:
+    try:
+        workflow = migrate_subprocess_workflow_format(workflow)
+    except ValueError as error:
+        raise WorkflowValidationError(str(error)) from error
     if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
         raise WorkflowValidationError(
             f"workflow.schema_version must be {WORKFLOW_SCHEMA_VERSION}"
@@ -59,10 +64,10 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
             raise WorkflowValidationError(f"workflow.{label} cannot expose Struct types; use JSON content")
     remote_tools = _validate_remote_tool_metadata(workflow)
     tools = _validate_tool_metadata(workflow)
-    for reference in workflow.get("workflow_nodes", []):
+    for reference in workflow.get("subprocess_workflow_files", []):
         for port in reference.get("input_ports", []) + reference.get("output_ports", []):
             if port.get("type", "").startswith(("struct:", "list-struct:")):
-                raise WorkflowValidationError("callable Workflow interfaces cannot expose Struct types")
+                raise WorkflowValidationError("subprocess Workflow file interfaces cannot expose Struct types")
     for tool in workflow.get("remote_tools", []):
         for port in tool.get("input_ports", []) + tool.get("output_ports", []):
             if port.get("type", "").startswith(("struct:", "list-struct:")):
@@ -222,27 +227,28 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     _validate_lifecycles(node_by_id, connections)
 
 
-def validate_workflow_dependencies(workflow: dict[str, Any]) -> None:
-    """Ensure saved callable-workflow interfaces still match their targets."""
+def validate_subprocess_workflow_files(workflow: dict[str, Any]) -> None:
+    """Ensure subprocess file interface snapshots still match their targets."""
+    workflow = migrate_subprocess_workflow_format(workflow)
     from workflow_parser import _read_workspace_workflow_by_name
 
-    dependencies: dict[str, list[tuple[str, dict[str, Any]]]] = {}
-    for index, reference in enumerate(workflow.get("workflow_nodes", [])):
+    references: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for index, reference in enumerate(workflow.get("subprocess_workflow_files", [])):
         name = reference.get("name")
         if isinstance(name, str) and name:
-            dependencies.setdefault(name, []).append((f"workflow_nodes[{index}]", reference))
+            references.setdefault(name, []).append((f"subprocess_workflow_files[{index}]", reference))
     for node in workflow.get("nodes", []):
-        if node.get("type") != "workflow":
+        if node.get("type") != "spawn_and_wait_subprocess":
             continue
-        name = node.get("arguments", {}).get("workflow_name")
+        name = node.get("arguments", {}).get("workflow_file")
         if isinstance(name, str) and name:
-            dependencies.setdefault(name, []).append((node.get("id", "workflow node"), node))
+            references.setdefault(name, []).append((node.get("id", "spawn_and_wait_subprocess node"), node))
 
-    if not dependencies:
+    if not references:
         return
 
     workflow_name = workflow.get("name", "<unnamed>")
-    for name, snapshots in dependencies.items():
+    for name, snapshots in references.items():
         target = _read_workspace_workflow_by_name(name)
         for source, snapshot in snapshots:
             for field in ("input_ports", "output_ports"):
@@ -250,9 +256,9 @@ def validate_workflow_dependencies(workflow: dict[str, Any]) -> None:
                 actual = target.get(field, [])
                 if saved != actual:
                     raise WorkflowValidationError(
-                        f"workflow {workflow_name} dependency {name} at {source} "
+                        f"workflow {workflow_name} subprocess Workflow file {name} at {source} "
                         f"has stale {field}: saved={saved!r}, actual={actual!r}; "
-                        "refresh the workflow node metadata"
+                        "refresh the subprocess Workflow file metadata"
                     )
 
 
@@ -690,12 +696,12 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
                 or len(callback["on"]) != len(set(callback["on"]))
             ):
                 raise WorkflowValidationError("remote async tool callback must be a valid Redis callback")
-    elif node_type == "workflow":
-        workflow_name = node_argument(node, "workflow_name")
-        if not isinstance(workflow_name, str) or not workflow_name:
-            raise WorkflowValidationError("workflow node workflow_name must be a non-empty string")
-        _validate_callable_workflow_ports(node, "input_ports")
-        _validate_callable_workflow_ports(node, "output_ports")
+    elif node_type == "spawn_and_wait_subprocess":
+        workflow_file = node_argument(node, "workflow_file")
+        if not isinstance(workflow_file, str) or not workflow_file:
+            raise WorkflowValidationError("spawn_and_wait_subprocess node workflow_file must be a non-empty string")
+        _validate_interface_ports(node, "input_ports")
+        _validate_interface_ports(node, "output_ports")
 
 
 def _validate_boundary_metadata(
@@ -704,7 +710,7 @@ def _validate_boundary_metadata(
     ports = workflow.get(field)
     if not isinstance(ports, list):
         raise WorkflowValidationError(f"workflow.{field} must be a list")
-    _validate_callable_workflow_ports({field: ports}, field)
+    _validate_interface_ports({field: ports}, field)
     return ports
 
 
@@ -718,7 +724,7 @@ def _validate_tool_metadata(workflow: dict[str, Any]) -> dict[str, dict[str, Any
             raise WorkflowValidationError(f"metadata.tools contains an empty or duplicate tool name: {name}")
         names.add(name.strip().casefold())
         for field in ("input_ports", "output_ports"):
-            _validate_callable_workflow_ports(declaration, field)
+            _validate_interface_ports(declaration, field)
             if any(port["name"] in {"control-in", "control-out"} for port in declaration[field]):
                 raise WorkflowValidationError("Tool ports cannot use reserved control port names")
         if declaration["kind"] == "local":
@@ -754,13 +760,13 @@ def _validate_remote_tool_metadata(
         if normalized_name in normalized_names:
             raise WorkflowValidationError(f"duplicate remote tool name: {name}")
         normalized_names.add(normalized_name)
-        _validate_callable_workflow_ports(declaration, "input_ports")
-        _validate_callable_workflow_ports(declaration, "output_ports")
+        _validate_interface_ports(declaration, "input_ports")
+        _validate_interface_ports(declaration, "output_ports")
         remote_tools[name] = declaration
     return remote_tools
 
 
-def _validate_callable_workflow_ports(node: dict[str, Any], field: str) -> None:
+def _validate_interface_ports(node: dict[str, Any], field: str) -> None:
     ports = node.get(field)
     if not isinstance(ports, list):
         raise WorkflowValidationError(f"workflow node {field} must be a list")

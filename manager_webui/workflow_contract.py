@@ -50,7 +50,7 @@ SUPPORTED_NODE_TYPES = {
     "session_create",
     "session_read",
     "session_write",
-    "workflow",
+    "spawn_and_wait_subprocess",
 }
 
 NODE_BASE_FIELDS = {"id", "type", "name", "x", "y", "arguments"}
@@ -96,7 +96,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "session_create": {"value_type"},
     "session_read": {"value_type"},
     "session_write": {"value_type"},
-    "workflow": {"workflow_name"},
+    "spawn_and_wait_subprocess": {"workflow_file"},
 }
 NODE_ARGUMENT_FIELDS = set().union(*NODE_ARGUMENT_FIELDS_BY_TYPE.values())
 
@@ -279,7 +279,7 @@ def data_ports_for_node(
         id_port = "context-id" if node_type == "context_write" else "session-id"
         id_inputs = {id_port} if node_type == "session_write" or node_argument(node, "context_id_source", "port") == "port" else set()
         return id_inputs | {"value-in"}, {id_port, "value-out"}
-    if node_type == "workflow":
+    if node_type == "spawn_and_wait_subprocess":
         return (
             {f"workflow:{port['name']}" for port in node.get("input_ports", [])},
             {f"workflow:{port['name']}" for port in node.get("output_ports", [])},
@@ -407,14 +407,14 @@ def connection_validation_error(
             target_port = next(port for port in boundary_ports(output_ports) if port["id"] == to_port)
             if connection_type != target_port["type"]:
                 return f"workflow output port {to_port} requires {target_port['type']} data"
-        if source_node["type"] == "workflow":
+        if source_node["type"] == "spawn_and_wait_subprocess":
             source_port = next(port for port in source_node.get("output_ports", []) if f"workflow:{port['name']}" == from_port)
             if connection_type != source_port["type"]:
-                return f"callable workflow output {from_port} requires {source_port['type']} data"
-        if target_node["type"] == "workflow":
+                return f"subprocess Workflow file output {from_port} requires {source_port['type']} data"
+        if target_node["type"] == "spawn_and_wait_subprocess":
             target_port = next(port for port in target_node.get("input_ports", []) if f"workflow:{port['name']}" == to_port)
             if connection_type != target_port["type"]:
-                return f"callable workflow input {to_port} requires {target_port['type']} data"
+                return f"subprocess Workflow file input {to_port} requires {target_port['type']} data"
         if target_node["type"] in {"tool", "local_tool", "remote_sync_tool", "remote_async_tool", "json_tool"} and connection_type != tool_parameter_type(target_node, to_port):
             return f"tool input {to_port} requires {tool_parameter_type(target_node, to_port)} data"
         if source_node["type"] in {"tool", "local_tool", "remote_sync_tool", "remote_async_tool", "json_tool"} and connection_type != tool_output_type(source_node, from_port):
@@ -521,3 +521,36 @@ def filter_connections(
         for connection in connections
         if is_valid_connection(connection, nodes_by_id, input_ports, output_ports)
     ]
+
+
+def migrate_subprocess_workflow_format(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Return a canonical copy; reject ambiguous old/new configuration."""
+    from copy import deepcopy
+
+    migrated = deepcopy(workflow)
+    if "workflow_nodes" in migrated:
+        old = migrated.pop("workflow_nodes")
+        if "subprocess_workflow_files" in migrated and migrated["subprocess_workflow_files"] != old:
+            raise ValueError("conflicting workflow_nodes and subprocess_workflow_files")
+        migrated["subprocess_workflow_files"] = old
+    references = migrated.get("subprocess_workflow_files", [])
+    for reference in references if isinstance(references, list) else []:
+        if not isinstance(reference, dict) or "workflow_name" not in reference:
+            continue
+        old = reference.pop("workflow_name")
+        if "name" in reference and reference["name"] != old:
+            raise ValueError("conflicting subprocess file names")
+        reference["name"] = old
+    nodes = migrated.get("nodes", [])
+    for node in nodes if isinstance(nodes, list) else []:
+        if not isinstance(node, dict) or node.get("type") not in {"workflow", "spawn_and_wait_subprocess"}:
+            continue
+        node["type"] = "spawn_and_wait_subprocess"
+        for arguments in (node, node.get("arguments")):
+            if not isinstance(arguments, dict) or "workflow_name" not in arguments:
+                continue
+            old = arguments.pop("workflow_name")
+            if "workflow_file" in arguments and arguments["workflow_file"] != old:
+                raise ValueError("conflicting workflow_name and workflow_file")
+            arguments["workflow_file"] = old
+    return migrated

@@ -40,7 +40,7 @@ for (const type of ['event', 'list-event']) {
   doc.connections[1].type = type;
   obsolete.push([type + ' connection', doc]);
   doc = fixture();
-  doc.workflow_nodes = [{ name: 'child', input_ports: [{ name: 'value', type }], output_ports: [] }];
+  doc.subprocess_workflow_files = [{ name: 'child', input_ports: [{ name: 'value', type }], output_ports: [] }];
   obsolete.push([type + ' child declaration', doc]);
   doc = fixture();
   doc.remote_tools = [{ name: 'remote', input_ports: [], output_ports: [{ name: 'value', type }] }];

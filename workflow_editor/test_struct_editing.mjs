@@ -35,8 +35,8 @@ test('swapping names remaps nested Struct and list types exactly once', () => {
   assert.deepEqual(structs[2].fields.map((item) => item.type), ['struct:B', 'list-struct:A']);
   const workflow = {
     nodes: [
-      { id: 'keep_me', type: 'workflow', input_ports: [{ name: 'one', type: 'struct:A' }] },
-      { id: 'serialized', type: 'workflow', arguments: { workflow_name: 'child' }, output_ports: [{ name: 'many', type: 'list-struct:B' }] },
+      { id: 'keep_me', type: "spawn_and_wait_subprocess", input_ports: [{ name: 'one', type: 'struct:A' }] },
+      { id: 'serialized', type: "spawn_and_wait_subprocess", arguments: { workflow_file: 'child' }, output_ports: [{ name: 'many', type: 'list-struct:B' }] },
       { id: 'tool', type: 'local_tool', parameters: ['struct:A'] },
       { id: 'literal', type: 'construct_content', append_items: [{ type: 'fixed', value: 'struct:A' }] },
     ],

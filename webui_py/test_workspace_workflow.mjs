@@ -9,7 +9,7 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const workflow = () => ({
   schema_version: '2.0', name: 'parent', description: 'description', version: 3,
   input_ports: [{ name: 'question', type: 'content' }], output_ports: [],
-  workflow_nodes: [
+  subprocess_workflow_files: [
     { name: 'child-a', input_ports: [{ name: 'question', type: 'content' }], output_ports: [], extra: 'keep' },
     { name: 'child-b', input_ports: [], output_ports: [] },
   ],
@@ -17,9 +17,9 @@ const workflow = () => ({
   metadata: { structs: [{ id: 'profile', name: 'Profile', color: '#3A7D68', fields: [] }] },
   nodes: [
     { id: 'in', name: 'Input', type: 'input', x: 0, y: 0 },
-    { id: 'a', name: 'A', type: 'workflow', x: 250, y: 0, arguments: { workflow_name: 'child-a', keep: 1 } },
-    { id: 'b', type: 'workflow', arguments: { workflow_name: 'child-b' } },
-    { id: 'other', type: 'local_tool', arguments: { workflow_name: 'child-a' } },
+    { id: 'a', name: 'A', type: "spawn_and_wait_subprocess", x: 250, y: 0, arguments: { workflow_file: 'child-a', keep: 1 } },
+    { id: 'b', type: "spawn_and_wait_subprocess", arguments: { workflow_file: 'child-b' } },
+    { id: 'other', type: 'local_tool', arguments: { workflow_file: 'child-a' } },
   ],
   connections: [{ fromId: 'in', fromPortId: 'control-out', toId: 'a', toPortId: 'control-in', type: 'control' }],
   custom: { preserved: true },
@@ -36,39 +36,39 @@ test('detect workflow content independently of filename and reject unrelated/mal
     JSON.stringify({ ...workflow(), nodes: [null] }),
     JSON.stringify({ ...workflow(), description: { invalid: true } }),
     JSON.stringify({ ...workflow(), input_ports: [null] }),
-    JSON.stringify({ ...workflow(), workflow_nodes: [null] }),
+    JSON.stringify({ ...workflow(), subprocess_workflow_files: [null] }),
   ]) assert.equal(parseWorkflowFile(content), null);
 });
 
 test('dependency swaps update only Workflow references and preserve contracts, metadata and node settings', () => {
   const source = workflow();
   const before = clone(source);
-  const updated = editWorkflowMetadata(source, { name: 'renamed', description: 'new', dependencies: ['child-b', 'child-a'] });
-  assert.equal(updated.nodes[1].arguments.workflow_name, 'child-b');
-  assert.equal(updated.nodes[2].arguments.workflow_name, 'child-a');
-  assert.equal(updated.nodes[3].arguments.workflow_name, 'child-a');
+  const updated = editWorkflowMetadata(source, { name: 'renamed', description: 'new', subprocessFiles: ['child-b', 'child-a'] });
+  assert.equal(updated.nodes[1].arguments.workflow_file, 'child-b');
+  assert.equal(updated.nodes[2].arguments.workflow_file, 'child-a');
+  assert.equal(updated.nodes[3].arguments.workflow_file, 'child-a');
   assert.equal(updated.nodes[1].arguments.keep, 1);
   for (const key of ['input_ports', 'output_ports', 'connections', 'metadata', 'remote_tools', 'custom']) {
     assert.deepEqual(updated[key], source[key]);
   }
-  assert.deepEqual(updated.workflow_nodes[0].input_ports, source.workflow_nodes[0].input_ports);
-  assert.equal(updated.workflow_nodes[0].extra, 'keep');
+  assert.deepEqual(updated.subprocess_workflow_files[0].input_ports, source.subprocess_workflow_files[0].input_ports);
+  assert.equal(updated.subprocess_workflow_files[0].extra, 'keep');
   assert.deepEqual(source, before);
 });
 
 test('legacy dependency keys and absent optional fields survive edits', () => {
-  const source = { ...workflow(), workflow_nodes: [{ workflow_name: 'child-a' }] };
+  const source = { ...workflow(), subprocess_workflow_files: [{ workflow_name: 'child-a' }] };
   delete source.description;
-  const updated = editWorkflowMetadata(source, { name: source.name, description: '', dependencies: ['new-child'] });
-  assert.deepEqual(updated.workflow_nodes, [{ workflow_name: 'new-child' }]);
+  const updated = editWorkflowMetadata(source, { name: source.name, description: '', subprocessFiles: ['new-child'] });
+  assert.deepEqual(updated.subprocess_workflow_files, [{ name: 'new-child' }]);
   assert.equal('description' in updated, false);
-  assert.equal(updated.nodes[1].arguments.workflow_name, 'new-child');
+  assert.equal(updated.nodes[1].arguments.workflow_file, 'new-child');
 });
 
 test('metadata rejects empty names and duplicate dependency names', () => {
   assert.throws(() => validateWorkflowMetadata({ ...workflow(), name: '  ' }), /名称不能为空/);
-  assert.throws(() => validateWorkflowMetadata({ ...workflow(), workflow_nodes: [{ name: ' ' }] }), /名称不能为空/);
-  assert.throws(() => validateWorkflowMetadata({ ...workflow(), workflow_nodes: [{ name: 'same' }, { name: 'same' }] }), /不能重复/);
+  assert.throws(() => validateWorkflowMetadata({ ...workflow(), subprocess_workflow_files: [{ name: ' ' }] }), /文件名不能为空/);
+  assert.throws(() => validateWorkflowMetadata({ ...workflow(), subprocess_workflow_files: [{ name: 'same' }, { name: 'same' }] }), /不能重复/);
 });
 
 test('standalone WebUI canvas stays identical to the Manager renderer', async () => {
@@ -157,7 +157,7 @@ async function harness(items = [file('flow')]) {
     const element = typeof target === 'string' ? get(target) : target;
     element.value = value; await fire(element, 'input');
   };
-  const dependency = (index) => get('workflowDependencies').children[index].children[0].children[0].children[1];
+  const dependency = (index) => get('subprocessWorkflowFiles').children[index].children[0].children[0].children[1];
   return { get, fire, input, dependency, settings, calls, stored, downloads, blobs, documentListeners };
 }
 
@@ -189,7 +189,7 @@ test('metadata edits round-trip through raw JSON and save using the file revisio
   await h.input(h.dependency(0), 'new-child');
   await h.fire('workflowButton');
   const draft = JSON.parse(h.get('fileContent').value);
-  assert.equal(draft.nodes[1].arguments.workflow_name, 'new-child');
+  assert.equal(draft.nodes[1].arguments.workflow_file, 'new-child');
   await h.input('fileContent', JSON.stringify({ ...draft, description: 'raw edit' }));
   await h.fire('workflowButton');
   assert.equal(h.get('workflowDescription').value, 'raw edit');

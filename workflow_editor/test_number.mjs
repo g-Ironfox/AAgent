@@ -9,7 +9,7 @@ function fixture() {
   const ports = [{ name: 'value', type: 'number' }];
   return {
     schema_version: '2.0', name: 'numeric', input_ports: ports, output_ports: ports,
-    metadata: { structs: [] }, workflow_nodes: [], remote_tools: [],
+    metadata: { structs: [] }, subprocess_workflow_files: [], remote_tools: [],
     nodes: [
       { id: 'input', type: 'input', workflowPorts: boundaryPorts(ports) },
       { id: 'output', type: 'output', workflowPorts: boundaryPorts(ports) },

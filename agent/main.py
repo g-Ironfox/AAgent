@@ -319,7 +319,7 @@ def terminate_process(process_id: str) -> dict:
     return read_process(process_id)
 
 
-def _resume_child_call(process: dict, workflow_map: list[dict]) -> None:
+def _resume_subprocess(process: dict, workflow_map: list[dict]) -> None:
     pending = process.get('pending_call')
     if not pending:
         return
@@ -329,19 +329,19 @@ def _resume_child_call(process: dict, workflow_map: list[dict]) -> None:
     status = child.get('status')
     if status != 'completed':
         raise ValueError(
-            f"child workflow {child.get('workflow_name')} ({child['process_id']}) "
+            f"subprocess {child.get('workflow_name')} ({child['process_id']}) "
             f"{status}: {child.get('error', 'child did not complete successfully')}"
         )
     node = workflow_map[pending['node_index']]
-    if node.get('id') != pending['node_id'] or node.get('type') != 'workflow':
-        raise ValueError('pending child call does not match workflow node')
+    if node.get('id') != pending['node_id'] or node.get('type') != "spawn_and_wait_subprocess":
+        raise ValueError('pending child call does not match spawn_and_wait_subprocess node')
     from workflow_structs import validate_value
     result = child.get('result', {})
     if not isinstance(result, dict):
-        raise ValueError('child workflow result must be an object')
+        raise ValueError('subprocess result must be an object')
     ports = {port['name']: port for port in node.get('output_ports', [])}
     if result.keys() - ports.keys():
-        raise ValueError('child workflow returned undeclared output')
+        raise ValueError('subprocess returned undeclared output')
     for name, value in result.items():
         validate_value(ports[name]['type'], value, node.get('_struct_definitions', {}))
         propagate_workflow_output(workflow_map, node, f'workflow:{name}', value)
@@ -409,7 +409,11 @@ def Executor(process_id: str) -> dict:
             raise ValueError(f'invalid workflow data: {process_id}')
         if process['active_duration_ms'] > WORKFLOW_TIMEOUT_SECONDS * 1000:
             raise TimeoutError(f'workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds of active execution')
-        _resume_child_call(process, workflow_map)
+        if "workflow_reference" in process:
+            process.setdefault("workflow_file", process.pop("workflow_reference"))
+        from workflow_contract import migrate_subprocess_workflow_format
+        workflow_map = migrate_subprocess_workflow_format({'nodes': workflow_map})['nodes']
+        _resume_subprocess(process, workflow_map)
         current_id = _next_process_node(process, workflow_map)
         for node in workflow_map:
             node['_workflow_invocation_id'] = process['invocation_id']

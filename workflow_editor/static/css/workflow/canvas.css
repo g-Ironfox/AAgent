@@ -47,7 +47,7 @@
 .flow-node.session_create { border-top-color:#187b70; }
 .flow-node.session_read { border-top-color:#28749c; }
 .flow-node.session_write { border-top-color:#ab6740; }
-.flow-node.workflow { border-top-color:#785d9b; }
+.flow-node.spawn_and_wait_subprocess { border-top-color:#785d9b; }
 .flow-node-head { height:45px; padding:0 11px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); }
 .flow-node-head .node-symbol { width:29px; height:29px; flex:none; font-size:10px; }
 .flow-node-head > span:last-child { min-width:0; display:grid; gap:1px; }

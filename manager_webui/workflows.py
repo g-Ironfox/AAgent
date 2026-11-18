@@ -7,18 +7,19 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pymongo import DESCENDING
 from pymongo.collection import Collection
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
-from workflow_node_remap import remap_workflow_node_names
+from workflow_contract import migrate_subprocess_workflow_format
+from workflow_file_remap import remap_subprocess_workflow_files
 from workflow_validator import WorkflowValidationError, validate_workflow
 
 MAX_WORKFLOW_NODES = 200
 MAX_WORKFLOW_CONNECTIONS = 1000
 MAX_WORKFLOW_METADATA_PORTS = 50
-MAX_WORKFLOW_NODE_REFERENCES = 50
+MAX_SUBPROCESS_WORKFLOW_FILES = 50
 MAX_REMOTE_TOOL_REFERENCES = 100
 MAX_WORKFLOW_DESCRIPTION_LENGTH = 2000
 WORKFLOW_SCHEMA_VERSION = "2.0"
@@ -51,8 +52,13 @@ class WorkflowRequest(BaseModel):
     output_ports: list[WorkflowPortMetadata] = Field(max_length=MAX_WORKFLOW_METADATA_PORTS)
     nodes: list[dict[str, Any]] = Field(min_length=1, max_length=MAX_WORKFLOW_NODES)
     connections: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_WORKFLOW_CONNECTIONS)
-    workflow_nodes: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_WORKFLOW_NODE_REFERENCES)
+    subprocess_workflow_files: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_SUBPROCESS_WORKFLOW_FILES)
     remote_tools: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_REMOTE_TOOL_REFERENCES)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_subprocess_files(cls, value):
+        return migrate_subprocess_workflow_format(value) if isinstance(value, dict) else value
 
 
 class WorkflowCreateRequest(BaseModel):
@@ -67,7 +73,7 @@ class WorkflowRenameRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
-class WorkflowNodeReference(BaseModel):
+class SubprocessWorkflowFileReference(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=120)
@@ -80,7 +86,12 @@ class WorkflowMetadataPatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=120)
-    workflow_nodes: list[WorkflowNodeReference] | None = None
+    subprocess_workflow_files: list[SubprocessWorkflowFileReference] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_subprocess_files(cls, value):
+        return migrate_subprocess_workflow_format(value) if isinstance(value, dict) else value
 
 
 class RemoteToolReference(BaseModel):
@@ -92,6 +103,7 @@ class RemoteToolReference(BaseModel):
 
 
 def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
+    document = migrate_subprocess_workflow_format(document)
     return {
         "name": document.get("name", ""),
         "description": document.get("description", ""),
@@ -101,7 +113,7 @@ def workflow_response(document: dict[str, Any]) -> dict[str, Any]:
         "connections": document.get("connections", []),
         "input_ports": document.get("input_ports", []),
         "output_ports": document.get("output_ports", []),
-        "workflow_nodes": document.get("workflow_nodes", []),
+        "subprocess_workflow_files": document.get("subprocess_workflow_files", []),
         "remote_tools": document.get("remote_tools", []),
         "created_at": document.get("created_at"),
         "updated_at": document.get("updated_at"),
@@ -121,7 +133,7 @@ def create_workflows_router(
         try:
             items = workflows.find(
                 {},
-                {"name": 1, "description": 1, "schema_version": 1, "metadata": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "workflow_nodes": 1, "remote_tools": 1, "created_at": 1, "updated_at": 1},
+                {"name": 1, "description": 1, "schema_version": 1, "metadata": 1, "nodes": 1, "connections": 1, "input_ports": 1, "output_ports": 1, "subprocess_workflow_files": 1, "workflow_nodes": 1, "remote_tools": 1, "created_at": 1, "updated_at": 1},
             ).sort("updated_at", DESCENDING)
             return {
                 "items": [
@@ -134,7 +146,7 @@ def create_workflows_router(
                         "connection_count": len(item.get("connections", [])),
                         "input_ports": item.get("input_ports", []),
                         "output_ports": item.get("output_ports", []),
-                        "workflow_nodes": item.get("workflow_nodes", []),
+                        "subprocess_workflow_files": migrate_subprocess_workflow_format(item).get("subprocess_workflow_files", []),
                         "remote_tools": item.get("remote_tools", []),
                         "created_at": item.get("created_at"),
                         "updated_at": item.get("updated_at"),
@@ -142,6 +154,8 @@ def create_workflows_router(
                     for item in items
                 ]
             }
+        except ValueError as error:
+            return JSONResponse(status_code=400, content={"error": str(error)})
         except PyMongoError:
             return JSONResponse(status_code=503, content={"error": "Workflow 列表暂时不可用"})
 
@@ -153,7 +167,10 @@ def create_workflows_router(
             return JSONResponse(status_code=503, content={"error": "Workflow 暂时不可用"})
         if document is None:
             return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
-        return workflow_response(document)
+        try:
+            return workflow_response(document)
+        except ValueError as error:
+            return JSONResponse(status_code=400, content={"error": str(error)})
 
     @router.post("/api/workflow/{name}", status_code=201)
     def create_workflow(name: str, payload: WorkflowRequest):
@@ -176,19 +193,17 @@ def create_workflows_router(
                 return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
             input_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.input_ports]
             output_ports = [port.model_dump() | {"name": port.name.strip()} for port in payload.output_ports]
-            references = payload.workflow_nodes
+            references = payload.subprocess_workflow_files
             reference_names = [item.get("name", "") for item in references]
             if any(not reference_name for reference_name in reference_names) or len(reference_names) != len(set(reference_names)):
-                return JSONResponse(status_code=400, content={"error": "Workflow 依赖名称不能为空或重复"})
-            if name in reference_names:
-                return JSONResponse(status_code=400, content={"error": "Workflow 不能引入自身"})
+                return JSONResponse(status_code=400, content={"error": "子进程 Workflow 文件名称不能为空或重复"})
             canonical_references = []
             for reference in references:
                 input_contract = workflow_port_values(reference.get("input_ports", []))
                 output_contract = workflow_port_values(reference.get("output_ports", []))
                 canonical_references.append({"name": reference["name"], "input_ports": input_contract, "output_ports": output_contract})
             values = payload.model_dump()
-            values.update({"name": name, "input_ports": input_ports, "output_ports": output_ports, "workflow_nodes": canonical_references})
+            values.update({"name": name, "input_ports": input_ports, "output_ports": output_ports, "subprocess_workflow_files": canonical_references})
             try:
                 validate_workflow(values)
             except WorkflowValidationError as error:
@@ -240,18 +255,24 @@ def create_workflows_router(
                 return JSONResponse(status_code=404, content={"error": "Workflow 不存在或已被删除"})
             if workflows.find_one({"name": next_name, "_id": {"$ne": existing["_id"]}}):
                 return JSONResponse(status_code=409, content={"error": "Workflow 名称已存在"})
-            updates = {"name": next_name, "updated_at": datetime.now(timezone.utc)}
-            if payload.workflow_nodes is not None:
-                references = [reference.model_dump(exclude_none=True) for reference in payload.workflow_nodes]
+            existing = migrate_subprocess_workflow_format(existing)
+            updates = {
+                "name": next_name,
+                "nodes": existing.get("nodes", []),
+                "subprocess_workflow_files": existing.get("subprocess_workflow_files", []),
+                "updated_at": datetime.now(timezone.utc),
+            }
+            if payload.subprocess_workflow_files is not None:
+                references = [reference.model_dump(exclude_none=True) for reference in payload.subprocess_workflow_files]
                 names = [reference["name"] for reference in references]
                 if len(names) != len(set(names)):
-                    return JSONResponse(status_code=400, content={"error": "Workflow 依赖名称重复"})
+                    return JSONResponse(status_code=400, content={"error": "子进程 Workflow 文件名称重复"})
                 existing_references = {
                     reference["name"]: reference
-                    for reference in existing.get("workflow_nodes", [])
+                    for reference in existing.get("subprocess_workflow_files", [])
                     if isinstance(reference, dict) and isinstance(reference.get("name"), str)
                 }
-                remapped_nodes = remap_workflow_node_names(existing.get("nodes", []), references)
+                remapped_nodes = remap_subprocess_workflow_files(existing.get("nodes", []), references)
                 canonical_references = []
                 for reference in references:
                     previous_name = reference.get("previous_name", reference["name"])
@@ -264,7 +285,7 @@ def create_workflows_router(
                         if "output_ports" in reference else previous.get("output_ports", []),
                     })
                 updates.update({
-                    "workflow_nodes": canonical_references,
+                    "subprocess_workflow_files": canonical_references,
                     "nodes": remapped_nodes,
                 })
             candidate = {**existing, **updates}
@@ -272,8 +293,10 @@ def create_workflows_router(
                 validate_workflow(candidate)
             except WorkflowValidationError as error:
                 return JSONResponse(status_code=400, content={"error": str(error)})
-            workflows.update_one({"_id": existing["_id"]}, {"$set": updates})
+            workflows.update_one({"_id": existing["_id"]}, {"$set": updates, "$unset": {"workflow_nodes": ""}})
             document = workflows.find_one({"_id": existing["_id"]})
+        except ValueError as error:
+            return JSONResponse(status_code=400, content={"error": str(error)})
         except PyMongoError:
             return JSONResponse(status_code=503, content={"error": "暂时无法更新 Workflow 元数据"})
         return workflow_response(document)

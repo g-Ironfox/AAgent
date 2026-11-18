@@ -98,16 +98,16 @@
     "output_ports": {
       "$ref": "#/$defs/ports"
     },
-    "workflow_nodes": {
+    "subprocess_workflow_files": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/dependency"
+        "$ref": "#/$defs/subprocessWorkflowFile"
       }
     },
     "remote_tools": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/dependency"
+        "$ref": "#/$defs/toolContract"
       }
     },
     "nodes": {
@@ -148,7 +148,7 @@
         "$ref": "#/$defs/port"
       }
     },
-    "dependency": {
+    "toolContract": {
       "type": "object",
       "required": [
         "name",
@@ -263,7 +263,7 @@
             "session_create",
             "session_read",
             "session_write",
-            "workflow",
+            "spawn_and_wait_subprocess",
             "construct_struct",
             "struct_get",
             "struct_update",
@@ -931,6 +931,27 @@
         },
         "additionalProperties": false
       }
+    },
+    "subprocessWorkflowFile": {
+      "type": "object",
+      "required": [
+        "name",
+        "input_ports",
+        "output_ports"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_ports": {
+          "$ref": "#/$defs/ports"
+        },
+        "output_ports": {
+          "$ref": "#/$defs/ports"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

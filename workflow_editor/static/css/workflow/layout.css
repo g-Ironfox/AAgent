@@ -65,10 +65,10 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .session_create-symbol { background:#187b70; }
 .session_read-symbol { background:#28749c; }
 .session_write-symbol { background:#ab6740; }
-.workflow-node-library { padding-top:8px; display:grid; gap:8px; border-top:1px solid var(--line); }
-.workflow-node-library[hidden] { display:none; }
-.workflow-symbol { background:#785d9b; }
-.workflow-library-item { border-left-color:#785d9b; }
+.subprocess-node-library { padding-top:8px; display:grid; gap:8px; border-top:1px solid var(--line); }
+.subprocess-node-library[hidden] { display:none; }
+.spawn_and_wait_subprocess-symbol { background:#785d9b; }
+.subprocess-library-item { border-left-color:#785d9b; }
 .add-symbol { color:var(--green); font-size:20px; }
 .fixed-tag { padding:3px 5px; color:var(--muted); border:1px solid var(--line); font-size:8px; }
 .library-footer { margin-top:auto; min-height:42px; padding:0 13px; display:flex; align-items:center; justify-content:space-between; color:var(--muted); border-top:1px solid var(--line); font:9px Consolas,monospace; }
@@ -118,16 +118,19 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .metadata-port-row input,.metadata-port-row select { min-width:0; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; font-size:10px; }
 .metadata-port-row button { padding:0; color:var(--red); border:1px solid #dfb8b4; background:#fff; font-size:17px; }
 .metadata-empty { margin:0; padding:26px 14px; color:var(--muted); text-align:center; font-size:10px; }
-.callable-workflow-section { border-top:1px solid var(--line); }
-.callable-workflow-section > header { min-height:54px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; background:#fafbf9; border-bottom:1px solid var(--line); }
-.callable-workflow-section > header div { display:flex; align-items:center; gap:8px; }
-.callable-workflow-section h3 { margin:0; font-size:13px; }
-.callable-workflow-section > header button,.callable-contract-heading button { width:30px; height:30px; padding:0; color:var(--green); border:1px solid var(--line); background:#fff; font-size:20px; }
-.callable-workflow-list > .metadata-empty { padding:32px 14px; }
-.callable-workflow-row { margin:12px; border:1px solid var(--line); background:#fff; }
-.callable-workflow-row > header { padding:10px 12px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:end; gap:8px; border-bottom:1px solid var(--line); background:#fafbf9; }
-.callable-workflow-row > header label { display:grid; gap:5px; color:var(--muted); font-size:10px; }
-.callable-workflow-row > header input { width:100%; min-width:0; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; }
+.metadata-resource-section { border-top:1px solid var(--line); }
+.metadata-resource-section > header { min-height:54px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; background:#fafbf9; border-bottom:1px solid var(--line); }
+.metadata-resource-section > header div { display:flex; align-items:center; gap:8px; }
+.metadata-resource-section h3 { margin:0; font-size:13px; }
+.metadata-resource-section > header button,.interface-contract-heading button { width:30px; height:30px; padding:0; color:var(--green); border:1px solid var(--line); background:#fff; font-size:20px; }
+.metadata-resource-list > .metadata-empty { padding:32px 14px; }
+.subprocess-workflow-section > .section-help { margin:0; padding:12px 14px 0; color:var(--muted); font-size:11px; line-height:1.65; overflow-wrap:anywhere; }
+.subprocess-workflow-section > .section-help code { padding:1px 4px; color:var(--ink); border:1px solid var(--line); background:#fafbf9; font:inherit; font-family:Consolas,monospace; }
+.subprocess-workflow-section > .metadata-resource-list > .metadata-empty { padding:18px 14px 20px; line-height:1.6; }
+.metadata-resource-row { margin:12px; border:1px solid var(--line); background:#fff; }
+.metadata-resource-row > header { padding:10px 12px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:end; gap:8px; border-bottom:1px solid var(--line); background:#fafbf9; }
+.metadata-resource-row > header label { display:grid; gap:5px; color:var(--muted); font-size:10px; }
+.metadata-resource-row > header input { width:100%; min-width:0; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; }
 .remote-tool-name-field { position:relative; min-width:0; }
 .remote-tool-suggestions { position:absolute; z-index:20; top:calc(100% + 4px); right:0; left:0; max-height:240px; overflow-y:auto; border:1px solid var(--line); background:var(--surface); box-shadow:0 10px 24px rgba(23,32,29,.16); }
 .remote-tool-suggestions[hidden] { display:none; }
@@ -137,20 +140,20 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .remote-tool-suggestion strong,.remote-tool-suggestion span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .remote-tool-suggestion strong { font-size:11px; }
 .remote-tool-suggestion span { color:var(--muted); font-size:10px; }
-.callable-workflow-row > header > button,.callable-workflow-row > header > .metadata-row-actions button { width:30px; height:30px; padding:0; color:var(--red); border:1px solid #dfb8b4; background:#fff; font-size:20px; }
-.callable-workflow-row > header .metadata-row-actions { display:flex; gap:6px; }
-.callable-workflow-row > header:has(.metadata-row-actions) { grid-template-columns:minmax(0,1fr) auto; }
-.callable-workflow-row > header .metadata-row-actions button:first-child { color:var(--green); border-color:var(--line); }
-.callable-contract-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
-.callable-contract-columns > section + section { border-left:1px solid var(--line); }
-.callable-contract-heading { min-height:44px; padding:7px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e7ebe7; }
-.callable-contract-heading strong { font-size:11px; }
-.callable-contract-heading button { width:26px; height:26px; font-size:17px; }
+.metadata-resource-row > header > button,.metadata-resource-row > header > .metadata-row-actions button { width:30px; height:30px; padding:0; color:var(--red); border:1px solid #dfb8b4; background:#fff; font-size:20px; }
+.metadata-resource-row > header .metadata-row-actions { display:flex; gap:6px; }
+.metadata-resource-row > header:has(.metadata-row-actions) { grid-template-columns:minmax(0,1fr) auto; }
+.metadata-resource-row > header .metadata-row-actions button:first-child { color:var(--green); border-color:var(--line); }
+.interface-contract-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.interface-contract-columns > section + section { border-left:1px solid var(--line); }
+.interface-contract-heading { min-height:44px; padding:7px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e7ebe7; }
+.interface-contract-heading strong { font-size:11px; }
+.interface-contract-heading button { width:26px; height:26px; font-size:17px; }
 .metadata-dialog footer span { color:var(--muted); font-size:9px; }
 
 @media (max-width:1180px) { .workflow-shell { grid-template-columns:210px minmax(480px,1fr) 270px; } .workflow-state { display:none; } }
 @media (max-width:900px) { .workflow-main { overflow:auto; } .workflow-shell { min-width:800px; grid-template-columns:190px minmax(420px,1fr) 240px; } .page-nav a { padding:0 8px; } }
-@media (max-width:560px) { .workflow-page .brand { display:none; } .workflow-page .page-nav { right:8px; left:8px; overflow-x:auto; transform:none; } .workflow-page .page-nav a { flex:none; } .workflow-page .top-actions { gap:8px; } .workflow-main { width:calc(100% - 16px); } .toolbar-action-group { gap:4px; } .toolbar-action-group.export-actions { padding-left:8px; } .toolbar-button { width:38px; padding:0; } .toolbar-button span { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; } .metadata-columns,.callable-contract-columns { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section,.callable-contract-columns > section + section { border-left:0; border-top:1px solid var(--line); } .metadata-basics { grid-template-columns:1fr; } .callable-workflow-row > header:has(.metadata-row-actions) { grid-template-columns:minmax(0,1fr); } .metadata-row-actions { justify-content:flex-end; } }
+@media (max-width:560px) { .workflow-page .brand { display:none; } .workflow-page .page-nav { right:8px; left:8px; overflow-x:auto; transform:none; } .workflow-page .page-nav a { flex:none; } .workflow-page .top-actions { gap:8px; } .workflow-main { width:calc(100% - 16px); } .toolbar-action-group { gap:4px; } .toolbar-action-group.export-actions { padding-left:8px; } .toolbar-button { width:38px; padding:0; } .toolbar-button span { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; } .metadata-columns,.interface-contract-columns { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section,.interface-contract-columns > section + section { border-left:0; border-top:1px solid var(--line); } .metadata-basics { grid-template-columns:1fr; } .metadata-resource-row > header:has(.metadata-row-actions) { grid-template-columns:minmax(0,1fr); } .metadata-row-actions { justify-content:flex-end; } }
 
 .output_to_terminal-symbol { background:#13775a; }
 .wait_terminal_event-symbol { background:#13775a; }

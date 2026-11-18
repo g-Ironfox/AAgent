@@ -22,7 +22,7 @@ test('output_to_terminal is a serializable builtin with typed content and contro
   assert.equal(edges.every((edge) => isValidConnection(edge, nodes)), true);
   const document = {
     schema_version: '2.0', name: 'terminal_output', input_ports: [{ name: 'text', type: 'content' }],
-    output_ports: [], nodes, connections: edges, metadata: { structs: [] }, workflow_nodes: [], remote_tools: [],
+    output_ports: [], nodes, connections: edges, metadata: { structs: [] }, subprocess_workflow_files: [], remote_tools: [],
   };
   assert.equal(loadSnapshot(document), true);
   assert.equal(workflowSnapshot().nodes[1].type, 'output_to_terminal');

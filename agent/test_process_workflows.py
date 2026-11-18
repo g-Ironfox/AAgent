@@ -151,7 +151,7 @@ def document(name, child=None, wait=False, output_terminal=False):
     previous = "in"
     data_source = "in"
     if child:
-        nodes.append({"id": "call", "type": "workflow", "arguments": {"workflow_name": child},
+        nodes.append({"id": "call", "type": "spawn_and_wait_subprocess", "arguments": {"workflow_file": child},
                       "input_ports": PORTS, "output_ports": PORTS})
         connections += [edge(previous, "call"), edge("in", "call", "workflow:text", "workflow:text", "content")]
         previous = data_source = "call"
@@ -167,7 +167,7 @@ def document(name, child=None, wait=False, output_terminal=False):
     connections += [edge(previous, "out"), edge(data_source, "out", "workflow:text", "workflow:text", "content")]
     return {"schema_version": "2.0", "name": name, "input_ports": PORTS, "output_ports": PORTS,
             "nodes": nodes, "connections": connections, "metadata": {"structs": []},
-            "workflow_nodes": [{"name": child, "input_ports": PORTS, "output_ports": PORTS}] if child else []}
+            "subprocess_workflow_files": [{"name": child, "input_ports": PORTS, "output_ports": PORTS}] if child else []}
 
 
 class ProcessWorkflowTest(unittest.TestCase):
@@ -249,6 +249,28 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(len(self.workflows()), 3)
         self.output.assert_called_once_with("hello", terminal_process_id=leaf["terminal_process_id"])
         self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
+
+    def test_legacy_pending_node_resumes_without_spawning_a_second_child(self):
+        self.documents = {"Child.flow": document("Child", wait=True)}
+        root = self.start(document("Root", "Child.flow"))
+        self.drain()
+        parent = main.read_process(root["process_id"])
+        compiled = json.loads(parent["workflow"])
+        pending_node = compiled[parent["pending_call"]["node_index"]]
+        pending_node["type"] = "workflow"
+        pending_node["arguments"]["workflow_name"] = pending_node["arguments"].pop("workflow_file")
+        parent["workflow"] = json.dumps(compiled)
+        self.redis.hset(r.PROCESSTABLE, root["process_id"], json.dumps(parent))
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child")
+        self.send(child)
+        self.drain()
+        restored = main.read_process(root["process_id"])
+        self.assertEqual(restored["status"], "completed")
+        self.assertEqual(restored["result"], {"text": "hello"})
+        self.assertEqual(len(self.workflows()), 2)
+        migrated_node = next(node for node in json.loads(restored["workflow"]) if node["id"] == "call")
+        self.assertEqual(migrated_node["type"], "spawn_and_wait_subprocess")
+        self.assertNotIn("workflow_name", migrated_node["arguments"])
 
     def test_child_failure_propagates_through_all_ancestors(self):
         self.documents = {"Middle.flow": document("Middle", "Leaf.flow"),

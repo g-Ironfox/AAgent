@@ -1,15 +1,17 @@
 import unittest
+import copy
+from unittest.mock import MagicMock
 
 from pydantic import ValidationError
 
 from workflows import (
     WORKFLOW_SCHEMA_VERSION,
     WorkflowMetadataPatchRequest,
-    WorkflowNodeReference,
+    SubprocessWorkflowFileReference,
     WorkflowRequest,
     workflow_port_values,
 )
-from workflow_node_remap import remap_workflow_node_names
+from workflow_file_remap import remap_subprocess_workflow_files
 from workflow_validator import WorkflowValidationError, _validate_branches_in_foreach, _validate_node, _validate_workflow_schema, validate_workflow
 from workflow_structs import StructValidationError, validate_struct_definitions
 
@@ -38,7 +40,7 @@ class WorkflowSchemaVersionTest(unittest.TestCase):
     def test_current_workflow_schema_version_is_2_0(self):
         self.assertEqual(WORKFLOW_SCHEMA_VERSION, "2.0")
 
-    def test_workflow_names_reject_empty_but_preserve_whitespace(self):
+    def test_workflow_files_reject_empty_but_preserve_whitespace(self):
         with self.assertRaises(ValidationError):
             WorkflowRequest.model_validate({"name": "", "schema_version": WORKFLOW_SCHEMA_VERSION})
 
@@ -80,25 +82,25 @@ class WorkflowSchemaVersionTest(unittest.TestCase):
 class WorkflowNodeRemapTest(unittest.TestCase):
     def test_dependency_rename_preserves_whitespace_in_name(self):
         nodes = [
-            {"id": "call-child", "type": "workflow", "arguments": {"workflow_name": "Old child"}},
+            {"id": "call-child", "type": "spawn_and_wait_subprocess", "arguments": {"workflow_file": "Old child"}},
         ]
         references = [{"name": "  New child  ", "previous_name": "Old child"}]
 
-        remapped = remap_workflow_node_names(nodes, references)
+        remapped = remap_subprocess_workflow_files(nodes, references)
 
-        self.assertEqual(remapped[0]["arguments"]["workflow_name"], "  New child  ")
+        self.assertEqual(remapped[0]["arguments"]["workflow_file"], "  New child  ")
 
     def test_metadata_patch_preserves_declared_dependency_ports(self):
         payload = WorkflowMetadataPatchRequest.model_validate({
             "name": "Parent",
-            "workflow_nodes": [{
+            "subprocess_workflow_files": [{
                 "name": "Child",
                 "input_ports": [{"name": "prompt", "type": "content"}],
                 "output_ports": [{"name": "answer", "type": "content"}],
             }],
         })
 
-        reference = payload.workflow_nodes[0].model_dump(exclude_none=True)
+        reference = payload.subprocess_workflow_files[0].model_dump(exclude_none=True)
 
         self.assertEqual(
             workflow_port_values(reference["input_ports"]),
@@ -291,3 +293,44 @@ class ForeachBranchValidationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubprocessWorkflowMigrationTest(unittest.TestCase):
+    def legacy(self):
+        return {
+            "schema_version": "2.0", "name": "Parent", "input_ports": [], "output_ports": [],
+            "workflow_nodes": [{"name": "child.flow", "input_ports": [], "output_ports": []}],
+            "nodes": [{"id": "input", "type": "input", "workflowPorts": []},
+                      {"id": "call", "type": "workflow", "arguments": {"workflow_name": "child.flow"}, "input_ports": [], "output_ports": []},
+                      {"id": "output", "type": "output", "workflowPorts": []}],
+            "connections": [
+                {"fromId": "input", "fromPortId": "control-out", "toId": "call", "toPortId": "control-in", "type": "control"},
+                {"fromId": "call", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"}],
+        }
+
+    def test_legacy_requests_and_responses_use_canonical_fields(self):
+        from workflows import workflow_response
+        original = self.legacy()
+        before = copy.deepcopy(original)
+        payload = WorkflowRequest.model_validate(original).model_dump()
+        self.assertNotIn("workflow_nodes", payload)
+        self.assertEqual(payload["nodes"][1]["arguments"], {"workflow_file": "child.flow"})
+        self.assertEqual(workflow_response(original)["nodes"][1]["type"], "spawn_and_wait_subprocess")
+        self.assertEqual(original, before)
+        patch = WorkflowMetadataPatchRequest.model_validate({"name": "Parent", "workflow_nodes": original["workflow_nodes"]})
+        self.assertEqual(patch.subprocess_workflow_files[0].name, "child.flow")
+        with self.assertRaises(ValidationError):
+            WorkflowRequest.model_validate({**original, "subprocess_workflow_files": []})
+
+    def test_metadata_save_rewrites_old_nodes_and_removes_old_mongo_field(self):
+        from workflows import create_workflows_router
+        original = {**self.legacy(), "_id": "id"}
+        collection = MagicMock()
+        collection.find_one.side_effect = [original, None, original]
+        router = create_workflows_router(MagicMock(), "tools", MagicMock(), collection)
+        endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/metadata"))
+        response = endpoint("Parent", WorkflowMetadataPatchRequest(name="Parent"))
+        self.assertEqual(response["nodes"][1]["type"], "spawn_and_wait_subprocess")
+        updates = collection.update_one.call_args.args[1]
+        self.assertEqual(updates["$unset"], {"workflow_nodes": ""})
+        self.assertEqual(updates["$set"]["nodes"][1]["arguments"], {"workflow_file": "child.flow"})

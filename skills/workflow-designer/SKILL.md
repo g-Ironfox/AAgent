@@ -1,6 +1,6 @@
 ---
 name: aagent-workflow-designer
-description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含全部子 workflow。适用于只收到本 skill 与用户输入、无法读取仓库或查询节点目录的设计 LLM。
+description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含全部子进程 Workflow 文件。适用于只收到本 skill 与用户输入、无法读取仓库或查询节点目录的设计 LLM。
 ---
 
 # AAgent Workflow 设计规范（单文件知识包）
@@ -15,17 +15,17 @@ description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含�
 2. 除 foreach / while_pop 循环体回到**所属循环节点的 loop-in** 外，不允许任何环。移除这些回边后的控制图必须是无汇合的有向树，因而也是 DAG。数据依赖也必须无环，且生产者必须在消费者之前执行。数据连线不会触发节点执行。
 3. 每个控制输出最多接一个后继，每个控制输入最多一个来源。不得以同一 control-out 接出多条边来模拟并行。
 4. 分支后不可汇合，不可共享任何后继节点，**包括 output**；各分支各有自己的 output。同一分支内可以继续分支，但不同路径不能相连。
-5. foreach / while_pop 体内禁止 router、json_tool、foreach、while_pop，以及其他具有多个控制输出的节点。json_tool 即使未连接 error-out、router 即使没有普通分支，也不能直接放进循环体。嵌套循环要封装到子 workflow。
+5. foreach / while_pop 体内禁止 router、json_tool、foreach、while_pop，以及其他具有多个控制输出的节点。json_tool 即使未连接 error-out、router 即使没有普通分支，也不能直接放进循环体。嵌套循环要封装到子进程 Workflow 文件。
 6. foreach / while_pop 的四个控制端口 control-in、loop-out、loop-in、control-out 必须全部连接。loop-out 进入循环体；体末普通节点的 control-out 返回 loop-in；control-out 只用于列表耗尽后的后续流程。体内不能直接结束于 output，不能返回别的循环节点，不能从外部额外进入循环体。
-7. **封装是解决复杂控制流的方式**：需在 foreach / while_pop 中条件处理、执行 json_tool 或嵌套循环时，新建子 workflow，把分支放进子图，父图循环体只调用单出口的 workflow 节点。需“if/else 后继续统一处理”时，把整个 if/else 封装为子 workflow，各分支用独立 output 返回相同输出接口；父图调用结束后继续普通链。仅在每个分支里分别调用同一个后续 workflow，并不会令父图重新汇合。
-8. workflow 依赖图也必须是 DAG，禁止直接或间接递归调用。事件重入属于新的异步执行，不是同步递归。
+7. **封装是解决复杂控制流的方式**：需在 foreach / while_pop 中条件处理、执行 json_tool 或嵌套循环时，新建子进程 Workflow 文件，把分支放进子进程 Workflow 文件，父图循环体只调用单出口的 spawn_and_wait_subprocess 节点。需“if/else 后继续统一处理”时，把整个 if/else 封装为子进程 Workflow 文件，各分支用独立 output 返回相同输出接口；父图调用结束后继续普通链。仅在每个分支里分别调用同一个后续 workflow，并不会令父图重新汇合。
+8. 子进程 Workflow 文件引用关系也必须是 DAG，禁止直接或间接递归调用。事件重入属于新的异步执行，不是同步递归。
 9. 同一次 invocation 内需要动态轮数时使用 while_pop；列表为空是停止条件，继续执行须由真实业务结果向 Context 列表补充元素。跨进程调度由运行时负责，不生成事件发布节点或图内任意回边。
 10. 不得发明 while、if、switch、join、merge、parallel、python、script、http、delay、sleep、serialize_json 等节点。不存在通用表达式、模板执行器或任意代码节点。
-11. 本部署约定主入口工作区文件名始终为 initial_agent.flow，workflow.name 同样保持 initial_agent.flow。扩展机制只新增子图或独立工作流，不通过改名替换用户现有入口。
+11. 本部署约定主入口工作区文件名始终为 initial_agent.flow，workflow.name 同样保持 initial_agent.flow。扩展机制只新增子进程 Workflow 文件或独立工作流，不通过改名替换用户现有入口。
 
 ## 2. 最终 JSON 的交付契约
 
-始终输出同一种**设计结果信封**，以便一次 JSON 交付全部依赖。这个信封是本 skill 的交付格式，**不是后端原生 workflow 格式，不能整体提交给 workflow API**。保存时逐项取 workflows[].workflow，分别以 workflows[].filename 创建工作区文件；依赖先于父图。原生图不得嵌入子图定义。
+始终输出同一种**设计结果信封**，以便一次 JSON 交付全部子进程 Workflow 文件。这个信封是本 skill 的交付格式，**不是后端原生 workflow 格式，不能整体提交给 workflow API**。保存时逐项取 workflows[].workflow，分别以 workflows[].filename 创建工作区文件；子进程 Workflow 文件先于入口文件。原生图不得嵌入子进程 Workflow 文件内容。
 
 成功对象必须恰含以下字段：
 
@@ -33,7 +33,7 @@ description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含�
 {"format":"aagent.workflow-design/1","status":"ready","entrypoint":"main.flow","workflows":[],"errors":[]}
 ```
 
-上面的空 workflows 仅解释字段；真正 ready 时必须非空并包含入口及其所有依赖。每项恰为 `{"filename":"main.flow","workflow":{...完整原生图...}}`。filename 使用 `^[A-Za-z_][A-Za-z0-9_-]{0,114}\.flow$`，不含路径；为简化命名，workflow.name 必须等于 filename。entrypoint 必须精确对应一项 filename。所有新建 workflow 的定义都必须给出；不要假定用户已保存某个子 workflow。数组按依赖先、父图后的顺序排列。无依赖时也使用此信封且仅含一项。用户明确要求原生图时，说明性的文字仍不输出；只有在用户明确覆盖信封契约且无需新建依赖时才直接输出原生图。
+上面的空 workflows 仅解释字段；真正 ready 时必须非空并包含入口及其所有依赖。每项恰为 `{"filename":"main.flow","workflow":{...完整原生图...}}`。filename 使用 `^[A-Za-z_][A-Za-z0-9_-]{0,114}\.flow$`，不含路径；为简化命名，workflow.name 必须等于 filename。entrypoint 必须精确对应一项 filename。所有新建 workflow 的定义都必须给出；不要假定用户已保存某个子进程 Workflow 文件。数组按依赖先、父图后的顺序排列。无子进程文件时也使用此信封且仅含一项。用户明确要求原生图时，说明性的文字仍不输出；只有在用户明确覆盖信封契约且无需新建子进程 Workflow 文件时才直接输出原生图。
 
 缺少设计期必要配置或能力不足时，输出同一信封、status 为 error、entrypoint 为 null、workflows 为空、errors 为非空数组。每个错误恰含 code、message 两个字符串；message 写明缺什么及原因。不要用无效图充当成功结果，也不要把错误说明当成 workflow 的正常输出。
 
@@ -55,7 +55,7 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 - metadata：`{"structs":[],"tools":[]}`，按实际用途填充。
 - input_ports、output_ports：接口数组，每项恰为 `{"name":"text","type":"content"}`；每侧最多 50 项。名称 1–80 字符，同侧去首尾空白、忽略大小写后不得重名；生成时使用无首尾空白的名称。
 - nodes：1–200 项；connections：0–1000 项，始终显式输出。
-- workflow_nodes：子 workflow 快照数组，每项恰含 name、input_ports、output_ports；最多 50 项，无依赖时 []。它是接口声明，不是子图定义。
+- subprocess_workflow_files：子进程 Workflow 文件快照数组，每项恰含 name、input_ports、output_ports；最多 50 项，无子进程文件时 []。它是接口声明，不是子进程 Workflow 文件内容。
 - remote_tools：兼容字段，生成时固定 []，使用 metadata.tools。
 
 管理端 workflow 请求体最多 512 KiB。工作区文件 API 每份 content 最多 1,000,000 字符；不要靠这个较大的限制绕过 workflow API 限制。
@@ -63,7 +63,7 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 节点只允许 id、type、name、x、y、arguments、workflowPorts、dataInputPorts、input_ports、output_ports。id/type 必须，id 在图内唯一非空。name 必须是简洁、可读的非空显示名，优先使用用户语言；它用于画布标题，不替代 id。x/y 必须是有限数字，且每个节点都必须同时提供，供编辑器画布定位；按控制流从左到右布局，分支或循环体放在不同 y 行，避免节点重叠。配置一律放 arguments；无参数节点可省略 arguments 或使用 {}。只写本节点支持的字段，不能把 model、branches 等平铺在节点顶层。
 
 - input/output 必须带 workflowPorts：按根接口顺序逐项变换为 `{"id":"workflow:text","name":"text","type":"content"}`。input 使用 input_ports，所有 output 都使用完整 output_ports。
-- workflow 调用节点必须带 input_ports/output_ports，等于被调用子图根接口的完整数组，并按顺序一致；不得带 workflowPorts。
+- spawn_and_wait_subprocess 节点必须带 input_ports/output_ports，等于被调用目标文件根接口的完整数组，并按顺序一致；不得带 workflowPorts。
 - dataInputPorts 表示动态输入端口 ID 数组，顺序依节点配置/字段声明顺序，不能包含控制端口；仅在本文件指定的节点写入，完整列出其动态端口。Struct 节点某些固定输入也必须列入，见节点表。不要给普通固定端口节点发明额外输入。
 
 每条连接恰含 fromId、fromPortId、toId、toPortId、type，可选 id。例：
@@ -96,11 +96,11 @@ number 是内建数值端口类型，支持有限整数和浮点数，可用于�
 循环聚合标准链：
 
 1. 循环前 construct_list(count=0) → context_create(value_type=list-content)，保存空结果数组。
-2. foreach.loop-out → [本轮处理，可调用子 workflow] → context_read → list_append → context_write → foreach.loop-in。
+2. foreach.loop-out → [本轮处理，可调用子进程 Workflow 文件] → context_read → list_append → context_write → foreach.loop-in。
 3. 每轮 read 通过循环外创建节点的 context-id 读取当前列表；append 使用本轮结果；write 将新列表写回同一 ID。
 4. foreach.control-out → **另一个** context_read → 外层 output。不能把体内 read/write 的 value-out 接出体外。
 
-Context 是本次 workflow invocation 的临时值槽，存于 Redis；默认 TTL 86400 秒、单值上限 1 MiB，可由部署调整。create 的 ID 省略时自动生成；显式 ID 必须非空白、尚不存在。ID 逐字符精确匹配，不能 trim。子 workflow 可以读写自身或祖先调用创建的 Context（显式传 ID），不能访问兄弟/无关执行创建的 Context。子调用退出仅清理自己创建的槽，祖先退出会清理祖先的槽。需要返回值时用正式输出接口，不返回子图自行创建的临时 Context ID。
+Context 是本次 workflow invocation 的临时值槽，存于 Redis；默认 TTL 86400 秒、单值上限 1 MiB，可由部署调整。create 的 ID 省略时自动生成；显式 ID 必须非空白、尚不存在。ID 逐字符精确匹配，不能 trim。子进程可以读写自身或祖先调用创建的 Context（显式传 ID），不能访问兄弟/无关执行创建的 Context。子进程执行退出仅清理自己创建的槽，祖先退出会清理祖先的槽。需要返回值时用正式输出接口，不返回子进程自行创建的临时 Context ID。
 
 Session 是 MongoDB 中跨调用保留的状态，仅支持六种公开类型，ID 为 ses_ 加 32 位小写十六进制字符。通过 session_create 生成真实 ID，不手写假 ID；单值默认 1 MiB，完整替换式写入。事件触发的是新 invocation，不能带 Context ID 来维持跨事件状态，应使用 Session ID 或显式 payload。Session read+write 不是原子事务，不能据此承诺并发计数/去重。
 
@@ -112,17 +112,17 @@ Session 是 MongoDB 中跨调用保留的状态，仅支持六种公开类型，
 
 | type | arguments | 数据输入 → 数据输出 | 控制/行为 |
 | --- | --- | --- | --- |
-| input | 无 | 无 → workflow:<输入名> | 仅 control-out；数据来自创建进程的 inputs 或子图调用方 |
+| input | 无 | 无 → workflow:<输入名> | 仅 control-out；数据来自创建进程的 inputs 或父进程 |
 | output_to_terminal | 无 | content-in:content → 无 | 写入当前进程终端，继续 control-out；需要进程终端上下文 |
-| wait_terminal_event | 无 | 无 → 无 | 挂起进程，当前终端收到消息后从 control-out 继续；根工作流和子工作流均支持 |
+| wait_terminal_event | 无 | 无 → 无 | 挂起进程，当前终端收到消息后从 control-out 继续；根工作流和子进程均支持 |
 | read_terminal_input | 无 | 无 → list-out:list-content | 读取当前进程终端全部用户输入正文，按时间升序；不删除历史，可接 Router 判断分支 |
 | output | 无 | workflow:<输出名> → 无 | 仅 control-in；收集非 None 的输入后结束当前图；生成时每条路径都填齐承诺的输出 |
 | router | branches:[{id,name}]，可为空 | content-in:content → 无 | 只有 control-in 和各分支 ID 输出，以及固定 branch$others；没有 control-out |
-| workflow | workflow_name:精确工作区文件名 | workflow:<输入名> → workflow:<输出名> | 创建子 workflow 进程并挂起父进程，子进程 output 返回后再走 control-out |
+| spawn_and_wait_subprocess | workflow_file:精确工作区文件名 | workflow:<输入名> → workflow:<输出名> | 拉起子进程并挂起父进程，子进程 output 返回后再走 control-out |
 
 router 按 content-in 与分支 **name 精确匹配**，fromPortId 则使用分支 **id**。不是条件表达式，不解析布尔值，不做大小写/空白规范化。每个普通 id/name 分别唯一非空；不使用 id=branch$others，不使用 name="$others"（会与内部兜底 successor 键冲突）。固定 branch$others 不写进 branches 数组，但始终必须连到独立处理链。没有值会报错，不会自动走兜底。
 
-workflow_name 按工作区**完整文件名**查找，不是数据库 ID，也不只是图的显示标题。父图 workflow_nodes 中的 name、节点 arguments.workflow_name、子项 filename 必须完全相同。声明快照、节点快照、目标根接口三者逐项相同。metadata.structs 不会自动继承给子图；公开调用接口不能出现 Struct 类型。
+workflow_file 按工作区**完整文件名**查找，不是数据库 ID，也不只是图的显示标题。父图 subprocess_workflow_files 中的 name、节点 arguments.workflow_file、子项 filename 必须完全相同。声明快照、节点快照、目标根接口三者逐项相同。metadata.structs 不会自动继承给子进程；公开调用接口不能出现 Struct 类型。
 
 ### 5.2 文本、消息、map 与 JSON
 
@@ -166,9 +166,9 @@ while_pop.value_type 必须是 list-content、list-message 或本图已声明的
 
 while_pop 在每次进入 control-in 或 loop-in 时原子读取 Context 当前列表并弹出一项。有元素时更新列表、输出 item-out 并走 loop-out；空列表走 control-out。循环体通过 context_write 修改该 Context 的值会影响下一次弹出，因此可实现动态轮数；foreach 则始终遍历初次输入快照。不要每轮重新执行 context_create，也不要每轮无条件补充标记而没有停止判定。
 
-**动态 ReAct 模式**：父图创建 list-message 对话 Context、content 回答 Context、初始值为 ["continue"] 的 list-content 继续队列。while_pop 消费继续标记，体内只调用 react_round 子 workflow，再回 loop-in。每轮子图读对话 → llm → 将本轮 output 通过 construct_content 动态端口规范为字符串并写回答 Context → foreach 遍历 tool_calls。foreach 体调用工具分支子 workflow、把成功或错误观察作为普通 user message 追加到对话，并将继续队列**覆盖为 ["continue"]**。同轮多次工具调用只安排一轮后续分析；不要每次 append 一个标记。零工具调用不执行体，队列保持为空，父图退出后重新读取回答 Context，直接返回停止调用工具那次的回答。不要再无条件调用一个模型总结，避免改写答案或追加费用。
+**动态 ReAct 模式**：父图创建 list-message 对话 Context、content 回答 Context、初始值为 ["continue"] 的 list-content 继续队列。while_pop 消费继续标记，体内只调用 react_round 子进程 Workflow 文件，再回 loop-in。每轮子进程 Workflow 文件读对话 → llm → 将本轮 output 通过 construct_content 动态端口规范为字符串并写回答 Context → foreach 遍历 tool_calls。foreach 体调用工具分支子进程 Workflow 文件、把成功或错误观察作为普通 user message 追加到对话，并将继续队列**覆盖为 ["continue"]**。同轮多次工具调用只安排一轮后续分析；不要每次 append 一个标记。零工具调用不执行体，队列保持为空，父图退出后重新读取回答 Context，直接返回停止调用工具那次的回答。不要再无条件调用一个模型总结，避免改写答案或追加费用。
 
-子 workflow 可通过 content 接口接收祖先 Context ID，读写该 Context；它不应删除或重新创建祖先 Context。循环内的输出数据不能直接连到循环外，必须用外层 Context 再读。将 foreach 封装到 round 子图、json_tool 封装到 dispatch 子图，保持每层循环体单控制链且依赖无递归。此模式没有固定轮数上限，但当前执行器每次 invocation 存在 180 秒运行时检查（不保证中断正在阻塞的外部调用），并受 Context 大小、模型上下文及服务错误限制；需要跨执行持续运行时改用事件调度。
+子进程可通过 content 接口接收祖先 Context ID，读写该 Context；它不应删除或重新创建祖先 Context。循环内的输出数据不能直接连到循环外，必须用外层 Context 再读。将 foreach 封装到 round 子进程 Workflow 文件、json_tool 封装到 dispatch 子进程 Workflow 文件，保持每层循环体单控制链且文件引用无递归。此模式没有固定轮数上限，但当前执行器每次 invocation 存在 180 秒运行时检查（不保证中断正在阻塞的外部调用），并受 Context 大小、模型上下文及服务错误限制；需要跨执行持续运行时改用事件调度。
 
 ### 5.4 LLM 与历史
 
@@ -197,7 +197,7 @@ metadata.tools 每项恰为 `{"name":"工具名","kind":"local或remote","input_
 
 tool 仅同步，mode 省略或 sync，callback 省略或 null。local 输入类型允许 content 和 number；数值 schema 自动映射为 number。运行时不会自动把数字字符串变成 Python int，也不会把 "false" 变成 bool。local 的 content 输出会把非字符串结果 JSON 序列化；remote_sync 的 content 输出**不保证转换**，应直接使用真实字符串字段，不要将 Provider 返回的整数假标为 content。仅配置一个名为 result 的同步 Remote 输出时，运行器返回整个原始结果，不代表 content JSON 文本。
 
-json_tool 输入 arguments-json 必须解析为 object；优先调用已注册同名 Local，否则通过 Tool Server 同步调用 Remote；成功结果被统一 JSON 序列化，适合复杂结果、number/boolean 参数与显式错误处理。它不要求在 metadata.tools 中声明，但工具仍必须实际存在且名称已知。参数 schema 仍须遵守。推荐把复杂 JSON 工具调用封装为子 workflow，然后在父图或 foreach / while_pop 体内调用该子 workflow。成功和错误各有独立 output；若错误应该整体失败，可以不连 error-out，让异常终止；即便如此它仍不能直接放进 foreach / while_pop。
+json_tool 输入 arguments-json 必须解析为 object；优先调用已注册同名 Local，否则通过 Tool Server 同步调用 Remote；成功结果被统一 JSON 序列化，适合复杂结果、number/boolean 参数与显式错误处理。它不要求在 metadata.tools 中声明，但工具仍必须实际存在且名称已知。参数 schema 仍须遵守。推荐把复杂 JSON 工具调用封装为子进程 Workflow 文件，然后在父图或 foreach / while_pop 体内调用该子进程 Workflow 文件。成功和错误各有独立 output；若错误应该整体失败，可以不连 error-out，让异常终止；即便如此它仍不能直接放进 foreach / while_pop。
 
 同步 Remote timeout_ms 默认 10000，最大通常 10000；异步默认 600000、最大通常 3600000；部署可进一步限制。主图执行预算约 180 秒（在节点之间检查，不是强制中断阻塞调用）。长视频转写通常采用 remote_async_tool，不应声称 10 秒内必完成。
 
@@ -220,7 +220,7 @@ context_id_source 仅 port/fixed，fixed 模式无 context-id 输入。Context �
 
 metadata.structs 每项必含 id、name、color、fields，可选 list_color。id 与字段名匹配 `^[A-Za-z_][A-Za-z0-9_]*$`，引用区分大小写；生成时令 id=name 且长度 ≤80，Struct 名不区分大小写唯一；color/list_color 为 #RRGGBB。fields 每项恰含 name、type、required，required 是布尔值，字段名唯一。可空 fields；type 为公开类型或已声明 Struct/Struct 列表。所有引用须存在，声明间禁止循环。
 
-Struct 值是仅含已声明字段的 object，必填字段存在，可选字段可缺省，所有已出现的值不可为 null；递归符合声明。局部类型名 struct:<id>、列表 list-struct:<id>，只能用于图内和 Context；不允许出现在根接口、子 workflow/工具接口或 Session。跨图传值先 struct_to_json，接收图自己声明类型再 json_to_struct。相同 struct_id 不意味着不同图自动共享声明。
+Struct 值是仅含已声明字段的 object，必填字段存在，可选字段可缺省，所有已出现的值不可为 null；递归符合声明。局部类型名 struct:<id>、列表 list-struct:<id>，只能用于图内和 Context；不允许出现在根接口、子进程 Workflow 文件/工具接口或 Session。跨图传值先 struct_to_json，接收图自己声明类型再 json_to_struct。相同 struct_id 不意味着不同图自动共享声明。
 
 | type | arguments | 数据输入 → 输出 | 精确 dataInputPorts |
 | --- | --- | --- | --- |
@@ -306,12 +306,12 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
 
 单次图内的动态循环使用 while_pop，并由实际业务结果决定是否向 Context 列表补充元素。图内事件构造和拆分仅处理数据，不会自动创建进程或启动工作流。跨进程启动、等待与唤醒属于运行时能力，不得虚构尚未提供的节点或工具。
 
-终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入保存后会唤醒正在等待该终端 terminal_message 的进程。使用 wait_terminal_event 节点挂起，从下一节点恢复；无参数和数据端口，不输出消息正文，进入等待前的消息不会留作唤醒事件。后续使用 read_terminal_input 查询当前进程终端完整的用户输入正文列表（list-content，按时间升序、不消费历史），再将其连接到 Router 或其他数据节点进行判断。子工作流通过独立进程执行，也支持该节点；需向该子进程自己的终端发消息。调试用同步 run_workflow_map 不支持挂起。
+终端输出使用 output_to_terminal 节点，将 content-in 的非空文本写入当前进程关联终端；不生成旧 local_tool 或全局终端消息。终端输入保存后会唤醒正在等待该终端 terminal_message 的进程。使用 wait_terminal_event 节点挂起，从下一节点恢复；无参数和数据端口，不输出消息正文，进入等待前的消息不会留作唤醒事件。后续使用 read_terminal_input 查询当前进程终端完整的用户输入正文列表（list-content，按时间升序、不消费历史），再将其连接到 Router 或其他数据节点进行判断。子进程通过独立进程执行，也支持该节点；需向该子进程自己的终端发消息。调试用同步 run_workflow_map 不支持挂起。
 
 ## 8. 设计与检查程序（只在内部执行）
 
 1. 从用户需求提取业务输入、输出、效果和配置；能做的运行时数据声明为根输入；不可知模型/工具/路由配置返回 error。
-2. 先划分 workflow 边界。分支有后续统一步骤、foreach / while_pop 内有分支/JSON Tool/第二个循环时先拆子图，再定接口。为所有子图提供完整定义。
+2. 先划分 workflow 边界。分支有后续统一步骤、foreach / while_pop 内有分支/JSON Tool/第二个循环时先拆子进程 Workflow 文件，再定接口。为所有子进程 Workflow 文件提供完整定义。
 3. 为每份图先画控制树，再填数据。分支各有独立 output，所有路径实现相同承诺的公开输出；foreach / while_pop 保持单控制链并显式回到所属 loop-in。
 4. 逐节点选择目录中真实 type、精确 arguments 和端口，按需声明 Struct、工具和依赖快照。只生成用得到的配置。
 5. 按生命周期审查每条数据边、执行顺序和实际值类型。必要输入不能悬空；JSON 文本、对象、列表、message 不混接；通过 Context 显式聚合。
@@ -349,7 +349,7 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
         {"fromId":"input","fromPortId":"control-out","toId":"output","toPortId":"control-in","type":"control"},
         {"fromId":"input","fromPortId":"workflow:text","toId":"output","toPortId":"workflow:content","type":"content"}
       ],
-      "workflow_nodes": [],
+      "subprocess_workflow_files": [],
       "remote_tools": []
     }}
   ],
@@ -359,7 +359,7 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
 
 ### 9.2 foreach 内条件处理与结果聚合
 
-per_item.flow 在内部 router 分支，并分别返回 result；collect.flow 在循环体调用它，再通过 Context 累积。输入 items=["a","skip","b"]，输出 results=["kept:a","skipped","kept:b"]；输入空数组输出空数组。父图中的 process 是单出口节点，子图两个 output 互不共享。
+per_item.flow 在内部 router 分支，并分别返回 result；collect.flow 在循环体调用它，再通过 Context 累积。输入 items=["a","skip","b"]，输出 results=["kept:a","skipped","kept:b"]；输入空数组输出空数组。父图中的 process 是单出口节点，子进程 Workflow 文件两个 output 互不共享。
 
 ```json
 {
@@ -393,7 +393,7 @@ per_item.flow 在内部 router 分支，并分别返回 result；collect.flow �
         {"fromId":"skip_text","fromPortId":"content-out","toId":"skip_output","toPortId":"workflow:result","type":"content"},
         {"fromId":"keep_text","fromPortId":"content-out","toId":"keep_output","toPortId":"workflow:result","type":"content"}
       ],
-      "workflow_nodes": [],
+      "subprocess_workflow_files": [],
       "remote_tools": []
     }},
     {"filename": "collect.flow", "workflow": {
@@ -408,7 +408,7 @@ per_item.flow 在内部 router 分支，并分别返回 result；collect.flow �
         {"id":"empty","type":"construct_list","name":"检查列表是否为空","x":480,"y":180,"arguments":{"item_type":"content","initial_value_count":0},"dataInputPorts":[]},
         {"id":"store","type":"context_create","name":"创建聚合上下文","x":720,"y":180,"arguments":{"value_type":"list-content"}},
         {"id":"each","type":"foreach","name":"遍历列表项目","x":960,"y":180,"arguments":{"item_type":"content"}},
-        {"id":"process","type":"workflow","name":"处理当前项目","x":0,"y":360,"arguments":{"workflow_name":"per_item.flow"},"input_ports":[{"name":"text","type":"content"}],"output_ports":[{"name":"result","type":"content"}]},
+        {"id":"process","type":"spawn_and_wait_subprocess","name":"处理当前项目","x":0,"y":360,"arguments":{"workflow_file":"per_item.flow"},"input_ports":[{"name":"text","type":"content"}],"output_ports":[{"name":"result","type":"content"}]},
         {"id":"read_item","type":"context_read","name":"读取聚合结果","x":240,"y":360,"arguments":{"value_type":"list-content"}},
         {"id":"append","type":"list_append","name":"追加项目结果","x":480,"y":360,"arguments":{"item_type":"content","position":"end"}},
         {"id":"write_item","type":"context_write","name":"保存项目结果","x":720,"y":360,"arguments":{"value_type":"list-content"}},
@@ -437,7 +437,7 @@ per_item.flow 在内部 router 分支，并分别返回 result；collect.flow �
         {"fromId":"append","fromPortId":"list-out","toId":"write_item","toPortId":"value-in","type":"list-content"},
         {"fromId":"read_final","fromPortId":"value-out","toId":"output","toPortId":"workflow:results","type":"list-content"}
       ],
-      "workflow_nodes": [{"name":"per_item.flow","input_ports":[{"name":"text","type":"content"}],"output_ports":[{"name":"result","type":"content"}]}],
+      "subprocess_workflow_files": [{"name":"per_item.flow","input_ports":[{"name":"text","type":"content"}],"output_ports":[{"name":"result","type":"content"}]}],
       "remote_tools": []
     }}
   ],
@@ -544,7 +544,7 @@ per_item.flow 在内部 router 分支，并分别返回 result；collect.flow �
             "type": "content"
           }
         ],
-        "workflow_nodes": [],
+        "subprocess_workflow_files": [],
         "remote_tools": []
       }
     }

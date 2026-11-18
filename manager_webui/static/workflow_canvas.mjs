@@ -37,7 +37,7 @@ const TYPE_COLORS = {
   session_create: '#187b70',
   session_read: '#28749c',
   session_write: '#ab6740',
-  workflow: '#785d9b',
+  spawn_and_wait_subprocess: '#785d9b',
 };
 
 const CONNECTION_COLORS = {
@@ -159,9 +159,9 @@ function contractPortIds(node, direction, workflow) {
     if (node.type === 'remote_sync_tool') return ['control-out', ...(Array.isArray(args.outputs) ? args.outputs.map((output) => output.name) : [])];
     return ['control-out', node.type === 'remote_async_tool' ? 'task_id' : 'output'];
   }
-  if (node.type === 'workflow') {
-    const reference = (Array.isArray(workflow?.workflow_nodes) ? workflow.workflow_nodes : [])
-      .find((item) => item.name === args.workflow_name);
+  if (node.type === "spawn_and_wait_subprocess") {
+    const reference = (Array.isArray(workflow?.subprocess_workflow_files) ? workflow.subprocess_workflow_files : [])
+      .find((item) => item.name === args.workflow_file);
     return direction === 'input'
       ? ['control-in', ...workflowPortIds(reference?.input_ports)]
       : ['control-out', ...workflowPortIds(reference?.output_ports)];

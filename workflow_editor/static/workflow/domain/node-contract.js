@@ -36,7 +36,7 @@ export const NODE_TYPES = new Set([
   'session_create',
   'session_read',
   'session_write',
-  'workflow',
+  'spawn_and_wait_subprocess',
 ]);
 
 let idSequence = 0;
@@ -381,11 +381,11 @@ export function portsForNode(node) {
       { id: 'error-json', direction: 'output', type: 'content', label: '错误 JSON', title: '工具调用错误信息', multiple: true },
     ];
   }
-  if (node.type === 'workflow') {
+  if (node.type === "spawn_and_wait_subprocess") {
     return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '调用 Workflow', multiple: false },
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '拉起并等待子进程', multiple: false },
       ...(node.input_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'input', type: port.type, label: port.name, title: port.name, multiple: false })),
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: 'Workflow 完成后继续', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '子进程退出后继续', multiple: false },
       ...(node.output_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'output', type: port.type, label: port.name, title: port.name, multiple: true })),
     ];
   }
@@ -475,12 +475,12 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
   if (type === 'remote_async_tool') return { id: createWorkflowId('remote-async-tool'), type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };
   if (type === 'json_tool') return { id: createWorkflowId('json-tool'), type, name: 'JSON Tool ' + number, ...position };
-  if (type === 'workflow' && configuration) {
+  if (type === "spawn_and_wait_subprocess" && configuration) {
     return {
-      id: createWorkflowId('workflow'),
+      id: createWorkflowId('spawn_and_wait_subprocess'),
       type,
-      name: configuration.name || `Workflow ${number}`,
-      workflow_name: configuration.name,
+      name: `拉起并等待子进程 ${number}`,
+      workflow_file: configuration.name,
       input_ports: structuredClone(configuration.input_ports || []),
       output_ports: structuredClone(configuration.output_ports || []),
       ...position,

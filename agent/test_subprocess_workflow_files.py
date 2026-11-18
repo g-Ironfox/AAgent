@@ -2,12 +2,12 @@ import copy
 import unittest
 from unittest.mock import call, patch
 
-from workflow_nodes import workflow_workflow
+from workflow_nodes import workflow_spawn_and_wait_subprocess
 from workflow_parser import WorkflowParseError, parse_workflow
 from workflow_validator import (
     WorkflowValidationError,
     validate_workflow,
-    validate_workflow_dependencies,
+    validate_subprocess_workflow_files,
 )
 
 
@@ -30,8 +30,8 @@ def empty_workflow(name="Parent"):
 
 def add_child_call(workflow, name="Child.flow"):
     node = {
-        "id": "call-child", "type": "workflow",
-        "arguments": {"workflow_name": name},
+        "id": "call-child", "type": "spawn_and_wait_subprocess",
+        "arguments": {"workflow_file": name},
         "input_ports": [], "output_ports": [],
     }
     workflow["nodes"].insert(1, node)
@@ -43,7 +43,7 @@ def add_child_call(workflow, name="Child.flow"):
     return node
 
 
-class WorkflowDependencyValidationTest(unittest.TestCase):
+class SubprocessWorkflowFileValidationTest(unittest.TestCase):
     def setUp(self):
         loader = patch("workflow_parser._read_workspace_workflow_by_name")
         self.read = loader.start()
@@ -51,14 +51,14 @@ class WorkflowDependencyValidationTest(unittest.TestCase):
         self.child = empty_workflow("Child title differs from filename")
         self.read.return_value = self.child
         self.workflow = empty_workflow()
-        self.workflow["workflow_nodes"] = [{
+        self.workflow["subprocess_workflow_files"] = [{
             "name": "Child.flow", "input_ports": [], "output_ports": [],
         }]
 
     def test_matching_declaration_and_multiple_nodes_read_target_once(self):
         node = add_child_call(self.workflow)
         self.workflow["nodes"].append({**node, "id": "another-call"})
-        validate_workflow_dependencies(self.workflow)
+        validate_subprocess_workflow_files(self.workflow)
         self.read.assert_called_once_with("Child.flow")
 
     def test_declaration_and_node_mismatches_report_source_and_values(self):
@@ -80,7 +80,7 @@ class WorkflowDependencyValidationTest(unittest.TestCase):
                         workflow = empty_workflow()
                         if source == "declaration":
                             snapshot = {"name": "Child.flow", "input_ports": [], "output_ports": []}
-                            workflow["workflow_nodes"] = [snapshot]
+                            workflow["subprocess_workflow_files"] = [snapshot]
                         else:
                             snapshot = add_child_call(workflow)
                         snapshot[field] = copy.deepcopy(original)
@@ -88,31 +88,31 @@ class WorkflowDependencyValidationTest(unittest.TestCase):
                         child[field] = copy.deepcopy(ports)
                         self.read.return_value = child
                         with self.assertRaises(WorkflowValidationError) as caught:
-                            validate_workflow_dependencies(workflow)
+                            validate_subprocess_workflow_files(workflow)
                         message = str(caught.exception)
                         for detail in ("Parent", "Child.flow", field, "saved=", "actual=", "refresh"):
                             self.assertIn(detail, message)
-                        self.assertIn("workflow_nodes[0]" if source == "declaration" else "call-child", message)
+                        self.assertIn("subprocess_workflow_files[0]" if source == "declaration" else "call-child", message)
 
     def test_current_declaration_does_not_hide_stale_node_snapshot(self):
         node = add_child_call(self.workflow)
         node["output_ports"] = [{"name": "removed", "type": "content"}]
         with self.assertRaisesRegex(WorkflowValidationError, "call-child.*output_ports"):
-            validate_workflow_dependencies(self.workflow)
+            validate_subprocess_workflow_files(self.workflow)
 
     def test_nodes_without_declarations_are_checked(self):
-        self.workflow.pop("workflow_nodes")
+        self.workflow.pop("subprocess_workflow_files")
         add_child_call(self.workflow)
-        validate_workflow_dependencies(self.workflow)
+        validate_subprocess_workflow_files(self.workflow)
         self.child["input_ports"] = [{"name": "new", "type": "content"}]
         with self.assertRaisesRegex(WorkflowValidationError, "call-child.*input_ports"):
-            validate_workflow_dependencies(self.workflow)
+            validate_subprocess_workflow_files(self.workflow)
 
     def test_each_execution_reads_current_interfaces(self):
-        validate_workflow_dependencies(self.workflow)
+        validate_subprocess_workflow_files(self.workflow)
         self.child["output_ports"] = [{"name": "added", "type": "content"}]
         with self.assertRaisesRegex(WorkflowValidationError, "output_ports"):
-            validate_workflow_dependencies(self.workflow)
+            validate_subprocess_workflow_files(self.workflow)
         self.assertEqual(self.read.call_count, 2)
 
     def test_missing_or_unreadable_dependency_fails(self):
@@ -120,10 +120,10 @@ class WorkflowDependencyValidationTest(unittest.TestCase):
             with self.subTest(message=message):
                 self.read.side_effect = WorkflowParseError(message)
                 with self.assertRaisesRegex(WorkflowParseError, message):
-                    validate_workflow_dependencies(self.workflow)
+                    validate_subprocess_workflow_files(self.workflow)
 
     def test_workflow_without_dependencies_and_static_validation_do_not_read(self):
-        validate_workflow_dependencies(empty_workflow())
+        validate_subprocess_workflow_files(empty_workflow())
         add_child_call(self.workflow)
         validate_workflow(self.workflow)
         self.read.assert_not_called()
@@ -139,7 +139,7 @@ class WorkflowDependencyExecutionTest(unittest.TestCase):
         parent = empty_workflow()
         add_child_call(parent)
         child = empty_workflow("Child")
-        child["workflow_nodes"] = [{
+        child["subprocess_workflow_files"] = [{
             "name": "Grandchild.flow", "input_ports": [], "output_ports": [],
         }]
         grandchild = empty_workflow("Grandchild")
@@ -148,7 +148,7 @@ class WorkflowDependencyExecutionTest(unittest.TestCase):
             "workflow_parser._read_workspace_workflow_by_name", side_effect=[child, grandchild]
         ) as read, patch("workflow_parser.parse_workflow") as parse, patch("workflow_nodes.run_workflow_map") as run:
             with self.assertRaisesRegex(WorkflowValidationError, "Child.*Grandchild.flow.*input_ports"):
-                workflow_workflow(1, parse_workflow(parent))
+                workflow_spawn_and_wait_subprocess(1, parse_workflow(parent))
             read.assert_has_calls([call("Child.flow"), call("Grandchild.flow")])
             parse.assert_not_called()
             run.assert_not_called()
@@ -158,14 +158,14 @@ class WorkflowDependencyExecutionTest(unittest.TestCase):
         add_child_call(parent)
         child = empty_workflow("Child")
         with patch("workflow_parser._read_workspace_workflow_by_name", return_value=child):
-            validate_workflow_dependencies(parent)
+            validate_subprocess_workflow_files(parent)
             child["output_ports"] = [{"name": "added", "type": "content"}]
             child["nodes"][-1]["workflowPorts"] = [
                 {"id": "workflow:added", "name": "added", "type": "content"},
             ]
             with patch("workflow_nodes.run_workflow_map") as run:
                 with self.assertRaisesRegex(WorkflowValidationError, "call-child.*output_ports"):
-                    workflow_workflow(1, parse_workflow(parent))
+                    workflow_spawn_and_wait_subprocess(1, parse_workflow(parent))
                 run.assert_not_called()
 
 

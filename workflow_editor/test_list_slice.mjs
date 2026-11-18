@@ -11,7 +11,7 @@ function fixture(valueType = 'list-content') {
   const workflow = {
     schema_version: '2.0', name: 'list_slice', metadata: { structs: [], tools: [] },
     input_ports: [{ name: 'items', type: valueType }], output_ports: [{ name: 'items', type: valueType }],
-    workflow_nodes: [], remote_tools: [],
+    subprocess_workflow_files: [], remote_tools: [],
     nodes: [
       { id: 'input', type: 'input', workflowPorts: [{ id: 'workflow:items', name: 'items', type: valueType }] },
       { id: 'slice', type: 'list_slice', arguments: { value_type: valueType } },

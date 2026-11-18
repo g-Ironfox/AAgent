@@ -28,7 +28,7 @@ def control(source, target, output="control-out", input_port="control-in"):
 
 
 def call_node(name):
-    return {**node("call", "workflow", workflow_name=name), "input_ports": INPUTS, "output_ports": OUTPUTS}
+    return {**node("call", "spawn_and_wait_subprocess", workflow_file=name), "input_ports": INPUTS, "output_ports": OUTPUTS}
 
 
 def graph(name, body, connections):

@@ -107,7 +107,7 @@ function updateTerminalOptions(sessions) {
     const waitKind = session.wait_for?.kind;
     const stateLabel = session.status === 'terminated' ? '已关闭'
       : session.workflow_status === 'blocked'
-        ? (waitKind === 'process_exit' ? '等待子工作流' : '等待终端输入')
+        ? (waitKind === 'process_exit' ? '等待子进程' : '等待终端输入')
         : '运行中';
     const workflowLabel = session.workflow_name ? `${session.workflow_name} · ` : '';
     const isChild = session.root_process_id && session.root_process_id !== session.parent_process_id;

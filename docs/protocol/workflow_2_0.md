@@ -27,12 +27,12 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 | `output_ports` | 是 | port[] | Workflow 输出接口 |
 | `nodes` | 是 | node[] | 节点列表 |
 | `connections` | 是* | connection[] | 控制流和数据连线 |
-| `workflow_nodes` | 否 | dependency[] | 子 Workflow 名称及接口快照 |
-| `remote_tools` | 否 | dependency[] | 旧格式 Remote Tool 名称及接口快照（兼容读取） |
+| `subprocess_workflow_files` | 否 | subprocessWorkflowFile[] | 子进程 Workflow 文件名及接口快照 |
+| `remote_tools` | 否 | toolContract[] | 旧格式 Remote Tool 名称及接口快照（兼容读取） |
 
 端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
 
-规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`workflow_nodes` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。`name` 长度为 1–120；`description` 最大长度 2000。`metadata` 允许 `structs`、`tools` 两个属性；二者缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`workflow_nodes` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
+规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`subprocess_workflow_files` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。`name` 长度为 1–120；`description` 最大长度 2000。`metadata` 允许 `structs`、`tools` 两个属性；二者缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`subprocess_workflow_files` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
 
 对根对象的未知字段，管理端请求模型会拒绝；当前 Agent 所用 JSON Schema 没有在根层设置 `additionalProperties: false`，因此 Agent 单独进行 Schema 校验时不拒绝未知根字段。这是接收端行为差异，不改变本协议规定的根字段集合；需要严格互操作的生产者不得发送未知根字段。
 
@@ -44,7 +44,7 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 
 Struct 是 Workflow 局部类型，不是全局注册类型。标识形式为 `struct:<id>`，Struct 列表为 `list-struct:<id>`。`<id>` 必须匹配 `^[A-Za-z_][A-Za-z0-9_]*$`，并区分大小写。
 
-Struct 类型可用于 Workflow 内部数据端口、节点参数和 Context；不得用于 Workflow 输入/输出接口、`workflow_nodes`、`metadata.tools` 或兼容字段 `remote_tools` 的接口快照。需要跨 Workflow 或服务边界传递时，先用 `struct_to_json` 转成 `content`，接收方再用 `json_to_struct` 校验和恢复。
+Struct 类型可用于 Workflow 内部数据端口、节点参数和 Context；不得用于 Workflow 输入/输出接口、`subprocess_workflow_files`、`metadata.tools` 或兼容字段 `remote_tools` 的接口快照。需要跨 Workflow 或服务边界传递时，先用 `struct_to_json` 转成 `content`，接收方再用 `json_to_struct` 校验和恢复。
 
 ### 3.2 声明格式
 
@@ -157,13 +157,13 @@ Struct 节点都是普通控制流节点：每个节点有 `control-in` 和 `con
 
 `context_create.context_id` 省略时生成 ID；若显式提供，必须是非空白字符串且该 ID 在 Context 存储中尚不存在。空字符串不是规范化 Workflow 中的生成 ID 表示，Schema 会拒绝它。读写节点的 `context_id_source` 为 `port` 或 `fixed`；固定来源必须给出非空 `context_id`。读写时 Context ID 必须存在，所属 invocation 必须为当前调用或其祖先调用，且声明类型必须匹配，否则操作失败。写入值在存储前递归验证，读取值在返回前再次验证；读写会刷新存储 TTL。
 
-每次 Workflow 执行拥有独立 invocation。子 Workflow 可以通过 Context ID 读取、写入或弹出父 Workflow 及更上层祖先调用创建的 Context；嵌套子调用会继承完整祖先链。Context ID 可以通过 `content` 接口传入，也可使用已知的固定 ID。其他独立执行、兄弟调用或已返回的子调用不在访问范围内；父 Workflow 不能反向访问子调用的 Context。值以 JSON 序列化存储，默认 TTL 为 86400 秒，单个序列化值默认最大 1048576 字节；部署可分别通过 `WORKFLOW_CONTEXT_TTL_SECONDS` 和 `WORKFLOW_CONTEXT_MAX_VALUE_BYTES` 调整。每次执行仅在自身结束（成功或失败）时尝试清理自己创建的 Context，子调用结束不会清理祖先 Context；清理失败会记日志，TTL 是兜底。Context ID 是不透明字符串。访问 Struct Context 时，子 Workflow 仍须声明相同 ID 且兼容的 Struct 类型；祖先的 Struct 声明不会自动导入。
+每次 Workflow 执行拥有独立 invocation。子进程可以通过 Context ID 读取、写入或弹出父 Workflow 及更上层祖先调用创建的 Context；嵌套子进程执行会继承完整祖先链。Context ID 可以通过 `content` 接口传入，也可使用已知的固定 ID。其他独立执行、兄弟调用或已返回的子进程执行不在访问范围内；父 Workflow 不能反向访问子进程执行的 Context。值以 JSON 序列化存储，默认 TTL 为 86400 秒，单个序列化值默认最大 1048576 字节；部署可分别通过 `WORKFLOW_CONTEXT_TTL_SECONDS` 和 `WORKFLOW_CONTEXT_MAX_VALUE_BYTES` 调整。每次执行仅在自身结束（成功或失败）时尝试清理自己创建的 Context，子进程执行结束不会清理祖先 Context；清理失败会记日志，TTL 是兜底。Context ID 是不透明字符串。访问 Struct Context 时，子进程仍须声明相同 ID 且兼容的 Struct 类型；祖先的 Struct 声明不会自动导入。
 
 Session 与 Context 不同：Session 仅支持六种内建值类型，ID 格式为 `ses_` 加 32 位小写十六进制字符，值存入 MongoDB 且不按 Workflow invocation 自动清理；单值序列化 UTF-8 大小上限默认 1048576 字节，可由 `WORKFLOW_SESSION_MAX_VALUE_BYTES` 配置。Session 读写要求 ID 存在且声明类型精确匹配，写入替换完整值；不得用于 Struct。
 
 ## 6. 类型边界与连线
 
-Struct 类型只在当前 Workflow 内有效。Workflow 的 `input_ports` / `output_ports`、`workflow_nodes` 中的子 Workflow 接口快照，以及 `remote_tools` 中的工具接口快照均不得声明 Struct 类型。外部数据若需跨边界传递，必须先使用 `struct_to_json` 转换为 `content`，接收侧再用 `json_to_struct` 按本地声明解析和校验。
+Struct 类型只在当前 Workflow 内有效。Workflow 的 `input_ports` / `output_ports`、`subprocess_workflow_files` 中的子进程 Workflow 文件接口快照，以及 `remote_tools` 中的工具接口快照均不得声明 Struct 类型。外部数据若需跨边界传递，必须先使用 `struct_to_json` 转换为 `content`，接收侧再用 `json_to_struct` 按本地声明解析和校验。
 
 数据连线的 `type` 必须与源端口、目标端口的推导类型完全一致。Struct 类型及 Struct 列表只允许连接到同类型端口；不同 Struct ID、Struct 与 Struct 列表、或 Struct 与普通 JSON `content` 之间不得直接连接。JSON 转换节点的 `content` 端口是显式边界，不会自动转换类型。控制连线规则见第 10 节。
 
@@ -204,7 +204,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 节点 `id` 和 `type` 必需；`id` 是非空字符串且在 Workflow 内唯一，`type` 必须属于本规范列出的节点类型。`name` 若提供必须为字符串，`x`、`y` 若提供必须为数字。连接对象恰含 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`；不得含其他字段。
 
-`workflowPorts` 仅用于 Input/Output 节点。每项恰含 `id`、`name`、`type` 三个字段，id 必须精确为 `workflow:` 加该项 name；数组须按根接口顺序与根接口生成的端口快照完全相同。`dataInputPorts` 是数据输入端口 ID 数组，元素为非空字符串且不得重复；它必须完整且按节点定义顺序列出配置推导出的输入端口。除一般节点的动态输入外，Struct 操作节点也将 `struct-in` 及固定 JSON 转换输入列入该数组；不得列控制端口。`input_ports`、`output_ports` 仅用于可调用 Workflow 节点的接口快照，格式同根接口端口。共享字段均不得放在 `arguments` 内。
+`workflowPorts` 仅用于 Input/Output 节点。每项恰含 `id`、`name`、`type` 三个字段，id 必须精确为 `workflow:` 加该项 name；数组须按根接口顺序与根接口生成的端口快照完全相同。`dataInputPorts` 是数据输入端口 ID 数组，元素为非空字符串且不得重复；它必须完整且按节点定义顺序列出配置推导出的输入端口。除一般节点的动态输入外，Struct 操作节点也将 `struct-in` 及固定 JSON 转换输入列入该数组；不得列控制端口。`input_ports`、`output_ports` 仅用于`spawn_and_wait_subprocess` 节点的接口快照，格式同根接口端口。共享字段均不得放在 `arguments` 内。
 
 每个 Workflow 必须恰有一个 Input 节点和至少一个 Output 节点。Input/Output 快照不一致、未知节点类型、未知参数、未知节点字段、重复节点 ID 均为非法。
 
@@ -244,7 +244,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `session_create` | `value_type` | `initial-value: value_type` | `session-id: content` |
 | `session_read` | `value_type` | `session-id: content` | `value-out: value_type` |
 | `session_write` | `value_type` | `session-id: content`、`value-in: value_type` | `session-id: content`、`value-out: value_type` |
-| `workflow` | `workflow_name` | input_ports 快照对应的 `workflow:<name>` | output_ports 快照对应的 `workflow:<name>` |
+| `spawn_and_wait_subprocess` | `workflow_file` | input_ports 快照对应的 `workflow:<name>` | output_ports 快照对应的 `workflow:<name>` |
 
 参数必需性和缺省值如下。节点 `arguments` 若省略，等价于空对象；必需参数未提供的节点无效。除列明字段外，节点不得携带其他 arguments 属性。
 
@@ -274,7 +274,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `context_create` | `value_type` | `context_id` (省略时生成 ID；显式值非空白) |
 | `context_read`、`context_write` | `value_type` | `context_id_source` (`port`)、`context_id` (仅 fixed 模式使用) |
 | `session_create`、`session_read`、`session_write` | `value_type` | 无 |
-| `workflow` | `workflow_name` | 无 |
+| `spawn_and_wait_subprocess` | `workflow_file` | 无 |
 
 内建节点额外语义：
 
@@ -282,7 +282,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `construct_content.append_items` 必须为非空数组。每项是 object，`type` 必须为 `fixed` 或 `port`。固定项恰含 `type`、`value`，且 value 为字符串；端口项恰含 `type`、`port_id`，且 port_id 为非空字符串。端口 ID 不重复，且端口项 ID 集合与 `dataInputPorts` 一致。按条目顺序拼接；运行时缺失的端口值跳过，非字符串值转换为字符串。
 - `construct_map_content.mappings` 必须为非空数组。每项必须包含非空字符串 `key` 且 key 唯一。固定值项含 `key`、`value`，可以附 `value_source` 且其值必须为 `fixed`；value 为字符串。端口项恰含 `key`、`value_source`、`port_id`，其中 value_source 固定为 `port`，port_id 非空且唯一，不得为控制端口，并与 `dataInputPorts` 一致。端口运行值必须为已提供的字符串；输出保留条目顺序。
 - `map_content_get` 按 key 查值；查不到时执行失败。
-- `wait_terminal_event` 执行后保存工作流数据，将自身记录为最近完成节点并把进程设为 `blocked`，`wait_for` 指向关联终端的 `terminal_message`。终端输入成功保存后，仅唤醒来源和事件类型均匹配的进程，清除等待条件并重新入就绪队列，从下一节点继续。该节点无参数、无数据端口，不消费或输出消息正文；进入等待前的消息不缓存为待唤醒事件，终端输出也不唤醒。`read_terminal_input` 将当前进程终端所有已保存的 `role=user` 消息正文按时间升序读取为 `list-content`；不含助手输出、不删除记录，无消息时输出空列表。重复发送不会重复入队。根工作流和子工作流均通过进程调度器执行，均支持该节点。仅用于调试和同步调用的 `run_workflow_map` 遇到等待节点时明确报错，不能挂起。
+- `wait_terminal_event` 执行后保存工作流数据，将自身记录为最近完成节点并把进程设为 `blocked`，`wait_for` 指向关联终端的 `terminal_message`。终端输入成功保存后，仅唤醒来源和事件类型均匹配的进程，清除等待条件并重新入就绪队列，从下一节点继续。该节点无参数、无数据端口，不消费或输出消息正文；进入等待前的消息不缓存为待唤醒事件，终端输出也不唤醒。`read_terminal_input` 将当前进程终端所有已保存的 `role=user` 消息正文按时间升序读取为 `list-content`；不含助手输出、不删除记录，无消息时输出空列表。重复发送不会重复入队。根工作流和子进程均通过进程调度器执行，均支持该节点。仅用于调试和同步调用的 `run_workflow_map` 遇到等待节点时明确报错，不能挂起。
 - `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为六种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
 - `construct_list.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message` 或 `list-struct:<id>`。
@@ -304,7 +304,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - sync 工具仅配置一个名为 `result` 的输出时，将完整工具返回值赋给该端口；其他输出配置要求工具返回包含所有输出名的对象。map-content 输出必须是字符串 map。
 - `context_create`、`context_read`、`context_write` 的 value_type 可以为内建数据类型或本 Workflow Struct 类型；Session 节点只允许内建数据类型。
 - Context ID 按原字符串逐字符区分，包括首尾空格，不得规范化。`context_create.context_id` 省略时自动生成，显式值必须非空白且在 Context 存储中不存在；空字符串不合法。context_id_source 缺省为 `port`，仅允许 `port`、`fixed`；port 模式读取 context-id，fixed 模式要求非空白 context_id 且不生成 ID 输入端口。详情见第 5 节。
-- 子 Workflow 快照必须与目标 Workflow 当前接口一致；递归调用失败。Struct 类型不得出现在任何公开接口快照。
+- 子进程 Workflow 文件快照必须与目标 Workflow 当前接口一致；递归调用失败。Struct 类型不得出现在任何公开接口快照。
 
 ## 10. 连线、控制流和执行模型
 
@@ -332,9 +332,9 @@ Agent 和管理端在基本端口、类型及连接基数校验后执行静态�
 
 数据边的源空间必须等于目标空间或为其祖先；兄弟分支、不同循环体之间，以及子空间向父空间的数据连线均非法。Foreach 的 item-out 直接连接到循环外也非法。循环结果须通过 Context 显式写入并在外层读取；Context 节点的普通输出仍按节点空间校验，不能用 Context 写入节点的输出绕过循环边界。生命周期标签仅作为静态校验及编辑器预览状态，不写入 Workflow JSON。生命周期校验不额外证明同一空间内部的生产者执行顺序，也不改变运行时槽位的存储方式。
 
-Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子 Workflow 快照过期或递归调用均使执行失败。
+Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子进程 Workflow 文件快照过期或递归调用均使执行失败。
 
-子 Workflow 在当前调用栈内执行，并使用自身 Input/Output 边界，同时继承祖先调用的 Context 访问范围。Workflow 节点接口快照必须等于实际 Workflow 接口。调用链出现重复 Workflow 名称时拒绝递归。Struct 不能跨子 Workflow 接口传递，须显式 JSON 转换。
+`spawn_and_wait_subprocess`（拉起并等待子进程）按 `arguments.workflow_file` 指定的精确工作区文件名加载 Workflow 文件，创建独立进程和终端，并阻塞父进程直到子进程退出。节点的输入复制到子进程 Input，子进程 Output 收集的结果在退出后传回节点输出，再沿 control-out 继续。文件声明和节点接口快照必须与目标文件当前接口一致；进程调用链中重复的文件引用会触发递归检查。Struct 不能跨进程接口传递，须显式转换为 JSON。同步调试入口 `run_workflow_map` 使用相同接口契约在当前调用栈执行，仅用于测试和工具内嵌，不支持跨事件挂起。
 
 
 ### 10.4 While Pop
@@ -362,9 +362,9 @@ Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控�
 While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out` 仅在循环体子空间可见，`context-id` 输入属于父空间，`control-out` 延续父空间；循环体禁止 Router、多控制出口节点和嵌套循环，必须返回自身的 `loop-in`。循环结果通过 Context 显式传递到外层。
 
 
-### 10.5 父子工作流进程调度
+### 10.5 父子进程调度
 
-在进程调度器中，每次 `workflow` 节点调用创建一个普通 workflow 子进程及独立终端。保留依赖、递归和接口校验，将节点输入复制到子图。父图保存 `pending_call`（调用节点 ID、索引、子进程 ID、日志索引），进入 `blocked`，等待 `{"kind":"process_exit","process_id":"<child>"}`。父进程保存、子进程及终端创建、子进程入队在同一 Redis 事务提交。
+在进程调度器中，每次 `spawn_and_wait_subprocess` 节点调用创建一个普通 workflow 子进程及独立终端。执行目标文件、递归和接口校验，将节点输入复制到子进程。父图保存 `pending_call`（调用节点 ID、索引、子进程 ID、日志索引），进入 `blocked`，等待 `{"kind":"process_exit","process_id":"<child>"}`。父进程保存、子进程及终端创建、子进程入队在同一 Redis 事务提交。
 
 调度器原子领取 `ready` 进程，设为 `running` 并记录本次 execution ID，每次只执行一个节点。完成后原子保存图、索引和状态，并更新就绪队列或阻塞集合。重复队列项不能执行 `running`、`blocked` 或终态进程；被终止的旧执行结果不能覆盖终态。多层调用重复相同规则，无需嵌套同步 runner。
 
@@ -377,3 +377,11 @@ While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out`
 执行超时按实际节点执行累计时间判断，终端等待、子进程等待和队列等待不计入；单个阻塞调用仍由其自身的工具或网络超时约束。进程日志分别记录总经过时间与 active_duration_ms。调用节点创建子进程后记为 waiting，接收子进程结果时再改为 completed 或 failed。取消入口 `terminate_process` 原子终止目标进程及仍活动的后代和终端，清理其 Context；若目标是子进程，则唤醒树外等待它的父进程。
 
 进程记录和队列依赖现有 Redis 持久化配置。当前不提供 worker 崩溃后自动重领 running 进程或任意外部副作用恰好一次的保证；execution ID 用于防止取消后的迟到提交，不是自动重试租约。受进程管理的 Context 需通过终态清理，不能仅删除进程记录。
+
+### 10.6 子进程 Workflow 文件格式迁移
+
+当前格式使用 `subprocess_workflow_files: [{name, input_ports, output_ports}]` 声明子进程 Workflow 文件；执行节点为 `type: "spawn_and_wait_subprocess"`，必需参数为 `arguments.workflow_file`。`name` 和 `workflow_file` 都是包含扩展名的精确工作区文件名，例如 `child.flow`。`workflow:<name>` 仍表示 Workflow 接口端口，连线 ID、节点 ID、输入输出、坐标和其他参数均保留。
+
+编辑器导入、工作区可视化编辑、管理端写入与读取、Agent 编译和已挂起进程恢复都将旧 `workflow_nodes`、`type: "workflow"` 和节点参数 `workflow_name` 转为上述格式。转换不修改输入对象；新旧字段同时出现且值冲突时拒绝读取或保存，避免静默覆盖。保存和导出只生成新格式；schema_version 继续使用字符串 `"2.0"`，相关服务应一起更新。进程记录中的 `workflow_name` 仍表示显示名称，不属于节点参数迁移。
+
+已有文件可使用 `python scripts/migrate_subprocess_workflows.py <路径>` 预览迁移，添加 `--apply` 写回；通过 `--workspace-url` 可批量迁移运行中工作区，使用文件 revision 做并发校验；`--manager-url` 可迁移管理端保存的 Workflow。历史检查点保留原始内容，恢复后可再次转换。

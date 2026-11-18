@@ -94,11 +94,11 @@ export function fetchWorkflow(name) {
   return request(`/api/workflow/${encodeURIComponent(name)}`);
 }
 
-export function renameWorkflow(currentName, name, workflowNodes = undefined) {
+export function renameWorkflow(currentName, name, subprocessWorkflowFiles = undefined) {
   return request(`/api/workflow/${encodeURIComponent(currentName)}/metadata`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, ...(workflowNodes ? { workflow_nodes: workflowNodes } : {}) }),
+    body: JSON.stringify({ name, ...(subprocessWorkflowFiles ? { subprocess_workflow_files: subprocessWorkflowFiles } : {}) }),
   });
 }
 

@@ -11,6 +11,7 @@ from typing import Any
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from workflow_contract import (
+    migrate_subprocess_workflow_format,
     boundary_ports,
     data_ports_for_node,
     node_argument,
@@ -32,6 +33,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     slot in the form ``[node_index, port_id, value_or_default]``; data outputs
     contain endpoint lists.
     """
+    workflow = migrate_subprocess_workflow_format(workflow)
     if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
         raise WorkflowParseError(
             f"unsupported workflow schema_version: {workflow.get('schema_version')!r}; "

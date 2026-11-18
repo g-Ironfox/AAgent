@@ -26,7 +26,7 @@ function fixture(kind, mode = 'sync') {
   return {
     schema_version: '2.0', name: kind + '_' + mode,
     metadata: { structs: [], tools: [{ name: 'echo', kind, input_ports: [port('value')], output_ports: outputs }] },
-    input_ports: [port('text')], output_ports: [port('result')], workflow_nodes: [],
+    input_ports: [port('text')], output_ports: [port('result')], subprocess_workflow_files: [],
     nodes: [
       { id: 'input', type: 'input', workflowPorts: [{ id: 'workflow:text', ...port('text') }] },
       { id: 'tool', type: mode === 'async' ? 'remote_async_tool' : 'tool', arguments: {
@@ -211,7 +211,7 @@ test('an unbound Tool can be created and saved as an editor draft', () => {
 
 test('tool library is unified and retains Workflow integration mounts and metadata controls', () => {
   const html = readFileSync(new URL('./static/workflow_edit.html', import.meta.url), 'utf8');
-  assert.match(html, /id="workflowNodeLibrary"/);
+  assert.match(html, /id="subprocessNodeLibrary"/);
   assert.match(html, /data-add-node="tool"/);
   assert.match(html, /data-add-node="json_tool"/);
   assert.match(html, /id="json_toolInspectorTemplate"/);

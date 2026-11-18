@@ -32,9 +32,9 @@ def callable_workflow_fixture() -> dict:
             },
             {
                 "id": "call-summary",
-                "type": "workflow",
+                "type": "spawn_and_wait_subprocess",
                 "name": "Summary",
-                "arguments": {"workflow_name": "Summary"},
+                "arguments": {"workflow_file": "Summary"},
                 "input_ports": [{"name": "query", "type": "content"}],
                 "output_ports": [{"name": "result", "type": "content"}],
             },
@@ -54,7 +54,7 @@ def callable_workflow_fixture() -> dict:
     }
 
 
-class CallableWorkflowNodeTest(unittest.TestCase):
+class SubprocessWorkflowFileNodeTest(unittest.TestCase):
 
     def test_validator_rejects_workflow_without_schema_version(self):
         workflow = callable_workflow_fixture()
@@ -524,7 +524,7 @@ class CallableWorkflowNodeTest(unittest.TestCase):
 
     def test_validator_rejects_flattened_node_arguments(self):
         workflow = callable_workflow_fixture()
-        workflow["nodes"][1]["workflow_name"] = "Summary"
+        workflow["nodes"][1]["workflow_file"] = "Summary"
 
         with self.assertRaisesRegex(WorkflowValidationError, "Additional properties are not allowed"):
             validate_workflow(workflow)
@@ -559,7 +559,7 @@ class CallableWorkflowNodeTest(unittest.TestCase):
             [0, "workflow:query", None],
         )
         self.assertEqual(parsed[1]["data_outputs"]["workflow:result"], [[2, "workflow:result"]])
-        self.assertEqual(parsed[1]["arguments"]["workflow_name"], "Summary")
+        self.assertEqual(parsed[1]["arguments"]["workflow_file"], "Summary")
         self.assertEqual(
             parsed[1]["input_ports"],
             [{"name": "query", "type": "content"}],
@@ -1174,8 +1174,8 @@ class WorkflowExecutionTest(unittest.TestCase):
             },
             {
                 "id": "child-call",
-                "type": "workflow",
-                "arguments": {"workflow_name": "Child"},
+                "type": "spawn_and_wait_subprocess",
+                "arguments": {"workflow_file": "Child"},
                 "input_ports": [],
                 "output_ports": [],
                 "successors": {"next": 2},

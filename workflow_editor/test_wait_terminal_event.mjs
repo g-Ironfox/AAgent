@@ -30,7 +30,7 @@ test('wait_terminal_event preserves control flow and round-trips without argumen
   ];
   assert.equal(connections.every((edge) => isValidConnection(edge, nodes)), true);
   assert.equal(loadSnapshot({ schema_version: '2.0', name: 'wait', input_ports: [], output_ports: [],
-    nodes, connections, metadata: { structs: [] }, workflow_nodes: [], remote_tools: [] }), true);
+    nodes, connections, metadata: { structs: [] }, subprocess_workflow_files: [], remote_tools: [] }), true);
   const snapshot = workflowSnapshot();
   assert.equal(snapshot.nodes[1].type, 'wait_terminal_event');
   assert.equal(JSON.stringify(snapshot.nodes[1].arguments || {}), '{}');

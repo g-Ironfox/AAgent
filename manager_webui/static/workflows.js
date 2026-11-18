@@ -31,8 +31,8 @@ const elements = {
   canvasMeta: document.querySelector('#workflowCanvasMeta'),
   inputPorts: document.querySelector('#inputPorts'),
   outputPorts: document.querySelector('#outputPorts'),
-  dependencies: document.querySelector('#workflowDependencies'),
-  dependencyCount: document.querySelector('#dependencyCount'),
+  subprocessFiles: document.querySelector('#subprocessWorkflowFiles'),
+  subprocessFileCount: document.querySelector('#subprocessFileCount'),
   remoteTools: document.querySelector('#remoteTools'),
   remoteToolCount: document.querySelector('#remoteToolCount'),
   portTemplate: document.querySelector('#metadataPortTemplate'),
@@ -84,83 +84,60 @@ function renderPortList(container, ports) {
   }
 }
 
-function createDependencyContract(title, markerClass, ports) {
+function createReferenceContract(title, markerClass, ports) {
   const section = document.createElement('section');
-  section.className = 'dependency-contract';
+  section.className = 'reference-contract';
   const heading = document.createElement('h5');
   const marker = document.createElement('span');
   marker.className = `metadata-port-mark ${markerClass}`;
   marker.textContent = markerClass === 'input' ? 'IN' : 'OUT';
   heading.append(marker, title);
   const list = document.createElement('div');
-  list.className = 'dependency-contract-ports';
+  list.className = 'reference-contract-ports';
   renderPortList(list, ports || []);
   section.append(heading, list);
   return section;
 }
 
-function samePortContract(leftPorts = [], rightPorts = []) {
-  return JSON.stringify(leftPorts.map((port) => ({ name: port.name, type: port.type })))
-    === JSON.stringify(rightPorts.map((port) => ({ name: port.name, type: port.type })));
-}
-
-function createContractWarning(reference, referenceName) {
-  const target = state.workflows.find((workflow) => workflow.name === referenceName);
-  if (!target) return null;
-  const inputMatches = samePortContract(reference.input_ports, target.input_ports);
-  const outputMatches = samePortContract(reference.output_ports, target.output_ports);
-  if (inputMatches && outputMatches) return null;
-  const warning = document.createElement('p');
-  warning.className = 'dependency-contract-warning';
-  const mismatches = [
-    !inputMatches ? 'Input' : '',
-    !outputMatches ? 'Output' : '',
-  ].filter(Boolean).join('、');
-  warning.textContent = `契约错误：${mismatches} 端口与对应 Workflows 不一致`;
-  return warning;
-}
-
-function renderDependencies(references) {
-  elements.dependencies.replaceChildren();
-  elements.dependencyCount.textContent = `${references.length} 项`;
+function renderSubprocessFiles(references) {
+  elements.subprocessFiles.replaceChildren();
+  elements.subprocessFileCount.textContent = `${references.length} 项`;
   if (!references.length) {
     const empty = document.createElement('p');
     empty.className = 'metadata-port-empty';
-    empty.textContent = '无 Workflows 依赖';
-    elements.dependencies.append(empty);
+    empty.textContent = '无子进程 Workflow 文件';
+    elements.subprocessFiles.append(empty);
     return;
   }
   for (const reference of references) {
     const item = document.createElement('article');
-    item.className = 'workflow-dependency-item';
+    item.className = 'workflow-reference-item';
     const heading = document.createElement('header');
     const identity = document.createElement('div');
-    identity.className = 'workflow-dependency-identity';
+    identity.className = 'workflow-reference-identity';
     const marker = document.createElement('span');
     marker.className = 'metadata-port-mark workflow';
     marker.textContent = 'WF';
     const name = document.createElement('strong');
-    const referenceName = reference.name || reference.workflow_name || '';
+    const referenceName = reference.name || '';
     name.textContent = referenceName || '未命名 Workflows';
     identity.append(marker, name);
     const editButton = document.createElement('button');
     editButton.type = 'button';
-    editButton.className = 'dependency-edit-button';
+    editButton.className = 'reference-edit-button';
     editButton.textContent = '修改';
-    editButton.title = '修改依赖 Workflows';
-    editButton.addEventListener('click', () => editDependency(item, references, referenceName));
+    editButton.title = '修改子进程 Workflow 文件';
+    editButton.addEventListener('click', () => editSubprocessFile(item, references, referenceName));
     heading.append(identity, editButton);
     const contracts = document.createElement('div');
-    contracts.className = 'dependency-contracts';
+    contracts.className = 'reference-contracts';
     contracts.append(
-      createDependencyContract('Input', 'input', reference.input_ports),
-      createDependencyContract('Output', 'output', reference.output_ports),
+      createReferenceContract('Input', 'input', reference.input_ports),
+      createReferenceContract('Output', 'output', reference.output_ports),
     );
-    const warning = createContractWarning(reference, referenceName);
     item.append(heading);
-    if (warning) item.append(warning);
     item.append(contracts);
-    elements.dependencies.append(item);
+    elements.subprocessFiles.append(item);
   }
 }
 
@@ -176,10 +153,10 @@ function renderRemoteTools(references) {
   }
   for (const reference of references) {
     const item = document.createElement('article');
-    item.className = 'workflow-dependency-item';
+    item.className = 'workflow-reference-item';
     const heading = document.createElement('header');
     const identity = document.createElement('div');
-    identity.className = 'workflow-dependency-identity';
+    identity.className = 'workflow-reference-identity';
     const marker = document.createElement('span');
     marker.className = 'metadata-port-mark remote-tool';
     marker.textContent = reference.kind === 'local' ? 'LT' : 'RT';
@@ -188,31 +165,31 @@ function renderRemoteTools(references) {
     identity.append(marker, name);
     heading.append(identity);
     const contracts = document.createElement('div');
-    contracts.className = 'dependency-contracts';
+    contracts.className = 'reference-contracts';
     contracts.append(
-      createDependencyContract('Input', 'input', reference.input_ports),
-      createDependencyContract('Output', 'output', reference.output_ports),
+      createReferenceContract('Input', 'input', reference.input_ports),
+      createReferenceContract('Output', 'output', reference.output_ports),
     );
     item.append(heading, contracts);
     elements.remoteTools.append(item);
   }
 }
 
-function editDependency(item, references, currentName) {
+function editSubprocessFile(item, references, currentName) {
   if (state.saving) return;
   const heading = item.querySelector(':scope > header');
-  const identity = item.querySelector('.workflow-dependency-identity');
+  const identity = item.querySelector('.workflow-reference-identity');
   const input = document.createElement('input');
-  input.className = 'dependency-name-input';
+  input.className = 'reference-name-input';
   input.type = 'text';
   input.value = currentName;
   input.maxLength = 120;
-  input.setAttribute('aria-label', '输入依赖 Workflows 名称');
+  input.setAttribute('aria-label', '输入子进程 Workflow 文件名');
   const actions = document.createElement('span');
-  actions.className = 'dependency-edit-actions';
+  actions.className = 'reference-edit-actions';
   const saveButton = document.createElement('button');
   saveButton.type = 'button';
-  saveButton.className = 'dependency-save-button';
+  saveButton.className = 'reference-save-button';
   saveButton.textContent = '保存';
   const updateSaveState = () => {
     const name = input.value;
@@ -221,7 +198,7 @@ function editDependency(item, references, currentName) {
   };
   const cancelButton = document.createElement('button');
   cancelButton.type = 'button';
-  cancelButton.className = 'dependency-cancel-button';
+  cancelButton.className = 'reference-cancel-button';
   cancelButton.textContent = '取消';
   actions.append(saveButton, cancelButton);
   identity.replaceChildren(input);
@@ -233,33 +210,33 @@ function editDependency(item, references, currentName) {
       renderConfiguration();
       return;
     }
-    saveDependency(references, currentName, input.value);
+    saveSubprocessFile(references, currentName, input.value);
   });
   updateSaveState();
   input.focus();
   input.select();
 }
 
-async function saveDependency(references, previousName, nextName) {
+async function saveSubprocessFile(references, previousName, nextName) {
   const workflow = selectedWorkflow();
   if (!workflow || state.saving || !nextName || nextName === previousName) return;
   const nextReferences = references.map((reference) => ({
-    name: (reference.name || reference.workflow_name) === previousName ? nextName : reference.name || reference.workflow_name,
-    ...((reference.name || reference.workflow_name) === previousName ? { previous_name: previousName } : {}),
+    name: (reference.name) === previousName ? nextName : reference.name,
+    ...((reference.name) === previousName ? { previous_name: previousName } : {}),
   }));
   state.saving = true;
-  elements.state.textContent = '保存依赖中';
+  elements.state.textContent = '保存子进程 Workflow 文件中';
   updateControls();
   try {
     const updated = workflowSummary(await renameWorkflow(workflow.name, workflow.name, nextReferences));
     const index = state.workflows.findIndex((item) => item.name === workflow.name);
     state.workflows[index] = { ...state.workflows[index], ...updated };
     state.workflowDetails.delete(workflow.name);
-    elements.state.textContent = '依赖已更新';
+    elements.state.textContent = '子进程 Workflow 文件已更新';
     renderList();
     renderConfiguration();
   } catch (error) {
-    elements.state.textContent = error.name === 'AbortError' ? '保存依赖超时' : (error.message || '保存依赖失败');
+    elements.state.textContent = error.name === 'AbortError' ? '保存子进程 Workflow 文件超时' : (error.message || '保存子进程 Workflow 文件失败');
   } finally {
     state.saving = false;
     updateControls();
@@ -282,8 +259,8 @@ function renderConfiguration() {
     elements.canvasMeta.textContent = '';
     elements.inputPorts.replaceChildren();
     elements.outputPorts.replaceChildren();
-    elements.dependencies.replaceChildren();
-    elements.dependencyCount.textContent = '';
+    elements.subprocessFiles.replaceChildren();
+    elements.subprocessFileCount.textContent = '';
     elements.remoteTools.replaceChildren();
     elements.remoteToolCount.textContent = '';
     return;
@@ -292,7 +269,7 @@ function renderConfiguration() {
   elements.description.classList.toggle('empty', !workflow.description);
   renderPortList(elements.inputPorts, workflow.input_ports || []);
   renderPortList(elements.outputPorts, workflow.output_ports || []);
-  renderDependencies(workflow.workflow_nodes || []);
+  renderSubprocessFiles(workflow.subprocess_workflow_files || []);
   renderRemoteTools([...(workflow.metadata?.tools || []), ...(workflow.remote_tools || []).map((tool) => ({ ...tool, kind: 'remote' }))]);
   renderCanvasPreview(workflow.name);
 }
@@ -566,7 +543,7 @@ function exportableWorkflow(detail) {
     metadata: detail.metadata || { structs: [] },
     input_ports: detail.input_ports || [],
     output_ports: detail.output_ports || [],
-    workflow_nodes: detail.workflow_nodes || [],
+    subprocess_workflow_files: detail.subprocess_workflow_files || [],
     remote_tools: detail.remote_tools || [],
     nodes: detail.nodes || [],
     connections: detail.connections || [],

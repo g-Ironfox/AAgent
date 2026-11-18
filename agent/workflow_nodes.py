@@ -963,33 +963,33 @@ def workflow_session_write(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
-def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
+def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
     from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
     from workflow_validator import (
         WorkflowValidationError,
         validate_workflow,
-        validate_workflow_dependencies,
+        validate_subprocess_workflow_files,
     )
 
     parent_node = workflow_map[current_id]
-    workflow_name = node_argument(parent_node, "workflow_name")
+    workflow_file = node_argument(parent_node, "workflow_file")
     call_stack = parent_node.get("_workflow_call_stack", [])
-    if workflow_name in call_stack:
-        chain = " -> ".join([*call_stack, workflow_name])
+    if workflow_file in call_stack:
+        chain = " -> ".join([*call_stack, workflow_file])
         raise ValueError(f"recursive workflow call detected: {chain}")
 
-    workflow_document = _read_workspace_workflow_by_name(workflow_name)
+    workflow_document = _read_workspace_workflow_by_name(workflow_file)
     validate_workflow(workflow_document)
-    validate_workflow_dependencies(workflow_document)
+    validate_subprocess_workflow_files(workflow_document)
     for field in ("input_ports", "output_ports"):
         saved = parent_node.get(field, [])
         actual = workflow_document.get(field, [])
         if saved != actual:
             raise WorkflowValidationError(
-                f"workflow {call_stack[-1] if call_stack else workflow_name} "
-                f"dependency {workflow_name} at {parent_node.get('id', 'workflow node')} "
+                f"workflow {call_stack[-1] if call_stack else workflow_file} "
+                f"subprocess Workflow file {workflow_file} at {parent_node.get('id', 'workflow node')} "
                 f"has stale {field}: saved={saved!r}, actual={actual!r}; "
-                "refresh the workflow node metadata"
+                "refresh the subprocess Workflow file metadata"
             )
 
     child_map = parse_workflow(workflow_document)
@@ -998,9 +998,9 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int | Workf
         None,
     )
     if child_input_id is None:
-        raise ValueError(f"callable workflow has no input node: {workflow_name}")
+        raise ValueError(f"subprocess Workflow file has no input node: {workflow_file}")
 
-    next_call_stack = [*call_stack, workflow_name]
+    next_call_stack = [*call_stack, workflow_file]
     for child_node in child_map:
         child_node["_workflow_call_stack"] = next_call_stack
     child_input = child_map[child_input_id]
@@ -1021,8 +1021,8 @@ def workflow_workflow(current_id: int, workflow_map: WorkflowMap) -> int | Workf
             "process_id": child_id,
             "parent_process_id": process["process_id"],
             "root_process_id": process.get("root_process_id", process["process_id"]),
-            "workflow_name": workflow_document.get("name", workflow_name),
-            "workflow_reference": workflow_name,
+            "workflow_name": workflow_document.get("name", workflow_file),
+            "workflow_file": workflow_file,
             "call_stack": next_call_stack,
             "ancestor_invocation_ids": [
                 *process.get("ancestor_invocation_ids", []),
@@ -1090,5 +1090,5 @@ nodes_map: dict[str, NodeHandler] = {
     "session_create": workflow_session_create,
     "session_read": workflow_session_read,
     "session_write": workflow_session_write,
-    "workflow": workflow_workflow,
+    "spawn_and_wait_subprocess": workflow_spawn_and_wait_subprocess,
 }

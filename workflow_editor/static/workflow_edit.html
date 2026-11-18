@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=21">
+  <link rel="stylesheet" href="/css/workflow.css?v=23">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -190,9 +190,9 @@
             <div><strong>异步 Tool</strong><small>仅 Remote Tool，发布后返回 Task ID</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <div id="workflowNodeLibrary" class="workflow-node-library" hidden></div>
+          <div id="subprocessNodeLibrary" class="subprocess-node-library" hidden></div>
         </div>
-        <footer class="library-footer"><span>基础节点 + Workflow</span><span id="nodeCount">4 个实例</span></footer>
+        <footer class="library-footer"><span>基础节点 + 子进程</span><span id="nodeCount">4 个实例</span></footer>
       </aside>
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
@@ -272,25 +272,26 @@
             <div class="metadata-port-list" data-metadata-port-list="output_ports"></div>
           </section>
         </div>
-        <section class="callable-workflow-section struct-metadata-section">
+        <section class="metadata-resource-section struct-metadata-section">
           <header><div><span class="metadata-port-mark struct">ST</span><h3>Struct 声明</h3></div><button id="addStructButton" type="button" title="添加 Struct 声明" aria-label="添加 Struct 声明">+</button></header>
           <p class="section-help">每个声明仅在当前 Workflow 内有效；字段类型可引用其他 Struct。</p>
           <div id="structDefinitions" class="struct-definition-list"></div>
           <p id="structDefinitionsError" class="text-import-error" role="alert"></p>
         </section>
-        <section class="callable-workflow-section">
+        <section class="metadata-resource-section subprocess-workflow-section">
           <header>
-            <div><span class="metadata-port-mark workflow">WF</span><h3>可调用 Workflow</h3></div>
-            <button id="addCallableWorkflowButton" type="button" title="添加可调用 Workflow" aria-label="添加可调用 Workflow">+</button>
+            <div><span class="metadata-port-mark workflow">WF</span><h3>子进程 Workflow 文件</h3></div>
+            <button id="addSubprocessWorkflowFileButton" type="button" title="添加子进程 Workflow 文件" aria-label="添加子进程 Workflow 文件">+</button>
           </header>
-          <div id="callableWorkflowList" class="callable-workflow-list"></div>
+          <p class="section-help">填写工作区中的完整文件名（含扩展名），例如 <code>child.flow</code>。调用时拉起子进程，等待退出后继续。</p>
+          <div id="subprocessWorkflowFileList" class="metadata-resource-list"></div>
         </section>
-        <section class="callable-workflow-section">
+        <section class="metadata-resource-section">
           <header>
             <div><span class="metadata-port-mark remote-tool">T</span><h3>Tools</h3></div>
             <button id="addRemoteToolButton" type="button" title="注册 Tool" aria-label="注册 Tool">+</button>
           </header>
-          <div id="remoteToolList" class="callable-workflow-list"></div>
+          <div id="remoteToolList" class="metadata-resource-list"></div>
         </section>
       </div>
       <footer><span id="resourceState">正在读取数据库资源</span><button id="applyMetadataButton" class="toolbar-button primary" value="default">应用</button></footer>
@@ -305,27 +306,27 @@
     </div>
   </template>
 
-  <template id="callableWorkflowTemplate">
-    <article class="callable-workflow-row">
+  <template id="subprocessWorkflowFileTemplate">
+    <article class="metadata-resource-row">
       <header>
-        <label>Workflow 名称<input data-callable-workflow-name maxlength="120" required placeholder="workflow_name"></label>
-        <button type="button" data-remove-callable-workflow title="删除可调用 Workflow" aria-label="删除可调用 Workflow">×</button>
+        <label>文件名<input data-subprocess-workflow-file-name maxlength="120" required placeholder="child.flow"></label>
+        <button type="button" data-remove-subprocess-workflow-file title="删除子进程 Workflow 文件" aria-label="删除子进程 Workflow 文件">×</button>
       </header>
-      <div class="callable-contract-columns">
+      <div class="interface-contract-columns">
         <section>
-          <div class="callable-contract-heading"><strong>输入契约</strong><button type="button" data-add-callable-port="input_ports" title="添加输入接口">+</button></div>
-          <div class="metadata-port-list" data-callable-port-list="input_ports"></div>
+          <div class="interface-contract-heading"><strong>输入契约</strong><button type="button" data-add-interface-port="input_ports" title="添加输入接口">+</button></div>
+          <div class="metadata-port-list" data-interface-port-list="input_ports"></div>
         </section>
         <section>
-          <div class="callable-contract-heading"><strong>输出契约</strong><button type="button" data-add-callable-port="output_ports" title="添加输出接口">+</button></div>
-          <div class="metadata-port-list" data-callable-port-list="output_ports"></div>
+          <div class="interface-contract-heading"><strong>输出契约</strong><button type="button" data-add-interface-port="output_ports" title="添加输出接口">+</button></div>
+          <div class="metadata-port-list" data-interface-port-list="output_ports"></div>
         </section>
       </div>
     </article>
   </template>
 
   <template id="remoteToolMetadataTemplate">
-    <article class="callable-workflow-row remote-tool-metadata-row">
+    <article class="metadata-resource-row remote-tool-metadata-row">
       <header>
         <div class="tool-metadata-picker">
           <fieldset class="tool-kind-switch"><legend>执行位置</legend>
@@ -339,14 +340,14 @@
           <button type="button" data-remove-remote-tool title="删除 Tool" aria-label="删除 Tool">×</button>
         </div>
       </header>
-      <div class="callable-contract-columns">
+      <div class="interface-contract-columns">
         <section>
-          <div class="callable-contract-heading"><strong>输入契约</strong><button type="button" data-add-callable-port="input_ports" title="添加输入接口">+</button></div>
-          <div class="metadata-port-list" data-callable-port-list="input_ports"></div>
+          <div class="interface-contract-heading"><strong>输入契约</strong><button type="button" data-add-interface-port="input_ports" title="添加输入接口">+</button></div>
+          <div class="metadata-port-list" data-interface-port-list="input_ports"></div>
         </section>
         <section>
-          <div class="callable-contract-heading"><strong>输出契约</strong><button type="button" data-add-callable-port="output_ports" title="添加输出接口">+</button></div>
-          <div class="metadata-port-list" data-callable-port-list="output_ports"></div>
+          <div class="interface-contract-heading"><strong>输出契约</strong><button type="button" data-add-interface-port="output_ports" title="添加输出接口">+</button></div>
+          <div class="metadata-port-list" data-interface-port-list="output_ports"></div>
         </section>
       </div>
     </article>
@@ -429,7 +430,7 @@
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <p class="node-help">节点完成后挂起当前工作流进程；向关联终端发送一条消息后，从下一节点继续。使用“读取终端输入”获取用户输入，再由下游节点判断分支。子工作流拥有独立进程和终端，也支持等待。</p>
+      <p class="node-help">节点完成后挂起当前工作流进程；向关联终端发送一条消息后，从下一节点继续。使用“读取终端输入”获取用户输入，再由下游节点判断分支。子进程拥有独立终端，也支持等待。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -557,7 +558,7 @@
   </template>
 
   <template id="context_createInspectorTemplate">
-    <div data-interface-contract data-contract-status="当前调用创建，子 Workflow 可访问"></div>
+    <div data-interface-contract data-contract-status="当前调用创建，子进程可访问"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
@@ -691,15 +692,16 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="workflowInspectorTemplate">
-    <div data-interface-contract data-contract-title="Workflow 调用" data-contract-status="只读契约"></div>
+  <template id="spawn_and_wait_subprocessInspectorTemplate">
+    <div data-interface-contract data-contract-title="拉起并等待子进程" data-contract-status="只读契约"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>目标 Workflow<input data-workflow-name readonly></label>
+      <label>子进程 Workflow 文件<input data-workflow-file readonly></label>
+      <p class="node-help">按精确工作区文件名拉起独立子进程和终端。当前进程等待子进程退出，接收输出后继续；子进程失败或被终止时向当前进程传播错误。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=31"></script>
+  <script type="module" src="/workflow.js?v=32"></script>
 </body>
 </html>

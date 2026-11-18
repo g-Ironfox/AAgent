@@ -14,7 +14,7 @@ export function createIntegrationInspector(context) {
     if (node.type === 'tool') renderTool(node);
     if (node.type === 'local_tool') renderLocalToolSelect(node);
     if (['remote_sync_tool', 'remote_async_tool'].includes(node.type)) renderRemoteToolFields(node);
-    if (node.type === 'workflow') context.elements.inspectorContent.querySelector('[data-workflow-name]').value = node.workflow_name;
+    if (node.type === "spawn_and_wait_subprocess") context.elements.inspectorContent.querySelector('[data-workflow-file]').value = node.workflow_file;
   }
 
   function bind(node) {

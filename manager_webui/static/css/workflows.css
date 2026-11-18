@@ -67,7 +67,7 @@
 .metadata-heading { min-height:66px; padding:12px 15px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line); }
 .metadata-heading p { margin:0 0 4px; color:var(--green); font:700 9px Consolas,monospace; }
 .metadata-heading h3 { margin:0; font:700 17px Georgia,"Microsoft YaHei",serif; letter-spacing:0; }
-.metadata-readonly,.dependency-count { color:var(--muted); font:9px Consolas,"Microsoft YaHei",monospace; }
+.metadata-readonly,.reference-count { color:var(--muted); font:9px Consolas,"Microsoft YaHei",monospace; }
 .metadata-readonly { padding:4px 7px; border:1px solid var(--line); background:#fafbf9; }
 .metadata-columns { margin:10px 14px 14px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border:1px solid var(--line); }
 .metadata-port-section + .metadata-port-section { border-left:1px solid var(--line); }
@@ -83,33 +83,32 @@
 .metadata-port-row:last-child { border-bottom:0; }
 .metadata-port-row strong { min-width:0; overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
 .metadata-port-row code { flex:none; padding:3px 6px; color:var(--green); background:var(--green-soft); font-size:9px; }
-.workflow-dependencies { border-top:1px solid var(--line); }
-.workflow-dependencies > header { min-height:66px; padding:12px 15px; display:flex; align-items:center; justify-content:space-between; gap:16px; background:#fafbf9; }
-.workflow-dependencies > header p { margin:0 0 4px; color:var(--green); font:700 9px Consolas,monospace; }
-.workflow-dependencies > header h3 { margin:0; font:700 17px Georgia,"Microsoft YaHei",serif; letter-spacing:0; }
-.workflow-dependency-list { padding:14px; display:grid; gap:12px; border-top:1px solid var(--line); background:#f3f5f2; }
-.workflow-dependency-list > .metadata-port-empty { margin:-14px; background:#fff; }
-.workflow-dependency-item { overflow:hidden; border:1px solid #ccd4ce; border-left:3px solid #785d9b; background:#fff; box-shadow:0 3px 10px rgba(23,32,29,.04); }
-.workflow-dependency-item > header { min-height:54px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; background:#faf9fc; }
-.workflow-dependency-identity { min-width:0; display:flex; align-items:center; gap:9px; }
-.workflow-dependency-item > header strong { min-width:0; overflow-wrap:anywhere; font-size:12px; }
-.dependency-edit-button,.dependency-save-button,.dependency-cancel-button { height:28px; padding:0 9px; color:var(--muted); border:1px solid var(--line); background:#fff; font-size:10px; white-space:nowrap; }
-.dependency-edit-button:hover,.dependency-cancel-button:hover { color:var(--ink); border-color:#aeb8b1; background:#f4f6f3; }
-.dependency-edit-actions { display:flex; flex:none; align-items:center; gap:5px; }
-.dependency-save-button { color:#fff; border-color:var(--green); background:var(--green); }
-.dependency-save-button:hover { border-color:#0d6048; background:#0d6048; }
-.dependency-name-input { width:min(220px,32vw); min-width:140px; height:30px; padding:0 8px; color:var(--ink); border:1px solid var(--green); background:#fff; font-size:11px; }
-.dependency-name-input.invalid { border-color:var(--red); background:#fff7f6; }
-.dependency-save-button:disabled { cursor:not-allowed; opacity:.48; }
-.dependency-contract-warning { margin:0; padding:9px 14px; color:var(--red); border-bottom:1px solid #efd1ce; background:#fff7f6; font-size:10px; line-height:1.5; }
-.dependency-contracts { margin:0 12px 12px 28px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border:1px solid #dfe4e0; border-left:2px solid #b9c3bc; background:#fff; }
-.dependency-contract + .dependency-contract { border-left:1px solid #dfe4e0; }
-.dependency-contract h5 { min-height:42px; margin:0; padding:8px 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid #e7ebe7; background:#f7f9f7; font:700 11px Consolas,monospace; }
-.dependency-contract-ports { min-height:48px; }
+.workflow-subprocess-files { border-top:1px solid var(--line); }
+.workflow-subprocess-files > header { min-height:66px; padding:12px 15px; display:flex; align-items:center; justify-content:space-between; gap:16px; background:#fafbf9; }
+.workflow-subprocess-files > header p { margin:0 0 4px; color:var(--green); font:700 9px Consolas,monospace; }
+.workflow-subprocess-files > header h3 { margin:0; font:700 17px Georgia,"Microsoft YaHei",serif; letter-spacing:0; }
+.workflow-reference-list { padding:14px; display:grid; gap:12px; border-top:1px solid var(--line); background:#f3f5f2; }
+.workflow-reference-list > .metadata-port-empty { margin:-14px; background:#fff; }
+.workflow-reference-item { overflow:hidden; border:1px solid #ccd4ce; border-left:3px solid #785d9b; background:#fff; box-shadow:0 3px 10px rgba(23,32,29,.04); }
+.workflow-reference-item > header { min-height:54px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; background:#faf9fc; }
+.workflow-reference-identity { min-width:0; display:flex; align-items:center; gap:9px; }
+.workflow-reference-item > header strong { min-width:0; overflow-wrap:anywhere; font-size:12px; }
+.reference-edit-button,.reference-save-button,.reference-cancel-button { height:28px; padding:0 9px; color:var(--muted); border:1px solid var(--line); background:#fff; font-size:10px; white-space:nowrap; }
+.reference-edit-button:hover,.reference-cancel-button:hover { color:var(--ink); border-color:#aeb8b1; background:#f4f6f3; }
+.reference-edit-actions { display:flex; flex:none; align-items:center; gap:5px; }
+.reference-save-button { color:#fff; border-color:var(--green); background:var(--green); }
+.reference-save-button:hover { border-color:#0d6048; background:#0d6048; }
+.reference-name-input { width:min(220px,32vw); min-width:140px; height:30px; padding:0 8px; color:var(--ink); border:1px solid var(--green); background:#fff; font-size:11px; }
+.reference-name-input.invalid { border-color:var(--red); background:#fff7f6; }
+.reference-save-button:disabled { cursor:not-allowed; opacity:.48; }
+.reference-contracts { margin:0 12px 12px 28px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border:1px solid #dfe4e0; border-left:2px solid #b9c3bc; background:#fff; }
+.reference-contract + .reference-contract { border-left:1px solid #dfe4e0; }
+.reference-contract h5 { min-height:42px; margin:0; padding:8px 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid #e7ebe7; background:#f7f9f7; font:700 11px Consolas,monospace; }
+.reference-contract-ports { min-height:48px; }
 .metadata-port-mark.workflow { background:#785d9b; }
 .metadata-port-mark.remote-tool { background:#a94f36; }
-.workflow-remote-tools .workflow-dependency-item { border-left-color:#a94f36; }
-.workflow-remote-tools .workflow-dependency-item > header { background:#fdf8f7; }
+.workflow-remote-tools .workflow-reference-item { border-left-color:#a94f36; }
+.workflow-remote-tools .workflow-reference-item > header { background:#fdf8f7; }
 .workflow-dialog { width:min(440px,calc(100% - 28px)); padding:0; color:var(--ink); border:1px solid var(--line); border-radius:4px; background:var(--surface); box-shadow:0 22px 60px rgba(23,32,29,.2); }
 .workflow-dialog::backdrop { background:rgba(23,32,29,.42); }
 .workflow-dialog form { display:grid; }
@@ -136,5 +135,5 @@
 .dialog-submit.secondary:hover:not(:disabled) { color:#fff; border-color:var(--red); background:var(--red); }
 .dialog-submit:disabled { cursor:not-allowed; opacity:.48; }
 @media (max-width:440px) { .workflow-dialog footer { padding:10px 12px; gap:6px; } .dialog-cancel,.dialog-submit { padding:0 11px; } .dialog-submit-actions { gap:5px; } }
-@media (max-width:1100px) { .workflow-management-workspace { grid-template-columns:270px minmax(0,1fr); } .metadata-columns,.dependency-contracts { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section { border-top:1px solid var(--line); border-left:0; } .dependency-contract + .dependency-contract { border-top:1px solid #dfe4e0; border-left:0; } }
-@media (max-width:700px) { .workflow-management-main { width:100%; padding:0; } .workflow-management-state { min-width:0; padding-left:10px; } .workflow-management-state span { display:none; } .workflow-management-workspace { grid-template-columns:1fr; overflow:auto; border-width:0; } .workflow-management-sidebar { min-height:240px; max-height:310px; border-right:0; border-bottom:1px solid var(--line); } .workflow-management-heading,.configuration-heading { min-height:70px; padding:11px 14px; } .workflow-management-heading h1,.configuration-title h2 { font-size:20px; } .configuration-heading { align-items:flex-start; flex-direction:column; } .configuration-actions { width:100%; flex-wrap:wrap; } .configuration-content { min-height:320px; padding:16px 14px; } .workflow-description { padding:12px 14px; grid-template-columns:1fr; gap:8px; } .workflow-description > p { min-height:0; display:block; margin:0; } .workflow-canvas-preview-stage { width:calc(100% - 20px); max-height:300px; } .metadata-columns { margin-right:10px; margin-left:10px; } .workflow-dependency-list { padding:10px; } .workflow-dependency-item > header { align-items:flex-start; flex-direction:column; } .dependency-contracts { margin:0 8px 8px 18px; } }
+@media (max-width:1100px) { .workflow-management-workspace { grid-template-columns:270px minmax(0,1fr); } .metadata-columns,.reference-contracts { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section { border-top:1px solid var(--line); border-left:0; } .reference-contract + .reference-contract { border-top:1px solid #dfe4e0; border-left:0; } }
+@media (max-width:700px) { .workflow-management-main { width:100%; padding:0; } .workflow-management-state { min-width:0; padding-left:10px; } .workflow-management-state span { display:none; } .workflow-management-workspace { grid-template-columns:1fr; overflow:auto; border-width:0; } .workflow-management-sidebar { min-height:240px; max-height:310px; border-right:0; border-bottom:1px solid var(--line); } .workflow-management-heading,.configuration-heading { min-height:70px; padding:11px 14px; } .workflow-management-heading h1,.configuration-title h2 { font-size:20px; } .configuration-heading { align-items:flex-start; flex-direction:column; } .configuration-actions { width:100%; flex-wrap:wrap; } .configuration-content { min-height:320px; padding:16px 14px; } .workflow-description { padding:12px 14px; grid-template-columns:1fr; gap:8px; } .workflow-description > p { min-height:0; display:block; margin:0; } .workflow-canvas-preview-stage { width:calc(100% - 20px); max-height:300px; } .metadata-columns { margin-right:10px; margin-left:10px; } .workflow-reference-list { padding:10px; } .workflow-reference-item > header { align-items:flex-start; flex-direction:column; } .reference-contracts { margin:0 8px 8px 18px; } }

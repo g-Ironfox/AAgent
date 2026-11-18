@@ -1,4 +1,4 @@
-﻿"""Integration checks for the standalone skill, exported designs and examples."""
+"""Integration checks for the standalone skill, exported designs and examples."""
 from __future__ import annotations
 
 import copy
@@ -77,7 +77,7 @@ class WorkflowDesignTest(unittest.TestCase):
     def test_missing_dependency_is_rejected(self):
         design = copy.deepcopy(self.examples[1])
         design["workflows"].pop(0)
-        with self.assertRaisesRegex(DesignError, "missing complete dependency"):
+        with self.assertRaisesRegex(DesignError, "missing complete subprocess Workflow file"):
             validate_design(design)
 
     def test_recursive_dependency_graph_is_rejected(self):
@@ -87,13 +87,13 @@ class WorkflowDesignTest(unittest.TestCase):
         second = copy.deepcopy(first)
         second["name"] = "second.flow"
         for graph, target in [(first, "second.flow"), (second, "echo.flow")]:
-            graph["nodes"].insert(1, {"id": "call", "type": "workflow",
-                "name": "调用子工作流",
+            graph["nodes"].insert(1, {"id": "call", "type": "spawn_and_wait_subprocess",
+                "name": "调用子进程",
                 "x": 240, "y": 0,
-                "arguments": {"workflow_name": target},
+                "arguments": {"workflow_file": target},
                 "input_ports": copy.deepcopy(graph["input_ports"]),
                 "output_ports": copy.deepcopy(graph["output_ports"])})
-            graph["workflow_nodes"] = [{"name": target,
+            graph["subprocess_workflow_files"] = [{"name": target,
                 "input_ports": copy.deepcopy(graph["input_ports"]),
                 "output_ports": copy.deepcopy(graph["output_ports"])}]
             graph["connections"] = [
@@ -102,7 +102,7 @@ class WorkflowDesignTest(unittest.TestCase):
                 {"fromId": "input", "fromPortId": "workflow:text", "toId": "call", "toPortId": "workflow:text", "type": "content"},
                 {"fromId": "call", "fromPortId": "workflow:content", "toId": "output", "toPortId": "workflow:content", "type": "content"}]
         design["workflows"].append({"filename": second["name"], "workflow": second})
-        with self.assertRaisesRegex(DesignError, "recursive workflow dependency"):
+        with self.assertRaisesRegex(DesignError, "recursive subprocess Workflow file reference"):
             validate_design(design)
 
     def test_while_pop_is_accepted_with_context_input_and_loop_return(self):
@@ -119,7 +119,7 @@ class WorkflowDesignTest(unittest.TestCase):
         design = copy.deepcopy(self.examples[1])
         main = design["workflows"][-1]["workflow"]
         design["workflows"] = [design["workflows"][-1]]
-        main["workflow_nodes"] = []
+        main["subprocess_workflow_files"] = []
         call = next(n for n in main["nodes"] if n["id"] == "process")
         call.clear()
         call.update(id="process", type="json_tool", x=240, y=180)

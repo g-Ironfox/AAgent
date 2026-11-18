@@ -18,7 +18,7 @@ function fixture(valueType = 'list-content') {
   const source = struct ? 'list' : 'input';
   return {
     schema_version: '2.0', name: 'list_length', metadata: { structs: [task], tools: [] },
-    input_ports: inputs, output_ports: [{ name: 'length', type: 'number' }], workflow_nodes: [], remote_tools: [],
+    input_ports: inputs, output_ports: [{ name: 'length', type: 'number' }], subprocess_workflow_files: [], remote_tools: [],
     nodes: [
       { id: 'input', type: 'input', workflowPorts: inputs.map((port) => ({ ...port, id: `workflow:${port.name}` })) },
       ...(struct ? [{ id: 'list', type: 'construct_list', arguments: { item_type: 'struct:task', initial_value_count: 0 }, dataInputPorts: [] }] : []),

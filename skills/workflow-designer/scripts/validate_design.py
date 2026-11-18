@@ -1,4 +1,4 @@
-﻿"""Validate a workflow-design result and optionally export native .flow files.
+"""Validate a workflow-design result and optionally export native .flow files.
 
 This is local/offline validation. It neither deploys files nor verifies live
 model registrations, credentials, process launch configuration, or Provider availability.
@@ -23,7 +23,7 @@ FILENAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,114}\.flow")
 MODEL_ID = re.compile(r"[0-9a-fA-F]{24}")
 ROOT_FIELDS = {
     "schema_version", "name", "description", "metadata", "input_ports",
-    "output_ports", "nodes", "connections", "workflow_nodes", "remote_tools",
+    "output_ports", "nodes", "connections", "subprocess_workflow_files", "remote_tools",
 }
 
 
@@ -166,39 +166,39 @@ def validate_design(result: Any) -> list[dict[str, Any]]:
         by_name[filename] = workflow
     require(result["entrypoint"] in by_name, "entrypoint is not included")
 
-    dependencies: dict[str, list[str]] = {}
+    subprocess_files: dict[str, list[str]] = {}
     for filename, workflow in by_name.items():
-        declarations = workflow["workflow_nodes"]
+        declarations = workflow["subprocess_workflow_files"]
         names = [ref["name"] for ref in declarations]
-        require(len(names) == len(set(names)), f"{filename}: duplicate dependency declaration")
-        calls = [node for node in workflow["nodes"] if node["type"] == "workflow"]
-        call_names = {node["arguments"]["workflow_name"] for node in calls}
-        require(set(names) == call_names, f"{filename}: declarations must match used dependencies")
+        require(len(names) == len(set(names)), f"{filename}: duplicate subprocess Workflow file declaration")
+        calls = [node for node in workflow["nodes"] if node["type"] == "spawn_and_wait_subprocess"]
+        call_names = {node["arguments"]["workflow_file"] for node in calls}
+        require(set(names) == call_names, f"{filename}: declarations must match used subprocess Workflow files")
         for name in names:
-            require(name in by_name, f"{filename}: missing complete dependency {name}")
+            require(name in by_name, f"{filename}: missing complete subprocess Workflow file {name}")
         for reference in [*declarations, *calls]:
-            name = reference["arguments"]["workflow_name"] if reference.get("type") == "workflow" else reference["name"]
+            name = reference["arguments"]["workflow_file"] if reference.get("type") == "spawn_and_wait_subprocess" else reference["name"]
             for side in ("input_ports", "output_ports"):
                 require(reference[side] == by_name[name][side],
                         f"{filename}: stale {side} snapshot for {name}")
-        dependencies[filename] = names
+        subprocess_files[filename] = names
 
     visiting: set[str] = set()
     visited: set[str] = set()
     ordered: list[dict[str, Any]] = []
 
     def visit(name: str) -> None:
-        require(name not in visiting, f"recursive workflow dependency: {name}")
+        require(name not in visiting, f"recursive subprocess Workflow file reference: {name}")
         if name in visited:
             return
         visiting.add(name)
-        for child in dependencies[name]:
+        for child in subprocess_files[name]:
             visit(child)
         visiting.remove(name)
         visited.add(name)
         ordered.append({"filename": name, "workflow": by_name[name]})
 
-    # Validate even unused workflows so hidden dependency cycles cannot slip in.
+    # Validate even unused workflows so hidden subprocess reference cycles cannot slip in.
     for name in by_name:
         visit(name)
     reachable: set[str] = set()
@@ -207,7 +207,7 @@ def validate_design(result: Any) -> list[dict[str, Any]]:
         name = pending.pop()
         if name not in reachable:
             reachable.add(name)
-            pending.extend(dependencies[name])
+            pending.extend(subprocess_files[name])
     require(reachable == set(by_name), "design includes workflows unused by the entrypoint")
     require([item["filename"] for item in result["workflows"]]
             == [item["filename"] for item in ordered],

@@ -34,7 +34,7 @@ class WorkflowNumberTest(unittest.TestCase):
     def test_number_interfaces_are_supported_for_dependencies_and_tools(self):
         workflow = numeric_workflow()
         ports = workflow["input_ports"]
-        workflow["workflow_nodes"] = [{"name": "child", "input_ports": ports, "output_ports": ports}]
+        workflow["subprocess_workflow_files"] = [{"name": "child", "input_ports": ports, "output_ports": ports}]
         workflow["metadata"] = {"tools": [{"name": "numeric", "kind": "remote",
                                            "input_ports": ports, "output_ports": ports}]}
         for kind in ("local", "remote"):

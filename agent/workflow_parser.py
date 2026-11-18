@@ -11,6 +11,7 @@ from typing import Any
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from workflow_contract import (
+    migrate_subprocess_workflow_format,
     boundary_ports,
     data_ports_for_node,
     node_argument,
@@ -32,6 +33,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     slot in the form ``[node_index, port_id, value_or_default]``; data outputs
     contain endpoint lists.
     """
+    workflow = migrate_subprocess_workflow_format(workflow)
     if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
         raise WorkflowParseError(
             f"unsupported workflow schema_version: {workflow.get('schema_version')!r}; "
@@ -171,7 +173,7 @@ def _read_workflow(workflow_name: str, *, by_id: bool = False) -> dict[str, Any]
         workflow = client[database_name][collection_name].find_one(query, {"_id": False})
     if workflow is None:
         raise WorkflowParseError(f"workflow not found: {workflow_name}")
-    return workflow
+    return migrate_subprocess_workflow_format(workflow)
 
 
 def _read_workspace_workflow_file(
@@ -212,7 +214,7 @@ def _read_workspace_workflow_file(
         raise WorkflowParseError(f"invalid workflow JSON in workspace file: {identifier}") from error
     if not isinstance(workflow, dict):
         raise WorkflowParseError(f"workflow file must contain a JSON object: {identifier}")
-    return workflow
+    return migrate_subprocess_workflow_format(workflow)
 
 
 def _read_workspace_workflow(file_id: str) -> dict[str, Any]:

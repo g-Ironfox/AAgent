@@ -49,7 +49,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   session_create: new Set(['value_type']),
   session_read: new Set(['value_type']),
   session_write: new Set(['value_type']),
-  workflow: new Set(['workflow_name']),
+  spawn_and_wait_subprocess: new Set(['workflow_file']),
 };
 const NODE_ARGUMENT_FIELDS = new Set(Object.values(NODE_ARGUMENT_FIELDS_BY_TYPE).flatMap((fields) => [...fields]));
 
@@ -136,7 +136,7 @@ export const state = {
   connections: structuredClone(initialConnections),
   input_ports: [],
   output_ports: [],
-  workflow_nodes: [],
+  subprocess_workflow_files: [],
 };
 
 export function nodeById(id) {
@@ -168,7 +168,7 @@ export function workflowSnapshot() {
     metadata: state.metadata,
     input_ports: state.input_ports,
     output_ports: state.output_ports,
-    workflow_nodes: state.workflow_nodes,
+    subprocess_workflow_files: state.subprocess_workflow_files,
     nodes: state.nodes.map(compactNodeArguments),
     connections: state.connections,
   });
@@ -182,14 +182,14 @@ export function resetWorkflow() {
     metadata: { structs: [], tools: [] },
     input_ports: [],
     output_ports: [],
-    workflow_nodes: [],
+    subprocess_workflow_files: [],
       nodes: initialNodes,
     connections: initialConnections,
   });
 }
 
-function callableWorkflowMetadata(saved) {
-  const declarations = Array.isArray(saved?.workflow_nodes) ? saved.workflow_nodes : [];
+function subprocessWorkflowFileMetadata(saved) {
+  const declarations = Array.isArray(saved?.subprocess_workflow_files) ? saved.subprocess_workflow_files : [];
   const names = new Set();
   return declarations.flatMap((workflow) => {
     const name = typeof workflow?.name === 'string' && workflow.name.trim()
@@ -224,7 +224,7 @@ function remoteToolMetadata(saved) {
   });
 }
 
-function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteTools, structs) {
+function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, remoteTools, structs) {
   node = expandNodeArguments(node);
   // Migrate the former unified async configuration without changing its ports.
   if (node.type === 'tool' && node.mode === 'async') {
@@ -498,13 +498,13 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
       }
     }
   }
-  if (node.type === 'workflow') {
-    const workflowName = typeof node.workflow_name === 'string' && node.workflow_name.trim()
-      ? node.workflow_name.trim().slice(0, 120)
+  if (node.type === "spawn_and_wait_subprocess") {
+    const workflowName = typeof node.workflow_file === 'string' && node.workflow_file.trim()
+      ? node.workflow_file.trim().slice(0, 120)
       : '';
     if (!workflowName) return null;
-    const declaration = callableWorkflows.get(workflowName);
-    normalized.workflow_name = declaration?.name || workflowName;
+    const declaration = subprocessWorkflowFiles.get(workflowName);
+    normalized.workflow_file = declaration?.name || workflowName;
     normalized.input_ports = structuredClone(declaration?.input_ports || boundaryPorts(node.input_ports).map(({ id, ...port }) => port));
     normalized.output_ports = structuredClone(declaration?.output_ports || boundaryPorts(node.output_ports).map(({ id, ...port }) => port));
   }
@@ -512,6 +512,7 @@ function normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteT
 }
 
 export function migrateWorkflowToCurrentVersion(workflow) {
+  workflow = migrateSubprocessWorkflowFormat(workflow);
   if (!['1.6', '1.7'].includes(workflow?.schema_version)) return workflow;
   const migrated = structuredClone(workflow);
   migrated.schema_version = WORKFLOW_SCHEMA_VERSION;
@@ -536,7 +537,7 @@ export function loadSnapshot(saved, metadata = null) {
     const outputPorts = boundaryPorts(metadata?.output_ports ?? saved?.output_ports);
     if (inputPorts.length !== (metadata?.input_ports ?? saved?.input_ports ?? []).length
       || outputPorts.length !== (metadata?.output_ports ?? saved?.output_ports ?? []).length) return false;
-    for (const item of [...(saved.workflow_nodes || []), ...(saved.remote_tools || []), ...savedNodes]) {
+    for (const item of [...(saved.subprocess_workflow_files || []), ...(saved.remote_tools || []), ...savedNodes]) {
       for (const field of ['input_ports', 'output_ports', 'workflowPorts']) {
         if (item[field] !== undefined && (!Array.isArray(item[field])
           || item[field].some((port) => !port || !DATA_TYPES.has(port.type)))) return false;
@@ -546,8 +547,8 @@ export function loadSnapshot(saved, metadata = null) {
       && connection.type !== 'control' && !DATA_TYPES.has(connection.type)
       && !/^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(connection.type || ''))) return false;
     const structDefinitions = validateStructDefinitions(saved?.metadata?.structs ?? []);
-    const workflowNodes = callableWorkflowMetadata(saved);
-    const callableWorkflows = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
+    const workflowNodes = subprocessWorkflowFileMetadata(saved);
+    const subprocessWorkflowFiles = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
     const remoteTools = remoteToolMetadata(saved).map((tool) => ({ ...tool, kind: 'remote' }));
     const declaredTools = saved?.metadata?.tools ?? [];
     if (!Array.isArray(declaredTools)) return false;
@@ -584,7 +585,7 @@ export function loadSnapshot(saved, metadata = null) {
     for (const node of savedNodes) {
       if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type) || !hasStrictNodeFormat(node)) return false;
       ids.add(node.id);
-      const normalized = normalizeNode(node, inputPorts, outputPorts, callableWorkflows, remoteToolsByName, structDefinitions);
+      const normalized = normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, remoteToolsByName, structDefinitions);
       if (!normalized) return false;
       if (['local_tool', 'remote_sync_tool'].includes(normalized.type)) {
         const declaration = remoteToolsByName.get(normalized.tool);
@@ -609,7 +610,7 @@ export function loadSnapshot(saved, metadata = null) {
     setNodeStructs(nodes, state.metadata.structs);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
-    state.workflow_nodes = workflowNodes;
+    state.subprocess_workflow_files = workflowNodes;
     state.nodes = nodes;
     state.connections = filterValidConnections(Array.isArray(saved?.connections) ? saved.connections : initialConnections, nodes);
     return true;
@@ -627,9 +628,9 @@ export function normalizeImportedWorkflow(imported) {
   return {
     ...imported.workflows[main],
     name: imported.workflows[main].name || main,
-    workflow_nodes: entries
+    subprocess_workflow_files: entries
       .filter(([name]) => name !== main)
-      .map(([name, callable]) => ({ name, input_ports: callable.input_ports || [], output_ports: callable.output_ports || [] })),
+      .map(([name, file]) => ({ name, input_ports: file.input_ports || [], output_ports: file.output_ports || [] })),
     remote_tools: imported.workflows[main].remote_tools || [],
   };
 }
@@ -639,7 +640,7 @@ export function parseWorkflowText(text) {
   if (imported?.format === 'aagent.workflow-design/1') {
     const entrypoint = typeof imported.entrypoint === 'string' && imported.entrypoint.trim()
       ? imported.entrypoint : '入口 .flow 文件';
-    throw new Error(`这是多工作流设计包，不能作为单个 Workflow 导入。请先保存子工作流，再导入拆分后的 ${entrypoint}；原生文件的 schema_version 必须是字符串 "2.0"。`);
+    throw new Error(`这是多工作流设计包，不能作为单个 Workflow 导入。请先保存子进程，再导入拆分后的 ${entrypoint}；原生文件的 schema_version 必须是字符串 "2.0"。`);
   }
   const workflow = migrateWorkflowToCurrentVersion(normalizeImportedWorkflow(imported));
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('内容不是有效的 Workflow JSON');
@@ -647,4 +648,37 @@ export function parseWorkflowText(text) {
   if (typeof workflow.name !== 'string' || !workflow.name.trim()) throw new Error('Workflow 名称不能为空');
   if (!Array.isArray(workflow.nodes) || !Array.isArray(workflow.connections)) throw new Error('Workflow 缺少节点或连接数据');
   return workflow;
+}
+
+export function migrateSubprocessWorkflowFormat(workflow) {
+  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) return workflow;
+  const next = structuredClone(workflow);
+  const stable = (value) => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
+  if (Object.hasOwn(next, 'workflow_nodes')) {
+    if (Object.hasOwn(next, 'subprocess_workflow_files')
+      && stable(next.subprocess_workflow_files) !== stable(next.workflow_nodes)) {
+      throw new Error('Conflicting workflow_nodes and subprocess_workflow_files');
+    }
+    next.subprocess_workflow_files = next.workflow_nodes;
+    delete next.workflow_nodes;
+  }
+  for (const ref of next.subprocess_workflow_files || []) {
+    if (ref && typeof ref === 'object' && Object.hasOwn(ref, 'workflow_name')) {
+      if (Object.hasOwn(ref, 'name') && ref.name !== ref.workflow_name) throw new Error('Conflicting subprocess file names');
+      ref.name = ref.workflow_name;
+      delete ref.workflow_name;
+    }
+  }
+  for (const node of next.nodes || []) {
+    if (!node || !['workflow', 'spawn_and_wait_subprocess'].includes(node.type)) continue;
+    node.type = 'spawn_and_wait_subprocess';
+    for (const args of [node, node.arguments]) {
+      if (!args || !Object.hasOwn(args, 'workflow_name')) continue;
+      if (Object.hasOwn(args, 'workflow_file') && args.workflow_file !== args.workflow_name) throw new Error('Conflicting workflow_name and workflow_file');
+      args.workflow_file = args.workflow_name;
+      delete args.workflow_name;
+    }
+  }
+  return next;
 }
