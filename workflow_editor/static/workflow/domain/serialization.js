@@ -190,11 +190,10 @@ function subprocessWorkflowFileMetadata(saved) {
   const names = new Set();
   return declarations.flatMap((workflow) => {
     const name = typeof workflow?.name === 'string' && workflow.name.trim()
-      ? workflow.name.trim().slice(0, 120)
+      ? workflow.name.trim()
       : '';
-    const normalizedName = name.toLocaleLowerCase();
-    if (!name || names.has(normalizedName)) return [];
-    names.add(normalizedName);
+    if (!name || names.has(name)) return [];
+    names.add(name);
     return [{
       name,
       input_ports: boundaryPorts(workflow.input_ports).map(({ id, ...port }) => port),
@@ -497,7 +496,7 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
   }
   if (node.type === "spawn_and_wait_subprocess") {
     const workflowName = typeof node.workflow_file === 'string' && node.workflow_file.trim()
-      ? node.workflow_file.trim().slice(0, 120)
+      ? node.workflow_file.trim()
       : '';
     if (!workflowName) return null;
     const declaration = subprocessWorkflowFiles.get(workflowName);

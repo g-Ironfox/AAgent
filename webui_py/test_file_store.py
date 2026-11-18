@@ -1,8 +1,11 @@
 import unittest
 
-from pymongo.errors import ServerSelectionTimeoutError
+from pymongo.errors import DuplicateKeyError, ServerSelectionTimeoutError
 
-from file_store import FileConflictError, FileMissingError, FileStore, FileStoreUnavailableError
+from files import FileRequest, create_files_router
+from file_store import (
+    FileConflictError, FileMissingError, FileNameConflictError, FileStore, FileStoreUnavailableError,
+)
 
 
 class FakeCursor(list):
@@ -82,6 +85,11 @@ class FakeCollection:
 class FakeWorkspaceCollection:
     def __init__(self):
         self.documents = []
+        self.indexes = []
+        self.reject_name_once = None
+
+    def create_index(self, keys, **options):
+        self.indexes.append((keys, options))
 
     def find_one(self, query, projection=None, sort=None):
         docs = [doc for doc in self.documents if all(
@@ -113,15 +121,36 @@ class FakeWorkspaceCollection:
     def insert_one(self, document):
         if any(doc.get("_id") == document["_id"] for doc in self.documents):
             raise RuntimeError("duplicate key")
+        if document.get("name") == self.reject_name_once:
+            self.reject_name_once = None
+            raise DuplicateKeyError(
+                "duplicate workspace filename", details={"keyPattern": {"generation": 1, "name": 1}}
+            )
+        self._assert_unique_name(document)
         self.documents.append(dict(document))
 
     def replace_one(self, query, document, upsert=False):
         for index, current in enumerate(self.documents):
             if current.get("_id") == query["_id"]:
+                self._assert_unique_name(document, exclude_id=query["_id"])
                 self.documents[index] = dict(document)
                 return
         if upsert:
             self.documents.append(dict(document))
+
+    def _assert_unique_name(self, document, exclude_id=None):
+        if not document.get("file_id"):
+            return
+        if any(
+            current.get("file_id")
+            and current.get("_id") != exclude_id
+            and current.get("generation") == document.get("generation")
+            and current.get("name") == document.get("name")
+            for current in self.documents
+        ):
+            raise DuplicateKeyError(
+                "duplicate workspace filename", details={"keyPattern": {"generation": 1, "name": 1}}
+            )
 
     def delete_one(self, query):
         self.documents = [doc for doc in self.documents if doc.get("_id") != query["_id"]]
@@ -154,6 +183,47 @@ class FileStoreTests(unittest.TestCase):
         replayed.delete_file(created["file_id"], pinned["revision"])
         self.assertEqual(replayed.list_files(), [])
         self.assertEqual(FileStore(self.collection, self.workspace).list_files(), [])
+
+    def test_file_names_are_unique_case_sensitively_for_create_and_rename(self):
+        lower = self.store.create_file("child.flow")
+        upper = self.store.create_file("Child.flow")
+        self.assertNotEqual(lower["file_id"], upper["file_id"])
+
+        with self.assertRaises(FileNameConflictError):
+            self.store.create_file("child.flow")
+        with self.assertRaises(FileNameConflictError):
+            self.store.update_file(upper["file_id"], "child.flow", "", upper["revision"])
+
+        unchanged = self.store.update_file(lower["file_id"], "child.flow", "updated", lower["revision"])
+        renamed = self.store.update_file(upper["file_id"], "CHILD.flow", "", upper["revision"])
+        self.assertEqual(unchanged["name"], "child.flow")
+        self.assertEqual(renamed["name"], "CHILD.flow")
+
+    def test_file_name_index_is_unique_and_uses_simple_collation(self):
+        keys, options = self.workspace.indexes[0]
+        self.assertEqual(keys, [("generation", 1), ("name", 1)])
+        self.assertTrue(options["unique"])
+        self.assertEqual(options["collation"].document["locale"], "simple")
+
+    def test_database_unique_index_conflict_maps_to_file_name_conflict(self):
+        self.workspace.reject_name_once = "raced.flow"
+
+        with self.assertRaises(FileNameConflictError):
+            self.store.create_file("raced.flow")
+
+    def test_file_name_conflicts_map_to_http_409(self):
+        routes = {route.path: route for route in create_files_router(self.store).routes}
+        create = routes["/api/files"].endpoint
+        update = routes["/api/files/{file_id}"].endpoint
+        created = create(FileRequest(name="child.flow"))
+
+        self.assertEqual(create(FileRequest(name="child.flow")).status_code, 409)
+        create(FileRequest(name="other.flow"))
+        conflict = update(
+            created["file_id"],
+            FileRequest(name="other.flow", content="", revision=created["revision"]),
+        )
+        self.assertEqual(conflict.status_code, 409)
 
     def test_stale_revision_is_rejected_without_writing(self):
         created = self.store.create_file("First")
@@ -284,6 +354,17 @@ class FileStoreTests(unittest.TestCase):
         self.store.restore_checkpoint(checkpoint["seq"])
 
         self.assertEqual(self.store.list_files(), [])
+
+    def test_restore_rejects_checkpoint_with_duplicate_exact_names(self):
+        self.store.create_file("child.flow")
+        checkpoint = self.store.create_checkpoint("Legacy duplicate")
+        event = next(item for item in self.collection.documents if item.get("seq") == checkpoint["seq"])
+        duplicate = dict(event["data"]["files"][0])
+        duplicate["file_id"] = "duplicate-file-id"
+        event["data"]["files"].append(duplicate)
+
+        with self.assertRaises(FileNameConflictError):
+            self.store.restore_checkpoint(checkpoint["seq"])
 
     def test_checkpoint_tree_branches_after_restore_and_stores_full_snapshots(self):
         file = self.store.create_file("Notes", "one\ntwo\nthree\n")

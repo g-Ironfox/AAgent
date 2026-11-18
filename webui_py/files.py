@@ -2,7 +2,7 @@ from fastapi import APIRouter, Path, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from file_store import FileConflictError, FileMissingError, FileStore
+from file_store import FileConflictError, FileMissingError, FileNameConflictError, FileStore
 
 MAX_FILE_NAME_CHARS = 200
 MAX_FILE_CONTENT_CHARS = 1_000_000
@@ -99,13 +99,18 @@ def create_files_router(store: FileStore) -> APIRouter:
             return store.restore_checkpoint(seq)
         except FileMissingError:
             return JSONResponse(status_code=404, content={"error": "Checkpoint not found"})
+        except FileNameConflictError:
+            return JSONResponse(status_code=409, content={"error": "Checkpoint 包含同名文件，无法恢复"})
 
     @router.post("", status_code=201)
     def create_file(payload: FileRequest):
         name, error = validate_name(payload.name)
         if error:
             return error
-        return store.create_file(name, payload.content)
+        try:
+            return store.create_file(name, payload.content)
+        except FileNameConflictError:
+            return JSONResponse(status_code=409, content={"error": "同名文件已存在"})
 
     @router.get("/{file_id}")
     def get_file(file_id: str):
@@ -125,6 +130,8 @@ def create_files_router(store: FileStore) -> APIRouter:
             return store.update_file(file_id, name, payload.content, payload.revision)
         except FileMissingError:
             return missing_response()
+        except FileNameConflictError:
+            return JSONResponse(status_code=409, content={"error": "同名文件已存在"})
         except FileConflictError:
             return JSONResponse(status_code=409, content={"error": "文件已被其他操作修改，请刷新后重试"})
 

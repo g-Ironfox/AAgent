@@ -129,6 +129,15 @@ class SubprocessWorkflowFileValidationTest(unittest.TestCase):
         validate_workflow(self.workflow)
         self.read.assert_not_called()
 
+    def test_subprocess_filename_limit_matches_workspace_file_limit(self):
+        workflow = empty_workflow()
+        node = add_child_call(workflow, "a" * 200)
+        validate_workflow(workflow)
+
+        node["arguments"]["workflow_file"] = "a" * 201
+        with self.assertRaisesRegex(WorkflowValidationError, "cannot exceed 200 characters"):
+            validate_workflow(workflow)
+
 
 class WorkflowDependencyExecutionTest(unittest.TestCase):
     def setUp(self):

@@ -5,11 +5,16 @@ from datetime import datetime, timezone
 from typing import Any
 
 from pymongo import ASCENDING, ReturnDocument
+from pymongo.collation import Collation
 from pymongo.collection import Collection
-from pymongo.errors import PyMongoError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 
 class FileConflictError(Exception):
+    pass
+
+
+class FileNameConflictError(FileConflictError):
     pass
 
 
@@ -107,13 +112,17 @@ class FileStore:
         file_id = uuid.uuid4().hex
         with self._lock:
             self._ensure_loaded()
+            self._check_unique_file_name(name)
             timestamp = self._now()
             file = {
                 "file_id": file_id, "name": name, "content": content, "pinned": False,
                 "created_at": timestamp, "updated_at": timestamp,
                 "revision": self._next_file_revision(),
             }
-            self._workspace_write(lambda: self.workspace.insert_one(self._workspace_document(file)))
+            self._workspace_write(
+                lambda: self.workspace.insert_one(self._workspace_document(file)),
+                duplicate_is_conflict=True,
+            )
             return self._copy(file)
 
     def update_file(self, file_id: str, name: str, content: str, expected_revision: int) -> dict[str, Any]:
@@ -121,12 +130,16 @@ class FileStore:
             self._ensure_loaded()
             current = self._require_file(file_id)
             self._check_revision(current, expected_revision)
+            self._check_unique_file_name(name, exclude_file_id=file_id)
             updated = self._copy(current)
             updated.update({"name": name, "content": content, "updated_at": self._now()})
             updated["revision"] = self._next_file_revision()
-            self._workspace_write(lambda: self.workspace.replace_one(
-                {"_id": self._workspace_id(file_id)}, self._workspace_document(updated), upsert=False
-            ))
+            self._workspace_write(
+                lambda: self.workspace.replace_one(
+                    {"_id": self._workspace_id(file_id)}, self._workspace_document(updated), upsert=False
+                ),
+                duplicate_is_conflict=True,
+            )
             return self._copy(updated)
 
     def set_pinned(self, file_id: str, pinned: bool, expected_revision: int) -> dict[str, Any]:
@@ -222,6 +235,9 @@ class FileStore:
                 raise FileMissingError
             checkpoint_data = {"name": "Empty workspace"} if seq == 0 else checkpoint["data"]
             files = [self._copy(file) for file in self._checkpoint_state(seq)]
+            names = [file["name"] for file in files]
+            if len(names) != len(set(names)):
+                raise FileNameConflictError("checkpoint contains duplicate file names")
             generation = self._workspace_generation + 1
             restored = {}
             for file in files:
@@ -343,6 +359,13 @@ class FileStore:
             self._revision = 0
             self._head_checkpoint_seq = 0
             self.events.create_index([("seq", ASCENDING)], unique=True, name="workspace_file_event_seq")
+            self.workspace.create_index(
+                [("generation", ASCENDING), ("name", ASCENDING)],
+                unique=True,
+                partialFilterExpression={"file_id": {"$exists": True}},
+                collation=Collation(locale="simple"),
+                name="workspace_generation_file_name",
+            )
             latest_event = next(iter(self.events.find(
                 {"type": {"$exists": True}}, {"seq": 1}
             ).sort("seq", -1).limit(1)), None)
@@ -424,9 +447,16 @@ class FileStore:
         self._persist_workspace_meta()
         return self._file_revision
 
-    def _workspace_write(self, operation) -> None:
+    def _workspace_write(self, operation, *, duplicate_is_conflict: bool = False) -> None:
         try:
             operation()
+        except DuplicateKeyError as error:
+            key_pattern = (error.details or {}).get("keyPattern", {})
+            if duplicate_is_conflict and set(key_pattern) == {"generation", "name"}:
+                raise FileNameConflictError("file name already exists") from error
+            self._loaded = False
+            self._load_error = error
+            raise FileStoreUnavailableError("workspace file store is unavailable") from error
         except PyMongoError as error:
             self._loaded = False
             self._load_error = error
@@ -513,6 +543,13 @@ class FileStore:
     def _check_revision(file: dict[str, Any], expected_revision: int) -> None:
         if file["revision"] != expected_revision:
             raise FileConflictError
+
+    def _check_unique_file_name(self, name: str, exclude_file_id: str | None = None) -> None:
+        if any(
+            file["name"] == name and file["file_id"] != exclude_file_id
+            for file in self._current_files(include_content=False)
+        ):
+            raise FileNameConflictError(f"file name already exists: {name}")
 
     @staticmethod
     def _now() -> str:

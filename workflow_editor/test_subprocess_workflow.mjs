@@ -91,3 +91,15 @@ test('Workflow definitions use external filenames and discard only legacy identi
   assert.deepEqual(original, before);
   assert.deepEqual(parseWorkflowText(JSON.stringify(snapshot)), snapshot);
 });
+
+test('overlong imported subprocess filenames are preserved for explicit validation', () => {
+  const source = legacy();
+  const filename = 'x'.repeat(201);
+  source.workflow_nodes[0].name = filename;
+  source.nodes[1].arguments.workflow_name = filename;
+
+  assert.equal(loadSnapshot(parseWorkflowText(JSON.stringify(source))), true);
+  const snapshot = workflowSnapshot();
+  assert.equal(snapshot.subprocess_workflow_files[0].name, filename);
+  assert.equal(snapshot.nodes[1].arguments.workflow_file, filename);
+});

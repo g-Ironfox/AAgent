@@ -761,7 +761,16 @@ elements.metadataForm.addEventListener('submit', (event) => {
     elements.resourceState.textContent = '同一侧接口名称不能重复';
     return;
   }
-  if (new Set(subprocessWorkflowFiles.map((workflow) => workflow.name.toLocaleLowerCase())).size !== subprocessWorkflowFiles.length) {
+  if (subprocessWorkflowFiles.some((workflow) => workflow.name.length > 200)) {
+    elements.resourceState.textContent = '子进程 Workflow 文件名不能超过 200 个字符';
+    return;
+  }
+  if (state.nodes.some((node) => node.type === "spawn_and_wait_subprocess"
+    && typeof node.workflow_file === 'string' && node.workflow_file.length > 200)) {
+    elements.resourceState.textContent = 'Subprocess Workflow references cannot exceed 200 characters';
+    return;
+  }
+  if (new Set(subprocessWorkflowFiles.map((workflow) => workflow.name)).size !== subprocessWorkflowFiles.length) {
     elements.resourceState.textContent = '子进程 Workflow 文件名不能重复';
     return;
   }

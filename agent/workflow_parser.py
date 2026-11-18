@@ -9,6 +9,7 @@ import sys
 from typing import Any
 
 from pymongo import MongoClient
+from pymongo.collation import Collation
 from pymongo.errors import PyMongoError
 from workflow_contract import (
     migrate_subprocess_workflow_format,
@@ -201,9 +202,16 @@ def _read_workspace_workflow_file(
                 raise WorkflowParseError("workspace is not initialized")
             generation = meta["generation"]
             selector_value = f"{generation}:{value}" if selector == "_id" else value
-            file = workspace.find_one(
-                {selector: selector_value, "generation": generation}, {"content": 1}
-            )
+            query = {selector: selector_value, "generation": generation}
+            if selector == "name":
+                matches = list(workspace.find(
+                    query, {"content": 1}, collation=Collation(locale="simple")
+                ).limit(2))
+                if len(matches) > 1:
+                    raise WorkflowParseError(f"workflow filename is ambiguous: {identifier}")
+                file = matches[0] if matches else None
+            else:
+                file = workspace.find_one(query, {"content": 1})
     except PyMongoError as error:
         raise WorkflowParseError("failed to read workspace workflow file") from error
     if file is None:

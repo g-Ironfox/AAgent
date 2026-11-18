@@ -699,6 +699,8 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
         workflow_file = node_argument(node, "workflow_file")
         if not isinstance(workflow_file, str) or not workflow_file:
             raise WorkflowValidationError("spawn_and_wait_subprocess node workflow_file must be a non-empty string")
+        if len(workflow_file) > 200:
+            raise WorkflowValidationError("spawn_and_wait_subprocess node workflow_file cannot exceed 200 characters")
         _validate_interface_ports(node, "input_ports")
         _validate_interface_ports(node, "output_ports")
 
