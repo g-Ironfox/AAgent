@@ -21,7 +21,7 @@ from common import limit_error
 _RUNTIME_PATH = Path(os.getenv("AGENT_RUNTIME_PATH", Path(__file__).resolve().parent.parent / "agent"))
 if str(_RUNTIME_PATH) not in sys.path:
     sys.path.append(str(_RUNTIME_PATH))
-from r import wake_process
+from process_repository import wake_process
 
 MAX_TERMINAL_RUNES = 4000
 PROCESS_TABLE_KEY = os.getenv("ProcessTable", "processtable")

@@ -9,8 +9,9 @@ from process_creation import initialize_process_pair
 
 from pymongo import ASCENDING, MongoClient
 
-from r import (
-    BLOCKED_PROCESSES, PROCESSTABLE, READY_PROCESSES, get_connection,
+from redis_client import get_connection
+from process_repository import (
+    BLOCKED_PROCESSES, PROCESSTABLE, READY_PROCESSES,
     claim_process, commit_process, publish_process_pair, terminate_process_tree,
     TERMINAL_STATUSES, wake_process as wake_process_record,
 )

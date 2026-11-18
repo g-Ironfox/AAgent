@@ -20,7 +20,7 @@ _RUNTIME_PATH = Path(os.getenv("AGENT_RUNTIME_PATH", Path(__file__).resolve().pa
 if str(_RUNTIME_PATH) not in sys.path:
     sys.path.append(str(_RUNTIME_PATH))
 from process_creation import build_workflow_process, initialize_process_pair
-from r import BLOCKED_PROCESSES, PROCESSTABLE, READY_PROCESSES
+from process_repository import BLOCKED_PROCESSES, PROCESSTABLE, READY_PROCESSES
 
 logger = logging.getLogger(__name__)
 

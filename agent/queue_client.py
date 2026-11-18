@@ -1,26 +1,13 @@
 # agent/queue_client.py
-import os
 import json
+import os
 
-import redis
-
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-REDIS_SOCKET_TIMEOUT = float(os.getenv("REDIS_SOCKET_TIMEOUT", "30"))
+from redis_client import get_connection
 
 AGENT_TOOLS_KEY = os.getenv(
     "AGENT_TOOLS_KEY",
     "aagent:tools",
 )
-def get_connection():
-    return redis.Redis(
-        host=REDIS_HOST,
-        port=REDIS_PORT,
-        decode_responses=True,
-        socket_timeout=REDIS_SOCKET_TIMEOUT,
-    )
-
-
 def redis_reset_tools() -> bool:
     client = get_connection()
     client.delete(AGENT_TOOLS_KEY)

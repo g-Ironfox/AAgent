@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from test_support import MemoryRedis
 
 import main
-import r
+import process_repository as r
 from process_creation import build_workflow_process
 from workflow_nodes import WorkflowStep, workflow_wait_terminal_event
 from terminal_repository import terminal_process_context

@@ -137,7 +137,7 @@ def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=
     External services and Context storage remain controlled by each caller.
     """
     import main
-    from r import PROCESSTABLE, TERMINAL_STATUSES
+    from process_repository import PROCESSTABLE, TERMINAL_STATUSES
 
     graph = copy.deepcopy(workflow_map)
     input_node = graph[start]
