@@ -40,26 +40,30 @@ assert.equal(formatDuration(null), '—');
 
 // Exercise the actual page controller with a small DOM and deterministic transport.
 class Element {
-  constructor(tag = 'div') { this.tagName = tag; this.children = []; this.listeners = {}; this.style = {}; this.attributes = {}; this.hidden = false; this.value = ''; this._text = ''; }
+  constructor(tag = 'div') { this.tagName = tag; this.children = []; this.listeners = {}; this.style = {}; this.attributes = {}; this.hidden = false; this.value = ''; this._text = ''; this.classList = { toggle: (name, enabled) => { const classes = new Set((this.className || '').split(' ').filter(Boolean)); if (enabled) classes.add(name); else classes.delete(name); this.className = [...classes].join(' '); } }; }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; this._text = ''; }
   set textContent(value) { this._text = String(value); this.children = []; }
   get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
   addEventListener(kind, callback) { this.listeners[kind] = callback; }
   setAttribute(key, value) { this.attributes[key] = value; }
-  scrollIntoView() {}
+  querySelector(selector) { return this.children.find(child => child.className?.split(' ').includes(selector.slice(1))) || null; }
+  scrollIntoView() { throw new Error('Selecting a process must not scroll the page'); }
+  focus() { this.focused = true; }
 }
-const ids = ['refreshState','refreshButton','summary','range','customRange','startTime','endTime','applyRange','typeFilter','statusFilter','searchInput','interval','warning','limits','gantt','timeWindow','timelineCount','timelineNote','processTable','tableTabs','tableEmpty','tableCount','details','detailContent','closeDetails'];
+const ids = ['lastRefresh','pauseButton','refreshState','refreshButton','summary','range','customRange','startTime','endTime','applyRange','typeFilter','statusFilter','searchInput','interval','warning','limits','gantt','timeWindow','timelineCount','timelineNote','processTable','tableTabs','tableEmpty','tableCount','details','detailContent','processTablePanel','processTableTab','processDetailsTab'];
 const elements = Object.fromEntries(ids.map(id => [id, new Element()]));
+const pauseIcon = new Element('span'); pauseIcon.className = 'pause-icon'; elements.pauseButton.append(pauseIcon);
+const timers = new Map(); let nextTimer = 1, fetchCount = 0;
 for (const status of ['all','ready','running','blocked','waiting_for_input']) { const button = new Element('button'); button.dataset = { table: status }; elements.tableTabs.append(button); }
 elements.range.value = '900000'; elements.typeFilter.value = 'all'; elements.statusFilter.value = 'all'; elements.interval.value = '0';
 let fail = false;
 const active = { process_id: 'child', parent_process_id: 'root', workflow_name: '<img onerror=bad>', process_type: 'workflow', status: 'blocked', start_time: at(-100), observed_at: at(11), events: [event('blocked', 4, 'blocked')], wait_for: { kind: 'terminal_message', process_id: 'terminal' }, active_duration_ms: 20 };
 const body = { items: [process], active_items: [active], start: at(0), end: at(12), fetched_at: at(12), active_count: 1, history_count: 2 };
 const context = vm.createContext({ ...data, URLSearchParams, AbortController, console,
-  setTimeout: () => 1, clearTimeout() {},
+  setTimeout: (callback, delay) => { const id = nextTimer++; timers.set(id, { callback, delay }); return id; }, clearTimeout: id => timers.delete(id),
   document: { getElementById: id => elements[id], createElement: tag => new Element(tag) },
-  fetch: async url => { assert.match(url, /^\/api\/scheduler\?/); return { ok: !fail, status: fail ? 503 : 200, json: async () => fail ? { error: 'offline' } : body }; },
+  fetch: async url => { fetchCount++; assert.match(url, /^\/api\/scheduler\?/); return { ok: !fail, status: fail ? 503 : 200, json: async () => fail ? { error: 'offline' } : body }; },
 });
 const source = (await readFile(new URL('./static/scheduler.js', import.meta.url), 'utf8')).split('\n').slice(1).join('\n');
 vm.runInContext(source, context);
@@ -77,7 +81,35 @@ elements.statusFilter.value = 'all'; elements.searchInput.value = 'terminal'; el
 assert.equal(elements.processTable.children.length, 1); assert.equal(elements.gantt.children.length, 1);
 elements.processTable.children[0].children[0].children[0].listeners.click();
 assert.equal(elements.details.hidden, false); assert.match(elements.detailContent.textContent, /child/);
-elements.closeDetails.listeners.click(); assert.equal(elements.details.hidden, true);
+assert.equal(elements.processTablePanel.hidden, true);
+assert.equal(elements.processDetailsTab.attributes['aria-selected'], 'true');
+assert.equal(elements.processTableTab.tabIndex, -1);
+const historyPanel = elements.detailContent.children.find(child => child.tagName === 'details');
+assert.equal(historyPanel.open, true);
+assert.equal(historyPanel.children[1].tagName, 'ol');
+assert.match(historyPanel.textContent, /挂起/);
+historyPanel.open = false;
+await vm.runInContext('refresh()', context);
+assert.equal(elements.detailContent.children.find(child => child.tagName === 'details').open, false);
+
+elements.processTableTab.listeners.click();
+assert.equal(elements.details.hidden, true);
+assert.equal(elements.processTablePanel.hidden, false);
+assert.equal(elements.processTableTab.attributes['aria-selected'], 'true');
+elements.processDetailsTab.listeners.click();
+assert.equal(elements.details.hidden, false);
+assert.match(elements.detailContent.textContent, /child/);
+await vm.runInContext('refresh()', context);
+assert.equal(elements.details.hidden, false); // refresh does not change the selected tab
+assert.match(elements.detailContent.textContent, /child/);
+let prevented = false;
+elements.processDetailsTab.listeners.keydown({ key: 'ArrowLeft', preventDefault() { prevented = true; } });
+assert.equal(prevented, true);
+assert.equal(elements.processTablePanel.hidden, false);
+assert.equal(elements.processTableTab.focused, true);
+elements.processTableTab.listeners.keydown({ key: 'End', preventDefault() {} });
+assert.equal(elements.details.hidden, false);
+elements.processTableTab.listeners.click();
 elements.searchInput.value = ''; elements.searchInput.listeners.input();
 fail = true; await vm.runInContext('refresh()', context);
 assert.equal(elements.warning.hidden, false); assert.match(elements.warning.textContent, /offline/);
@@ -113,4 +145,71 @@ await vm.runInContext('refresh()', context);
 assert.match(elements.tableEmpty.textContent, /公开 Redis/);
 assert.match(elements.summary.textContent, /—/);
 assert.equal(elements.gantt.children.length, 2);
+// Historical rows and bars also select details in the shared right-hand panel.
+elements.gantt.children[1].children[0].listeners.click();
+assert.equal(elements.details.hidden, false);
+assert.equal(elements.processTablePanel.hidden, true);
+assert.match(elements.detailContent.textContent, /Root.flow/);
+elements.processTableTab.listeners.click();
+elements.gantt.children[1].children[1].children[0].listeners.click();
+assert.equal(elements.details.hidden, false);
+assert.match(elements.detailContent.textContent, /Root.flow/);
+const savedItems = body.items;
+body.items = [];
+await vm.runInContext('refresh()', context);
+assert.equal(elements.details.hidden, false);
+assert.match(elements.detailContent.textContent, /该进程已不在本次快照中/);
+assert.match(elements.detailContent.textContent, /Root.flow/);
+body.items = savedItems;
+elements.processTableTab.listeners.click();
+// Navigation controls pause scheduling, preserve manual refresh, and resume immediately.
+const syncBefore = elements.lastRefresh.textContent;
+assert.ok(syncBefore);
+elements.interval.value = '2000'; elements.interval.listeners.change();
+assert.equal([...timers.values()].filter(timer => timer.delay === 2000).length, 1);
+elements.pauseButton.listeners.click();
+assert.equal(timers.size, 0);
+assert.equal(elements.pauseButton.attributes['aria-pressed'], 'true');
+assert.match(pauseIcon.className, /play/);
+assert.equal(elements.refreshState.textContent, '自动刷新已暂停');
+elements.interval.value = '5000'; elements.interval.listeners.change();
+assert.equal(timers.size, 0);
+const countBeforeManual = fetchCount;
+await elements.refreshButton.listeners.click();
+assert.equal(fetchCount, countBeforeManual + 1);
+assert.equal(timers.size, 0);
+assert.equal(elements.refreshState.textContent, '自动刷新已暂停');
+const countBeforeResume = fetchCount;
+elements.pauseButton.listeners.click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(fetchCount, countBeforeResume + 1);
+assert.equal(elements.pauseButton.attributes['aria-pressed'], 'false');
+assert.equal(pauseIcon.className, 'pause-icon');
+assert.equal(elements.refreshState.textContent, '自动刷新已开启');
+assert.equal([...timers.values()].filter(timer => timer.delay === 5000).length, 1);
+fail = true;
+await elements.refreshButton.listeners.click();
+assert.equal(elements.lastRefresh.textContent, syncBefore);
+assert.equal(elements.refreshState.textContent, '同步失败');
+assert.equal([...timers.values()].filter(timer => timer.delay === 5000).length, 1);
+// Event rows follow the log presentation, retaining stable order and safe text rendering.
+const eventList = vm.runInContext(
+  'renderEventList(' + JSON.stringify([
+    { event: 'woken', timestamp: at(7), status: 'ready', wait_for: { kind: 'process_exit', process_id: 'child' } },
+    { event: 'created', timestamp: at(0), status: 'waiting_for_input' },
+    { event: 'blocked', timestamp: at(4), status: 'blocked', wait_for: { kind: 'terminal_message', process_id: 'terminal' } },
+    { event: 'failed', timestamp: at(7), status: 'failed', error: '<img onerror=bad>', node_id: 'node-1', reason: '执行失败' },
+    { event: 'future_event', timestamp: 'invalid', status: 'future_status' },
+  ]) + ')', context);
+assert.equal(eventList.tagName, 'ol');
+assert.equal(eventList.children.length, 5);
+assert.match(eventList.children[0].textContent, /创建.*等待输入/);
+assert.match(eventList.children[1].textContent, /等待终端消息 · terminal/);
+assert.match(eventList.children[2].textContent, /唤醒.*子进程退出 · child/);
+assert.match(eventList.children[3].textContent, /节点 · node-1；原因 · 执行失败/);
+assert.equal(eventList.children[3].children.at(-1).textContent, '<img onerror=bad>');
+assert.match(eventList.children[4].textContent, /未记录.*future_event.*future_status/);
+assert.equal(eventList.children[0].children[0].attributes.datetime, at(0));
+assert.equal(eventList.children[4].children[0].attributes.datetime, undefined);
+assert.match(vm.runInContext('renderEventList([])', context).textContent, /暂无历史调度事件/);
 console.log('Scheduler assertions passed: event intervals, clipping, legacy records, filters, current table, details and error recovery.');
