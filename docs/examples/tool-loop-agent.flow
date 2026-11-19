@@ -1,0 +1,2917 @@
+{
+  "schema_version": "2.0",
+  "description": "Process-scheduled tool-loop agent with optional ask_human interaction and durable conversation history.",
+  "input_ports": [
+    {
+      "name": "task",
+      "type": "content"
+    }
+  ],
+  "output_ports": [],
+  "metadata": {
+    "structs": [
+      {
+        "id": "ToolCallCount",
+        "name": "ToolCallCount",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "count",
+            "type": "number",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "CallFunction",
+        "name": "CallFunction",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "name",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "arguments",
+            "type": "content",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "ToolCall",
+        "name": "ToolCall",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "id",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "type",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "function",
+            "type": "struct:CallFunction",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "AskHumanArgs",
+        "name": "AskHumanArgs",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "question",
+            "type": "content",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "HumanReply",
+        "name": "HumanReply",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "replies",
+            "type": "list-content",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "Assistant",
+        "name": "Assistant",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "role",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "content",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "reasoning_content",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "tool_calls",
+            "type": "list-struct:ToolCall",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "ToolMessage",
+        "name": "ToolMessage",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "role",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "content",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "tool_call_id",
+            "type": "content",
+            "required": true
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "id": "append_history",
+        "name": "append_history",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "message",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "queue_turn",
+        "name": "queue_turn",
+        "input_ports": [
+          {
+            "name": "tokens_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "build_assistant",
+        "name": "build_assistant",
+        "input_ports": [
+          {
+            "name": "content",
+            "type": "content"
+          },
+          {
+            "name": "reasoning",
+            "type": "content"
+          },
+          {
+            "name": "calls",
+            "type": "list-content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "message",
+            "type": "content"
+          }
+        ]
+      },
+      {
+        "id": "record_tool_result",
+        "name": "record_tool_result",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "call_id",
+            "type": "content"
+          },
+          {
+            "name": "content",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "run_one_tool",
+        "name": "run_one_tool",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "call",
+            "type": "content"
+          },
+          {
+            "name": "batch_stop_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "tool_loop_turn",
+        "name": "tool_loop_turn",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "tokens_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      }
+    ],
+    "tools": [
+      {
+        "name": "workspace.list_files",
+        "kind": "local",
+        "input_ports": [],
+        "output_ports": [
+          {
+            "name": "items",
+            "type": "list-content"
+          },
+          {
+            "name": "revision",
+            "type": "number"
+          }
+        ]
+      },
+      {
+        "name": "workspace.get_file",
+        "kind": "local",
+        "input_ports": [
+          {
+            "name": "file_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "output",
+            "type": "content"
+          }
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "in",
+      "type": "input",
+      "name": "in",
+      "x": 80,
+      "y": 100,
+      "workflowPorts": [
+        {
+          "id": "workflow:task",
+          "name": "task",
+          "type": "content"
+        }
+      ]
+    },
+    {
+      "id": "system_prompt",
+      "type": "construct_content",
+      "name": "system prompt",
+      "x": 340,
+      "y": 100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "You are a ReAct assistant. Respond in the user's language. Use only the provided tools and their declared schemas when needed. Tool calls are executed automatically, so use them only when they are necessary and safe. Call ask_human when you need clarification, a decision, or information only the user can provide. Put a clear, non-empty question in its question argument, in the user's language. Ask one focused question at a time. The result contains only new human replies; an empty replies list means no new answer was available. After ask_human, remaining calls in that batch are skipped so you can replan. After receiving tool results, continue reasoning and call more tools if needed. When no more tools are needed, give a concise, accurate final answer. Never claim an unexecuted action succeeded."
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "system",
+      "type": "construct_message",
+      "name": "system",
+      "x": 600,
+      "y": 100,
+      "arguments": {
+        "role": "system"
+      }
+    },
+    {
+      "id": "task_message",
+      "type": "construct_message",
+      "name": "task message",
+      "x": 860,
+      "y": 100,
+      "arguments": {
+        "role": "user"
+      }
+    },
+    {
+      "id": "initial_history",
+      "type": "construct_list",
+      "name": "initial history",
+      "x": 1120,
+      "y": 100,
+      "arguments": {
+        "item_type": "content",
+        "initial_value_count": 2
+      },
+      "dataInputPorts": [
+        "content-in-0",
+        "content-in-1"
+      ]
+    },
+    {
+      "id": "create_history",
+      "type": "context_create",
+      "name": "create history",
+      "x": 1380,
+      "y": 100,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "start_token",
+      "type": "construct_content",
+      "name": "start token",
+      "x": 1640,
+      "y": 100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "next"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "initial_tokens",
+      "type": "construct_list",
+      "name": "initial tokens",
+      "x": 1900,
+      "y": 100,
+      "arguments": {
+        "item_type": "content",
+        "initial_value_count": 1
+      },
+      "dataInputPorts": [
+        "content-in-0"
+      ]
+    },
+    {
+      "id": "create_tokens",
+      "type": "context_create",
+      "name": "create tokens",
+      "x": 2160,
+      "y": 100,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "turn_gate",
+      "type": "while_pop",
+      "name": "turn gate",
+      "x": 2420,
+      "y": 100,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "call_turn",
+      "type": "function_call",
+      "name": "call turn",
+      "x": 2680,
+      "y": 100,
+      "arguments": {
+        "function_id": "tool_loop_turn"
+      }
+    },
+    {
+      "id": "out",
+      "type": "output",
+      "name": "out",
+      "x": 2940,
+      "y": 100,
+      "workflowPorts": []
+    },
+    {
+      "id": "append_history_in",
+      "type": "function_input",
+      "name": "append history in",
+      "x": 80,
+      "y": 700,
+      "function_id": "append_history"
+    },
+    {
+      "id": "history_read",
+      "type": "context_read",
+      "name": "history read",
+      "x": 340,
+      "y": 700,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "history_append",
+      "type": "list_append",
+      "name": "history append",
+      "x": 600,
+      "y": 700,
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      }
+    },
+    {
+      "id": "history_write",
+      "type": "context_write",
+      "name": "history write",
+      "x": 860,
+      "y": 700,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "history_return",
+      "type": "function_output",
+      "name": "history return",
+      "x": 1120,
+      "y": 700,
+      "function_id": "append_history"
+    },
+    {
+      "id": "queue_turn_in",
+      "type": "function_input",
+      "name": "queue turn in",
+      "x": 80,
+      "y": 1300,
+      "function_id": "queue_turn"
+    },
+    {
+      "id": "tokens_read",
+      "type": "context_read",
+      "name": "tokens read",
+      "x": 340,
+      "y": 1300,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "next_token",
+      "type": "construct_content",
+      "name": "next token",
+      "x": 600,
+      "y": 1300,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "next"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "tokens_append",
+      "type": "list_append",
+      "name": "tokens append",
+      "x": 860,
+      "y": 1300,
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      }
+    },
+    {
+      "id": "tokens_write",
+      "type": "context_write",
+      "name": "tokens write",
+      "x": 1120,
+      "y": 1300,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "tokens_return",
+      "type": "function_output",
+      "name": "tokens return",
+      "x": 1380,
+      "y": 1300,
+      "function_id": "queue_turn"
+    },
+    {
+      "id": "build_assistant_in",
+      "type": "function_input",
+      "name": "build assistant in",
+      "x": 80,
+      "y": 1900,
+      "function_id": "build_assistant"
+    },
+    {
+      "id": "build_count",
+      "type": "list_length",
+      "name": "build count",
+      "x": 340,
+      "y": 1900,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "build_count_value",
+      "type": "construct_struct",
+      "name": "build count value",
+      "x": 600,
+      "y": 1900,
+      "arguments": {
+        "struct_id": "ToolCallCount"
+      },
+      "dataInputPorts": [
+        "count"
+      ]
+    },
+    {
+      "id": "build_count_json",
+      "type": "struct_to_json",
+      "name": "build count json",
+      "x": 860,
+      "y": 1900,
+      "arguments": {
+        "value_type": "struct:ToolCallCount"
+      }
+    },
+    {
+      "id": "build_count_text",
+      "type": "deserialize_json",
+      "name": "build count text",
+      "x": 1120,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "count",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "build_route",
+      "type": "router",
+      "name": "build route",
+      "x": 1380,
+      "y": 1900,
+      "arguments": {
+        "branches": [
+          {
+            "id": "none",
+            "name": "0"
+          }
+        ]
+      }
+    },
+    {
+      "id": "build_plain",
+      "type": "construct_message",
+      "name": "build plain",
+      "x": 1640,
+      "y": 1900,
+      "arguments": {
+        "role": "assistant"
+      }
+    },
+    {
+      "id": "build_plain_return",
+      "type": "function_output",
+      "name": "build plain return",
+      "x": 1900,
+      "y": 1900,
+      "function_id": "build_assistant"
+    },
+    {
+      "id": "build_empty",
+      "type": "construct_list",
+      "name": "build empty",
+      "x": 2160,
+      "y": 1900,
+      "arguments": {
+        "item_type": "struct:ToolCall",
+        "initial_value_count": 0
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "build_context",
+      "type": "context_create",
+      "name": "build context",
+      "x": 2420,
+      "y": 1900,
+      "arguments": {
+        "value_type": "list-struct:ToolCall"
+      }
+    },
+    {
+      "id": "build_each",
+      "type": "foreach",
+      "name": "build each",
+      "x": 2680,
+      "y": 1900,
+      "arguments": {
+        "item_type": "content"
+      }
+    },
+    {
+      "id": "build_call",
+      "type": "json_to_struct",
+      "name": "build call",
+      "x": 2940,
+      "y": 1900,
+      "arguments": {
+        "value_type": "struct:ToolCall"
+      }
+    },
+    {
+      "id": "build_read",
+      "type": "context_read",
+      "name": "build read",
+      "x": 3200,
+      "y": 1900,
+      "arguments": {
+        "value_type": "list-struct:ToolCall"
+      }
+    },
+    {
+      "id": "build_append",
+      "type": "list_append",
+      "name": "build append",
+      "x": 3460,
+      "y": 1900,
+      "arguments": {
+        "item_type": "struct:ToolCall",
+        "position": "end"
+      }
+    },
+    {
+      "id": "build_write",
+      "type": "context_write",
+      "name": "build write",
+      "x": 3720,
+      "y": 1900,
+      "arguments": {
+        "value_type": "list-struct:ToolCall"
+      }
+    },
+    {
+      "id": "build_final_read",
+      "type": "context_read",
+      "name": "build final read",
+      "x": 3980,
+      "y": 1900,
+      "arguments": {
+        "value_type": "list-struct:ToolCall"
+      }
+    },
+    {
+      "id": "build_role",
+      "type": "construct_content",
+      "name": "build role",
+      "x": 4240,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "assistant"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "build_message",
+      "type": "construct_struct",
+      "name": "build message",
+      "x": 4500,
+      "y": 1900,
+      "arguments": {
+        "struct_id": "Assistant"
+      },
+      "dataInputPorts": [
+        "role",
+        "content",
+        "reasoning_content",
+        "tool_calls"
+      ]
+    },
+    {
+      "id": "build_json",
+      "type": "struct_to_json",
+      "name": "build json",
+      "x": 4760,
+      "y": 1900,
+      "arguments": {
+        "value_type": "struct:Assistant"
+      }
+    },
+    {
+      "id": "build_calls_return",
+      "type": "function_output",
+      "name": "build calls return",
+      "x": 5020,
+      "y": 1900,
+      "function_id": "build_assistant"
+    },
+    {
+      "id": "record_tool_result_in",
+      "type": "function_input",
+      "name": "record tool result in",
+      "x": 80,
+      "y": 2500,
+      "function_id": "record_tool_result"
+    },
+    {
+      "id": "result_role",
+      "type": "construct_content",
+      "name": "result role",
+      "x": 340,
+      "y": 2500,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "tool"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "result_message",
+      "type": "construct_struct",
+      "name": "result message",
+      "x": 600,
+      "y": 2500,
+      "arguments": {
+        "struct_id": "ToolMessage"
+      },
+      "dataInputPorts": [
+        "role",
+        "content",
+        "tool_call_id"
+      ]
+    },
+    {
+      "id": "result_json",
+      "type": "struct_to_json",
+      "name": "result json",
+      "x": 860,
+      "y": 2500,
+      "arguments": {
+        "value_type": "struct:ToolMessage"
+      }
+    },
+    {
+      "id": "result_save",
+      "type": "function_call",
+      "name": "result save",
+      "x": 1120,
+      "y": 2500,
+      "arguments": {
+        "function_id": "append_history"
+      }
+    },
+    {
+      "id": "result_return",
+      "type": "function_output",
+      "name": "result return",
+      "x": 1380,
+      "y": 2500,
+      "function_id": "record_tool_result"
+    },
+    {
+      "id": "run_one_tool_in",
+      "type": "function_input",
+      "name": "run one tool in",
+      "x": 80,
+      "y": 3100,
+      "function_id": "run_one_tool"
+    },
+    {
+      "id": "call_parse",
+      "type": "json_to_struct",
+      "name": "call parse",
+      "x": 340,
+      "y": 3100,
+      "arguments": {
+        "value_type": "struct:ToolCall"
+      }
+    },
+    {
+      "id": "call_id",
+      "type": "struct_get",
+      "name": "call id",
+      "x": 600,
+      "y": 3100,
+      "arguments": {
+        "struct_id": "ToolCall",
+        "field": "id"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "call_function",
+      "type": "struct_get",
+      "name": "call function",
+      "x": 860,
+      "y": 3100,
+      "arguments": {
+        "struct_id": "ToolCall",
+        "field": "function"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "call_name",
+      "type": "struct_get",
+      "name": "call name",
+      "x": 1120,
+      "y": 3100,
+      "arguments": {
+        "struct_id": "CallFunction",
+        "field": "name"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "call_arguments",
+      "type": "struct_get",
+      "name": "call arguments",
+      "x": 1380,
+      "y": 3100,
+      "arguments": {
+        "struct_id": "CallFunction",
+        "field": "arguments"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "batch_stop_read",
+      "type": "context_read",
+      "name": "batch stop read",
+      "x": 1640,
+      "y": 3100,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "batch_stop_route",
+      "type": "router",
+      "name": "batch stop route",
+      "x": 1900,
+      "y": 3100,
+      "arguments": {
+        "branches": [
+          {
+            "id": "stopped",
+            "name": "true"
+          }
+        ]
+      }
+    },
+    {
+      "id": "call_kind_route",
+      "type": "router",
+      "name": "call kind route",
+      "x": 2160,
+      "y": 3100,
+      "arguments": {
+        "branches": [
+          {
+            "id": "human",
+            "name": "ask_human"
+          }
+        ]
+      }
+    },
+    {
+      "id": "invoke_tool",
+      "type": "json_tool",
+      "name": "invoke tool",
+      "x": 2420,
+      "y": 3100
+    },
+    {
+      "id": "save_success",
+      "type": "function_call",
+      "name": "save success",
+      "x": 2680,
+      "y": 3100,
+      "arguments": {
+        "function_id": "record_tool_result"
+      }
+    },
+    {
+      "id": "save_error",
+      "type": "function_call",
+      "name": "save error",
+      "x": 2940,
+      "y": 3100,
+      "arguments": {
+        "function_id": "record_tool_result"
+      }
+    },
+    {
+      "id": "tool_success_return",
+      "type": "function_output",
+      "name": "tool success return",
+      "x": 3200,
+      "y": 3100,
+      "function_id": "run_one_tool"
+    },
+    {
+      "id": "tool_error_return",
+      "type": "function_output",
+      "name": "tool error return",
+      "x": 3460,
+      "y": 3100,
+      "function_id": "run_one_tool"
+    },
+    {
+      "id": "stale_tool_text",
+      "type": "construct_content",
+      "name": "stale tool text",
+      "x": 3720,
+      "y": 3100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "Skipped because ask_human changed the plan; re-evaluate after the human reply."
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "stale_tool_message",
+      "type": "function_call",
+      "name": "stale tool message",
+      "x": 3980,
+      "y": 3100,
+      "arguments": {
+        "function_id": "record_tool_result"
+      }
+    },
+    {
+      "id": "stale_tool_return",
+      "type": "function_output",
+      "name": "stale tool return",
+      "x": 4240,
+      "y": 3100,
+      "function_id": "run_one_tool"
+    },
+    {
+      "id": "ask_args_parse",
+      "type": "json_to_struct",
+      "name": "ask args parse",
+      "x": 4500,
+      "y": 3100,
+      "arguments": {
+        "value_type": "struct:AskHumanArgs"
+      }
+    },
+    {
+      "id": "ask_question",
+      "type": "struct_get",
+      "name": "ask question",
+      "x": 4760,
+      "y": 3100,
+      "arguments": {
+        "struct_id": "AskHumanArgs",
+        "field": "question"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "batch_stop_true",
+      "type": "context_write",
+      "name": "batch stop true",
+      "x": 5020,
+      "y": 3100,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "batch_stopped",
+      "type": "construct_content",
+      "name": "batch stopped",
+      "x": 5280,
+      "y": 3100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "true"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "human_inputs_before",
+      "type": "read_terminal_input",
+      "name": "human inputs before",
+      "x": 5540,
+      "y": 3100
+    },
+    {
+      "id": "human_cursor",
+      "type": "list_length",
+      "name": "human cursor",
+      "x": 5800,
+      "y": 3100,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "human_prompt",
+      "type": "construct_content",
+      "name": "human prompt",
+      "x": 6060,
+      "y": 3100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "The agent asks: "
+          },
+          {
+            "type": "port",
+            "port_id": "value"
+          },
+          {
+            "type": "fixed",
+            "value": "\nReply in the process terminal."
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "value"
+      ]
+    },
+    {
+      "id": "show_human_prompt",
+      "type": "output_to_terminal",
+      "name": "show human prompt",
+      "x": 6320,
+      "y": 3100
+    },
+    {
+      "id": "wait_for_human",
+      "type": "wait_terminal_event",
+      "name": "wait for human",
+      "x": 6580,
+      "y": 3100
+    },
+    {
+      "id": "human_inputs_after",
+      "type": "read_terminal_input",
+      "name": "human inputs after",
+      "x": 6840,
+      "y": 3100
+    },
+    {
+      "id": "human_new_inputs",
+      "type": "list_slice",
+      "name": "human new inputs",
+      "x": 7100,
+      "y": 3100,
+      "arguments": {
+        "value_type": "list-content",
+        "start_source": "port",
+        "stop_source": "fixed",
+        "step_source": "fixed",
+        "step": 1
+      }
+    },
+    {
+      "id": "human_reply_value",
+      "type": "construct_struct",
+      "name": "human reply value",
+      "x": 7360,
+      "y": 3100,
+      "arguments": {
+        "struct_id": "HumanReply"
+      },
+      "dataInputPorts": [
+        "replies"
+      ]
+    },
+    {
+      "id": "human_reply_json",
+      "type": "struct_to_json",
+      "name": "human reply json",
+      "x": 7620,
+      "y": 3100,
+      "arguments": {
+        "value_type": "struct:HumanReply"
+      }
+    },
+    {
+      "id": "save_human_reply",
+      "type": "function_call",
+      "name": "save human reply",
+      "x": 7880,
+      "y": 3100,
+      "arguments": {
+        "function_id": "record_tool_result"
+      }
+    },
+    {
+      "id": "human_reply_return",
+      "type": "function_output",
+      "name": "human reply return",
+      "x": 8140,
+      "y": 3100,
+      "function_id": "run_one_tool"
+    },
+    {
+      "id": "tool_loop_turn_in",
+      "type": "function_input",
+      "name": "tool loop turn in",
+      "x": 80,
+      "y": 3700,
+      "function_id": "tool_loop_turn"
+    },
+    {
+      "id": "read_for_llm",
+      "type": "context_read",
+      "name": "read for llm",
+      "x": 340,
+      "y": 3700,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "list_files_tool",
+      "type": "construct_tool",
+      "name": "list files tool",
+      "x": 600,
+      "y": 3700,
+      "arguments": {
+        "tool_name": "workspace.list_files",
+        "description": "List workspace files",
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "id": "get_file_tool",
+      "type": "construct_tool",
+      "name": "get file tool",
+      "x": 860,
+      "y": 3700,
+      "arguments": {
+        "tool_name": "workspace.get_file",
+        "description": "Read a workspace file",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "file_id"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "id": "ask_human_tool",
+      "type": "construct_tool",
+      "name": "ask human tool",
+      "x": 1120,
+      "y": 3700,
+      "arguments": {
+        "tool_name": "ask_human",
+        "description": "Ask the user for clarification, a decision, or missing information. Wait for new replies, returned as a replies list. Remaining calls in this batch are skipped; plan again using the reply.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "question"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "id": "available_tools",
+      "type": "construct_list",
+      "name": "available tools",
+      "x": 1380,
+      "y": 3700,
+      "arguments": {
+        "item_type": "content",
+        "initial_value_count": 3
+      },
+      "dataInputPorts": [
+        "content-in-0",
+        "content-in-1",
+        "content-in-2"
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "llm",
+      "name": "llm",
+      "x": 1640,
+      "y": 3700,
+      "arguments": {
+        "model": "REPLACE_WITH_MODEL_ID",
+        "think": true,
+        "tool_calls": true,
+        "tools_source": "definitions"
+      }
+    },
+    {
+      "id": "normalize_content",
+      "type": "construct_content",
+      "name": "normalize content",
+      "x": 1900,
+      "y": 3700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": ""
+          },
+          {
+            "type": "port",
+            "port_id": "value"
+          },
+          {
+            "type": "fixed",
+            "value": ""
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "value"
+      ]
+    },
+    {
+      "id": "assistant_message",
+      "type": "function_call",
+      "name": "assistant message",
+      "x": 2160,
+      "y": 3700,
+      "arguments": {
+        "function_id": "build_assistant"
+      }
+    },
+    {
+      "id": "save_assistant",
+      "type": "function_call",
+      "name": "save assistant",
+      "x": 2420,
+      "y": 3700,
+      "arguments": {
+        "function_id": "append_history"
+      }
+    },
+    {
+      "id": "turn_count",
+      "type": "list_length",
+      "name": "turn count",
+      "x": 2680,
+      "y": 3700,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "turn_count_value",
+      "type": "construct_struct",
+      "name": "turn count value",
+      "x": 2940,
+      "y": 3700,
+      "arguments": {
+        "struct_id": "ToolCallCount"
+      },
+      "dataInputPorts": [
+        "count"
+      ]
+    },
+    {
+      "id": "turn_count_json",
+      "type": "struct_to_json",
+      "name": "turn count json",
+      "x": 3200,
+      "y": 3700,
+      "arguments": {
+        "value_type": "struct:ToolCallCount"
+      }
+    },
+    {
+      "id": "turn_count_text",
+      "type": "deserialize_json",
+      "name": "turn count text",
+      "x": 3460,
+      "y": 3700,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "count",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "turn_route",
+      "type": "router",
+      "name": "turn route",
+      "x": 3720,
+      "y": 3700,
+      "arguments": {
+        "branches": [
+          {
+            "id": "final",
+            "name": "0"
+          }
+        ]
+      }
+    },
+    {
+      "id": "show_final",
+      "type": "output_to_terminal",
+      "name": "show final",
+      "x": 3980,
+      "y": 3700
+    },
+    {
+      "id": "turn_final_return",
+      "type": "function_output",
+      "name": "turn final return",
+      "x": 4240,
+      "y": 3700,
+      "function_id": "tool_loop_turn"
+    },
+    {
+      "id": "execute_calls",
+      "type": "foreach",
+      "name": "execute calls",
+      "x": 4500,
+      "y": 3700,
+      "arguments": {
+        "item_type": "content"
+      }
+    },
+    {
+      "id": "batch_stop_initial",
+      "type": "construct_content",
+      "name": "batch stop initial",
+      "x": 4760,
+      "y": 3700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "false"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "batch_stop_context",
+      "type": "context_create",
+      "name": "batch stop context",
+      "x": 5020,
+      "y": 3700,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "execute_each",
+      "type": "function_call",
+      "name": "execute each",
+      "x": 5280,
+      "y": 3700,
+      "arguments": {
+        "function_id": "run_one_tool"
+      }
+    },
+    {
+      "id": "queue_next_turn",
+      "type": "function_call",
+      "name": "queue next turn",
+      "x": 5540,
+      "y": 3700,
+      "arguments": {
+        "function_id": "queue_turn"
+      }
+    },
+    {
+      "id": "turn_tools_return",
+      "type": "function_output",
+      "name": "turn tools return",
+      "x": 5800,
+      "y": 3700,
+      "function_id": "tool_loop_turn"
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "system_prompt",
+      "fromPortId": "content-out",
+      "toId": "system",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "in",
+      "fromPortId": "workflow:task",
+      "toId": "task_message",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "system",
+      "fromPortId": "content-out",
+      "toId": "initial_history",
+      "toPortId": "content-in-0",
+      "type": "content"
+    },
+    {
+      "fromId": "task_message",
+      "fromPortId": "content-out",
+      "toId": "initial_history",
+      "toPortId": "content-in-1",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_history",
+      "fromPortId": "list-out",
+      "toId": "create_history",
+      "toPortId": "initial-value",
+      "type": "list-content"
+    },
+    {
+      "fromId": "start_token",
+      "fromPortId": "content-out",
+      "toId": "initial_tokens",
+      "toPortId": "content-in-0",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_tokens",
+      "fromPortId": "list-out",
+      "toId": "create_tokens",
+      "toPortId": "initial-value",
+      "type": "list-content"
+    },
+    {
+      "fromId": "create_tokens",
+      "fromPortId": "context-id",
+      "toId": "turn_gate",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "create_history",
+      "fromPortId": "context-id",
+      "toId": "call_turn",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "create_tokens",
+      "fromPortId": "context-id",
+      "toId": "call_turn",
+      "toPortId": "function:tokens_id",
+      "type": "content"
+    },
+    {
+      "fromId": "in",
+      "fromPortId": "control-out",
+      "toId": "system_prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "system_prompt",
+      "fromPortId": "control-out",
+      "toId": "system",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "system",
+      "fromPortId": "control-out",
+      "toId": "task_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "task_message",
+      "fromPortId": "control-out",
+      "toId": "initial_history",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_history",
+      "fromPortId": "control-out",
+      "toId": "create_history",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "create_history",
+      "fromPortId": "control-out",
+      "toId": "start_token",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "start_token",
+      "fromPortId": "control-out",
+      "toId": "initial_tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_tokens",
+      "fromPortId": "control-out",
+      "toId": "create_tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "create_tokens",
+      "fromPortId": "control-out",
+      "toId": "turn_gate",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_gate",
+      "fromPortId": "loop-out",
+      "toId": "call_turn",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_turn",
+      "fromPortId": "control-out",
+      "toId": "turn_gate",
+      "toPortId": "loop-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_gate",
+      "fromPortId": "control-out",
+      "toId": "out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "append_history_in",
+      "fromPortId": "function:history_id",
+      "toId": "history_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "history_read",
+      "fromPortId": "value-out",
+      "toId": "history_append",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "append_history_in",
+      "fromPortId": "function:message",
+      "toId": "history_append",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "append_history_in",
+      "fromPortId": "function:history_id",
+      "toId": "history_write",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "history_append",
+      "fromPortId": "list-out",
+      "toId": "history_write",
+      "toPortId": "value-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "append_history_in",
+      "fromPortId": "control-out",
+      "toId": "history_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "history_read",
+      "fromPortId": "control-out",
+      "toId": "history_append",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "history_append",
+      "fromPortId": "control-out",
+      "toId": "history_write",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "history_write",
+      "fromPortId": "control-out",
+      "toId": "history_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "queue_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "tokens_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "tokens_read",
+      "fromPortId": "value-out",
+      "toId": "tokens_append",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "next_token",
+      "fromPortId": "content-out",
+      "toId": "tokens_append",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "queue_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "tokens_write",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "tokens_append",
+      "fromPortId": "list-out",
+      "toId": "tokens_write",
+      "toPortId": "value-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "queue_turn_in",
+      "fromPortId": "control-out",
+      "toId": "tokens_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_read",
+      "fromPortId": "control-out",
+      "toId": "next_token",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "next_token",
+      "fromPortId": "control-out",
+      "toId": "tokens_append",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_append",
+      "fromPortId": "control-out",
+      "toId": "tokens_write",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_write",
+      "fromPortId": "control-out",
+      "toId": "tokens_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:calls",
+      "toId": "build_count",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "build_count",
+      "fromPortId": "length-out",
+      "toId": "build_count_value",
+      "toPortId": "count",
+      "type": "number"
+    },
+    {
+      "fromId": "build_count_value",
+      "fromPortId": "struct-out",
+      "toId": "build_count_json",
+      "toPortId": "value-in",
+      "type": "struct:ToolCallCount"
+    },
+    {
+      "fromId": "build_count_json",
+      "fromPortId": "content-out",
+      "toId": "build_count_text",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "build_count_text",
+      "fromPortId": "count",
+      "toId": "build_route",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:content",
+      "toId": "build_plain",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "build_plain",
+      "fromPortId": "content-out",
+      "toId": "build_plain_return",
+      "toPortId": "function:message",
+      "type": "content"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "control-out",
+      "toId": "build_count",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_count",
+      "fromPortId": "control-out",
+      "toId": "build_count_value",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_count_value",
+      "fromPortId": "control-out",
+      "toId": "build_count_json",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_count_json",
+      "fromPortId": "control-out",
+      "toId": "build_count_text",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_count_text",
+      "fromPortId": "control-out",
+      "toId": "build_route",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_route",
+      "fromPortId": "none",
+      "toId": "build_plain",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_plain",
+      "fromPortId": "control-out",
+      "toId": "build_plain_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_empty",
+      "fromPortId": "list-out",
+      "toId": "build_context",
+      "toPortId": "initial-value",
+      "type": "list-struct:ToolCall"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:calls",
+      "toId": "build_each",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "build_each",
+      "fromPortId": "item-out",
+      "toId": "build_call",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "build_context",
+      "fromPortId": "context-id",
+      "toId": "build_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "build_read",
+      "fromPortId": "value-out",
+      "toId": "build_append",
+      "toPortId": "list-in",
+      "type": "list-struct:ToolCall"
+    },
+    {
+      "fromId": "build_call",
+      "fromPortId": "value-out",
+      "toId": "build_append",
+      "toPortId": "item-in",
+      "type": "struct:ToolCall"
+    },
+    {
+      "fromId": "build_context",
+      "fromPortId": "context-id",
+      "toId": "build_write",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "build_append",
+      "fromPortId": "list-out",
+      "toId": "build_write",
+      "toPortId": "value-in",
+      "type": "list-struct:ToolCall"
+    },
+    {
+      "fromId": "build_context",
+      "fromPortId": "context-id",
+      "toId": "build_final_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "build_role",
+      "fromPortId": "content-out",
+      "toId": "build_message",
+      "toPortId": "role",
+      "type": "content"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:content",
+      "toId": "build_message",
+      "toPortId": "content",
+      "type": "content"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:reasoning",
+      "toId": "build_message",
+      "toPortId": "reasoning_content",
+      "type": "content"
+    },
+    {
+      "fromId": "build_final_read",
+      "fromPortId": "value-out",
+      "toId": "build_message",
+      "toPortId": "tool_calls",
+      "type": "list-struct:ToolCall"
+    },
+    {
+      "fromId": "build_message",
+      "fromPortId": "struct-out",
+      "toId": "build_json",
+      "toPortId": "value-in",
+      "type": "struct:Assistant"
+    },
+    {
+      "fromId": "build_json",
+      "fromPortId": "content-out",
+      "toId": "build_calls_return",
+      "toPortId": "function:message",
+      "type": "content"
+    },
+    {
+      "fromId": "build_route",
+      "fromPortId": "branch$others",
+      "toId": "build_empty",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_empty",
+      "fromPortId": "control-out",
+      "toId": "build_context",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_context",
+      "fromPortId": "control-out",
+      "toId": "build_each",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_each",
+      "fromPortId": "loop-out",
+      "toId": "build_call",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_call",
+      "fromPortId": "control-out",
+      "toId": "build_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_read",
+      "fromPortId": "control-out",
+      "toId": "build_append",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_append",
+      "fromPortId": "control-out",
+      "toId": "build_write",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_write",
+      "fromPortId": "control-out",
+      "toId": "build_each",
+      "toPortId": "loop-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_each",
+      "fromPortId": "control-out",
+      "toId": "build_final_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_final_read",
+      "fromPortId": "control-out",
+      "toId": "build_role",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_role",
+      "fromPortId": "control-out",
+      "toId": "build_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_message",
+      "fromPortId": "control-out",
+      "toId": "build_json",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_json",
+      "fromPortId": "control-out",
+      "toId": "build_calls_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "result_role",
+      "fromPortId": "content-out",
+      "toId": "result_message",
+      "toPortId": "role",
+      "type": "content"
+    },
+    {
+      "fromId": "record_tool_result_in",
+      "fromPortId": "function:content",
+      "toId": "result_message",
+      "toPortId": "content",
+      "type": "content"
+    },
+    {
+      "fromId": "record_tool_result_in",
+      "fromPortId": "function:call_id",
+      "toId": "result_message",
+      "toPortId": "tool_call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "result_message",
+      "fromPortId": "struct-out",
+      "toId": "result_json",
+      "toPortId": "value-in",
+      "type": "struct:ToolMessage"
+    },
+    {
+      "fromId": "record_tool_result_in",
+      "fromPortId": "function:history_id",
+      "toId": "result_save",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "result_json",
+      "fromPortId": "content-out",
+      "toId": "result_save",
+      "toPortId": "function:message",
+      "type": "content"
+    },
+    {
+      "fromId": "record_tool_result_in",
+      "fromPortId": "control-out",
+      "toId": "result_role",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "result_role",
+      "fromPortId": "control-out",
+      "toId": "result_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "result_message",
+      "fromPortId": "control-out",
+      "toId": "result_json",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "result_json",
+      "fromPortId": "control-out",
+      "toId": "result_save",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "result_save",
+      "fromPortId": "control-out",
+      "toId": "result_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "run_one_tool_in",
+      "fromPortId": "function:call",
+      "toId": "call_parse",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "call_parse",
+      "fromPortId": "value-out",
+      "toId": "call_id",
+      "toPortId": "struct-in",
+      "type": "struct:ToolCall"
+    },
+    {
+      "fromId": "call_parse",
+      "fromPortId": "value-out",
+      "toId": "call_function",
+      "toPortId": "struct-in",
+      "type": "struct:ToolCall"
+    },
+    {
+      "fromId": "call_function",
+      "fromPortId": "value-out",
+      "toId": "call_name",
+      "toPortId": "struct-in",
+      "type": "struct:CallFunction"
+    },
+    {
+      "fromId": "call_function",
+      "fromPortId": "value-out",
+      "toId": "call_arguments",
+      "toPortId": "struct-in",
+      "type": "struct:CallFunction"
+    },
+    {
+      "fromId": "run_one_tool_in",
+      "fromPortId": "function:batch_stop_id",
+      "toId": "batch_stop_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "batch_stop_read",
+      "fromPortId": "value-out",
+      "toId": "batch_stop_route",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "call_name",
+      "fromPortId": "value-out",
+      "toId": "call_kind_route",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "call_name",
+      "fromPortId": "value-out",
+      "toId": "invoke_tool",
+      "toPortId": "tool-name",
+      "type": "content"
+    },
+    {
+      "fromId": "call_arguments",
+      "fromPortId": "value-out",
+      "toId": "invoke_tool",
+      "toPortId": "arguments-json",
+      "type": "content"
+    },
+    {
+      "fromId": "run_one_tool_in",
+      "fromPortId": "function:history_id",
+      "toId": "save_success",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "call_id",
+      "fromPortId": "value-out",
+      "toId": "save_success",
+      "toPortId": "function:call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "invoke_tool",
+      "fromPortId": "result-json",
+      "toId": "save_success",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "run_one_tool_in",
+      "fromPortId": "function:history_id",
+      "toId": "save_error",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "call_id",
+      "fromPortId": "value-out",
+      "toId": "save_error",
+      "toPortId": "function:call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "invoke_tool",
+      "fromPortId": "error-json",
+      "toId": "save_error",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "run_one_tool_in",
+      "fromPortId": "control-out",
+      "toId": "call_parse",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_parse",
+      "fromPortId": "control-out",
+      "toId": "call_id",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_id",
+      "fromPortId": "control-out",
+      "toId": "call_function",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_function",
+      "fromPortId": "control-out",
+      "toId": "call_name",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_name",
+      "fromPortId": "control-out",
+      "toId": "call_arguments",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_arguments",
+      "fromPortId": "control-out",
+      "toId": "batch_stop_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "batch_stop_read",
+      "fromPortId": "control-out",
+      "toId": "batch_stop_route",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "batch_stop_route",
+      "fromPortId": "stopped",
+      "toId": "stale_tool_text",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "batch_stop_route",
+      "fromPortId": "branch$others",
+      "toId": "call_kind_route",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_kind_route",
+      "fromPortId": "branch$others",
+      "toId": "invoke_tool",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "invoke_tool",
+      "fromPortId": "control-out",
+      "toId": "save_success",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_success",
+      "fromPortId": "control-out",
+      "toId": "tool_success_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "invoke_tool",
+      "fromPortId": "error-out",
+      "toId": "save_error",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_error",
+      "fromPortId": "control-out",
+      "toId": "tool_error_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "run_one_tool_in",
+      "fromPortId": "function:history_id",
+      "toId": "stale_tool_message",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "call_id",
+      "fromPortId": "value-out",
+      "toId": "stale_tool_message",
+      "toPortId": "function:call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "stale_tool_text",
+      "fromPortId": "content-out",
+      "toId": "stale_tool_message",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "stale_tool_text",
+      "fromPortId": "control-out",
+      "toId": "stale_tool_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "stale_tool_message",
+      "fromPortId": "control-out",
+      "toId": "stale_tool_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_arguments",
+      "fromPortId": "value-out",
+      "toId": "ask_args_parse",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "ask_args_parse",
+      "fromPortId": "value-out",
+      "toId": "ask_question",
+      "toPortId": "struct-in",
+      "type": "struct:AskHumanArgs"
+    },
+    {
+      "fromId": "run_one_tool_in",
+      "fromPortId": "function:batch_stop_id",
+      "toId": "batch_stop_true",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "batch_stopped",
+      "fromPortId": "content-out",
+      "toId": "batch_stop_true",
+      "toPortId": "value-in",
+      "type": "content"
+    },
+    {
+      "fromId": "human_inputs_before",
+      "fromPortId": "list-out",
+      "toId": "human_cursor",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "ask_question",
+      "fromPortId": "value-out",
+      "toId": "human_prompt",
+      "toPortId": "value",
+      "type": "content"
+    },
+    {
+      "fromId": "human_prompt",
+      "fromPortId": "content-out",
+      "toId": "show_human_prompt",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "human_inputs_after",
+      "fromPortId": "list-out",
+      "toId": "human_new_inputs",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "human_cursor",
+      "fromPortId": "length-out",
+      "toId": "human_new_inputs",
+      "toPortId": "start-in",
+      "type": "number"
+    },
+    {
+      "fromId": "human_new_inputs",
+      "fromPortId": "list-out",
+      "toId": "human_reply_value",
+      "toPortId": "replies",
+      "type": "list-content"
+    },
+    {
+      "fromId": "human_reply_value",
+      "fromPortId": "struct-out",
+      "toId": "human_reply_json",
+      "toPortId": "value-in",
+      "type": "struct:HumanReply"
+    },
+    {
+      "fromId": "run_one_tool_in",
+      "fromPortId": "function:history_id",
+      "toId": "save_human_reply",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "call_id",
+      "fromPortId": "value-out",
+      "toId": "save_human_reply",
+      "toPortId": "function:call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "human_reply_json",
+      "fromPortId": "content-out",
+      "toId": "save_human_reply",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "call_kind_route",
+      "fromPortId": "human",
+      "toId": "ask_args_parse",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "ask_args_parse",
+      "fromPortId": "control-out",
+      "toId": "ask_question",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "ask_question",
+      "fromPortId": "control-out",
+      "toId": "batch_stopped",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "batch_stopped",
+      "fromPortId": "control-out",
+      "toId": "batch_stop_true",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "batch_stop_true",
+      "fromPortId": "control-out",
+      "toId": "human_inputs_before",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "human_inputs_before",
+      "fromPortId": "control-out",
+      "toId": "human_cursor",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "human_cursor",
+      "fromPortId": "control-out",
+      "toId": "human_prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "human_prompt",
+      "fromPortId": "control-out",
+      "toId": "show_human_prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "show_human_prompt",
+      "fromPortId": "control-out",
+      "toId": "wait_for_human",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "wait_for_human",
+      "fromPortId": "control-out",
+      "toId": "human_inputs_after",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "human_inputs_after",
+      "fromPortId": "control-out",
+      "toId": "human_new_inputs",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "human_new_inputs",
+      "fromPortId": "control-out",
+      "toId": "human_reply_value",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "human_reply_value",
+      "fromPortId": "control-out",
+      "toId": "human_reply_json",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "human_reply_json",
+      "fromPortId": "control-out",
+      "toId": "save_human_reply",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_human_reply",
+      "fromPortId": "control-out",
+      "toId": "human_reply_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tool_loop_turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "read_for_llm",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "list_files_tool",
+      "fromPortId": "tool-out",
+      "toId": "available_tools",
+      "toPortId": "content-in-0",
+      "type": "content"
+    },
+    {
+      "fromId": "get_file_tool",
+      "fromPortId": "tool-out",
+      "toId": "available_tools",
+      "toPortId": "content-in-1",
+      "type": "content"
+    },
+    {
+      "fromId": "ask_human_tool",
+      "fromPortId": "tool-out",
+      "toId": "available_tools",
+      "toPortId": "content-in-2",
+      "type": "content"
+    },
+    {
+      "fromId": "read_for_llm",
+      "fromPortId": "value-out",
+      "toId": "llm",
+      "toPortId": "messages-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "available_tools",
+      "fromPortId": "list-out",
+      "toId": "llm",
+      "toPortId": "tools-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "output",
+      "toId": "normalize_content",
+      "toPortId": "value",
+      "type": "content"
+    },
+    {
+      "fromId": "normalize_content",
+      "fromPortId": "content-out",
+      "toId": "assistant_message",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "reasoning",
+      "toId": "assistant_message",
+      "toPortId": "function:reasoning",
+      "type": "content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "tool_calls",
+      "toId": "assistant_message",
+      "toPortId": "function:calls",
+      "type": "list-content"
+    },
+    {
+      "fromId": "tool_loop_turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "save_assistant",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "assistant_message",
+      "fromPortId": "function:message",
+      "toId": "save_assistant",
+      "toPortId": "function:message",
+      "type": "content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "tool_calls",
+      "toId": "turn_count",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "turn_count",
+      "fromPortId": "length-out",
+      "toId": "turn_count_value",
+      "toPortId": "count",
+      "type": "number"
+    },
+    {
+      "fromId": "turn_count_value",
+      "fromPortId": "struct-out",
+      "toId": "turn_count_json",
+      "toPortId": "value-in",
+      "type": "struct:ToolCallCount"
+    },
+    {
+      "fromId": "turn_count_json",
+      "fromPortId": "content-out",
+      "toId": "turn_count_text",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_count_text",
+      "fromPortId": "count",
+      "toId": "turn_route",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "tool_loop_turn_in",
+      "fromPortId": "control-out",
+      "toId": "read_for_llm",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_for_llm",
+      "fromPortId": "control-out",
+      "toId": "list_files_tool",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "list_files_tool",
+      "fromPortId": "control-out",
+      "toId": "get_file_tool",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "get_file_tool",
+      "fromPortId": "control-out",
+      "toId": "ask_human_tool",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "ask_human_tool",
+      "fromPortId": "control-out",
+      "toId": "available_tools",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "available_tools",
+      "fromPortId": "control-out",
+      "toId": "llm",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "control-out",
+      "toId": "normalize_content",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "normalize_content",
+      "fromPortId": "control-out",
+      "toId": "assistant_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "assistant_message",
+      "fromPortId": "control-out",
+      "toId": "save_assistant",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_assistant",
+      "fromPortId": "control-out",
+      "toId": "turn_count",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_count",
+      "fromPortId": "control-out",
+      "toId": "turn_count_value",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_count_value",
+      "fromPortId": "control-out",
+      "toId": "turn_count_json",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_count_json",
+      "fromPortId": "control-out",
+      "toId": "turn_count_text",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_count_text",
+      "fromPortId": "control-out",
+      "toId": "turn_route",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "normalize_content",
+      "fromPortId": "content-out",
+      "toId": "show_final",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_route",
+      "fromPortId": "final",
+      "toId": "show_final",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "show_final",
+      "fromPortId": "control-out",
+      "toId": "turn_final_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "tool_calls",
+      "toId": "execute_calls",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "batch_stop_initial",
+      "fromPortId": "content-out",
+      "toId": "batch_stop_context",
+      "toPortId": "initial-value",
+      "type": "content"
+    },
+    {
+      "fromId": "tool_loop_turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "execute_each",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "execute_calls",
+      "fromPortId": "item-out",
+      "toId": "execute_each",
+      "toPortId": "function:call",
+      "type": "content"
+    },
+    {
+      "fromId": "batch_stop_context",
+      "fromPortId": "context-id",
+      "toId": "execute_each",
+      "toPortId": "function:batch_stop_id",
+      "type": "content"
+    },
+    {
+      "fromId": "tool_loop_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "queue_next_turn",
+      "toPortId": "function:tokens_id",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_route",
+      "fromPortId": "branch$others",
+      "toId": "batch_stop_initial",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "batch_stop_initial",
+      "fromPortId": "control-out",
+      "toId": "batch_stop_context",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "batch_stop_context",
+      "fromPortId": "control-out",
+      "toId": "execute_calls",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "execute_calls",
+      "fromPortId": "loop-out",
+      "toId": "execute_each",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "execute_each",
+      "fromPortId": "control-out",
+      "toId": "execute_calls",
+      "toPortId": "loop-in",
+      "type": "control"
+    },
+    {
+      "fromId": "execute_calls",
+      "fromPortId": "control-out",
+      "toId": "queue_next_turn",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "queue_next_turn",
+      "fromPortId": "control-out",
+      "toId": "turn_tools_return",
+      "toPortId": "control-in",
+      "type": "control"
+    }
+  ]
+}

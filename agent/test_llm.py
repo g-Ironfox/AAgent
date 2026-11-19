@@ -109,6 +109,28 @@ class ToolCallCompatibilityTest(unittest.TestCase):
         self.assertEqual((content, reasoning), ("answer", ""))
         self.assertNotIn(".", request.call_args.kwargs["json"]["tools"][0]["function"]["name"])
 
+    def test_provider_indexes_are_removed_without_mutating_response_or_call_details(self):
+        calls = [
+            {"index": 0, "id": "read-call", "type": "function", "function": {
+                "name": "read_file", "arguments": '{ "file_id": "a.b" }',
+            }},
+            {"index": 1, "id": "human-call", "type": "function", "function": {
+                "name": "ask_human", "arguments": '{"question":"Which file?"}',
+            }},
+        ]
+        before = copy.deepcopy(calls)
+        response = self.response(calls)
+        with patch("llm.requests.post", return_value=response):
+            _, _, normalized = openai_llm_api(
+                [], "model", "https://example.test/v1", "secret", [],
+            )
+        self.assertEqual(normalized, [
+            {key: value for key, value in call.items() if key != "index"}
+            for call in before
+        ])
+        self.assertEqual(response.json.return_value["choices"][0]["message"]["tool_calls"], before)
+        self.assertEqual(calls, before)
+
     def test_alias_collision_preserves_real_name_and_is_independent_of_tool_order(self):
         source = {"tools": [self.schema("workspace.get_file")], "messages": []}
         payload, _ = _prepare_tool_names(source)

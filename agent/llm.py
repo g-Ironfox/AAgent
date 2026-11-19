@@ -114,6 +114,9 @@ def openai_llm_api(messages,model,url,key,tools=registered_tools,extra={}):
     res=resp.json()["choices"][0]["message"]
     tool_calls=copy.deepcopy(res.get('tool_calls') or [])
     for call in tool_calls:
+        # Some compatible providers include the stream assembly index even in
+        # completed messages. It is not part of a persisted tool-call message.
+        call.pop("index", None)
         function = call["function"]
         function["name"] = original_names.get(function["name"], function["name"])
     reasoning=res.get('reasoning_content') if res.get('reasoning_content') else ""
