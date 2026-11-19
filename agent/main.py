@@ -18,8 +18,8 @@ from process_repository import (
     TERMINAL_STATUSES, wake_process as wake_process_record,
 )
 from workflow_nodes import (
-    WORKFLOW_END, WORKFLOW_TIMEOUT_SECONDS, WorkflowStep, current_workflow_process,
-    execute_node, propagate_workflow_output,
+    WORKFLOW_END, WORKFLOW_TIMEOUT_SECONDS, WorkflowStep, FunctionCall, current_workflow_process,
+    execute_node, propagate_workflow_output, read_workflow_input,
 )
 from terminal_repository import terminal_process_context
 
@@ -454,8 +454,10 @@ def _next_process_node(process: dict, workflow_map: list[dict]) -> int:
     if isinstance(completed_id, bool) or not isinstance(completed_id, int):
         raise ValueError('invalid current_node_id')
     if completed_id == WORKFLOW_END:
+        kind = 'function_input' if process.get('active_function_id') else 'input'
         current_id = next((i for i, node in enumerate(workflow_map)
-                           if node.get('type') == 'input'), None)
+                           if node.get('type') == kind
+                           and node.get('function_id') == process.get('active_function_id')), None)
     elif 0 <= completed_id < len(workflow_map):
         current_id = workflow_map[completed_id].get('successors', {}).get(process.get('control_port'))
     else:
@@ -464,6 +466,57 @@ def _next_process_node(process: dict, workflow_map: list[dict]) -> int:
             or not 0 <= current_id < len(workflow_map)):
         raise ValueError('invalid or disconnected workflow successor')
     return current_id
+
+
+def _function_template(workflow_map: list[dict]) -> list[dict]:
+    """Copy graph definitions without copying any invocation's mutable state."""
+    template = copy.deepcopy(workflow_map)
+    static_fields = {'_struct_definitions', '_tool_kind', '_metadata_tools'}
+    for node in template:
+        for key in list(node):
+            if key.startswith('_') and key not in static_fields:
+                node.pop(key)
+        for slot in node.get('data_inputs', {}).values():
+            slot[2] = None
+    return template
+
+
+def _push_function(process: dict, workflow_map: list[dict], current_id: int, target: str) -> list[dict]:
+    from workflow_structs import validate_value
+
+    stack = process.setdefault('function_stack', [])
+    if len(stack) >= 64:
+        raise ValueError('function call depth exceeds 64')
+    if 'function_template' not in process:
+        process['function_template'] = _function_template(workflow_map)
+    child_map = copy.deepcopy(process['function_template'])
+    entry = next((node for node in child_map if node['type'] == 'function_input'
+                  and node.get('function_id') == target), None)
+    if entry is None:
+        raise ValueError(f'function input not found: {target}')
+    caller = workflow_map[current_id]
+    for port in entry.get('function_ports', []):
+        port_id = f"function:{port['name']}"
+        present, value = read_workflow_input(caller, port_id)
+        if not present:
+            raise ValueError(f'function argument is missing: {target}.{port["name"]}')
+        validate_value(port['type'], value, entry.get('_struct_definitions', {}))
+        propagate_workflow_output(child_map, entry, port_id, value)
+    stack.append({'workflow': workflow_map, 'current_node_id': current_id,
+                  'control_port': 'next', 'function_id': process.get('active_function_id')})
+    process.update(active_function_id=target, current_node_id=WORKFLOW_END, control_port=None)
+    return child_map
+
+
+def _pop_function(process: dict, node: dict) -> list[dict]:
+    frame = process['function_stack'].pop()
+    parent_map = frame['workflow']
+    caller = parent_map[frame['current_node_id']]
+    for name, value in node.pop('_workflow_result', {}).items():
+        propagate_workflow_output(parent_map, caller, f'function:{name}', value)
+    process.update(current_node_id=frame['current_node_id'], control_port=frame['control_port'],
+                   active_function_id=frame['function_id'])
+    return parent_map
 
 
 def Executor(process_id: str) -> dict:
@@ -514,6 +567,8 @@ def Executor(process_id: str) -> dict:
             'started_at': datetime.now(timezone.utc).isoformat(),
             'status': 'completed',
         }
+        if process.get('active_function_id'):
+            trace.update(function_id=process['active_function_id'], function_depth=len(process.get('function_stack', [])))
         with terminal_process_context(
             process.get('terminal_process_id'),
             process.get('terminal_id'),
@@ -524,7 +579,9 @@ def Executor(process_id: str) -> dict:
             raise TimeoutError(f'workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds of active execution')
         process['status'] = 'ready'
         process['wait_for'] = None
-        if isinstance(outcome, WorkflowStep):
+        if isinstance(outcome, FunctionCall):
+            workflow_map = _push_function(process, workflow_map, current_id, outcome.function_id)
+        elif isinstance(outcome, WorkflowStep):
             process['status'] = 'blocked'
             process['wait_for'] = outcome.wait_for
             child = outcome.child_process
@@ -544,7 +601,12 @@ def Executor(process_id: str) -> dict:
             process['current_node_id'] = current_id
             process['control_port'] = node.get('_selected_control_port')
             if outcome == WORKFLOW_END:
-                process.update(status='completed', result=node.pop('_workflow_result', {}))
+                if node.get('type') == 'function_output':
+                    if not process.get('function_stack'):
+                        raise ValueError('function output has no caller')
+                    workflow_map = _pop_function(process, node)
+                else:
+                    process.update(status='completed', result=node.pop('_workflow_result', {}))
     except Exception as error:
         logger.exception('failed to execute process %s', process_id)
         process.update(status='failed', wait_for=None, error=str(error))
@@ -561,7 +623,8 @@ def Executor(process_id: str) -> dict:
                 trace['finished_at'] = datetime.now(timezone.utc).isoformat()
             process['node_trace'].append(trace)
         process['context_ids'] = sorted(context_ids)
-        for node in workflow_map if isinstance(workflow_map, list) else []:
+        runtime_maps = [workflow_map, *(frame['workflow'] for frame in process.get('function_stack', []))]
+        for node in (node for graph in runtime_maps if isinstance(graph, list) for node in graph):
             if isinstance(node, dict):
                 node.pop('_workflow_invocation_id', None)
                 node.pop('_workflow_ancestor_invocation_ids', None)

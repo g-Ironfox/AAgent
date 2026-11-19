@@ -21,7 +21,7 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 | --- | --- | --- | --- |
 | `schema_version` | 是 | string | 固定为 `2.0` |
 | `description` | 否 | string | Workflow 描述 |
-| `metadata` | 否 | object | Workflow 局部元数据；`structs`、`tools` 缺省为空数组 |
+| `metadata` | 否 | object | Workflow 局部元数据；`structs`、`tools`、`functions` 缺省为空数组 |
 | `input_ports` | 是 | port[] | Workflow 输入接口 |
 | `output_ports` | 是 | port[] | Workflow 输出接口 |
 | `nodes` | 是 | node[] | 节点列表 |
@@ -29,9 +29,9 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 | `subprocess_workflow_files` | 否 | subprocessWorkflowFile[] | 子进程 Workflow 文件名及接口快照 |
 | `remote_tools` | 否 | toolContract[] | 旧格式 Remote Tool 名称及接口快照（兼容读取） |
 
-端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
+端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name`、所属函数 `function_id` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
 
-规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`subprocess_workflow_files` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。Workflow 根对象和 metadata 均不包含 `name`；文件名由工作区文件记录提供。旧文件的名称字段在兼容读取时移除，保存和导出不再生成。`description` 最大长度 2000。`metadata` 允许 `structs`、`tools` 两个属性；二者缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`subprocess_workflow_files` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
+规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`subprocess_workflow_files` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。Workflow 根对象和 metadata 均不包含 `name`；文件名由工作区文件记录提供。旧文件的名称字段在兼容读取时移除，保存和导出不再生成。`description` 最大长度 2000。`metadata` 允许 `structs`、`tools`、`functions` 三个属性，均缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`subprocess_workflow_files` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
 
 对根对象的未知字段，管理端请求模型会拒绝；当前 Agent 所用 JSON Schema 没有在根层设置 `additionalProperties: false`，因此 Agent 单独进行 Schema 校验时不拒绝未知根字段。这是接收端行为差异，不改变本协议规定的根字段集合；需要严格互操作的生产者不得发送未知根字段。
 
@@ -391,3 +391,44 @@ Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KE
 编辑器导入、工作区可视化编辑、管理端写入与读取、Agent 编译和已挂起进程恢复都将旧 `workflow_nodes`、`type: "workflow"` 和节点参数 `workflow_name` 转为上述格式。转换不修改输入对象；新旧字段同时出现且值冲突时拒绝读取或保存，避免静默覆盖。保存和导出只生成新格式；schema_version 继续使用字符串 `"2.0"`，相关服务应一起更新。进程记录中的 `workflow_name` 是兼容字段名，值取实际工作区文件名，不再读取 Workflow JSON 的名称。
 
 已有文件可使用 `python scripts/migrate_subprocess_workflows.py <路径>` 预览迁移，添加 `--apply` 写回；通过 `--workspace-url` 可批量迁移运行中工作区，使用文件 revision 做并发校验；`--manager-url` 可迁移管理端保存的 Workflow。历史检查点保留原始内容，恢复后可再次转换。
+
+### 10.7 Workflow 局部函数
+
+`metadata.functions` 声明同一 Workflow 内可调用的函数，每项恰含 `id`、`name`、`input_ports`、`output_ports`。`id` 匹配 `[A-Za-z_][A-Za-z0-9_]*` 且唯一；名称去除首尾空白后非空、忽略大小写唯一。接口端口仍为 `{name, type}`，同侧名称唯一，允许内建类型以及本 Workflow 声明的 Struct / List Struct。
+
+```json
+{
+  "metadata": {
+    "functions": [
+      {
+        "id": "normalize",
+        "name": "规范化",
+        "input_ports": [{"name": "text", "type": "content"}],
+        "output_ports": [{"name": "text", "type": "content"}]
+      }
+    ]
+  }
+}
+```
+
+只有 `function_input` / `function_output` 的顶层 `function_id` 用于标识函数声明。每个函数必须恰有一个 `function_input`、至少一个 `function_output`。普通节点不声明所属函数：校验时从主流程及各函数入口沿控制流 DFS 推导归属，遇到返回节点停止，调用节点仅沿自身后继继续，不进入被调用函数。归属分析不修改原始文档，也不写入运行图；旧文件普通节点上的顶层 `function_id` 在导入和编译时丢弃。主流程继续使用唯一 `input` 及一个或多个 `output`。节点 ID 在整个文件内唯一。函数入口和返回节点的端口由 metadata 生成，无需保存 `workflowPorts` 或其他接口快照。
+
+`function_call.arguments.function_id` 表示调用目标。例如将以下节点接在 A 的控制流中，即表示 A 内调用 B：
+
+```json
+{"id":"call_b","type":"function_call","arguments":{"function_id":"B"}}
+```
+
+函数入口仅有 `control-out`，函数返回仅有 `control-in`，调用节点同时具有 `control-in` 和 `control-out`。数据端口均使用 `function:<name>`。入口的数据输出对应函数实参，返回节点的数据输入对应返回值；调用节点的数据输入、输出分别对应被调用函数的声明。输入与输出可以同名且类型不同。函数调用实参与各返回节点声明的返回值均须连接并在执行时提供有效值；允许零参数或零返回值。
+
+主流程与每个函数分别从各自入口检查可达性、控制树及生命周期。不允许跨函数直接连接控制线或数据线，也不允许多个入口共享内部节点。生命周期仅在静态校验中使用；执行器沿控制后继执行、沿数据连接写入接口槽位，不计算或检查节点生命周期。函数可以有分支或循环，循环体仍不能直接包含 Router、多控制出口或嵌套循环，且必须返回所属 `loop-in`，不能直接执行函数返回。每条正常控制路径最终到达一个函数返回节点；本次调用执行到其中任意一个即返回。多个函数返回节点不是并行返回。
+
+调用函数是调用者图中的单一控制节点。因此循环体可以调用内部含分支的函数；函数内部独立校验，返回后继续调用者的单一控制链。第一版支持函数嵌套，静态拒绝直接及间接递归，运行时调用深度上限为 64 层。
+
+调度器始终执行栈顶。调用时从干净的已编译图模板复制一整份 Workflow map，清空所有输入槽位值及循环等运行状态，写入本次实参；栈中保留调用者的图实例、运行数据和返回位置。到达函数返回节点后收集并校验返回接口，弹出调用者图，将值作为调用节点输出沿原有连线写入后继接口，再沿 `control-out` 继续。返回函数内部的运行数据随该帧丢弃。同一函数多次调用互不共享槽位及循环游标。
+
+进程持久化保存活动图及 `function_stack` 中的每层图实例和位置，因此等待终端消息、等待子进程以及后续调度均保留调用关系。函数调用不创建新进程或新终端，累计执行时间仍计入当前进程；Context / Session 沿用现有进程归属、访问及清理规则，不因函数压栈产生新的 Context 所有者。既有 running 进程崩溃后自动重领的限制仍适用。节点日志中的 `function_id`、`function_depth` 标识实际执行的函数层。
+
+编辑器 metadata 提供函数声明及接口编辑；节点库提供函数输入、函数输出、函数调用。普通节点通过控制连线自动确定归属，无需手动选择；检查器可调整调用目标。生命周期编译为每个函数显示独立根作用域，并报告跨函数连线或共享节点。导入导出保留函数定义、边界标识及调用目标，普通节点归属和内部派生端口不写回文件。Schema 版本继续为 `2.0`；新增函数文件需使用支持函数的 Agent 和编辑器。
+
+可运行的嵌套示例见 `../examples/workflow-functions.flow`：主流程调用 A，A 调用 B，原样返回 `text`。

@@ -46,8 +46,11 @@ export function createWorkflowEditor(elements, markChanged) {
 
   function compatiblePort(port, drag) {
     const targetDirection = drag.targetDirection || (drag.direction === 'output' ? 'input' : 'output');
+    const source = state.nodes.find((node) => node.id === drag.anchorNodeId);
+    const target = state.nodes.find((node) => node.id === port?.dataset.nodeId);
     return Boolean(
       port
+      && source && target
       && port.dataset.portType === drag.type
       && port.dataset.portDirection === targetDirection
       && port.dataset.nodeId !== drag.anchorNodeId,
@@ -208,6 +211,7 @@ export function createWorkflowEditor(elements, markChanged) {
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
     const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', construct_map_content: 'MAP', construct_struct: 'S+', struct_get: 'S?', struct_update: 'S±', struct_to_json: 'S→', json_to_struct: '→S', map_content_get: 'GET', deserialize_json: 'J/', output_to_terminal: 'TERM', wait_terminal_event: 'WAIT', read_terminal_input: 'T<', construct_list: 'L', list_append: 'L+', list_length: 'LEN', list_get: 'L[]', list_slice: 'L[:]', foreach: 'FE', while_pop: 'WP', tool: 'T', json_tool: 'J-T', local_tool: 'LT', remote_sync_tool: 'RS', remote_async_tool: 'RA', context_create: 'C+', context_read: 'CR', context_write: 'CW', session_create: 'S+', session_read: 'SR', session_write: 'SW', spawn_and_wait_subprocess: 'WF' };
+    Object.assign(symbols, { function_input: 'F-IN', function_output: 'F-OUT', function_call: 'F()' });
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === editorState.selectedId ? ' selected' : ''}`;
     setRuntimeStyles(element, `node-position:${node.id}`, { left: `${node.x}px`, top: `${node.y}px` });
@@ -216,7 +220,7 @@ export function createWorkflowEditor(elements, markChanged) {
     head.className = 'flow-node-head';
     head.innerHTML = `<span class="node-symbol ${node.type}-symbol">${symbols[node.type] || 'L'}</span><span><strong></strong><small></small></span>`;
     head.querySelector('strong').textContent = node.name;
-    head.querySelector('small').textContent = node.type.toUpperCase();
+    head.querySelector('small').textContent = node.type.toUpperCase() + (node.function_id ? ` · ${node.function_id}` : '');
     const body = document.createElement('span');
     body.className = 'flow-node-body';
     const portCount = Math.max(inputs.length, outputs.length);

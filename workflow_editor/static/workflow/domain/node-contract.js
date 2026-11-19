@@ -3,6 +3,9 @@ export const DATA_TYPES = new Set(['content', 'number', 'message', 'map-content'
 export const NODE_TYPES = new Set([
   'input',
   'output',
+  'function_input',
+  'function_output',
+  'function_call',
   'router',
   'construct_message',
   'construct_content',
@@ -77,6 +80,15 @@ function structColor(node, type) {
 }
 
 export function portsForNode(node) {
+  if (['function_input', 'function_output', 'function_call'].includes(node.type)) {
+    const port = (id, direction, type, label) => ({ id, direction, type, label, title: label, multiple: direction === 'output' && type !== 'control', color: structColor(node, type) });
+    return [
+      ...(node.type !== 'function_input' ? [port('control-in', 'input', 'control', '触发')] : []),
+      ...(node._function_inputs || []).map((p) => port(`function:${p.name}`, 'input', p.type, p.name)),
+      ...(node.type !== 'function_output' ? [port('control-out', 'output', 'control', '下一步')] : []),
+      ...(node._function_outputs || []).map((p) => port(`function:${p.name}`, 'output', p.type, p.name)),
+    ];
+  }
   if (node.type === 'input') {
     return [
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
@@ -435,6 +447,11 @@ export function createNode(type, nodes, configuration = null, viewport = null) {
   const number = nodes.filter((node) => node.type === type).length + 1;
   const position = nextNodePosition(nodes, viewport);
   if (type === 'router') return { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position };
+  if (['function_input', 'function_output', 'function_call'].includes(type)) {
+    const label = { function_input: '函数输入', function_output: '函数输出', function_call: '调用函数' }[type];
+    return { id: createWorkflowId(type), type, name: `${label} ${configuration?.name || ''}`, ...position,
+      ...(type === 'function_call' ? { callee_id: configuration?.id } : { function_id: configuration?.id }) };
+  }
   if (type === 'output') return { id: createWorkflowId('output'), type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
   if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
   if (type === 'construct_content') return { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };

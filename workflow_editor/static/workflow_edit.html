@@ -190,6 +190,7 @@
             <div><strong>异步 Tool</strong><small>仅 Remote Tool，发布后返回 Task ID</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <div id="functionNodeLibrary" class="subprocess-node-library" hidden></div>
           <div id="subprocessNodeLibrary" class="subprocess-node-library" hidden></div>
         </div>
         <footer class="library-footer"><span>基础节点 + 子进程</span><span id="nodeCount">4 个实例</span></footer>
@@ -276,6 +277,11 @@
           <p class="section-help">每个声明仅在当前 Workflow 内有效；字段类型可引用其他 Struct。</p>
           <div id="structDefinitions" class="struct-definition-list"></div>
           <p id="structDefinitionsError" class="text-import-error" role="alert"></p>
+        </section>
+        <section class="metadata-resource-section">
+          <header><div><span class="metadata-port-mark workflow">FN</span><h3>函数声明</h3></div><button id="addFunctionButton" type="button" title="添加函数">+</button></header>
+          <p class="section-help">函数使用独立的输入、输出和运行栈；在节点库添加函数入口、返回或调用节点。</p>
+          <div id="functionList" class="metadata-resource-list"></div>
         </section>
         <section class="metadata-resource-section subprocess-workflow-section">
           <header>
@@ -383,6 +389,10 @@
     <div data-interface-contract></div>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
+
+  <template id="function_inputInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+  <template id="function_outputInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+  <template id="function_callInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label><label>调用函数<select data-function-target></select></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
 
   <template id="routerInspectorTemplate">
     <div data-interface-contract></div>

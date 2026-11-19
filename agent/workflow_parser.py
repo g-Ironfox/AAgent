@@ -35,6 +35,8 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     contain endpoint lists.
     """
     workflow = migrate_subprocess_workflow_format(workflow)
+    from workflow_functions import bind_function_interfaces
+    workflow = bind_function_interfaces(workflow)
     if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
         raise WorkflowParseError(
             f"unsupported workflow schema_version: {workflow.get('schema_version')!r}; "

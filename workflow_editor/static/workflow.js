@@ -4,6 +4,7 @@ import { createWorkflowEditor } from './workflow/editor.js';
 import { createInspector } from './workflow/inspector/inspector.js';
 import { setRuntimeStyles } from './workflow/domain/runtime-styles.js';
 import { prepareStructDefinitions, remapStructReferences } from './workflow/domain/struct-editing.js';
+import { bindNodeFunctions, validateFunctions } from './workflow/domain/functions.js';
 import {
   addNode,
   loadSnapshot,
@@ -74,6 +75,7 @@ function markChanged() {
     if (undoHistory.length > 100) undoHistory.shift();
   }
   lastUndoSnapshot = workflowSnapshot();
+  renderFunctionLibrary();
   hasUnsavedChanges = true;
   elements.workflowState.textContent = '未保存';
   elements.workflowState.classList.remove('saved');
@@ -88,6 +90,7 @@ let structDraft = [];
 const structColors = ['#3A7D68', '#D97706', '#3976A8', '#B94E42', '#7A5AA6', '#56813B'];
 
 function renderWorkflow() {
+  renderFunctionLibrary();
   renderStructLegend();
   editor.renderWorkflow();
 }
@@ -280,6 +283,7 @@ function createMetadataPortRow(port = {}) {
   const row = document.querySelector('#metadataPortTemplate').content.firstElementChild.cloneNode(true);
   row.querySelector('[data-metadata-port-name]').value = port.name || '';
   row.querySelector('[data-metadata-port-type]').value = port.type || 'content';
+  row.querySelector('[data-metadata-port-type]').dataset.savedType = port.type || 'content';
   row.querySelector('[data-remove-metadata-port]').addEventListener('click', () => row.remove());
   return row;
 }
@@ -305,7 +309,76 @@ function renderMetadataDialog() {
   elements.structDefinitionsError.textContent = '';
   renderSubprocessWorkflowFileList();
   renderRemoteToolList();
+  document.querySelector('#functionList').replaceChildren(...(state.metadata.functions || []).map(createFunctionRow));
 }
+
+function createFunctionRow(fn = { id: '', name: '', input_ports: [], output_ports: [] }) {
+  const row = createSubprocessWorkflowFileRow({ ...fn, name: fn.id });
+  row.classList.add('function-metadata-row');
+  const idInput = row.querySelector('[data-subprocess-workflow-file-name]');
+  idInput.parentElement.firstChild.textContent = '函数 ID';
+  idInput.placeholder = 'function_1';
+  idInput.pattern = '[A-Za-z_][A-Za-z0-9_]*';
+  idInput.readOnly = Boolean(fn.id);
+  const nameLabel = document.createElement('label');
+  nameLabel.textContent = '名称';
+  const nameInput = document.createElement('input');
+  nameInput.dataset.functionName = '';
+  nameInput.required = true;
+  nameInput.value = fn.name;
+  nameLabel.append(nameInput);
+  row.querySelector('header').insertBefore(nameLabel, row.querySelector('header button'));
+  row.querySelector('[data-remove-subprocess-workflow-file]').title = '删除函数';
+  for (const select of row.querySelectorAll('[data-metadata-port-type]')) addFunctionStructOptions(select);
+  for (const button of row.querySelectorAll('[data-add-interface-port]')) button.addEventListener('click', () => {
+    for (const select of row.querySelectorAll('[data-metadata-port-type]')) addFunctionStructOptions(select);
+  });
+  return row;
+}
+
+function addFunctionStructOptions(select) {
+  const value = select.value || select.dataset.savedType;
+  for (const s of structDraft) for (const type of [`struct:${s.id}`, `list-struct:${s.id}`]) {
+    if (![...select.options].some((o) => o.value === type)) select.add(new Option(type, type));
+  }
+  if (value) select.value = value;
+}
+
+function readFunctions() {
+  return [...document.querySelectorAll('#functionList .function-metadata-row')].map((row) => ({
+    id: row.querySelector('[data-subprocess-workflow-file-name]').value.trim(),
+    name: row.querySelector('[data-function-name]').value.trim(),
+    input_ports: readPortsFromList(row.querySelector('[data-interface-port-list="input_ports"]')),
+    output_ports: readPortsFromList(row.querySelector('[data-interface-port-list="output_ports"]')),
+  }));
+}
+
+function renderFunctionLibrary() {
+  const functions = state.metadata.functions || [];
+  const mount = document.querySelector('#functionNodeLibrary');
+  mount.hidden = !functions.length;
+  mount.replaceChildren(...functions.flatMap((fn) => ['function_input', 'function_output', 'function_call'].map((kind) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'library-item';
+    button.textContent = `${fn.name} · ${{ function_input: '输入', function_output: '输出', function_call: '调用' }[kind]} +`;
+    button.disabled = kind === 'function_input' && state.nodes.some((n) => n.type === kind && n.function_id === fn.id);
+    button.addEventListener('click', () => {
+      const node = addNode(kind, fn, currentCanvasViewport());
+      if (!node) return;
+      markChanged();
+      renderFunctionLibrary();
+      editor.selectNode(node.id);
+    });
+    return button;
+  })));
+}
+
+document.querySelector('#addFunctionButton').addEventListener('click', () => {
+  const row = createFunctionRow();
+  document.querySelector('#functionList').append(row);
+  row.querySelector('input').focus();
+});
 
 function renderStructDefinitions() {
   const mount = elements.structDefinitions;
@@ -741,8 +814,14 @@ elements.metadataForm.addEventListener('submit', (event) => {
   if (!elements.metadataForm.reportValidity()) return;
   let structs;
   let structIdMap;
+  let functions;
   try {
     ({ structs, idMap: structIdMap } = prepareStructDefinitions(structDraft));
+    functions = readFunctions();
+    const functionDraft = { metadata: { functions: structuredClone(functions) } };
+    remapStructReferences(functionDraft, structIdMap);
+    validateFunctions(functionDraft.metadata.functions, structs);
+    bindNodeFunctions(structuredClone(state.nodes), functions);
     elements.structDefinitionsError.textContent = '';
   } catch (error) {
     elements.structDefinitionsError.textContent = error.message;
@@ -800,7 +879,7 @@ elements.metadataForm.addEventListener('submit', (event) => {
   syncSubprocessWorkflowFileNodes(subprocessWorkflowFiles);
   syncRemoteToolNodes(remoteTools);
   state.description = elements.workflowDescription.value.trim();
-  state.metadata = { ...(state.metadata || {}), structs };
+  state.metadata = { ...(state.metadata || {}), structs, functions };
   state.input_ports = inputPorts;
   state.output_ports = outputPorts;
   state.subprocess_workflow_files = subprocessWorkflowFiles.map(({ previous_name, ...workflow }) => workflow);
@@ -809,12 +888,12 @@ elements.metadataForm.addEventListener('submit', (event) => {
   const snapshot = workflowSnapshot();
   if (!loadSnapshot(snapshot)) {
     loadSnapshot(previousSnapshot);
-    elements.structDefinitionsError.textContent = 'Struct 修改与当前节点或连接不兼容';
+    elements.structDefinitionsError.textContent = '元数据修改与当前节点或连接不兼容';
     return;
   }
   const retainedConnectionIds = new Set(state.connections.map((connection) => connection.id));
   const removedConnections = previousSnapshot.connections.filter((connection) => !retainedConnectionIds.has(connection.id));
-  if (removedConnections.length && !window.confirm(`Struct 修改会删除 ${removedConnections.length} 条不再匹配的连线，继续吗？`)) {
+  if (removedConnections.length && !window.confirm(`接口修改会删除 ${removedConnections.length} 条不再匹配的连线，继续吗？`)) {
     loadSnapshot(previousSnapshot);
     return;
   }

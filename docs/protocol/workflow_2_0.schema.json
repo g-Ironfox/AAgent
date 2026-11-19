@@ -84,6 +84,12 @@
           "items": {
             "$ref": "#/$defs/toolDependency"
           }
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/function"
+          }
         }
       },
       "additionalProperties": false
@@ -265,7 +271,10 @@
             "struct_update",
             "struct_to_json",
             "json_to_struct",
-            "tool"
+            "tool",
+            "function_input",
+            "function_output",
+            "function_call"
           ]
         },
         "name": {
@@ -303,6 +312,11 @@
                 },
                 "additionalProperties": false
               }
+            },
+            "function_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The target function of a function_call node."
             }
           }
         },
@@ -342,6 +356,11 @@
         },
         "output_ports": {
           "$ref": "#/$defs/ports"
+        },
+        "function_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifies the function for function_input/function_output. Ordinary node membership is inferred from control flow during validation; legacy body labels are ignored."
         }
       },
       "additionalProperties": false,
@@ -809,6 +828,50 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "function_input",
+                  "function_output"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "function_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "function_call"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "required": [
+                  "function_id"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -939,6 +1002,32 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200
+        },
+        "input_ports": {
+          "$ref": "#/$defs/ports"
+        },
+        "output_ports": {
+          "$ref": "#/$defs/ports"
+        }
+      },
+      "additionalProperties": false
+    },
+    "function": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "input_ports",
+        "output_ports"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
         },
         "input_ports": {
           "$ref": "#/$defs/ports"

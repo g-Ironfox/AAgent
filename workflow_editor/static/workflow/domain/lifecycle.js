@@ -7,6 +7,7 @@ export function compileLifecycles(workflow) {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const outgoing = new Map(nodes.map((node) => [node.id, []]));
   const nodeScopes = new Map();
+  const nodeFunctions = new Map();
   const outputScopes = new Map();
   const scopes = [];
   const errors = [];
@@ -54,17 +55,27 @@ export function compileLifecycles(workflow) {
 
   const active = new Set();
   const returnedLoops = new Set();
-  function visit(nodeId, scopeId, loopId = null) {
+  function visit(nodeId, scopeId, loopId = null, functionId = null, incomingEdge = null) {
     const node = byId.get(nodeId);
+    if (['input', 'output', 'function_input', 'function_output'].includes(node.type)) {
+      const boundary = node.type.startsWith('function_') ? node.function_id : null;
+      if (boundary !== functionId) {
+        fail(`「${name(node)}」的控制连线跨越函数边界。`, nodeId, incomingEdge);
+        return;
+      }
+    }
     if (active.has(nodeId)) {
       fail(`「${name(node)}」形成了非 Foreach loop-in 回边的环。`, nodeId);
       return;
     }
     if (nodeScopes.has(nodeId)) {
-      fail(`「${name(node)}」有多个控制入口；不允许分支汇合或共享节点。`, nodeId);
+      if (nodeFunctions.get(nodeId) !== functionId) {
+        fail(`「${name(node)}」被多个流程共享，控制连线跨越函数边界。`, nodeId, incomingEdge);
+      } else fail(`「${name(node)}」有多个控制入口；不允许分支汇合或共享节点。`, nodeId, incomingEdge);
       return;
     }
     nodeScopes.set(nodeId, scopeId);
+    nodeFunctions.set(nodeId, functionId);
     active.add(nodeId);
     const controls = ports(node).filter((port) => port.direction === 'output');
     const edges = outgoing.get(nodeId);
@@ -72,7 +83,7 @@ export function compileLifecycles(workflow) {
     if (loopId && (controls.length > 1 || node.type === 'router')) {
       fail(`循环体内不允许多分支节点「${name(node)}」。`, nodeId);
     }
-    if (loopId && node.type === 'output') {
+    if (loopId && ['output', 'function_output'].includes(node.type)) {
       fail(`循环体必须返回所属循环的 loop-in，不能在「${name(node)}」结束。`, nodeId);
     }
     const successors = new Map();
@@ -109,11 +120,38 @@ export function compileLifecycles(workflow) {
         } else returnedLoops.add(target.id);
         continue;
       }
-      visit(edge.toId, childScope, childLoop);
+      visit(edge.toId, childScope, childLoop, functionId, edge);
     }
     active.delete(nodeId);
   }
   if (inputs.length === 1) visit(inputs[0].id, root);
+  for (const fn of workflow.metadata?.functions || []) {
+    const entries = nodes.filter((n) => n.type === 'function_input' && n.function_id === fn.id);
+    if (entries.length !== 1) fail(`函数 ${fn.name} 必须恰有一个函数输入。`);
+    if (!nodes.some((n) => n.type === 'function_output' && n.function_id === fn.id)) fail(`函数 ${fn.name} 至少需要一个函数输出。`);
+    const fnRoot = addScope(null, 'root', `函数 ${fn.name}`, entries[0]?.id, null);
+    if (entries.length === 1) visit(entries[0].id, fnRoot, null, fn.id);
+  }
+  const calls = new Map((workflow.metadata?.functions || []).map((fn) => [fn.id, new Set()]));
+  for (const node of nodes) if (node.type === 'function_call' && calls.has(nodeFunctions.get(node.id))) {
+    calls.get(nodeFunctions.get(node.id)).add(node.arguments?.function_id ?? node.callee_id);
+  }
+  const completedCalls = new Set();
+  const activeCalls = new Set();
+  for (const functionId of calls.keys()) {
+    const pending = [[functionId, false]];
+    while (pending.length) {
+      const [fid, exiting] = pending.pop();
+      if (exiting) { activeCalls.delete(fid); completedCalls.add(fid); }
+      else if (activeCalls.has(fid)) { fail(`暂不支持递归函数调用：${fid}`); break; }
+      else if (!completedCalls.has(fid)) {
+        activeCalls.add(fid);
+        pending.push([fid, true]);
+        for (const target of calls.get(fid) || []) pending.push([target, false]);
+      }
+    }
+    activeCalls.clear();
+  }
   for (const node of nodes) {
     if (!nodeScopes.has(node.id)) fail(`「${name(node)}」无法从 Input 到达。`, node.id);
     if (['foreach', 'while_pop'].includes(node.type) && nodeScopes.has(node.id) && !returnedLoops.has(node.id)) {
@@ -137,12 +175,13 @@ export function compileLifecycles(workflow) {
       }
     }
   }
-  return { scopes, nodeScopes, outputScopes, errors, invalidConnections, structureValid };
+  return { scopes, nodeScopes, nodeFunctions, outputScopes, errors, invalidConnections, structureValid };
 }
 
 // Positions are presentation-only: dragging should not invalidate a compilation.
 export function lifecycleFingerprint(workflow) {
   return JSON.stringify({
+    functions: workflow.metadata?.functions || [],
     nodes: workflow.nodes.map(({ x, y, ...node }) => node),
     connections: workflow.connections,
   });

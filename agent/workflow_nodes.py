@@ -23,8 +23,15 @@ class WorkflowStep:
     child_process: dict[str, Any] | None = None
 
 
+@dataclass
+class FunctionCall:
+    """Request a durable stack push in the current workflow process."""
+
+    function_id: str
+
+
 current_workflow_process = ContextVar("workflow_process", default=None)
-NodeHandler = Callable[[int, WorkflowMap], int | WorkflowStep]
+NodeHandler = Callable[[int, WorkflowMap], int | WorkflowStep | FunctionCall]
 WORKFLOW_END = -1
 WORKFLOW_TIMEOUT_SECONDS = 180
 logger = logging.getLogger("aagent.workflow")
@@ -37,7 +44,7 @@ def _is_map_content(value: Any) -> bool:
     )
 
 
-def execute_node(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
+def execute_node(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep | FunctionCall:
     """Execute exactly one workflow node and return its successor index."""
     if isinstance(current_id, bool) or not isinstance(current_id, int):
         raise TypeError("current_id must be an integer node index")
@@ -167,6 +174,12 @@ def workflow_input(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(workflow_map[current_id])
 
 
+def workflow_function_call(current_id: int, workflow_map: WorkflowMap) -> FunctionCall:
+    node = workflow_map[current_id]
+    next_successor(node)
+    return FunctionCall(node_argument(node, "function_id"))
+
+
 def workflow_output_to_terminal(current_id: int, workflow_map: WorkflowMap) -> int:
     from terminal_repository import (
         append_terminal_output,
@@ -217,9 +230,16 @@ def workflow_wait_terminal_event(current_id: int, workflow_map: WorkflowMap) -> 
 def workflow_output(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     output: dict[str, Any] = {}
-    for port in node.get("workflowPorts", []):
-        has_value, value = read_workflow_input(node, port["id"])
+    function = node.get("type") == "function_output"
+    for port in node.get("function_ports" if function else "workflowPorts", []):
+        port_id = f"function:{port['name']}" if function else port["id"]
+        has_value, value = read_workflow_input(node, port_id)
+        if function and not has_value:
+            raise ValueError(f"function output is missing: {node.get('id')}.{port_id}")
         if has_value:
+            if function:
+                from workflow_structs import validate_value
+                validate_value(port["type"], value, _struct_defs(node))
             output[port["name"]] = value
     node["_workflow_result"] = output
     return WORKFLOW_END
@@ -944,6 +964,9 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
 nodes_map: dict[str, NodeHandler] = {
     "input": workflow_input,
     "output": workflow_output,
+    "function_input": workflow_input,
+    "function_output": workflow_output,
+    "function_call": workflow_function_call,
     "router": workflow_router,
     "construct_message": workflow_construct_message,
     "construct_content": workflow_construct_content,

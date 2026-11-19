@@ -4,6 +4,7 @@ import { nodeById, state } from '../domain/serialization.js';
 import { createIntegrationInspector } from './integrations.js';
 import { bindStructureInspector } from './structure.js';
 import { setRuntimeStyles } from '../domain/runtime-styles.js';
+import { bindNodeFunctions } from '../domain/functions.js';
 
 export function createInspector(elements, editor, markChanged) {
   const context = { elements, editor, markChanged, renderInspector, renderInterfaceContract };
@@ -18,6 +19,32 @@ export function createInspector(elements, editor, markChanged) {
     elements.inspectorType.textContent = node.type.toUpperCase();
     const template = document.querySelector(`#${node.type}InspectorTemplate`);
     elements.inspectorContent.replaceChildren(template.content.cloneNode(true));
+    const functions = state.metadata.functions || [];
+    if (['function_input', 'function_output'].includes(node.type)) {
+      const section = document.createElement('section');
+      section.className = 'inspector-section form-section';
+      const label = document.createElement('label');
+      label.textContent = '函数';
+      const select = document.createElement('select');
+      for (const fn of functions) select.add(new Option(fn.name, fn.id));
+      select.value = node.function_id || '';
+      select.disabled = true;
+      label.append(select);
+      section.append(label);
+      elements.inspectorContent.prepend(section);
+    }
+    const target = elements.inspectorContent.querySelector('[data-function-target]');
+    if (target) {
+      target.replaceChildren(...functions.map((fn) => new Option(fn.name, fn.id)));
+      target.value = node.callee_id;
+      target.addEventListener('change', () => {
+        node.callee_id = target.value;
+        bindNodeFunctions(state.nodes, functions);
+        reconcileConnections(state);
+        markChanged();
+        editor.renderWorkflow();
+      });
+    }
     if (node.type === 'input') {
       renderInterfaceContract(node);
       return;

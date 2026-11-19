@@ -19,7 +19,8 @@ Workflow JSON 不包含根级 `name` 或 `metadata.name`。工作区文件记录
 | --- | --- |
 | 循环 | 允许 foreach / while_pop 体末回所属 loop-in；移除合法回边后其余图仍须为 DAG |
 | 分支 | 控制树不能汇合，不能共享后继或 output；foreach / while_pop 内不能直接放 router/json_tool/foreach/while_pop |
-| 分支后的统一步骤 | 把分支整体封装为子进程 Workflow 文件，各分支独立 output；spawn_and_wait_subprocess 节点创建子进程，父图等待结果后继续单一控制链 |
+| 分支后的统一步骤 | 可封装为 metadata.functions 中的局部函数，各分支独立 function_output，function_call 返回后继续单一控制链；需要独立进程和终端时仍使用子进程 Workflow 文件 |
+| 局部函数 | 校验时从各入口 DFS 推导普通节点归属、独立检查生命周期；运行时仅沿连线执行，嵌套调用保存整份图运行副本及返回位置，等待期间持久化调用栈；首版禁止递归 |
 | 数据生命周期 | 祖先可向子层供值，子层不能向外直连；循环聚合通过 Context 写入，再在外层重新读取 |
 | 子进程 Workflow 文件交付 | subprocess_workflow_files 只有名称和接口快照，不能携带子进程 Workflow 文件内容；必须另外保存每份子进程 Workflow 文件 |
 | 进程入口 | 创建接口使用真实工作区 workflow_file_id 和 inputs，不依赖事件绑定 |

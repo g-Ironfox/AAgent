@@ -46,6 +46,11 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
             f"workflow.schema_version must be {WORKFLOW_SCHEMA_VERSION}"
         )
     _validate_workflow_schema(workflow)
+    from workflow_functions import bind_function_interfaces
+    try:
+        workflow = bind_function_interfaces(workflow)
+    except ValueError as error:
+        raise WorkflowValidationError(str(error)) from error
     from workflow_structs import StructValidationError, is_internal_type, validate_struct_definitions
     try:
         structs = validate_struct_definitions(workflow.get("metadata", {}).get("structs", []))
@@ -124,6 +129,28 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     if not any(node["type"] == "output" for node in nodes):
         raise WorkflowValidationError("workflow must contain at least one output node")
 
+    groups, owners = _infer_function_groups(workflow, node_by_id)
+
+    # Acyclic calls allow nesting while keeping this first version non-recursive.
+    calls = {f["id"]: set() for f in workflow.get("metadata", {}).get("functions", [])}
+    for node in nodes:
+        if node["type"] == "function_call" and owners[node["id"]] is not None:
+            calls[owners[node["id"]]].add(node_argument(node, "function_id"))
+    complete, active = set(), set()
+    for function_id in calls:
+        pending = [(function_id, False)]
+        while pending:
+            fid, exiting = pending.pop()
+            if exiting:
+                active.remove(fid)
+                complete.add(fid)
+            elif fid in active:
+                raise WorkflowValidationError(f"recursive function call is not supported: {fid}")
+            elif fid not in complete:
+                active.add(fid)
+                pending.append((fid, True))
+                pending.extend((target, False) for target in calls[fid])
+
     connected_control_inputs: dict[str, set[str]] = {
         node_id: set() for node_id in node_by_id
     }
@@ -151,6 +178,8 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         connection_type = connection.get("type")
         source_node = node_by_id[from_id]
         target_node = node_by_id[to_id]
+        if owners[from_id] != owners[to_id]:
+            raise WorkflowValidationError(f"connections[{index}] crosses function boundary")
         if connection_type == "control":
             _validate_control_connection(
                 source_node, from_port, target_node, to_port, index
@@ -192,7 +221,11 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     for node_id, node in node_by_id.items():
         node_type = node["type"]
         required_data_ports: set[str] = set()
-        if node_type == "while_pop" and node_argument(node, "context_id_source", "port") == "port":
+        if node_type == "function_call":
+            required_data_ports = {f"function:{port['name']}" for port in node["input_ports"]}
+        elif node_type == "function_output":
+            required_data_ports = {f"function:{port['name']}" for port in node["function_ports"]}
+        elif node_type == "while_pop" and node_argument(node, "context_id_source", "port") == "port":
             required_data_ports = {"context-id"}
         elif node_type == "construct_struct":
             sid = node_argument(node, "struct_id")
@@ -224,7 +257,58 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
                 f"control ports must be connected: node {node_id}, ports {', '.join(missing)}"
             )
 
-    _validate_lifecycles(node_by_id, connections)
+    # Each function is a separate control tree and lifecycle root.
+    for members in groups.values():
+        edges = [edge for edge in connections if edge["fromId"] in members]
+        _validate_lifecycles(members, edges)
+
+
+def _infer_function_groups(workflow, node_by_id):
+    """Infer static function membership by DFS; never annotate runtime nodes."""
+    groups = {None: {}}
+    roots = {None: next(n["id"] for n in node_by_id.values() if n["type"] == "input")}
+    for function in workflow.get("metadata", {}).get("functions", []):
+        fid = function["id"]
+        entries = [n["id"] for n in node_by_id.values()
+                   if n["type"] == "function_input" and n.get("function_id") == fid]
+        if len(entries) != 1:
+            raise WorkflowValidationError(f"function {fid} must contain exactly one function_input, found {len(entries)}")
+        if not any(n["type"] == "function_output" and n.get("function_id") == fid
+                   for n in node_by_id.values()):
+            raise WorkflowValidationError(f"function {fid} must contain at least one function_output")
+        roots[fid] = entries[0]
+        groups[fid] = {}
+    outgoing = {nid: [] for nid in node_by_id}
+    for edge in workflow["connections"]:
+        # Endpoint and port errors are reported by the regular connection checks.
+        if (edge.get("type") == "control" and edge.get("fromId") in outgoing
+                and edge.get("toId") in node_by_id):
+            outgoing[edge["fromId"]].append(edge["toId"])
+    owners = {}
+    for owner, root in roots.items():
+        pending = [root]
+        while pending:
+            nid = pending.pop()
+            node = node_by_id[nid]
+            if nid in owners:
+                if owners[nid] != owner:
+                    raise WorkflowValidationError(f"node {nid} is shared across function boundary")
+                continue  # Loop back edges are checked by the lifecycle validator.
+            if node["type"] in {"input", "output", "function_input", "function_output"}:
+                boundary = node.get("function_id") if node["type"].startswith("function_") else None
+                if boundary != owner:
+                    raise WorkflowValidationError(f"control flow crosses function boundary at node {nid}")
+            owners[nid] = owner
+            groups[owner][nid] = node
+            if node["type"] not in {"output", "function_output"}:
+                # A function_call is an ordinary step here; do not enter its callee.
+                pending.extend(outgoing[nid])
+    # Keep unreachable nodes for the existing port/lifecycle diagnostics. They
+    # cannot acquire function membership from legacy labels or data edges.
+    for nid in node_by_id.keys() - owners.keys():
+        owners[nid] = None
+        groups[None][nid] = node_by_id[nid]
+    return groups, owners
 
 
 def validate_subprocess_workflow_files(workflow: dict[str, Any], file_name: str = "<workflow file>") -> None:
@@ -280,7 +364,7 @@ def _validate_lifecycles(
     output_scopes: dict[tuple[str, str], Scope] = {}
     active: set[str] = set()
     returned_loops: set[str] = set()
-    input_id = next(node_id for node_id, node in nodes_by_id.items() if node["type"] == "input")
+    input_id = next(node_id for node_id, node in nodes_by_id.items() if node["type"] in {"input", "function_input"})
     # Explicit DFS stack keeps maximum-sized trees independent of recursion limits.
     pending: list[tuple[str, Scope, str | None, bool]] = [(input_id, (), None, False)]
     while pending:
@@ -303,7 +387,7 @@ def _validate_lifecycles(
             raise WorkflowValidationError(
                 f"branching control flow is not allowed inside {nodes_by_id[loop_id]['type']}: node {node_id}"
             )
-        if loop_id and node_type == "output":
+        if loop_id and node_type in {"output", "function_output"}:
             raise WorkflowValidationError(
                 f"{nodes_by_id[loop_id]['type']} body must return to loop-in instead of output: node {node_id}"
             )
@@ -388,7 +472,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
     arguments = node.get("arguments", {})
     if not isinstance(arguments, dict):
         raise WorkflowValidationError(f"nodes[{index}].arguments must be an object")
-    misplaced_arguments = NODE_ARGUMENT_FIELDS.intersection(node)
+    misplaced_arguments = (NODE_ARGUMENT_FIELDS - {"function_id"}).intersection(node)
     if misplaced_arguments:
         fields = ", ".join(sorted(misplaced_arguments))
         raise WorkflowValidationError(

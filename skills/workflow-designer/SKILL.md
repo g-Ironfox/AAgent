@@ -11,13 +11,13 @@ description: 根据用户需求生成 AAgent Workflow 2.0 设计 JSON，包含�
 
 ## 1. 不可违反的图规则
 
-1. 每份 workflow 恰有一个 input，至少一个 output；所有节点必须从 input 的控制流可达。
+1. 每份 workflow 恰有一个 input，至少一个 output；主流程节点必须从 input 的控制流可达。局部函数分别恰有一个 function_input、至少一个 function_output，其内部节点须从自己的函数入口可达。
 2. 除 foreach / while_pop 循环体回到**所属循环节点的 loop-in** 外，不允许任何环。移除这些回边后的控制图必须是无汇合的有向树，因而也是 DAG。数据依赖也必须无环，且生产者必须在消费者之前执行。数据连线不会触发节点执行。
 3. 每个控制输出最多接一个后继，每个控制输入最多一个来源。不得以同一 control-out 接出多条边来模拟并行。
 4. 分支后不可汇合，不可共享任何后继节点，**包括 output**；各分支各有自己的 output。同一分支内可以继续分支，但不同路径不能相连。
-5. foreach / while_pop 体内禁止 router、json_tool、foreach、while_pop，以及其他具有多个控制输出的节点。json_tool 即使未连接 error-out、router 即使没有普通分支，也不能直接放进循环体。嵌套循环要封装到子进程 Workflow 文件。
+5. foreach / while_pop 体内禁止 router、json_tool、foreach、while_pop，以及其他具有多个控制输出的节点。json_tool 即使未连接 error-out、router 即使没有普通分支，也不能直接放进循环体。嵌套循环要封装到局部函数或子进程 Workflow 文件。
 6. foreach / while_pop 的四个控制端口 control-in、loop-out、loop-in、control-out 必须全部连接。loop-out 进入循环体；体末普通节点的 control-out 返回 loop-in；control-out 只用于列表耗尽后的后续流程。体内不能直接结束于 output，不能返回别的循环节点，不能从外部额外进入循环体。
-7. **封装是解决复杂控制流的方式**：需在 foreach / while_pop 中条件处理、执行 json_tool 或嵌套循环时，新建子进程 Workflow 文件，把分支放进子进程 Workflow 文件，父图循环体只调用单出口的 spawn_and_wait_subprocess 节点。需“if/else 后继续统一处理”时，把整个 if/else 封装为子进程 Workflow 文件，各分支用独立 output 返回相同输出接口；父图调用结束后继续普通链。仅在每个分支里分别调用同一个后续 workflow，并不会令父图重新汇合。
+7. **封装是解决复杂控制流的方式**：需在 foreach / while_pop 中条件处理、执行 json_tool 或嵌套循环时，可声明局部函数，循环体通过单出口 function_call 调用；各函数内部独立检查循环和分支。需“if/else 后继续统一处理”时，把整个 if/else 封装为函数，各分支用独立 function_output 返回相同接口。需要独立进程和终端时仍可封装为子进程 Workflow 文件并使用 spawn_and_wait_subprocess。仅在每个分支里分别调用同一个后续 workflow，不会令父图重新汇合。
 8. 子进程 Workflow 文件引用关系也必须是 DAG，禁止直接或间接递归调用。事件重入属于新的异步执行，不是同步递归。
 9. 同一次 invocation 内需要动态轮数时使用 while_pop；列表为空是停止条件，继续执行须由真实业务结果向 Context 列表补充元素。跨进程调度由运行时负责，不生成事件发布节点或图内任意回边。
 10. 不得发明 while、if、switch、join、merge、parallel、python、script、http、delay、sleep、serialize_json 等节点。不存在通用表达式、模板执行器或任意代码节点。
@@ -51,7 +51,7 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 
 - schema_version：字符串 "2.0"。
 - description：字符串，最长 2000 字符。简述输入输出、所需部署条件及业务行为，不存放可执行配置。
-- metadata：`{"structs":[],"tools":[]}`，按实际用途填充。
+- metadata：`{"structs":[],"tools":[],"functions":[]}`，按实际用途填充。
 - input_ports、output_ports：接口数组，每项恰为 `{"name":"text","type":"content"}`；每侧最多 50 项。名称 1–80 字符，同侧去首尾空白、忽略大小写后不得重名；生成时使用无首尾空白的名称。
 - nodes：1–200 项；connections：0–1000 项，始终显式输出。
 - subprocess_workflow_files：子进程 Workflow 文件快照数组，每项恰含 name、input_ports、output_ports；最多 50 项，无子进程文件时 []。它是接口声明，不是子进程 Workflow 文件内容。
@@ -59,7 +59,7 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 
 管理端 workflow 请求体最多 512 KiB。工作区文件 API 每份 content 最多 1,000,000 字符；不要靠这个较大的限制绕过 workflow API 限制。
 
-节点只允许 id、type、name、x、y、arguments、workflowPorts、dataInputPorts、input_ports、output_ports。id/type 必须，id 在图内唯一非空。name 必须是简洁、可读的非空显示名，优先使用用户语言；它用于画布标题，不替代 id。x/y 必须是有限数字，且每个节点都必须同时提供，供编辑器画布定位；按控制流从左到右布局，分支或循环体放在不同 y 行，避免节点重叠。配置一律放 arguments；无参数节点可省略 arguments 或使用 {}。只写本节点支持的字段，不能把 model、branches 等平铺在节点顶层。
+节点只允许 id、type、name、x、y、arguments、workflowPorts、dataInputPorts、input_ports、output_ports、function_id。id/type 必须，id 在整个文件内唯一非空。name 必须是简洁、可读的非空显示名，优先使用用户语言；它用于画布标题，不替代 id。x/y 必须是有限数字，且每个节点都必须同时提供，供编辑器画布定位；按控制流从左到右布局，函数、分支或循环体放在不同 y 行，避免节点重叠。配置一律放 arguments；顶层 function_id 仅用于函数输入、函数输出节点标识函数声明，普通节点归属由控制流推导。无参数节点可省略 arguments 或使用 {}。只写本节点支持的字段，不能把 model、branches 等平铺在节点顶层。
 
 - input/output 必须带 workflowPorts：按根接口顺序逐项变换为 `{"id":"workflow:text","name":"text","type":"content"}`。input 使用 input_ports，所有 output 都使用完整 output_ports。
 - spawn_and_wait_subprocess 节点必须带 input_ports/output_ports，等于被调用目标文件根接口的完整数组，并按顺序一致；不得带 workflowPorts。
@@ -112,6 +112,9 @@ Session 是 MongoDB 中跨调用保留的状态，仅支持六种公开类型，
 | type | arguments | 数据输入 → 数据输出 | 控制/行为 |
 | --- | --- | --- | --- |
 | input | 无 | 无 → workflow:<输入名> | 仅 control-out；数据来自创建进程的 inputs 或父进程 |
+| function_input | 无 | 无 → function:<输入名> | 顶层 function_id 指定所属函数；仅 control-out；每函数恰一个 |
+| function_output | 无 | function:<输出名> → 无 | 顶层 function_id 指定所属函数；仅 control-in；执行到任意一个就返回 |
+| function_call | function_id:目标函数 ID | function:<输入名> → function:<输出名> | control-in/control-out；同一进程压栈调用，可嵌套但禁止直接和间接递归，最多 64 层 |
 | output_to_terminal | 无 | content-in:content → 无 | 写入当前进程终端，继续 control-out；需要进程终端上下文 |
 | wait_terminal_event | 无 | 无 → 无 | 挂起进程，当前终端收到消息后从 control-out 继续；根工作流和子进程均支持 |
 | read_terminal_input | 无 | 无 → list-out:list-content | 读取当前进程终端全部用户输入正文，按时间升序；不删除历史，可接 Router 判断分支 |
@@ -235,6 +238,14 @@ struct_get 的 fallback 仅用于可选字段，必须同时 missing:"fallback"�
 
 运行器还识别 local_tool（tool、parameters:字符串名数组，输出 output:content）和 remote_sync_tool（tool、parameters:port[]、outputs:port[]、timeout_ms），用于兼容；新设计统一使用 tool/json_tool/remote_async_tool。while_pop 是本规范允许的动态循环节点，完整契约见 5.3；不要另造 while 节点。
 
+### 5.9 局部函数声明与调用
+
+metadata.functions 每项恰含 id、name、input_ports、output_ports。id 匹配 `^[A-Za-z_][A-Za-z0-9_]*$` 且唯一；name 非空、忽略大小写唯一。接口为 port[]，同侧名称唯一，可以使用内建类型和本文件声明的 Struct/List Struct。仅函数入口、返回的顶层 function_id 指向声明；普通节点归属在静态校验时从各入口沿控制流 DFS 推导，不写入运行图。函数节点不带 workflowPorts；接口从声明生成，端口 ID 为 function:<name>。调用的全部参数、返回节点的全部返回值都须连接，允许空接口。
+
+调用目标写在 function_call.arguments.function_id。例如将 `{"id":"call_b","type":"function_call","arguments":{"function_id":"B"}}` 连入 A 的控制流，即表示 A 内调用 B。所有节点仍保存在同一份 nodes/connections 中，禁止跨函数直接连接数据线或控制线，只经调用节点交换值。函数内按原有端口连线直接写数据，分支/循环生命周期约束只在静态校验时检查；运行时无需维护生命周期。循环体不能直接 function_output，必须先返回 loop-in。每条路径最终到达自己的 function_output，各返回节点实现同一声明接口。
+
+调用帧保存独立整图副本、接口值、循环状态和返回位置；返回后沿调用节点 control-out 继续。因此循环体可以调用内部有分支的函数，函数也可以调用其他函数。同一函数的不同调用不共享运行槽位；函数内部等待终端消息或子进程时调用栈被保存。Context/Session 仍沿用当前进程归属和清理语义。函数无需单独交付工作区文件；需要独立进程/终端时使用子进程 Workflow。
+
 ## 6. 已知真实工具目录（设计 LLM 无需另查）
 
 区分“节点类型”和“工具名称”：tavily_search 不是节点类型，应通过 tool/json_tool 调用。下列目录来自源码，说明已实现能力，不等于当前部署 Provider 在线。未列出的普通 Python 函数（如 agent/tools/qqapi.py 的辅助函数、bocha_search）没有因此成为注册工具。不得假造 web_search、http_request、get_time、calculator 等工具。
@@ -310,7 +321,7 @@ Document 恰含 id、title、content、pinned、created_at、updated_at；前三
 ## 8. 设计与检查程序（只在内部执行）
 
 1. 从用户需求提取业务输入、输出、效果和配置；能做的运行时数据声明为根输入；不可知模型/工具/路由配置返回 error。
-2. 先划分 workflow 边界。分支有后续统一步骤、foreach / while_pop 内有分支/JSON Tool/第二个循环时先拆子进程 Workflow 文件，再定接口。为所有子进程 Workflow 文件提供完整定义。
+2. 先划分 workflow 和函数边界。分支有后续统一步骤、foreach / while_pop 内有分支/JSON Tool/第二个循环时，先封装局部函数或子进程 Workflow 文件，再定接口。为所有函数提供完整声明、入口及返回，为所有子进程 Workflow 文件提供完整定义。
 3. 为每份图先画控制树，再填数据。分支各有独立 output，所有路径实现相同承诺的公开输出；foreach / while_pop 保持单控制链并显式回到所属 loop-in。
 4. 逐节点选择目录中真实 type、精确 arguments 和端口，按需声明 Struct、工具和依赖快照。只生成用得到的配置。
 5. 按生命周期审查每条数据边、执行顺序和实际值类型。必要输入不能悬空；JSON 文本、对象、列表、message 不混接；通过 Context 显式聚合。

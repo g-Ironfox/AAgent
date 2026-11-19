@@ -17,6 +17,9 @@ DATA_CONNECTION_TYPES = {
 SUPPORTED_NODE_TYPES = {
     "input",
     "output",
+    "function_input",
+    "function_output",
+    "function_call",
     "router",
     "construct_message",
     "construct_content",
@@ -53,16 +56,20 @@ SUPPORTED_NODE_TYPES = {
     "spawn_and_wait_subprocess",
 }
 
-NODE_BASE_FIELDS = {"id", "type", "name", "x", "y", "arguments"}
+NODE_BASE_FIELDS = {"id", "type", "name", "x", "y", "arguments", "function_id"}
 NODE_SHARED_FIELDS = {
     "workflowPorts",
     "dataInputPorts",
     "input_ports",
     "output_ports",
+    "function_ports",
 }
 NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "input": set(),
     "output": set(),
+    "function_input": set(),
+    "function_output": set(),
+    "function_call": {"function_id"},
     "router": {"branches"},
     "construct_message": {"role", "role_source"},
     "construct_content": {"append_items"},
@@ -197,6 +204,15 @@ def data_ports_for_node(
         return declared_inputs | {
             port["id"] for port in boundary_ports(output_ports)
         }, set()
+    if node_type == "function_input":
+        return declared_inputs, {f"function:{port['name']}" for port in node.get("function_ports", [])}
+    if node_type == "function_output":
+        return declared_inputs | {f"function:{port['name']}" for port in node.get("function_ports", [])}, set()
+    if node_type == "function_call":
+        return (
+            {f"function:{port['name']}" for port in node.get("input_ports", [])},
+            {f"function:{port['name']}" for port in node.get("output_ports", [])},
+        )
     if node_type == "router":
         return declared_inputs | {"content-in"}, set()
     if node_type == "llm":
@@ -292,6 +308,8 @@ def data_type_for_port(
 ) -> str | None:
     definitions = struct_definitions or {}
     kind = node.get("type")
+    if kind in {"function_input", "function_output"}:
+        return next((port["type"] for port in node.get("function_ports", []) if f"function:{port['name']}" == port_id), None)
     value_type = node_argument(node, "value_type")
     if kind == "construct_struct":
         sid = node_argument(node, "struct_id")
@@ -339,9 +357,9 @@ def data_type_for_port(
 
 def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
     node_type = node["type"]
-    if node_type == "input":
+    if node_type in {"input", "function_input"}:
         return set(), {"control-out"}
-    if node_type == "output":
+    if node_type in {"output", "function_output"}:
         return {"control-in"}, set()
     if node_type == "router":
         return {"control-in"}, {
@@ -391,6 +409,10 @@ def connection_validation_error(
             return "unknown data port"
         source_expected = data_type_for_port(source_node, from_port, struct_definitions)
         target_expected = data_type_for_port(target_node, to_port, struct_definitions)
+        if source_node["type"] == "function_call":
+            source_expected = next(p["type"] for p in source_node["output_ports"] if f"function:{p['name']}" == from_port)
+        if target_node["type"] == "function_call":
+            target_expected = next(p["type"] for p in target_node["input_ports"] if f"function:{p['name']}" == to_port)
         if source_expected is not None and connection_type != source_expected:
             return f"source port {from_port} requires {source_expected} data"
         if target_expected is not None and connection_type != target_expected:

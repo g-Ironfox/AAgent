@@ -1,5 +1,6 @@
 import { boundaryPorts, createNode, DATA_TYPES, NODE_TYPES, setNodeStructs } from './node-contract.js';
 import { filterValidConnections } from './connection-rules.js';
+import { bindNodeFunctions, validateFunctions } from './functions.js';
 
 export const WORKFLOW_SCHEMA_VERSION = '2.0';
 
@@ -11,11 +12,14 @@ const initialConnections = [
   { id: 'control-input-output', fromId: 'input', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
 ];
 
-const NODE_BASE_FIELDS = new Set(['id', 'type', 'name', 'x', 'y', 'arguments']);
+const NODE_BASE_FIELDS = new Set(['id', 'type', 'name', 'x', 'y', 'arguments', 'function_id']);
 const NODE_SHARED_FIELDS = new Set(['workflowPorts', 'dataInputPorts', 'input_ports', 'output_ports']);
 const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   input: new Set(),
   output: new Set(),
+  function_input: new Set(),
+  function_output: new Set(),
+  function_call: new Set(['function_id']),
   router: new Set(['branches']),
   construct_message: new Set(['role', 'role_source']),
   construct_content: new Set(['append_items']),
@@ -102,7 +106,7 @@ export function validateStructDefinitions(value) {
 function hasStrictNodeFormat(node) {
   const argumentsValue = node.arguments ?? {};
   if (!argumentsValue || typeof argumentsValue !== 'object' || Array.isArray(argumentsValue)) return false;
-  if (Object.keys(node).some((key) => NODE_ARGUMENT_FIELDS.has(key))) return false;
+  if (Object.keys(node).some((key) => key !== 'function_id' && NODE_ARGUMENT_FIELDS.has(key))) return false;
   if (Object.keys(argumentsValue).some((key) => NODE_SHARED_FIELDS.has(key))) return false;
   if (Object.keys(argumentsValue).some((key) => !NODE_ARGUMENT_FIELDS_BY_TYPE[node.type]?.has(key))) return false;
   return Object.keys(node).every((key) => NODE_BASE_FIELDS.has(key) || NODE_SHARED_FIELDS.has(key));
@@ -113,14 +117,19 @@ function expandNodeArguments(node) {
     ? node.arguments
     : {};
   const expanded = { ...argumentsValue, ...node };
+  if (node.type === 'function_call') {
+    expanded.callee_id = argumentsValue.function_id;
+    if (!Object.hasOwn(node, 'function_id')) delete expanded.function_id;
+  }
   delete expanded.arguments;
   return expanded;
 }
 
 function compactNodeArguments(node) {
   const argumentsValue = Object.fromEntries(
-    Object.entries(node).filter(([key]) => NODE_ARGUMENT_FIELDS.has(key)),
+    Object.entries(node).filter(([key]) => key !== 'function_id' && NODE_ARGUMENT_FIELDS.has(key)),
   );
+  if (node.type === 'function_call') argumentsValue.function_id = node.callee_id;
   return {
     ...Object.fromEntries(Object.entries(node).filter(([key]) => NODE_BASE_FIELDS.has(key) && key !== 'arguments')),
     ...Object.fromEntries(Object.entries(node).filter(([key]) => NODE_SHARED_FIELDS.has(key))),
@@ -145,13 +154,14 @@ export function nodeById(id) {
 export function addNode(type, configuration = null, viewport = null) {
   const node = createNode(type, state.nodes, { ...(configuration || {}), structs: state.metadata?.structs || [] }, viewport);
   if (!node) return null;
+  bindNodeFunctions([node], state.metadata?.functions || []);
   setNodeStructs([node], state.metadata?.structs || []);
   state.nodes.push(node);
   return node;
 }
 
 export function deleteNode(id) {
-  if (id === 'input') return false;
+  if (nodeById(id)?.type === 'input') return false;
   state.nodes = state.nodes.filter((node) => node.id !== id);
   state.connections = state.connections.filter((connection) => connection.fromId !== id && connection.toId !== id);
   return true;
@@ -160,6 +170,8 @@ export function deleteNode(id) {
 export function workflowSnapshot() {
   state.metadata = { ...state.metadata, structs: validateStructDefinitions(state.metadata?.structs ?? []) };
   setNodeStructs(state.nodes, state.metadata.structs);
+  const functions = validateFunctions(state.metadata.functions || [], state.metadata.structs);
+  bindNodeFunctions(state.nodes, functions);
   return structuredClone({
     schema_version: WORKFLOW_SCHEMA_VERSION,
     description: state.description,
@@ -235,6 +247,8 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
     x: Number.isFinite(node.x) ? Math.max(12, node.x) : 52,
     y: Number.isFinite(node.y) ? Math.max(12, node.y) : 72,
   };
+  if (node.function_id !== undefined) normalized.function_id = node.function_id;
+  if (node.type === 'function_call') normalized.callee_id = node.callee_id;
   if (node.type === 'input' || node.type === 'output') {
     normalized.workflowPorts = structuredClone(node.type === 'input' ? inputPorts : outputPorts);
   }
@@ -533,6 +547,7 @@ export function loadSnapshot(saved, metadata = null) {
       || outputPorts.length !== (metadata?.output_ports ?? saved?.output_ports ?? []).length) return false;
     for (const item of [...(saved.subprocess_workflow_files || []), ...(saved.remote_tools || []), ...savedNodes]) {
       for (const field of ['input_ports', 'output_ports', 'workflowPorts']) {
+        if (item.type === 'function_call' && field !== 'workflowPorts') continue;
         if (item[field] !== undefined && (!Array.isArray(item[field])
           || item[field].some((port) => !port || !DATA_TYPES.has(port.type)))) return false;
       }
@@ -541,6 +556,7 @@ export function loadSnapshot(saved, metadata = null) {
       && connection.type !== 'control' && !DATA_TYPES.has(connection.type)
       && !/^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(connection.type || ''))) return false;
     const structDefinitions = validateStructDefinitions(saved?.metadata?.structs ?? []);
+    const functions = validateFunctions(saved?.metadata?.functions || [], structDefinitions);
     const workflowNodes = subprocessWorkflowFileMetadata(saved);
     const subprocessWorkflowFiles = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
     const remoteTools = remoteToolMetadata(saved).map((tool) => ({ ...tool, kind: 'remote' }));
@@ -579,6 +595,15 @@ export function loadSnapshot(saved, metadata = null) {
     for (const node of savedNodes) {
       if (!node || typeof node.id !== 'string' || ids.has(node.id) || !NODE_TYPES.has(node.type) || !hasStrictNodeFormat(node)) return false;
       ids.add(node.id);
+      if (node.type === 'function_call') {
+        const fn = functions.find((f) => f.id === node.arguments?.function_id);
+        if (!fn) return false;
+        for (const side of ['input_ports', 'output_ports']) {
+          if (node[side] !== undefined && (!Array.isArray(node[side]) || node[side].length !== fn[side].length
+            || node[side].some((p, i) => !p || Object.keys(p).sort().join(',') !== 'name,type'
+              || p.name !== fn[side][i].name || p.type !== fn[side][i].type))) return false;
+        }
+      }
       const normalized = normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, remoteToolsByName, structDefinitions);
       if (!normalized) return false;
       if (['local_tool', 'remote_sync_tool'].includes(normalized.type)) {
@@ -592,13 +617,14 @@ export function loadSnapshot(saved, metadata = null) {
       }
       nodes.push(normalized);
     }
-    if (!nodes.some((node) => node.id === 'input' && node.type === 'input')) return false;
+    if (!nodes.some((node) => node.type === 'input')) return false;
     if (!nodes.some((node) => node.type === 'output')) {
       const output = createNode('output', nodes, { output_ports: outputPorts.map(({ id, ...port }) => port) });
       if (output) nodes.push(output);
     }
     const description = metadata?.description ?? saved?.description;
     state.description = typeof description === 'string' ? description.trim().slice(0, 2000) : '';
+    bindNodeFunctions(nodes, functions);
     state.metadata = { ...(saved?.metadata ?? {}), structs: structDefinitions, tools: remoteTools };
     setNodeStructs(nodes, state.metadata.structs);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);

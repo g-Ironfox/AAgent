@@ -97,6 +97,13 @@ function nodeColor(node, workflow) {
 }
 
 function contractPortIds(node, direction, workflow) {
+  if (['function_input', 'function_output', 'function_call'].includes(node.type)) {
+    const target = node.type === 'function_call' ? nodeArguments(node).function_id : node.function_id;
+    const fn = (workflow.metadata?.functions || []).find((f) => f.id === target);
+    const side = node.type === 'function_input' ? 'input_ports' : node.type === 'function_output' ? 'output_ports' : `${direction}_ports`;
+    if ((node.type === 'function_input' && direction === 'input') || (node.type === 'function_output' && direction === 'output')) return [];
+    return [`control-${direction === 'input' ? 'in' : 'out'}`, ...(fn?.[side] || []).map((p) => `function:${p.name}`)];
+  }
   const args = nodeArguments(node);
   if (node.type === 'input') return direction === 'output' ? ['control-out', ...workflowPortIds(workflow?.input_ports)] : [];
   if (node.type === 'output') return direction === 'input' ? ['control-in', ...workflowPortIds(workflow?.output_ports)] : [];
