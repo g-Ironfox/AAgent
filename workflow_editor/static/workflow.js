@@ -52,7 +52,6 @@ const elements = {
   structDefinitionsError: document.querySelector('#structDefinitionsError'),
   addStructButton: document.querySelector('#addStructButton'),
   canvasLegend: document.querySelector('#canvasLegend'),
-  workflowFileNameDisplay: document.querySelector('#workflowFileNameDisplay'),
   subprocessWorkflowFileList: document.querySelector('#subprocessWorkflowFileList'),
   addSubprocessWorkflowFileButton: document.querySelector('#addSubprocessWorkflowFileButton'),
   remoteToolList: document.querySelector('#remoteToolList'),
@@ -135,7 +134,6 @@ function importWorkflowText(text, source = '已导入', fileName = 'workflow.flo
   inspector.setMetadataTools(metadataToolReferences());
   resetUndoHistory();
   hasUnsavedChanges = true;
-  elements.workflowFileNameDisplay.textContent = workflowFileName;
   renderWorkflow();
   elements.workflowState.textContent = source;
   elements.workflowState.classList.remove('saved');
@@ -198,7 +196,6 @@ loadSnapshot(workflowSnapshot());
 inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
 inspector.setRemoteToolReferences(remoteToolReferences());
 inspector.setMetadataTools(metadataToolReferences());
-elements.workflowFileNameDisplay.textContent = workflowFileName;
 resetUndoHistory();
 
 document.addEventListener('keydown', (event) => {
@@ -216,7 +213,6 @@ document.addEventListener('keydown', (event) => {
   hasUnsavedChanges = true;
   elements.workflowState.textContent = '未保存';
   elements.workflowState.classList.remove('saved');
-  elements.workflowFileNameDisplay.textContent = workflowFileName;
   inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
   inspector.setMetadataTools(metadataToolReferences());
@@ -793,7 +789,6 @@ elements.clearButton.addEventListener('click', () => {
   inspector.setRemoteToolReferences([]);
   inspector.setMetadataTools([]);
   hasUnsavedChanges = true;
-  elements.workflowFileNameDisplay.textContent = workflowFileName;
   renderWorkflow();
   elements.workflowState.textContent = '已清空';
   elements.workflowState.classList.remove('saved');
@@ -919,7 +914,6 @@ elements.metadataForm.addEventListener('submit', (event) => {
   inspector.setRemoteToolReferences(remoteToolReferences());
   inspector.setMetadataTools(metadataToolReferences());
   markChanged();
-  elements.workflowFileNameDisplay.textContent = workflowFileName;
   renderWorkflow();
   elements.metadataDialog.close();
 });

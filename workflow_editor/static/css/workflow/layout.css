@@ -85,9 +85,6 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .canvas-toolbar { min-height:64px; padding:8px 17px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:14px; border-bottom:1px solid var(--line); background:var(--surface); }
 .canvas-toolbar strong { font-size:13px; }
 .canvas-context { min-width:0; display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
-.workflow-selector { min-width:0; display:grid; gap:4px; }
-.workflow-selector span { color:var(--muted); font:9px Consolas,monospace; }
-.workflow-selector strong { max-width:240px; overflow:hidden; color:var(--ink); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
 .canvas-meta { min-height:30px; display:flex; align-items:center; gap:10px; color:var(--muted); font-size:9px; white-space:nowrap; }
 .draft-badge { padding:5px 7px; color:#8a641b; border:1px solid #e5cb91; background:var(--amber-soft); }
 .canvas-actions { display:flex; align-items:center; gap:7px; }
