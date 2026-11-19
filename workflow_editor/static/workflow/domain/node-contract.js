@@ -125,6 +125,9 @@ export function portsForNode(node) {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       { id: 'content-in', direction: 'input', type: 'content', label: 'Content', title: 'Message content', multiple: false },
+      { id: 'reasoning-in', direction: 'input', type: 'content', label: 'Reasoning (optional)', title: 'Assistant reasoning_content; omitted when unconnected', multiple: false },
+      { id: 'tool-calls-in', direction: 'input', type: 'list-content', label: 'Tool calls (optional)', title: 'Assistant calls: list of JSON strings from LLM; empty list omitted', multiple: false },
+      { id: 'tool-call-id-in', direction: 'input', type: 'content', label: 'Tool call ID (optional)', title: 'Tool result: matching tool_call_id', multiple: false },
       ...(node.role_source === 'port'
         ? [{ id: 'role-in', direction: 'input', type: 'content', label: 'Role', title: 'Message role', multiple: false }]
         : []),

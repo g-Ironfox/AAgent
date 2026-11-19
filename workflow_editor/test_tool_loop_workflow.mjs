@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { portsForNode } from './static/workflow/domain/node-contract.js';
 import { isValidConnection } from './static/workflow/domain/connection-rules.js';
 import { loadSnapshot, state, workflowSnapshot } from './static/workflow/domain/serialization.js';
 
@@ -19,4 +20,16 @@ test('tool-loop workflow preserves connections through editor import and export'
   const saved = workflowSnapshot();
   assert.equal(loadSnapshot(saved), true);
   assert.deepEqual(workflowSnapshot(), saved);
+});
+
+test('message ports accept native LLM calls and matching tool result IDs', () => {
+  const message = { id: 'message', type: 'construct_message', role: 'assistant' };
+  const llm = { id: 'llm', type: 'llm', tool_calls: true, think: true };
+  const ports = portsForNode(message);
+  for (const [id, type] of [['reasoning-in', 'content'], ['tool-calls-in', 'list-content'], ['tool-call-id-in', 'content']]) {
+    assert.ok(ports.some(port => port.id === id && port.type === type));
+  }
+  const edge = { id: 'calls', fromId: 'llm', fromPortId: 'tool_calls', toId: 'message', toPortId: 'tool-calls-in', type: 'list-content' };
+  assert.equal(isValidConnection(edge, [llm, message]), true);
+  assert.equal(isValidConnection({ ...edge, type: 'content' }, [llm, message]), false);
 });

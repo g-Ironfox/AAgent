@@ -105,6 +105,10 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         self.drain()
 
     def test_multiple_turns_rejection_and_done_through_scheduler(self):
+        self.model.side_effect = [
+            ("Proposal 1", "Consider the logs first", []),
+            ("Proposal 2", "", []), ("Proposal 3", "", []),
+        ]
         process = self.start(example_workflow(), inputs={"task": "Investigate the failing job"})
         self.drain()
         waiting = self.assert_waiting(process["process_id"], 1)
@@ -121,11 +125,13 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
             ("assistant", "Proposal 1"),
             ("user", "Rejected: inspect the logs before retrying"),
         ])
+        self.assertEqual(second_history[-2]["reasoning_content"], "Consider the logs first")
+        self.assertNotIn("tool_calls", second_history[-2])
         self.reply(waiting, "Observation: logs show a missing configuration file")
         waiting = self.assert_waiting(process["process_id"], 3)
         third_history = self.model.call_args_list[2].args[0]
         self.assertEqual(third_history[-2:], [
-            {"role": "assistant", "content": "Proposal 2"},
+            {"role": "assistant", "content": "Proposal 2", "reasoning_content": ""},
             {"role": "user", "content": "Observation: logs show a missing configuration file"},
         ])
         self.reply(waiting, "DONE")

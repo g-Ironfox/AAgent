@@ -231,7 +231,7 @@ def data_ports_for_node(
         from workflow_tools import TOOL_FIELDS, TOOL_PORTS
         return {TOOL_PORTS[field] for field in TOOL_FIELDS if node_argument(node, f"{field}_source", "fixed") == "port"}, {"tool-out"}
     if node_type == "construct_message":
-        inputs = declared_inputs | {"content-in"}
+        inputs = declared_inputs | {"content-in", "reasoning-in", "tool-calls-in", "tool-call-id-in"}
         if node_argument(node, "role_source", "fixed") == "port":
             inputs.add("role-in")
         return inputs, {"content-out"}
@@ -321,6 +321,8 @@ def data_type_for_port(
     if kind in {"function_input", "function_output"}:
         return next((port["type"] for port in node.get("function_ports", []) if f"function:{port['name']}" == port_id), None)
     value_type = node_argument(node, "value_type")
+    if kind == "construct_message":
+        return "list-content" if port_id == "tool-calls-in" else "content"
     if kind == "construct_tool":
         return "list-content" if port_id == "required-in" else "content"
     if kind == "construct_struct":
@@ -515,8 +517,10 @@ def connection_validation_error(
                 return f"construct_tool {to_port} requires {expected_type} data"
         if source_type == "construct_tool" and connection_type != "content":
             return "construct_tool tool-out requires content data"
-        if target_type == "construct_message" and connection_type != "content":
-            return f"construct_message {to_port} requires content data"
+        if target_type == "construct_message":
+            expected_type = "list-content" if to_port == "tool-calls-in" else "content"
+            if connection_type != expected_type:
+                return f"construct_message {to_port} requires {expected_type} data"
         if source_type == "construct_message" and connection_type != "content":
             return "construct_message content-out requires content data"
         if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):

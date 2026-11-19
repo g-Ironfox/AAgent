@@ -48,10 +48,14 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     output_ports = workflow["output_ports"]
     from workflow_structs import validate_struct_definitions
     struct_definitions = validate_struct_definitions(workflow.get("metadata", {}).get("structs", []))
+    function_names = {function["id"]: function["name"]
+                      for function in workflow.get("metadata", {}).get("functions", [])}
     node_indexes = {node["id"]: index for index, node in enumerate(nodes)}
     linked_nodes: list[dict[str, Any]] = []
     for node in nodes:
         parsed_node = normalize_node_arguments(node)
+        if node.get("type") == "function_input":
+            parsed_node["_function_name"] = function_names[node["function_id"]]
         if node.get("type") in {"tool", "remote_async_tool"}:
             declaration = next((tool for tool in workflow.get("metadata", {}).get("tools", []) if tool["name"] == node_argument(node, "tool")), None)
             if declaration is None and node["type"] == "remote_async_tool":

@@ -215,7 +215,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `input` | 无 | 无 | 根 `input_ports` 的 `workflow:<name>` |
 | `output` | 无 | 根 `output_ports` 的 `workflow:<name>` | 无 |
 | `router` | `branches` | `content-in: content` | 分支控制端口，见第 10 节 |
-| `construct_message` | 可选 `role`、`role_source` | `content-in: content`；role_source 为 `port` 时另有 `role-in: content` | `content-out: content`（紧凑 Message JSON 字符串） |
+| `construct_message` | 可选 `role`、`role_source` | `content-in: content`；可选 `reasoning-in: content`、`tool-calls-in: list-content`、`tool-call-id-in: content`；role_source 为 `port` 时另有 `role-in: content` | `content-out: content`（紧凑 Message JSON 字符串） |
 | `construct_content` | `append_items` | 每个 port 项对应一个 content 输入 | `content-out: content` |
 | `construct_map_content` | `mappings` | 每个 port 条目对应一个 content 输入 | `map-out: map-content` |
 | `map_content_get` | 无 | `map-in: map-content`、`key-in: content` | `content-out: content` |
@@ -276,6 +276,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 内建节点额外语义：
 
 - `construct_message.role` 缺省为 `user`，只允许 `system`、`user`、`assistant`、`tool`；`role_source` 缺省为 `fixed`，只允许 `fixed` 或 `port`。
+- `construct_message` 的 `reasoning-in` 和 `tool-calls-in` 只适用于 assistant；`tool-call-id-in` 只适用于 tool。未提供的可选字段省略。`tool-calls-in` 可直接连接 LLM 的 `tool_calls`：每项是函数调用的 JSON 字符串，消息节点解析为对象数组，校验非空 id、type=function、非空 function.name 和字符串 function.arguments，保留扩展字段。空调用列表省略 `tool_calls`，但无调用时仍保留已提供的 `reasoning_content`。原生 tool 结果应提供原始调用 ID；旧有仅 role/content 的消息仍兼容。
 - `construct_content.append_items` 必须为非空数组。每项是 object，`type` 必须为 `fixed` 或 `port`。固定项恰含 `type`、`value`，且 value 为字符串；端口项恰含 `type`、`port_id`，且 port_id 为非空字符串。端口 ID 不重复，且端口项 ID 集合与 `dataInputPorts` 一致。按条目顺序拼接；运行时缺失的端口值跳过，非字符串值转换为字符串。
 - `construct_map_content.mappings` 必须为非空数组。每项必须包含非空字符串 `key` 且 key 唯一。固定值项含 `key`、`value`，可以附 `value_source` 且其值必须为 `fixed`；value 为字符串。端口项恰含 `key`、`value_source`、`port_id`，其中 value_source 固定为 `port`，port_id 非空且唯一，不得为控制端口，并与 `dataInputPorts` 一致。端口运行值必须为已提供的字符串；输出保留条目顺序。
 - `map_content_get` 按 key 查值；查不到时执行失败。

@@ -7,6 +7,7 @@ class Element {
   constructor(tag = 'div') {
     this.tagName = tag; this.children = []; this.parent = null; this.attributes = {};
     this.listeners = {}; this.hidden = false; this.value = ''; this._text = '';
+    this.scrollTop = 0; this.scrollLeft = 0;
     this.classList = { toggle: (name, enabled) => {
       const classes = new Set((this.className || '').split(' ').filter(Boolean));
       if (enabled) classes.add(name); else classes.delete(name);
@@ -27,6 +28,14 @@ class Element {
   }
   get firstElementChild() { return this.children[0] || null; }
   get nextElementSibling() { return this.parent?.children[this.parent.children.indexOf(this) + 1] || null; }
+  querySelector(selector) {
+    for (const child of this.children) {
+      if ((child.className || '').split(' ').includes(selector.slice(1))) return child;
+      const match = child.querySelector(selector);
+      if (match) return match;
+    }
+    return null;
+  }
   setAttribute(name, value) { this.attributes[name] = value; }
   addEventListener(name, callback) { this.listeners[name] = callback; }
 }
@@ -101,11 +110,24 @@ const legacy = vm.runInContext("timelinePanel([], [{node_id:'old-node', status:'
 assert.match(legacy.textContent, /old-node/);
 assert.match(legacy.textContent, /node failure/);
 assert.match(legacy.children[1].children[0].className, /trace-failed/);
+// Function nodes expose both their display name and the individual call ID.
+const functionTimeline = vm.runInContext("timelinePanel([], [{node_id:'inside', function_id:'F', function_name:'My function', function_call_id:'call-1'}, {node_id:'legacy', function_id:'old-function'}, {node_id:'outside'}])", context);
+const functionRows = functionTimeline.children[1].children;
+assert.match(functionRows[0].textContent, /函数 My function/);
+assert.match(functionRows[0].textContent, /调用 ID call-1/);
+assert.match(functionRows[1].textContent, /函数 old-function/);
+assert.doesNotMatch(functionRows[1].textContent, /调用 ID/);
+assert.doesNotMatch(functionRows[2].textContent, /函数|调用 ID/);
 assert.match(vm.runInContext('timelinePanel([], [])', context).textContent, /尚无执行轨迹/);
 
-// Refreshing unchanged snapshots keeps existing elements and open details.
+// Refreshing unchanged snapshots keeps existing elements, open details and scroll.
+const originalTimeline = root.querySelector('.trace-list');
+originalTimeline.scrollTop = 180; originalTimeline.scrollLeft = 24;
 await vm.runInContext('refresh()', context);
 assert.equal(elements.logList.children[0], root);
+assert.equal(root.querySelector('.trace-list'), originalTimeline);
+assert.equal(originalTimeline.scrollTop, 180);
+assert.equal(originalTimeline.scrollLeft, 24);
 items[0].status = 'ready'; items[0].wait_for = null;
 items[0].events.push({ event: 'woken', timestamp: '2026-11-19T00:00:02Z', status: 'ready', wait_for: wait });
 await vm.runInContext('refresh()', context);
@@ -114,6 +136,21 @@ assert.equal(root.children[1].hidden, false);
 assert.equal(root.children[0].children[1].textContent, '就绪');
 assert.match(root.children[1].textContent, /唤醒/);
 assert.equal(root.children[1].children.filter((section) => section.className === 'trace-panel').length, 1);
+
+// Updated records restore the timeline's scroll after the replacement is attached.
+const updatedTimeline = root.querySelector('.trace-list');
+assert.notEqual(updatedTimeline, originalTimeline);
+assert.equal(updatedTimeline.scrollTop, 180);
+assert.equal(updatedTimeline.scrollLeft, 24);
+updatedTimeline.scrollTop = 260; updatedTimeline.scrollLeft = 0;
+items[0].nodes.push({ node_id: 'next-step', status: 'completed', duration_ms: 2 });
+await vm.runInContext('refresh()', context);
+root = elements.logList.children[0];
+assert.equal(root.querySelector('.trace-list').scrollTop, 260);
+assert.equal(root.querySelector('.trace-list').scrollLeft, 0);
+assert.match(root.querySelector('.trace-list').textContent, /next-step/);
+assert.equal(root.children[1].hidden, false);
+assert.equal(elements.logList.children[1].querySelector('.trace-list'), null);
 
 // Status, process type, IDs and translated event names can all be filtered.
 elements.statusFilter.value = 'running'; elements.statusFilter.listeners.change();

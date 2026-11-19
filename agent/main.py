@@ -5,6 +5,7 @@ import os
 import time
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 from process_creation import initialize_process_pair
 
 from pymongo import ASCENDING, MongoClient
@@ -471,7 +472,7 @@ def _next_process_node(process: dict, workflow_map: list[dict]) -> int:
 def _function_template(workflow_map: list[dict]) -> list[dict]:
     """Copy graph definitions without copying any invocation's mutable state."""
     template = copy.deepcopy(workflow_map)
-    static_fields = {'_struct_definitions', '_tool_kind', '_metadata_tools'}
+    static_fields = {'_struct_definitions', '_tool_kind', '_metadata_tools', '_function_name'}
     for node in template:
         for key in list(node):
             if key.startswith('_') and key not in static_fields:
@@ -503,8 +504,13 @@ def _push_function(process: dict, workflow_map: list[dict], current_id: int, tar
         validate_value(port['type'], value, entry.get('_struct_definitions', {}))
         propagate_workflow_output(child_map, entry, port_id, value)
     stack.append({'workflow': workflow_map, 'current_node_id': current_id,
-                  'control_port': 'next', 'function_id': process.get('active_function_id')})
-    process.update(active_function_id=target, current_node_id=WORKFLOW_END, control_port=None)
+                  'control_port': 'next', 'function_id': process.get('active_function_id'),
+                  'function_name': process.get('active_function_name'),
+                  'function_call_id': process.get('active_function_call_id')})
+    process.update(active_function_id=target,
+                   active_function_name=entry.get('_function_name') or target,
+                   active_function_call_id=uuid4().hex,
+                   current_node_id=WORKFLOW_END, control_port=None)
     return child_map
 
 
@@ -515,7 +521,9 @@ def _pop_function(process: dict, node: dict) -> list[dict]:
     for name, value in node.pop('_workflow_result', {}).items():
         propagate_workflow_output(parent_map, caller, f'function:{name}', value)
     process.update(current_node_id=frame['current_node_id'], control_port=frame['control_port'],
-                   active_function_id=frame['function_id'])
+                   active_function_id=frame['function_id'],
+                   active_function_name=frame.get('function_name'),
+                   active_function_call_id=frame.get('function_call_id'))
     return parent_map
 
 
@@ -568,7 +576,15 @@ def Executor(process_id: str) -> dict:
             'status': 'completed',
         }
         if process.get('active_function_id'):
-            trace.update(function_id=process['active_function_id'], function_depth=len(process.get('function_stack', [])))
+            # Also initialize IDs for calls restored from older process snapshots.
+            if not process.get('active_function_call_id'):
+                process['active_function_call_id'] = uuid4().hex
+            trace.update(
+                function_id=process['active_function_id'],
+                function_name=process.get('active_function_name') or process['active_function_id'],
+                function_call_id=process['active_function_call_id'],
+                function_depth=len(process.get('function_stack', [])),
+            )
         with terminal_process_context(
             process.get('terminal_process_id'),
             process.get('terminal_id'),

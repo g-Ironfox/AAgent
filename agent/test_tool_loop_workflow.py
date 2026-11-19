@@ -103,6 +103,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
         self.execute.assert_any_call("invoke_tool", "workspace.get_file", {"file_id": "file-a"}, preserve_result=True)
         history = model.call_args.args[0]
         self.assertEqual(history[-3]["tool_calls"], calls)
+        self.assertEqual(history[-3]["reasoning_content"], "Inspecting the workspace")
         self.assertEqual([message["role"] for message in history[-2:]], ["tool", "tool"])
         self.assertEqual([message["tool_call_id"] for message in history[-2:]], ["list-call", "read-call"])
         self.assertEqual(json.loads(history[-2]["content"]), {"items": ["file-a"], "revision": 4})

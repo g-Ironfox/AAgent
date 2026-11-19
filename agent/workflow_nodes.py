@@ -385,7 +385,46 @@ def workflow_construct_message(current_id: int, workflow_map: WorkflowMap) -> in
             raise ValueError(f"construct_message role input is missing: node {node.get('id')}")
     if role not in {"system", "user", "assistant", "tool"}:
         raise ValueError(f"construct_message role is invalid: node {node.get('id')}")
+    if not isinstance(content, str):
+        raise ValueError(f"construct_message content must be text: node {node.get('id')}")
     message = {"role": role, "content": content}
+    for port, field, allowed_role in (
+        ("reasoning-in", "reasoning_content", "assistant"),
+        ("tool-calls-in", "tool_calls", "assistant"),
+        ("tool-call-id-in", "tool_call_id", "tool"),
+    ):
+        present, value = read_workflow_input(node, port)
+        if not present:
+            continue
+        if role != allowed_role:
+            raise ValueError(f"construct_message {port} requires role {allowed_role}: node {node.get('id')}")
+        if field == "tool_calls":
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise ValueError("construct_message tool-calls-in must be a list of JSON strings")
+            calls = []
+            for index, item in enumerate(value):
+                try:
+                    call = json.loads(item)
+                except (ValueError, TypeError) as error:
+                    raise ValueError(f"construct_message tool_calls[{index}] must be valid JSON") from error
+                function = call.get("function") if isinstance(call, dict) else None
+                if not (
+                    isinstance(call, dict)
+                    and isinstance(call.get("id"), str) and call["id"].strip()
+                    and call.get("type") == "function"
+                    and isinstance(function, dict)
+                    and isinstance(function.get("name"), str) and function["name"].strip()
+                    and isinstance(function.get("arguments"), str)
+                ):
+                    raise ValueError(f"construct_message tool_calls[{index}] must be a function call with id, name and arguments text")
+                calls.append(call)
+            # Providers may reject an explicitly empty tool_calls array.
+            if calls:
+                message[field] = calls
+        else:
+            if not isinstance(value, str) or (field == "tool_call_id" and not value.strip()):
+                raise ValueError(f"construct_message {port} must be text" + (" with a nonempty ID" if field == "tool_call_id" else ""))
+            message[field] = value
     propagate_workflow_output(
         workflow_map, node, "content-out",
         json.dumps(message, ensure_ascii=False, separators=(",", ":")),

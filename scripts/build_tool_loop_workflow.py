@@ -119,9 +119,6 @@ def build_workflow():
     g.struct("ToolCall", [("id", "content"), ("type", "content"), ("function", "struct:CallFunction")])
     g.struct("AskHumanArgs", [("question", "content")])
     g.struct("HumanReply", [("replies", "list-content")])
-    g.struct("Assistant", [("role", "content"), ("content", "content"),
-                            ("reasoning_content", "content"), ("tool_calls", "list-struct:ToolCall")])
-    g.struct("ToolMessage", [("role", "content"), ("content", "content"), ("tool_call_id", "content")])
     n, d = g.node, g.data
     p = lambda node, name: (node, "function:" + name)
 
@@ -183,69 +180,21 @@ def build_workflow():
 
     # Preserve native assistant tool_calls as structured API history.
     fi = g.function("build_assistant", [("content", "content"), ("reasoning", "content"), ("calls", "list-content")], [("message", "content")])
-    n("build_count", "list_length", arguments={"value_type": "list-content"})
-    d(*p(fi, "calls"), "build_count", "list-in", "list-content")
-    g.make_struct("build_count_value", "ToolCallCount", {"count": ("build_count", "length-out", "number")})
-    n("build_count_json", "struct_to_json", arguments={"value_type": "struct:ToolCallCount"})
-    d("build_count_value", "struct-out", "build_count_json", "value-in", "struct:ToolCallCount")
-    n("build_count_text", "deserialize_json", arguments={"outputs": [{"key": "count", "type": "content"}]})
-    d("build_count_json", "content-out", "build_count_text", "content-in")
-    n("build_route", "router", arguments={"branches": [{"id": "none", "name": "0"}]})
-    d("build_count_text", "count", "build_route", "content-in")
-    n("build_plain", "construct_message", arguments={"role": "assistant"})
-    d(*p(fi, "content"), "build_plain", "content-in")
-    g.ret("build_plain_return", "build_assistant")
-    d("build_plain", "content-out", "build_plain_return", "function:message")
-    g.control(fi, "build_count")
-    g.chain("build_count", "build_count_value", "build_count_json", "build_count_text", "build_route")
-    g.control("build_route", "build_plain", "none")
-    g.chain("build_plain", "build_plain_return")
-    n("build_empty", "construct_list", arguments={"item_type": "struct:ToolCall", "initial_value_count": 0}, dataInputPorts=[])
-    g.ctx("build_context", "create", "list-struct:ToolCall")
-    d("build_empty", "list-out", "build_context", "initial-value", "list-struct:ToolCall")
-    n("build_each", "foreach", arguments={"item_type": "content"})
-    d(*p(fi, "calls"), "build_each", "list-in", "list-content")
-    n("build_call", "json_to_struct", arguments={"value_type": "struct:ToolCall"})
-    d("build_each", "item-out", "build_call", "content-in")
-    g.ctx("build_read", "read", "list-struct:ToolCall")
-    d("build_context", "context-id", "build_read", "context-id")
-    n("build_append", "list_append", arguments={"item_type": "struct:ToolCall", "position": "end"})
-    d("build_read", "value-out", "build_append", "list-in", "list-struct:ToolCall")
-    d("build_call", "value-out", "build_append", "item-in", "struct:ToolCall")
-    g.ctx("build_write", "write", "list-struct:ToolCall")
-    d("build_context", "context-id", "build_write", "context-id")
-    d("build_append", "list-out", "build_write", "value-in", "list-struct:ToolCall")
-    g.ctx("build_final_read", "read", "list-struct:ToolCall")
-    d("build_context", "context-id", "build_final_read", "context-id")
-    role = g.const("build_role", "assistant")
-    g.make_struct("build_message", "Assistant", {
-        "role": (role, "content-out", "content"),
-        "content": (*p(fi, "content"), "content"),
-        "reasoning_content": (*p(fi, "reasoning"), "content"),
-        "tool_calls": ("build_final_read", "value-out", "list-struct:ToolCall"),
-    })
-    n("build_json", "struct_to_json", arguments={"value_type": "struct:Assistant"})
-    d("build_message", "struct-out", "build_json", "value-in", "struct:Assistant")
-    g.ret("build_calls_return", "build_assistant")
-    d("build_json", "content-out", "build_calls_return", "function:message")
-    g.control("build_route", "build_empty", "branch$others")
-    g.chain("build_empty", "build_context", "build_each")
-    g.control("build_each", "build_call", "loop-out")
-    g.chain("build_call", "build_read", "build_append", "build_write")
-    g.control("build_write", "build_each", in_port="loop-in")
-    g.chain("build_each", "build_final_read", "build_role", "build_message", "build_json", "build_calls_return")
+    n("build_message", "construct_message", arguments={"role": "assistant"})
+    d(*p(fi, "content"), "build_message", "content-in")
+    d(*p(fi, "reasoning"), "build_message", "reasoning-in")
+    d(*p(fi, "calls"), "build_message", "tool-calls-in", "list-content")
+    g.ret("build_return", "build_assistant")
+    d("build_message", "content-out", "build_return", "function:message")
+    g.chain(fi, "build_message", "build_return")
 
     fi = g.function("record_tool_result", [("history_id", "content"), ("call_id", "content"), ("content", "content")])
-    role = g.const("result_role", "tool")
-    g.make_struct("result_message", "ToolMessage", {
-        "role": (role, "content-out", "content"), "content": (*p(fi, "content"), "content"),
-        "tool_call_id": (*p(fi, "call_id"), "content"),
-    })
-    n("result_json", "struct_to_json", arguments={"value_type": "struct:ToolMessage"})
-    d("result_message", "struct-out", "result_json", "value-in", "struct:ToolMessage")
-    g.call("result_save", "append_history", {"history_id": p(fi, "history_id"), "message": ("result_json", "content-out")})
+    n("result_message", "construct_message", arguments={"role": "tool"})
+    d(*p(fi, "content"), "result_message", "content-in")
+    d(*p(fi, "call_id"), "result_message", "tool-call-id-in")
+    g.call("result_save", "append_history", {"history_id": p(fi, "history_id"), "message": ("result_message", "content-out")})
     g.ret("result_return", "record_tool_result")
-    g.chain(fi, "result_role", "result_message", "result_json", "result_save", "result_return")
+    g.chain(fi, "result_message", "result_save", "result_return")
 
     # Each foreach body calls one function; branching JSON Tool logic stays inside it.
     fi = g.function("run_one_tool", [("history_id", "content"), ("call", "content"),

@@ -227,6 +227,14 @@ class FunctionProcessTest(unittest.TestCase):
         self.assertEqual([call.args[0] for call in self.output.call_args_list], ['one', 'two'])
         branch_returns = [t['node_id'] for t in final['node_trace'] if t['node_type'] == 'function_output' and t['function_id'] == 'B']
         self.assertEqual(branch_returns, ['Bout', 'Bsecond'])
+        call_ids = {}
+        for fid in ('A', 'B'):
+            entries = [t for t in final['node_trace'] if t['node_id'] == fid + 'in']
+            exits = [t for t in final['node_trace'] if t['node_type'] == 'function_output' and t['function_id'] == fid]
+            call_ids[fid] = {t['function_call_id'] for t in entries}
+            self.assertEqual(len(call_ids[fid]), 2)
+            self.assertEqual({t['function_call_id'] for t in exits}, call_ids[fid])
+        self.assertTrue(call_ids['A'].isdisjoint(call_ids['B']))
 
         # A direct branch in the enclosing loop is still forbidden.
         bad = copy.deepcopy(doc)
@@ -237,14 +245,28 @@ class FunctionProcessTest(unittest.TestCase):
             validate_workflow(bad)
 
     def test_nested_calls_return_through_serialized_frames(self):
-        process = self.start(function_document(nested=True), text='nested')
+        doc = function_document(nested=True)
+        doc['metadata']['functions'][0]['name'] = 'Outer function'
+        doc['metadata']['functions'][1]['name'] = 'Inner function'
+        process = self.start(doc, text='nested')
         records = self.drain()
         final = main.read_process(process['process_id'])
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'nested'})
         self.assertEqual(final['function_stack'], [])
         self.assertTrue(any(len(p.get('function_stack', [])) == 2 for p in records))
-        self.assertTrue(any(t.get('function_id') == 'B' for t in final['node_trace']))
+        function_traces = [t for t in final['node_trace'] if t.get('function_id')]
+        ids = {}
+        for fid, name in [('A', 'Outer function'), ('B', 'Inner function')]:
+            traces = [t for t in function_traces if t['function_id'] == fid]
+            self.assertTrue(traces)
+            self.assertEqual({t['function_name'] for t in traces}, {name})
+            ids[fid] = {t['function_call_id'] for t in traces}
+            self.assertEqual(len(ids[fid]), 1)
+            self.assertRegex(next(iter(ids[fid])), r'^[0-9a-f]{32}$')
+        self.assertTrue(ids['A'].isdisjoint(ids['B']))
+        self.assertFalse(any('function_call_id' in t for t in final['node_trace']
+                             if t['node_id'] in {'in', 'callA', 'out'}))
         self.assertEqual(len(self.workflows()), 1)
 
     def test_wait_inside_nested_function_survives_resume(self):
@@ -254,11 +276,17 @@ class FunctionProcessTest(unittest.TestCase):
         self.assertEqual(waiting['status'], 'blocked', waiting.get('error'))
         self.assertEqual(waiting['active_function_id'], 'B')
         self.assertEqual(len(waiting['function_stack']), 2)
+        inner_call_id = waiting['active_function_call_id']
+        outer_call_id = waiting['function_stack'][-1]['function_call_id']
+        self.assertNotEqual(inner_call_id, outer_call_id)
         self.send(waiting)
         self.drain()
         final = main.read_process(process['process_id'])
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'hello'})
+        for fid, call_id in [('A', outer_call_id), ('B', inner_call_id)]:
+            traces = [t for t in final['node_trace'] if t.get('function_id') == fid]
+            self.assertEqual({t['function_call_id'] for t in traces}, {call_id})
 
     def test_subprocess_inside_nested_function(self):
         self.documents['child.flow'] = support.document('child')
@@ -275,6 +303,7 @@ class FunctionProcessTest(unittest.TestCase):
         propagate_workflow_output(graph, graph[0], 'workflow:text', 'old')
         template = main._function_template(graph)
         self.assertNotIn('_foreach_items', template[0])
+        self.assertEqual(next(n for n in template if n['id'] == 'Ain')['_function_name'], 'A')
         for node in template:
             self.assertTrue(all(slot[2] is None for slot in node['data_inputs'].values()))
         self.assertEqual(graph[1]['data_inputs']['function:text'][2], 'old')

@@ -84,55 +84,6 @@
             "required": true
           }
         ]
-      },
-      {
-        "id": "Assistant",
-        "name": "Assistant",
-        "color": "#3976A8",
-        "fields": [
-          {
-            "name": "role",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "content",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "reasoning_content",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "tool_calls",
-            "type": "list-struct:ToolCall",
-            "required": true
-          }
-        ]
-      },
-      {
-        "id": "ToolMessage",
-        "name": "ToolMessage",
-        "color": "#3976A8",
-        "fields": [
-          {
-            "name": "role",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "content",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "tool_call_id",
-            "type": "content",
-            "required": true
-          }
-        ]
       }
     ],
     "functions": [
@@ -537,216 +488,20 @@
       "function_id": "build_assistant"
     },
     {
-      "id": "build_count",
-      "type": "list_length",
-      "name": "build count",
-      "x": 340,
-      "y": 1900,
-      "arguments": {
-        "value_type": "list-content"
-      }
-    },
-    {
-      "id": "build_count_value",
-      "type": "construct_struct",
-      "name": "build count value",
-      "x": 600,
-      "y": 1900,
-      "arguments": {
-        "struct_id": "ToolCallCount"
-      },
-      "dataInputPorts": [
-        "count"
-      ]
-    },
-    {
-      "id": "build_count_json",
-      "type": "struct_to_json",
-      "name": "build count json",
-      "x": 860,
-      "y": 1900,
-      "arguments": {
-        "value_type": "struct:ToolCallCount"
-      }
-    },
-    {
-      "id": "build_count_text",
-      "type": "deserialize_json",
-      "name": "build count text",
-      "x": 1120,
-      "y": 1900,
-      "arguments": {
-        "outputs": [
-          {
-            "key": "count",
-            "type": "content"
-          }
-        ]
-      }
-    },
-    {
-      "id": "build_route",
-      "type": "router",
-      "name": "build route",
-      "x": 1380,
-      "y": 1900,
-      "arguments": {
-        "branches": [
-          {
-            "id": "none",
-            "name": "0"
-          }
-        ]
-      }
-    },
-    {
-      "id": "build_plain",
+      "id": "build_message",
       "type": "construct_message",
-      "name": "build plain",
-      "x": 1640,
+      "name": "build message",
+      "x": 340,
       "y": 1900,
       "arguments": {
         "role": "assistant"
       }
     },
     {
-      "id": "build_plain_return",
+      "id": "build_return",
       "type": "function_output",
-      "name": "build plain return",
-      "x": 1900,
-      "y": 1900,
-      "function_id": "build_assistant"
-    },
-    {
-      "id": "build_empty",
-      "type": "construct_list",
-      "name": "build empty",
-      "x": 2160,
-      "y": 1900,
-      "arguments": {
-        "item_type": "struct:ToolCall",
-        "initial_value_count": 0
-      },
-      "dataInputPorts": []
-    },
-    {
-      "id": "build_context",
-      "type": "context_create",
-      "name": "build context",
-      "x": 2420,
-      "y": 1900,
-      "arguments": {
-        "value_type": "list-struct:ToolCall"
-      }
-    },
-    {
-      "id": "build_each",
-      "type": "foreach",
-      "name": "build each",
-      "x": 2680,
-      "y": 1900,
-      "arguments": {
-        "item_type": "content"
-      }
-    },
-    {
-      "id": "build_call",
-      "type": "json_to_struct",
-      "name": "build call",
-      "x": 2940,
-      "y": 1900,
-      "arguments": {
-        "value_type": "struct:ToolCall"
-      }
-    },
-    {
-      "id": "build_read",
-      "type": "context_read",
-      "name": "build read",
-      "x": 3200,
-      "y": 1900,
-      "arguments": {
-        "value_type": "list-struct:ToolCall"
-      }
-    },
-    {
-      "id": "build_append",
-      "type": "list_append",
-      "name": "build append",
-      "x": 3460,
-      "y": 1900,
-      "arguments": {
-        "item_type": "struct:ToolCall",
-        "position": "end"
-      }
-    },
-    {
-      "id": "build_write",
-      "type": "context_write",
-      "name": "build write",
-      "x": 3720,
-      "y": 1900,
-      "arguments": {
-        "value_type": "list-struct:ToolCall"
-      }
-    },
-    {
-      "id": "build_final_read",
-      "type": "context_read",
-      "name": "build final read",
-      "x": 3980,
-      "y": 1900,
-      "arguments": {
-        "value_type": "list-struct:ToolCall"
-      }
-    },
-    {
-      "id": "build_role",
-      "type": "construct_content",
-      "name": "build role",
-      "x": 4240,
-      "y": 1900,
-      "arguments": {
-        "append_items": [
-          {
-            "type": "fixed",
-            "value": "assistant"
-          }
-        ]
-      },
-      "dataInputPorts": []
-    },
-    {
-      "id": "build_message",
-      "type": "construct_struct",
-      "name": "build message",
-      "x": 4500,
-      "y": 1900,
-      "arguments": {
-        "struct_id": "Assistant"
-      },
-      "dataInputPorts": [
-        "role",
-        "content",
-        "reasoning_content",
-        "tool_calls"
-      ]
-    },
-    {
-      "id": "build_json",
-      "type": "struct_to_json",
-      "name": "build json",
-      "x": 4760,
-      "y": 1900,
-      "arguments": {
-        "value_type": "struct:Assistant"
-      }
-    },
-    {
-      "id": "build_calls_return",
-      "type": "function_output",
-      "name": "build calls return",
-      "x": 5020,
+      "name": "build return",
+      "x": 600,
       "y": 1900,
       "function_id": "build_assistant"
     },
@@ -759,51 +514,20 @@
       "function_id": "record_tool_result"
     },
     {
-      "id": "result_role",
-      "type": "construct_content",
-      "name": "result role",
+      "id": "result_message",
+      "type": "construct_message",
+      "name": "result message",
       "x": 340,
       "y": 2500,
       "arguments": {
-        "append_items": [
-          {
-            "type": "fixed",
-            "value": "tool"
-          }
-        ]
-      },
-      "dataInputPorts": []
-    },
-    {
-      "id": "result_message",
-      "type": "construct_struct",
-      "name": "result message",
-      "x": 600,
-      "y": 2500,
-      "arguments": {
-        "struct_id": "ToolMessage"
-      },
-      "dataInputPorts": [
-        "role",
-        "content",
-        "tool_call_id"
-      ]
-    },
-    {
-      "id": "result_json",
-      "type": "struct_to_json",
-      "name": "result json",
-      "x": 860,
-      "y": 2500,
-      "arguments": {
-        "value_type": "struct:ToolMessage"
+        "role": "tool"
       }
     },
     {
       "id": "result_save",
       "type": "function_call",
       "name": "result save",
-      "x": 1120,
+      "x": 600,
       "y": 2500,
       "arguments": {
         "function_id": "append_history"
@@ -813,7 +537,7 @@
       "id": "result_return",
       "type": "function_output",
       "name": "result return",
-      "x": 1380,
+      "x": 860,
       "y": 2500,
       "function_id": "record_tool_result"
     },
@@ -1767,279 +1491,34 @@
     },
     {
       "fromId": "build_assistant_in",
-      "fromPortId": "function:calls",
-      "toId": "build_count",
-      "toPortId": "list-in",
-      "type": "list-content"
-    },
-    {
-      "fromId": "build_count",
-      "fromPortId": "length-out",
-      "toId": "build_count_value",
-      "toPortId": "count",
-      "type": "number"
-    },
-    {
-      "fromId": "build_count_value",
-      "fromPortId": "struct-out",
-      "toId": "build_count_json",
-      "toPortId": "value-in",
-      "type": "struct:ToolCallCount"
-    },
-    {
-      "fromId": "build_count_json",
-      "fromPortId": "content-out",
-      "toId": "build_count_text",
-      "toPortId": "content-in",
-      "type": "content"
-    },
-    {
-      "fromId": "build_count_text",
-      "fromPortId": "count",
-      "toId": "build_route",
-      "toPortId": "content-in",
-      "type": "content"
-    },
-    {
-      "fromId": "build_assistant_in",
-      "fromPortId": "function:content",
-      "toId": "build_plain",
-      "toPortId": "content-in",
-      "type": "content"
-    },
-    {
-      "fromId": "build_plain",
-      "fromPortId": "content-out",
-      "toId": "build_plain_return",
-      "toPortId": "function:message",
-      "type": "content"
-    },
-    {
-      "fromId": "build_assistant_in",
-      "fromPortId": "control-out",
-      "toId": "build_count",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_count",
-      "fromPortId": "control-out",
-      "toId": "build_count_value",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_count_value",
-      "fromPortId": "control-out",
-      "toId": "build_count_json",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_count_json",
-      "fromPortId": "control-out",
-      "toId": "build_count_text",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_count_text",
-      "fromPortId": "control-out",
-      "toId": "build_route",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_route",
-      "fromPortId": "none",
-      "toId": "build_plain",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_plain",
-      "fromPortId": "control-out",
-      "toId": "build_plain_return",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_empty",
-      "fromPortId": "list-out",
-      "toId": "build_context",
-      "toPortId": "initial-value",
-      "type": "list-struct:ToolCall"
-    },
-    {
-      "fromId": "build_assistant_in",
-      "fromPortId": "function:calls",
-      "toId": "build_each",
-      "toPortId": "list-in",
-      "type": "list-content"
-    },
-    {
-      "fromId": "build_each",
-      "fromPortId": "item-out",
-      "toId": "build_call",
-      "toPortId": "content-in",
-      "type": "content"
-    },
-    {
-      "fromId": "build_context",
-      "fromPortId": "context-id",
-      "toId": "build_read",
-      "toPortId": "context-id",
-      "type": "content"
-    },
-    {
-      "fromId": "build_read",
-      "fromPortId": "value-out",
-      "toId": "build_append",
-      "toPortId": "list-in",
-      "type": "list-struct:ToolCall"
-    },
-    {
-      "fromId": "build_call",
-      "fromPortId": "value-out",
-      "toId": "build_append",
-      "toPortId": "item-in",
-      "type": "struct:ToolCall"
-    },
-    {
-      "fromId": "build_context",
-      "fromPortId": "context-id",
-      "toId": "build_write",
-      "toPortId": "context-id",
-      "type": "content"
-    },
-    {
-      "fromId": "build_append",
-      "fromPortId": "list-out",
-      "toId": "build_write",
-      "toPortId": "value-in",
-      "type": "list-struct:ToolCall"
-    },
-    {
-      "fromId": "build_context",
-      "fromPortId": "context-id",
-      "toId": "build_final_read",
-      "toPortId": "context-id",
-      "type": "content"
-    },
-    {
-      "fromId": "build_role",
-      "fromPortId": "content-out",
-      "toId": "build_message",
-      "toPortId": "role",
-      "type": "content"
-    },
-    {
-      "fromId": "build_assistant_in",
       "fromPortId": "function:content",
       "toId": "build_message",
-      "toPortId": "content",
+      "toPortId": "content-in",
       "type": "content"
     },
     {
       "fromId": "build_assistant_in",
       "fromPortId": "function:reasoning",
       "toId": "build_message",
-      "toPortId": "reasoning_content",
+      "toPortId": "reasoning-in",
       "type": "content"
     },
     {
-      "fromId": "build_final_read",
-      "fromPortId": "value-out",
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:calls",
       "toId": "build_message",
-      "toPortId": "tool_calls",
-      "type": "list-struct:ToolCall"
+      "toPortId": "tool-calls-in",
+      "type": "list-content"
     },
     {
       "fromId": "build_message",
-      "fromPortId": "struct-out",
-      "toId": "build_json",
-      "toPortId": "value-in",
-      "type": "struct:Assistant"
-    },
-    {
-      "fromId": "build_json",
       "fromPortId": "content-out",
-      "toId": "build_calls_return",
+      "toId": "build_return",
       "toPortId": "function:message",
       "type": "content"
     },
     {
-      "fromId": "build_route",
-      "fromPortId": "branch$others",
-      "toId": "build_empty",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_empty",
-      "fromPortId": "control-out",
-      "toId": "build_context",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_context",
-      "fromPortId": "control-out",
-      "toId": "build_each",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_each",
-      "fromPortId": "loop-out",
-      "toId": "build_call",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_call",
-      "fromPortId": "control-out",
-      "toId": "build_read",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_read",
-      "fromPortId": "control-out",
-      "toId": "build_append",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_append",
-      "fromPortId": "control-out",
-      "toId": "build_write",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_write",
-      "fromPortId": "control-out",
-      "toId": "build_each",
-      "toPortId": "loop-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_each",
-      "fromPortId": "control-out",
-      "toId": "build_final_read",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_final_read",
-      "fromPortId": "control-out",
-      "toId": "build_role",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "build_role",
+      "fromId": "build_assistant_in",
       "fromPortId": "control-out",
       "toId": "build_message",
       "toPortId": "control-in",
@@ -2048,44 +1527,23 @@
     {
       "fromId": "build_message",
       "fromPortId": "control-out",
-      "toId": "build_json",
+      "toId": "build_return",
       "toPortId": "control-in",
       "type": "control"
-    },
-    {
-      "fromId": "build_json",
-      "fromPortId": "control-out",
-      "toId": "build_calls_return",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "result_role",
-      "fromPortId": "content-out",
-      "toId": "result_message",
-      "toPortId": "role",
-      "type": "content"
     },
     {
       "fromId": "record_tool_result_in",
       "fromPortId": "function:content",
       "toId": "result_message",
-      "toPortId": "content",
+      "toPortId": "content-in",
       "type": "content"
     },
     {
       "fromId": "record_tool_result_in",
       "fromPortId": "function:call_id",
       "toId": "result_message",
-      "toPortId": "tool_call_id",
+      "toPortId": "tool-call-id-in",
       "type": "content"
-    },
-    {
-      "fromId": "result_message",
-      "fromPortId": "struct-out",
-      "toId": "result_json",
-      "toPortId": "value-in",
-      "type": "struct:ToolMessage"
     },
     {
       "fromId": "record_tool_result_in",
@@ -2095,7 +1553,7 @@
       "type": "content"
     },
     {
-      "fromId": "result_json",
+      "fromId": "result_message",
       "fromPortId": "content-out",
       "toId": "result_save",
       "toPortId": "function:message",
@@ -2104,26 +1562,12 @@
     {
       "fromId": "record_tool_result_in",
       "fromPortId": "control-out",
-      "toId": "result_role",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "result_role",
-      "fromPortId": "control-out",
       "toId": "result_message",
       "toPortId": "control-in",
       "type": "control"
     },
     {
       "fromId": "result_message",
-      "fromPortId": "control-out",
-      "toId": "result_json",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "result_json",
       "fromPortId": "control-out",
       "toId": "result_save",
       "toPortId": "control-in",

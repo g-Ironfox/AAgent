@@ -37,13 +37,19 @@ function render() {
   const query = elements.search.value.trim().toLocaleLowerCase();
   const status = elements.status.value;
   const visible = records.filter((item) => (status === 'all' || item.status === status) && (elements.type.value === 'all' || item.process_type === elements.type.value) && (!query || searchableText(item).includes(query)));
+  const timelineScrollPositions = [];
   const views = visible.map((item) => {
     const processId = item.process_id || item.id;
     const content = JSON.stringify(item);
     let view = recordViews.get(processId);
     if (!view || view.content !== content) {
+      const previousTimeline = view?.element.querySelector('.trace-list');
+      const top = previousTimeline?.scrollTop ?? 0;
+      const left = previousTimeline?.scrollLeft ?? 0;
       view = { content, element: renderRecord(item) };
       recordViews.set(processId, view);
+      const timeline = view.element.querySelector('.trace-list');
+      if (timeline) timelineScrollPositions.push({ timeline, top, left });
     }
     return view.element;
   });
@@ -55,6 +61,11 @@ function render() {
   for (const view of views) {
     if (view !== cursor) elements.list.insertBefore(view, cursor);
     cursor = view.nextElementSibling;
+  }
+  // Restore after insertion so the browser can calculate the scrollable area.
+  for (const { timeline, top, left } of timelineScrollPositions) {
+    timeline.scrollTop = top;
+    timeline.scrollLeft = left;
   }
   const processIds = new Set(records.map((item) => item.process_id || item.id));
   for (const processId of recordViews.keys()) {
@@ -106,7 +117,9 @@ function renderRecord(item) {
 }
 function timelineEntries(events, nodes) {
   const entries = [
-    ...events.map((entry) => ({ kind: 'event', entry, timestamp: entry.timestamp,
+    // Routine scheduling transitions add noise between node executions.
+    ...events.filter((entry) => entry.event !== 'yielded' && entry.event !== 'resumed')
+      .map((entry) => ({ kind: 'event', entry, timestamp: entry.timestamp,
       priority: entry.event === 'created' ? -2 : entry.event === 'started' ? -1 : 1 })),
     ...nodes.map((entry, index) => ({ kind: 'node', entry, index, timestamp: entry.started_at, priority: 0 })),
   ];
@@ -154,6 +167,8 @@ function timelinePanel(events, nodes) {
       const reason = eventDescription(entry);
       if (reason) descriptions.push(reason);
     } else {
+      if (entry.function_name || entry.function_id) descriptions.push('函数 ' + (entry.function_name || entry.function_id));
+      if (entry.function_call_id) descriptions.push('调用 ID ' + entry.function_call_id);
       if (entry.finished_at) descriptions.push('结束于 ' + formatDate(entry.finished_at));
       if (Number.isFinite(entry.elapsed_ms)) descriptions.push('含等待 ' + formatDuration(entry.elapsed_ms));
       if (entry.child_process_id) descriptions.push('子进程 ' + entry.child_process_id);

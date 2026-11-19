@@ -71,6 +71,7 @@ function renderTimeline() {
     const row = node('div', 'gantt-row'); row.append(processButton(process, 'gantt-label'));
     const track = node('div', 'track');
     for (const segment of buildSegments(process, start, end)) {
+      if (segment.status === 'ready') continue;
       const bar = node('button', 'segment ' + stateClass(segment.status) + (segment.point ? ' point' : ''));
       bar.type = 'button'; bar.style.left = ((segment.start - start) / span * 100) + '%';
       if (!segment.point) bar.style.width = ((segment.end - segment.start) / span * 100) + '%';

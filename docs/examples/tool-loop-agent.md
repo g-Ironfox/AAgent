@@ -14,7 +14,7 @@ The example offers the existing Local Tools `workspace.list_files` and `workspac
 
 ## Execution
 
-The root process initializes a message-history Context and a one-item turn queue. `while_pop` schedules a `tool_loop_turn` function and blocks between ready-queue steps. Each turn reads history, calls the model, and saves a native assistant message, including structured tool calls and reasoning content.
+The root process initializes a message-history Context and a one-item turn queue. `while_pop` schedules a `tool_loop_turn` function and blocks between ready-queue steps. Each turn reads history, calls the model, and saves a native assistant message, including structured tool calls and reasoning content. A single `construct_message` builds assistant messages for both ordinary replies and tool calls, retaining reasoning even when there are no calls. Its `tool-calls-in` port accepts the LLM's JSON-string list and writes an object array; empty calls are omitted. Tool results use the same node with `tool-call-id-in`. Message construction requires no Assistant or ToolMessage Struct.
 
 - With no tool calls, the turn writes the model's final response to the process terminal and does not add another queue token. The loop then ends and the process completes.
 - With one or more calls, a `foreach` invokes a `run_one_tool` local function for each call in order. Workspace calls are dispatched through `json_tool`; success or failure is recorded as a `tool` message with the matching `tool_call_id`. After the batch, another turn token is added so the model can inspect observations and decide what to do next.
