@@ -7,6 +7,7 @@ export const NODE_TYPES = new Set([
   'function_output',
   'function_call',
   'router',
+  'construct_tool',
   'construct_message',
   'construct_content',
   'construct_map_content',
@@ -108,6 +109,15 @@ export function portsForNode(node) {
       { id: 'content-in', direction: 'input', type: 'content', label: '输入', title: '输入内容', multiple: false },
       ...(node.branches || []).map((branch) => ({ id: branch.id, direction: 'output', type: 'control', label: branch.name, title: branch.name, multiple: false })),
       { id: 'branch$others', direction: 'output', type: 'control', label: '其它', title: '没有分支名称匹配时执行', multiple: false },
+    ];
+  }
+  if (node.type === 'construct_tool') {
+    const fields = [['tool_name', 'name-in', '名称'], ['description', 'description-in', '描述'], ['schema', 'schema-in', '参数 Schema'], ['required', 'required-in', '必填参数']];
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '构造一个 Tool JSON', multiple: false },
+      ...fields.filter(([field]) => node[`${field}_source`] === 'port').map(([, id, label]) => ({ id, direction: 'input', type: id === 'required-in' ? 'list-content' : 'content', label, title: label, multiple: false })),
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'tool-out', direction: 'output', type: 'content', label: 'Tool JSON', title: '单个工具定义的 JSON 文本，可用构造列表拼装为 list-content', multiple: true },
     ];
   }
   if (node.type === 'construct_message') {
@@ -405,7 +415,7 @@ export function portsForNode(node) {
   const ports = [
     { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
     { id: 'messages-in', direction: 'input', type: 'list-message', label: 'Messages', title: 'Message 列表', multiple: false },
-    ...(node.tool_calls === true ? [{ id: 'available-tools-in', direction: 'input', type: 'list-content', label: '可用 Tools', title: '覆盖默认工具列表；名称必须来自 metadata.tools', multiple: false }] : []),
+    ...(node.tool_calls === true ? [{ id: node.tools_source === 'definitions' ? 'tools-in' : 'available-tools-in', direction: 'input', type: 'list-content', label: node.tools_source === 'definitions' ? 'Tools JSON' : '可用 Tools', title: node.tools_source === 'definitions' ? '每项为一个 Tool 定义的 JSON 文本；空列表表示不使用工具' : '覆盖默认工具列表；名称必须来自 metadata.tools', multiple: false }] : []),
     { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
     { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },
   ];
@@ -470,6 +480,7 @@ function createNodeDefinition(type, nodes, configuration = null, viewport = null
       ...(type === 'function_call' ? { callee_id: configuration?.id } : { function_id: configuration?.id }) };
   }
   if (type === 'output') return { type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
+  if (type === 'construct_tool') return { type, name: `构造 Tool ${number}`, tool_name_source: 'fixed', tool_name: 'my_tool', description_source: 'fixed', description: '', schema_source: 'fixed', schema: { type: 'object', properties: {} }, required_source: 'fixed', ...position };
   if (type === 'construct_message') return { type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
   if (type === 'construct_content') return { type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
   if (type === 'construct_map_content') return { type, name: `构造 Map ${number}`, mappings: [{ key: 'key1', value: '' }], dataInputPorts: [], ...position };
@@ -502,7 +513,7 @@ function createNodeDefinition(type, nodes, configuration = null, viewport = null
   if (type === 'session_create') return { type, name: `创建 Session ${number}`, value_type: 'content', ...position };
   if (type === 'session_read') return { type, name: `读取 Session ${number}`, value_type: 'content', ...position };
   if (type === 'session_write') return { type, name: `修改 Session ${number}`, value_type: 'content', ...position };
-  if (type === 'llm') return { type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
+  if (type === 'llm') return { type, name: `LLM ${number}`, model: '', tools: [], tools_source: 'definitions', think: false, tool_calls: false, ...position };
   if (type === 'tool') return { type, name: `Tool ${number}`, tool: '', parameters: [], outputs: [], mode: 'sync', timeout_ms: 10000, callback: null, ...position };
   if (type === 'local_tool') return { type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
   if (type === 'remote_sync_tool') return { type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };

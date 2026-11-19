@@ -40,6 +40,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .function_call-symbol { background:#785d9b; }
 .router-symbol { background:var(--amber); }
 .llm-symbol { background:var(--blue); }
+.construct_tool-symbol { background:#356e9b; }
 .construct_message-symbol { background:#b75b18; }
 .construct_content-symbol { background:#2f6f8f; }
 .construct_map_content-symbol { background:#46713f; }

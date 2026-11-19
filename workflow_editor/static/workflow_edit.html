@@ -65,6 +65,7 @@
             <div><strong>LLM</strong><small>执行模型并挂载工具</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="construct_tool"><span class="node-symbol construct_tool-symbol" aria-hidden="true">T+</span><div><strong>构造 Tool</strong><small>输出单个 Tool JSON</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
           <button class="library-item" type="button" data-add-node="construct_message">
             <span class="node-symbol construct_message-symbol" aria-hidden="true">M</span>
             <div><strong>构造 Message</strong><small>为 content 指定消息角色</small></div>
@@ -414,10 +415,30 @@
       <label>模型<select data-field="model"><option>加载模型配置中</option></select></label>
       <label class="checkbox-field"><input type="checkbox" data-think><span><strong>Think</strong><small>启用推理过程输出</small></span></label>
       <label class="checkbox-field"><input type="checkbox" data-tool-calls><span><strong>Tool Calls</strong><small>启用 OpenAI 格式的工具调用输出</small></span></label>
+      <label data-tools-source-field>工具来源<select data-tools-source><option value="definitions">输入 Tool JSON 列表</option><option value="declared">已声明的工具</option></select><small>JSON 列表每项为一个完整工具定义；连接空列表表示不使用工具。</small></label>
     </section>
     <section class="inspector-section" data-llm-tools>
       <div class="section-label"><strong>默认 Tools</strong><span data-tool-count>0 个</span></div>
       <div class="tool-options"><div class="empty-options">加载 Tool 注册表中</div></div>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="construct_toolInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>工具名称<select data-tool-source="tool_name"><option value="fixed">fixed · 固定值</option><option value="port">port · 输入端口</option></select></label>
+      <label data-tool-fixed="tool_name"><input data-tool-value="tool_name"></label>
+      <label>描述<select data-tool-source="description"><option value="fixed">fixed · 固定值</option><option value="port">port · 输入端口</option></select></label>
+      <label data-tool-fixed="description"><textarea data-tool-value="description" rows="3"></textarea></label>
+      <label>参数 Schema<select data-tool-source="schema"><option value="fixed">fixed · 固定值</option><option value="port">port · 输入端口</option></select></label>
+      <label data-tool-fixed="schema"><textarea data-tool-value="schema" rows="9" spellcheck="false"></textarea></label>
+      <label>必填参数<select data-tool-source="required"><option value="fixed">fixed · 固定值</option><option value="port">port · 输入端口</option></select></label>
+      <label data-tool-fixed="required"><input data-tool-value="required" placeholder="text, query"></label>
+      <label class="checkbox-field"><input type="checkbox" data-tool-required-empty><span>显式清空必填参数</span></label>
+      <label>Tool JSON 预览<textarea data-tool-preview rows="10" readonly spellcheck="false"></textarea></label>
+      <p data-tool-error role="status"></p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

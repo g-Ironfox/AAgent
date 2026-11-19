@@ -274,7 +274,8 @@
             "tool",
             "function_input",
             "function_output",
-            "function_call"
+            "function_call",
+            "construct_tool"
           ]
         },
         "name": {
@@ -754,23 +755,43 @@
                     ]
                   },
                   "start_source": {
-                    "enum": ["port", "fixed"]
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
                   },
                   "start": {
-                    "type": ["integer", "null"]
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
                   },
                   "stop_source": {
-                    "enum": ["port", "fixed"]
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
                   },
                   "stop": {
-                    "type": ["integer", "null"]
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
                   },
                   "step_source": {
-                    "enum": ["port", "fixed"]
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
                   },
                   "step": {
-                    "type": ["integer", "null"],
-                    "not": {"const": 0}
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "not": {
+                      "const": 0
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -888,6 +909,92 @@
                 "required": [
                   "function_id"
                 ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "construct_tool"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "properties": {
+                  "tool_name_source": {
+                    "enum": [
+                      "fixed",
+                      "port"
+                    ]
+                  },
+                  "description_source": {
+                    "enum": [
+                      "fixed",
+                      "port"
+                    ]
+                  },
+                  "schema_source": {
+                    "enum": [
+                      "fixed",
+                      "port"
+                    ]
+                  },
+                  "required_source": {
+                    "enum": [
+                      "fixed",
+                      "port"
+                    ]
+                  },
+                  "tool_name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "schema": {
+                    "type": [
+                      "object",
+                      "string"
+                    ]
+                  },
+                  "required": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "uniqueItems": true
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "llm"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "properties": {
+                  "tools_source": {
+                    "enum": [
+                      "declared",
+                      "definitions"
+                    ]
+                  }
+                }
               }
             }
           }

@@ -4,11 +4,38 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { loadSnapshot, state, workflowSnapshot, resetWorkflow, addNode } from './static/workflow/domain/serialization.js';
-import { portsForNode } from './static/workflow/domain/node-contract.js';
+import { createNode, portsForNode } from './static/workflow/domain/node-contract.js';
+import { toolPreview } from './static/workflow/inspector/tool-definition.js';
 import { applyToolDeclaration, toolFromSchema } from './static/workflow/domain/tool-contract.js';
 import { createIntegrationInspector } from './static/workflow/inspector/integrations.js';
 
 const port = (name, type = 'content') => ({ name, type });
+
+test('construct_tool emits one content Tool JSON and exposes fixed/port controls', () => {
+  const node = createNode('construct_tool', []);
+  assert.equal(node.schema_source, 'fixed');
+  assert.equal(node.required_source, 'fixed');
+  assert.equal(toolPreview(node), JSON.stringify({ type: 'function', function: {
+    name: 'my_tool', description: '', parameters: { type: 'object', properties: {} },
+  } }, null, 2));
+  assert.deepEqual(portsForNode(node).map(({ id, type }) => [id, type]), [
+    ['control-in', 'control'], ['control-out', 'control'], ['tool-out', 'content'],
+  ]);
+  node.required_source = 'port';
+  assert.equal(portsForNode(node).find((item) => item.id === 'required-in').type, 'list-content');
+  node.schema_source = 'port';
+  assert.equal(portsForNode(node).find((item) => item.id === 'schema-in').type, 'content');
+});
+
+test('construct_tool preview reports invalid schemas and preserves inherited required fields', () => {
+  const node = createNode('construct_tool', []);
+  node.schema = { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] };
+  assert.deepEqual(JSON.parse(toolPreview(node)).function.parameters.required, ['text']);
+  node.required = [];
+  assert.deepEqual(JSON.parse(toolPreview(node)).function.parameters.required, []);
+  node.schema = '{';
+  assert.throws(() => toolPreview(node), SyntaxError);
+});
 
 test('LLM tool-call mode exposes a list-content available-tools input', () => {
   const disabled = portsForNode({ id: 'llm-off', type: 'llm', tool_calls: false });
@@ -19,6 +46,9 @@ test('LLM tool-call mode exposes a list-content available-tools input', () => {
   assert.equal(availableToolsPort.type, 'list-content');
   assert.equal(availableToolsPort.multiple, false);
   assert.match(availableToolsPort.title, /metadata\.tools/);
+  const definitions = portsForNode({ id: 'llm-json', type: 'llm', tool_calls: true, tools_source: 'definitions' });
+  assert.equal(definitions.some((item) => item.id === 'available-tools-in'), false);
+  assert.equal(definitions.find((item) => item.id === 'tools-in').type, 'list-content');
 });
 function fixture(kind, mode = 'sync') {
   const outputs = [port(kind === 'local' ? 'output' : 'result')];

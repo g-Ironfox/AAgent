@@ -245,6 +245,34 @@ def workflow_output(current_id: int, workflow_map: WorkflowMap) -> int:
     return WORKFLOW_END
 
 
+def workflow_construct_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_tools import TOOL_DEFAULTS, TOOL_FIELDS, TOOL_PORTS, build_tool, validate_construct_tool_arguments
+
+    node = workflow_map[current_id]
+    validate_construct_tool_arguments(node.get("arguments", {}))
+    values = {}
+    for field in TOOL_FIELDS:
+        if node_argument(node, f"{field}_source", "fixed") == "port":
+            present, value = read_workflow_input(node, TOOL_PORTS[field])
+            if not present:
+                raise ValueError(f"construct_tool {TOOL_PORTS[field]} input is missing: node {node.get('id')}")
+            if field == "schema":
+                if not isinstance(value, str):
+                    raise ValueError("construct_tool schema-in requires JSON content")
+                try:
+                    value = json.loads(value)
+                except ValueError as error:
+                    raise ValueError(f"construct_tool schema-in invalid JSON: node {node.get('id')}") from error
+            if field == "required" and not isinstance(value, list):
+                raise ValueError("construct_tool required-in requires list-content")
+        else:
+            value = node_argument(node, field, TOOL_DEFAULTS.get(field))
+        values[field] = value
+    tool = build_tool(values["tool_name"], values["description"], values["schema"], values["required"])
+    propagate_workflow_output(workflow_map, node, "tool-out", json.dumps(tool, ensure_ascii=False, separators=(",", ":")))
+    return next_successor(node)
+
+
 def workflow_llm(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     has_messages, value = read_workflow_input(node, "messages-in")
@@ -262,51 +290,63 @@ def workflow_llm(current_id: int, workflow_map: WorkflowMap) -> int:
     messages = list(value)
 
     from llm import chat_with_model
-    from tools.tool import registered_tools
-
-    dynamic_tools_slot = node.get("data_inputs", {}).get("available-tools-in")
-    has_dynamic_tools = (
-        isinstance(dynamic_tools_slot, list)
-        and len(dynamic_tools_slot) == 3
-        and dynamic_tools_slot[0] is not None
-    )
-    dynamic_tool_names = dynamic_tools_slot[2] if has_dynamic_tools else None
-    metadata_tools = node.get("_metadata_tools", [])
-    if not metadata_tools and node.get("_metadata_local_tool_names"):
-        metadata_tools = [
-            {"name": name, "kind": "local"}
-            for name in node["_metadata_local_tool_names"]
-        ]
-    metadata_by_name = {tool["name"]: tool.get("kind", "remote") for tool in metadata_tools}
-    if has_dynamic_tools:
-        if not isinstance(dynamic_tool_names, list) or any(
-            not isinstance(name, str) or not name.strip() for name in dynamic_tool_names
-        ):
-            raise ValueError(f"llm available-tools-in must be a list of non-empty tool names: node {node.get('id')}")
-        configured_tools = list(dict.fromkeys(name.strip() for name in dynamic_tool_names))
-        invalid_names = sorted(set(configured_tools) - metadata_by_name.keys())
-        if invalid_names:
-            raise ValueError(f"llm tools must reference metadata.tools declarations: {', '.join(invalid_names)}")
+    tools_source = node_argument(node, "tools_source", "declared")
+    if tools_source not in {"declared", "definitions"}:
+        raise ValueError("llm tools_source must be 'declared' or 'definitions'")
+    if tools_source == "definitions":
+        tools = []
+        if node_argument(node, "tool_calls") is True:
+            from workflow_tools import parse_tool_contents
+            present, contents = read_workflow_input(node, "tools-in")
+            if not present:
+                raise ValueError(f"llm tools-in input is missing: node {node.get('id')}")
+            tools = parse_tool_contents(contents)
     else:
-        configured_tools = node_argument(node, "tools", []) or [tool["name"] for tool in metadata_tools]
-        invalid_names = sorted(set(configured_tools) - metadata_by_name.keys())
-        if invalid_names:
-            raise ValueError(f"llm tools must reference metadata.tools declarations: {', '.join(invalid_names)}")
+        from tools.tool import registered_tools
 
-    registered_by_name = {schema["function"]["name"]: schema for schema in registered_tools}
-    selected_local = {name for name in configured_tools if metadata_by_name.get(name) == "local"}
-    missing_local = sorted(selected_local - registered_by_name.keys())
-    if missing_local:
-        raise ValueError(f"local tool schemas are not registered: {', '.join(missing_local)}")
-    tools = [registered_by_name[name] for name in configured_tools if name in selected_local]
-    selected_remote = {name for name in configured_tools if metadata_by_name.get(name) == "remote"}
-    if selected_remote:
-        from tool_server_client import ToolServerError, get_remote_tool_schemas
+        dynamic_tools_slot = node.get("data_inputs", {}).get("available-tools-in")
+        has_dynamic_tools = (
+            isinstance(dynamic_tools_slot, list)
+            and len(dynamic_tools_slot) == 3
+            and dynamic_tools_slot[0] is not None
+        )
+        dynamic_tool_names = dynamic_tools_slot[2] if has_dynamic_tools else None
+        metadata_tools = node.get("_metadata_tools", [])
+        if not metadata_tools and node.get("_metadata_local_tool_names"):
+            metadata_tools = [
+                {"name": name, "kind": "local"}
+                for name in node["_metadata_local_tool_names"]
+            ]
+        metadata_by_name = {tool["name"]: tool.get("kind", "remote") for tool in metadata_tools}
+        if has_dynamic_tools:
+            if not isinstance(dynamic_tool_names, list) or any(
+                not isinstance(name, str) or not name.strip() for name in dynamic_tool_names
+            ):
+                raise ValueError(f"llm available-tools-in must be a list of non-empty tool names: node {node.get('id')}")
+            configured_tools = list(dict.fromkeys(name.strip() for name in dynamic_tool_names))
+            invalid_names = sorted(set(configured_tools) - metadata_by_name.keys())
+            if invalid_names:
+                raise ValueError(f"llm tools must reference metadata.tools declarations: {', '.join(invalid_names)}")
+        else:
+            configured_tools = node_argument(node, "tools", []) or [tool["name"] for tool in metadata_tools]
+            invalid_names = sorted(set(configured_tools) - metadata_by_name.keys())
+            if invalid_names:
+                raise ValueError(f"llm tools must reference metadata.tools declarations: {', '.join(invalid_names)}")
 
-        try:
-            tools.extend(get_remote_tool_schemas(selected_remote))
-        except ToolServerError as error:
-            raise ValueError(f"llm could not load Remote Tool schemas: {error}") from error
+        registered_by_name = {schema["function"]["name"]: schema for schema in registered_tools}
+        selected_local = {name for name in configured_tools if metadata_by_name.get(name) == "local"}
+        missing_local = sorted(selected_local - registered_by_name.keys())
+        if missing_local:
+            raise ValueError(f"local tool schemas are not registered: {', '.join(missing_local)}")
+        tools = [registered_by_name[name] for name in configured_tools if name in selected_local]
+        selected_remote = {name for name in configured_tools if metadata_by_name.get(name) == "remote"}
+        if selected_remote:
+            from tool_server_client import ToolServerError, get_remote_tool_schemas
+
+            try:
+                tools.extend(get_remote_tool_schemas(selected_remote))
+            except ToolServerError as error:
+                raise ValueError(f"llm could not load Remote Tool schemas: {error}") from error
     content, reasoning, tool_calls = chat_with_model(
         messages,
         node_argument(node, "model"),
@@ -975,6 +1015,7 @@ nodes_map: dict[str, NodeHandler] = {
     "function_output": workflow_output,
     "function_call": workflow_function_call,
     "router": workflow_router,
+    "construct_tool": workflow_construct_tool,
     "construct_message": workflow_construct_message,
     "construct_content": workflow_construct_content,
     "construct_map_content": workflow_construct_map_content,

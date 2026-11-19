@@ -6,6 +6,7 @@ const TYPE_COLORS = {
   input: '#17201d',
   output: '#7a3e88',
   router: '#c18413',
+  construct_tool: '#356e9b',
   construct_message: '#b75b18',
   construct_content: '#2f6f8f',
   construct_map_content: '#46713f',
@@ -110,6 +111,7 @@ function contractPortIds(node, direction, workflow) {
   if (node.type === 'router') return direction === 'input'
     ? ['control-in', 'content-in']
     : [...(Array.isArray(args.branches) ? args.branches.map((branch) => branch.id).filter((id) => id !== 'branch$others') : []), 'branch$others'];
+  if (node.type === 'construct_tool') return direction === 'input' ? ['control-in', ...[['tool_name', 'name-in'], ['description', 'description-in'], ['schema', 'schema-in'], ['required', 'required-in']].filter(([field]) => (args[`${field}_source`] || node[`${field}_source`]) === 'port').map(([, port]) => port)] : ['control-out', 'tool-out'];
   if (node.type === 'construct_message') return direction === 'input' ? ['control-in', 'content-in'] : ['control-out', 'message-out'];
   if (node.type === 'construct_content') {
     const inputs = (Array.isArray(args.append_items) ? args.append_items : [])
@@ -175,7 +177,7 @@ function contractPortIds(node, direction, workflow) {
   }
   if (node.type === 'llm') {
     return direction === 'input'
-      ? ['control-in', 'messages-in']
+      ? ['control-in', 'messages-in', ...(args.tool_calls === true ? [args.tools_source === 'definitions' ? 'tools-in' : 'available-tools-in'] : [])]
       : ['control-out', 'output', ...(args.think === true ? ['reasoning'] : []), ...(args.tool_calls === true ? ['tool_calls'] : [])];
   }
   return [];

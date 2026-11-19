@@ -221,7 +221,20 @@ export function createIntegrationInspector(context) {
     const toolsSection = context.elements.inspectorContent.querySelector('[data-llm-tools]');
     const think = context.elements.inspectorContent.querySelector('[data-think]');
     const toolCalls = context.elements.inspectorContent.querySelector('[data-tool-calls]');
-    if (node.tool_calls === true) bindTools(node);
+    const source = context.elements.inspectorContent.querySelector('[data-tools-source]');
+    const sourceField = context.elements.inspectorContent.querySelector('[data-tools-source-field]');
+    if (source) {
+      source.value = node.tools_source || 'declared';
+      sourceField.hidden = node.tool_calls !== true;
+      source.addEventListener('change', () => {
+        node.tools_source = source.value;
+        reconcileConnections(state);
+        context.markChanged();
+        context.editor.renderNodes();
+        context.renderInspector();
+      });
+    }
+    if (node.tool_calls === true && node.tools_source !== 'definitions') bindTools(node);
     else toolsSection.remove();
     think.checked = node.think === true;
     toolCalls.checked = node.tool_calls === true;

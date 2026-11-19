@@ -21,6 +21,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   function_output: new Set(),
   function_call: new Set(['function_id']),
   router: new Set(['branches']),
+  construct_tool: new Set(['tool_name', 'tool_name_source', 'description', 'description_source', 'schema', 'schema_source', 'required', 'required_source']),
   construct_message: new Set(['role', 'role_source']),
   construct_content: new Set(['append_items']),
   construct_map_content: new Set(['mappings']),
@@ -41,7 +42,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   list_get: new Set(['value_type', 'index_source', 'index']),
   foreach: new Set(['item_type']),
   while_pop: new Set(['value_type', 'position', 'context_id_source', 'context_id']),
-  llm: new Set(['model', 'think', 'tool_calls', 'tools']),
+  llm: new Set(['model', 'think', 'tool_calls', 'tools', 'tools_source']),
   tool: new Set(['tool', 'parameters', 'outputs', 'mode', 'timeout_ms', 'callback']),
   local_tool: new Set(['tool', 'parameters']),
   remote_sync_tool: new Set(['tool', 'parameters', 'outputs', 'timeout_ms']),
@@ -267,10 +268,24 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
     }
   }
   if (node.type === 'llm') {
+    if (node.tools_source !== undefined && !['declared', 'definitions'].includes(node.tools_source)) return null;
+    if (node.tools_source !== undefined) normalized.tools_source = node.tools_source;
     normalized.model = typeof node.model === 'string' ? node.model : 'gpt-5';
     normalized.think = node.think === true;
     normalized.tool_calls = node.tool_calls === true;
     normalized.tools = normalized.tool_calls && Array.isArray(node.tools) ? [...new Set(node.tools.filter((tool) => typeof tool === 'string' && tool))] : [];
+  }
+  if (node.type === 'construct_tool') {
+    for (const field of ['tool_name', 'description', 'schema', 'required']) {
+      const source = node[`${field}_source`] ?? 'fixed';
+      if (!['fixed', 'port'].includes(source)) return null;
+      normalized[`${field}_source`] = source;
+      if (node[field] !== undefined) normalized[field] = structuredClone(node[field]);
+    }
+    if (node.tool_name !== undefined && typeof node.tool_name !== 'string') return null;
+    if (node.description !== undefined && typeof node.description !== 'string') return null;
+    if (node.schema !== undefined && typeof node.schema !== 'string' && (!node.schema || typeof node.schema !== 'object' || Array.isArray(node.schema))) return null;
+    if (node.required !== undefined && (!Array.isArray(node.required) || node.required.some((name) => typeof name !== 'string' || !name) || new Set(node.required).size !== node.required.length)) return null;
   }
   if (node.type === 'construct_message') {
     normalized.role_source = ['fixed', 'port'].includes(node.role_source) ? node.role_source : 'fixed';

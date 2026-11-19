@@ -21,6 +21,7 @@ SUPPORTED_NODE_TYPES = {
     "function_output",
     "function_call",
     "router",
+    "construct_tool",
     "construct_message",
     "construct_content",
     "construct_map_content",
@@ -71,6 +72,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "function_output": set(),
     "function_call": {"function_id"},
     "router": {"branches"},
+    "construct_tool": {"tool_name", "tool_name_source", "description", "description_source", "schema", "schema_source", "required", "required_source"},
     "construct_message": {"role", "role_source"},
     "construct_content": {"append_items"},
     "construct_map_content": {"mappings"},
@@ -91,7 +93,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "list_slice": {"value_type", "start_source", "start", "stop_source", "stop", "step_source", "step"},
     "foreach": {"item_type"},
     "while_pop": {"value_type", "position", "context_id_source", "context_id"},
-    "llm": {"model", "think", "tool_calls", "tools"},
+    "llm": {"model", "think", "tool_calls", "tools", "tools_source"},
     "tool": {"tool", "parameters", "outputs", "mode", "timeout_ms", "callback"},
     "json_tool": set(),
     "local_tool": {"tool", "parameters"},
@@ -223,8 +225,11 @@ def data_ports_for_node(
             outputs.add("tool_calls")
         inputs = {"messages-in"}
         if node_argument(node, "tool_calls") is True:
-            inputs.add("available-tools-in")
+            inputs.add("tools-in" if node_argument(node, "tools_source", "declared") == "definitions" else "available-tools-in")
         return inputs, outputs
+    if node_type == "construct_tool":
+        from workflow_tools import TOOL_FIELDS, TOOL_PORTS
+        return {TOOL_PORTS[field] for field in TOOL_FIELDS if node_argument(node, f"{field}_source", "fixed") == "port"}, {"tool-out"}
     if node_type == "construct_message":
         inputs = declared_inputs | {"content-in"}
         if node_argument(node, "role_source", "fixed") == "port":
@@ -314,6 +319,8 @@ def data_type_for_port(
     if kind in {"function_input", "function_output"}:
         return next((port["type"] for port in node.get("function_ports", []) if f"function:{port['name']}" == port_id), None)
     value_type = node_argument(node, "value_type")
+    if kind == "construct_tool":
+        return "list-content" if port_id == "required-in" else "content"
     if kind == "construct_struct":
         sid = node_argument(node, "struct_id")
         if port_id == "struct-out": return f"struct:{sid}"
@@ -498,6 +505,12 @@ def connection_validation_error(
             expected_type = "list-message" if to_port == "messages-in" else "list-content"
             if connection_type != expected_type:
                 return f"llm {to_port} input requires {expected_type} data"
+        if target_type == "construct_tool":
+            expected_type = "list-content" if to_port == "required-in" else "content"
+            if connection_type != expected_type:
+                return f"construct_tool {to_port} requires {expected_type} data"
+        if source_type == "construct_tool" and connection_type != "content":
+            return "construct_tool tool-out requires content data"
         if target_type == "construct_message" and connection_type != "content":
             return f"construct_message {to_port} requires content data"
         if source_type == "construct_message" and connection_type != "message":

@@ -221,7 +221,12 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     for node_id, node in node_by_id.items():
         node_type = node["type"]
         required_data_ports: set[str] = set()
-        if node_type == "function_call":
+        if node_type == "construct_tool":
+            from workflow_tools import TOOL_FIELDS, TOOL_PORTS
+            required_data_ports = {TOOL_PORTS[field] for field in TOOL_FIELDS if node_argument(node, f"{field}_source", "fixed") == "port"}
+        elif node_type == "llm" and node_argument(node, "tool_calls") is True and node_argument(node, "tools_source", "declared") == "definitions":
+            required_data_ports = {"tools-in"}
+        elif node_type == "function_call":
             required_data_ports = {f"function:{port['name']}" for port in node["input_ports"]}
         elif node_type == "function_output":
             required_data_ports = {f"function:{port['name']}" for port in node["function_ports"]}
@@ -543,6 +548,15 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
                 raise WorkflowValidationError(
                     f"nodes[{index}].branches contains unsupported fields"
                 )
+    elif node_type == "llm":
+        if node_argument(node, "tools_source", "declared") not in {"declared", "definitions"}:
+            raise WorkflowValidationError("llm tools_source must be 'declared' or 'definitions'")
+    elif node_type == "construct_tool":
+        from workflow_tools import validate_construct_tool_arguments
+        try:
+            validate_construct_tool_arguments(arguments)
+        except ValueError as error:
+            raise WorkflowValidationError(f"construct_tool node {node_id}: {error}") from error
     elif node_type == "construct_message":
         if node_argument(node, "role_source", "fixed") not in {"fixed", "port"}:
             raise WorkflowValidationError(

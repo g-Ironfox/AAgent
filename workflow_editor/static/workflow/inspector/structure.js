@@ -1,8 +1,10 @@
 import { reconcileConnections } from '../domain/connection-rules.js';
 import { createWorkflowId } from '../domain/node-contract.js';
 import { state } from '../domain/serialization.js';
+import { bindConstructTool } from './tool-definition.js';
 
 export function bindStructureInspector(node, context) {
+  if (node.type === 'construct_tool') bindConstructTool(node, context);
   if (node.type === 'router') bindBranches(node, context);
   if (['construct_struct', 'struct_get', 'struct_update', 'struct_to_json', 'json_to_struct'].includes(node.type)) bindStructNodes(node, context);
   if (node.type === 'construct_content') bindConstructContent(node, context);
