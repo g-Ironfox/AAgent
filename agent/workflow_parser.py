@@ -9,8 +9,10 @@ import sys
 from typing import Any
 
 from pymongo import MongoClient
+from pymongo.collation import Collation
 from pymongo.errors import PyMongoError
 from workflow_contract import (
+    migrate_subprocess_workflow_format,
     boundary_ports,
     data_ports_for_node,
     node_argument,
@@ -32,6 +34,9 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     slot in the form ``[node_index, port_id, value_or_default]``; data outputs
     contain endpoint lists.
     """
+    workflow = migrate_subprocess_workflow_format(workflow)
+    from workflow_functions import bind_function_interfaces
+    workflow = bind_function_interfaces(workflow)
     if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
         raise WorkflowParseError(
             f"unsupported workflow schema_version: {workflow.get('schema_version')!r}; "
@@ -47,6 +52,18 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     linked_nodes: list[dict[str, Any]] = []
     for node in nodes:
         parsed_node = normalize_node_arguments(node)
+        if node.get("type") in {"tool", "remote_async_tool"}:
+            declaration = next((tool for tool in workflow.get("metadata", {}).get("tools", []) if tool["name"] == node_argument(node, "tool")), None)
+            if declaration is None and node["type"] == "remote_async_tool":
+                declaration = next((tool for tool in workflow.get("remote_tools", []) if tool["name"] == node_argument(node, "tool")), None)
+            if declaration is None:
+                raise WorkflowParseError("tool is not registered in metadata.tools")
+            parsed_node["_tool_kind"] = declaration.get("kind", "remote")
+        if node.get("type") == "llm":
+            parsed_node["_metadata_tools"] = [
+                {"name": tool["name"], "kind": tool.get("kind", "remote")}
+                for tool in workflow.get("metadata", {}).get("tools", [])
+            ]
         parsed_node.pop("x", None)
         parsed_node.pop("y", None)
         if node.get("type") == "input":
@@ -100,6 +117,8 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _successor_key(node: dict[str, Any], port_id: str) -> str:
+    if node.get("type") == "json_tool" and port_id == "error-out":
+        return "error"
     if node.get("type") == "router":
         if port_id == "branch$others":
             return "branch$others"
@@ -109,13 +128,13 @@ def _successor_key(node: dict[str, Any], port_id: str) -> str:
             if branch["id"] == port_id
         )
         return f"branch-{branch['name']}"
-    if node.get("type") == "foreach" and port_id == "loop-out":
+    if node.get("type") in {"foreach", "while_pop"} and port_id == "loop-out":
         return "item"
     return "next"
 
 
 def _predecessor_key(node: dict[str, Any], port_id: str) -> str:
-    if node.get("type") == "foreach" and port_id == "loop-in":
+    if node.get("type") in {"foreach", "while_pop"} and port_id == "loop-in":
         return "continue"
     return "last"
 
@@ -157,7 +176,64 @@ def _read_workflow(workflow_name: str, *, by_id: bool = False) -> dict[str, Any]
         workflow = client[database_name][collection_name].find_one(query, {"_id": False})
     if workflow is None:
         raise WorkflowParseError(f"workflow not found: {workflow_name}")
-    return workflow
+    return migrate_subprocess_workflow_format(workflow)
+
+
+def _read_workspace_workflow_file(
+    selector: str, value: str, identifier: str
+) -> dict[str, Any]:
+    """Load a live workflow file from the current workspace generation."""
+    mongo_kwargs: dict[str, Any] = {
+        "host": os.getenv("MONGO_HOST", "mongodb"),
+        "port": int(os.getenv("MONGO_PORT", "27017")),
+        "serverSelectionTimeoutMS": 5000,
+    }
+    if os.getenv("MONGO_USER"):
+        mongo_kwargs.update(
+            username=os.environ["MONGO_USER"],
+            password=os.getenv("MONGO_PASS", ""),
+            authSource="admin",
+        )
+    try:
+        with MongoClient(**mongo_kwargs) as client:
+            workspace = client[os.getenv("MONGO_DATABASE", "agent")][
+                os.getenv("MONGO_WORKSPACE_FILE_COLLECTION", "workspace_files")
+            ]
+            meta = workspace.find_one({"_id": "_workspace_current_state"}, {"generation": 1})
+            if meta is None or "generation" not in meta:
+                raise WorkflowParseError("workspace is not initialized")
+            generation = meta["generation"]
+            selector_value = f"{generation}:{value}" if selector == "_id" else value
+            query = {selector: selector_value, "generation": generation}
+            if selector == "name":
+                matches = list(workspace.find(
+                    query, {"content": 1}, collation=Collation(locale="simple")
+                ).limit(2))
+                if len(matches) > 1:
+                    raise WorkflowParseError(f"workflow filename is ambiguous: {identifier}")
+                file = matches[0] if matches else None
+            else:
+                file = workspace.find_one(query, {"content": 1})
+    except PyMongoError as error:
+        raise WorkflowParseError("failed to read workspace workflow file") from error
+    if file is None:
+        raise WorkflowParseError(f"workflow file not found: {identifier}")
+    try:
+        workflow = json.loads(file.get("content", ""))
+    except (ValueError, TypeError) as error:
+        raise WorkflowParseError(f"invalid workflow JSON in workspace file: {identifier}") from error
+    if not isinstance(workflow, dict):
+        raise WorkflowParseError(f"workflow file must contain a JSON object: {identifier}")
+    return migrate_subprocess_workflow_format(workflow)
+
+
+def _read_workspace_workflow(file_id: str) -> dict[str, Any]:
+    return _read_workspace_workflow_file("_id", file_id, file_id)
+
+
+def _read_workspace_workflow_by_name(file_name: str) -> dict[str, Any]:
+    """Resolve a callable workflow by its exact workspace filename."""
+    return _read_workspace_workflow_file("name", file_name, file_name)
 
 
 if __name__ =="__main__":

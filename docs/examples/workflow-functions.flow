@@ -1,0 +1,208 @@
+{
+  "schema_version": "2.0",
+  "input_ports": [
+    {
+      "name": "text",
+      "type": "content"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "text",
+      "type": "content"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "in",
+      "type": "input",
+      "workflowPorts": [
+        {
+          "id": "workflow:text",
+          "name": "text",
+          "type": "content"
+        }
+      ],
+      "x": 52,
+      "y": 120,
+      "name": "in"
+    },
+    {
+      "id": "callA",
+      "type": "function_call",
+      "arguments": {
+        "function_id": "A"
+      },
+      "x": 310,
+      "y": 120,
+      "name": "callA"
+    },
+    {
+      "id": "out",
+      "type": "output",
+      "workflowPorts": [
+        {
+          "id": "workflow:text",
+          "name": "text",
+          "type": "content"
+        }
+      ],
+      "x": 568,
+      "y": 120,
+      "name": "out"
+    },
+    {
+      "id": "Ain",
+      "type": "function_input",
+      "function_id": "A",
+      "x": 52,
+      "y": 400,
+      "name": "Ain"
+    },
+    {
+      "id": "Aout",
+      "type": "function_output",
+      "function_id": "A",
+      "x": 568,
+      "y": 400,
+      "name": "Aout"
+    },
+    {
+      "id": "callB",
+      "type": "function_call",
+      "arguments": {
+        "function_id": "B"
+      },
+      "x": 310,
+      "y": 400,
+      "name": "callB"
+    },
+    {
+      "id": "Bin",
+      "type": "function_input",
+      "function_id": "B",
+      "x": 52,
+      "y": 680,
+      "name": "Bin"
+    },
+    {
+      "id": "Bout",
+      "type": "function_output",
+      "function_id": "B",
+      "x": 310,
+      "y": 680,
+      "name": "Bout"
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "in",
+      "toId": "callA",
+      "fromPortId": "control-out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "callA",
+      "toId": "out",
+      "fromPortId": "control-out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "in",
+      "toId": "callA",
+      "fromPortId": "workflow:text",
+      "toPortId": "function:text",
+      "type": "content"
+    },
+    {
+      "fromId": "callA",
+      "toId": "out",
+      "fromPortId": "function:text",
+      "toPortId": "workflow:text",
+      "type": "content"
+    },
+    {
+      "fromId": "Ain",
+      "toId": "callB",
+      "fromPortId": "control-out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "Ain",
+      "toId": "callB",
+      "fromPortId": "function:text",
+      "toPortId": "function:text",
+      "type": "content"
+    },
+    {
+      "fromId": "callB",
+      "toId": "Aout",
+      "fromPortId": "control-out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "callB",
+      "toId": "Aout",
+      "fromPortId": "function:text",
+      "toPortId": "function:text",
+      "type": "content"
+    },
+    {
+      "fromId": "Bin",
+      "toId": "Bout",
+      "fromPortId": "control-out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "Bin",
+      "toId": "Bout",
+      "fromPortId": "function:text",
+      "toPortId": "function:text",
+      "type": "content"
+    }
+  ],
+  "metadata": {
+    "structs": [],
+    "functions": [
+      {
+        "id": "A",
+        "name": "A",
+        "input_ports": [
+          {
+            "name": "text",
+            "type": "content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "text",
+            "type": "content"
+          }
+        ]
+      },
+      {
+        "id": "B",
+        "name": "B",
+        "input_ports": [
+          {
+            "name": "text",
+            "type": "content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "text",
+            "type": "content"
+          }
+        ]
+      }
+    ]
+  },
+  "subprocess_workflow_files": [],
+  "description": "Nested local functions: main -> A -> B; returns the text input unchanged."
+}

@@ -5,7 +5,7 @@ import copy
 import re
 from typing import Any
 
-from workflow_contract import DATA_CONNECTION_TYPES
+from workflow_contract import DATA_CONNECTION_TYPES, is_number_value
 
 STRUCT_ID = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -109,12 +109,11 @@ def validate_value(value_type: str, value: Any, definitions: dict[str, Any], pat
 
 
 def _builtin(t: str, v: Any) -> bool:
+    if t == "number": return is_number_value(v)
     if t == "content": return isinstance(v, str)
     if t == "list-content": return isinstance(v, list) and all(isinstance(x, str) for x in v)
     if t == "message": return _message(v)
     if t == "list-message": return isinstance(v, list) and all(_message(x) for x in v)
-    if t == "event": return isinstance(v, dict) and isinstance(v.get("event_type"), str) and bool(v["event_type"]) and "payload" in v
-    if t == "list-event": return isinstance(v, list) and all(_builtin("event", x) for x in v)
     if t == "map-content": return isinstance(v, dict) and all(isinstance(k, str) and bool(k) and isinstance(x, str) for k, x in v.items())
     return False
 

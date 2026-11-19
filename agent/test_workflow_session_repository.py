@@ -11,19 +11,18 @@ from workflow_session_repository import (
 
 
 VALUES = {
+    "number": 0,
     "content": "hello",
     "message": {"role": "user", "content": "hello"},
-    "event": {"event_type": "response", "payload": {"text": "hello"}},
     "list-content": ["hello"],
     "list-message": [{"role": "assistant", "content": "hello"}],
-    "list-event": [{"event_type": "response", "payload": {"text": "hello"}}],
     "map-content": {"done": "finished"},
 }
 
 
 class WorkflowSessionRepositoryTest(unittest.TestCase):
     @patch("workflow_session_repository.get_session_collection")
-    def test_seven_types_create_read_and_write_without_ttl(self, get_collection):
+    def test_supported_types_create_read_and_write_without_ttl(self, get_collection):
         collection = get_collection.return_value
         collection.update_one.return_value.matched_count = 1
         for value_type, value in VALUES.items():

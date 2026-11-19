@@ -20,29 +20,30 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 | 字段 | 必需 | 类型 | 含义 |
 | --- | --- | --- | --- |
 | `schema_version` | 是 | string | 固定为 `2.0` |
-| `name` | 是 | string | Workflow 名称 |
 | `description` | 否 | string | Workflow 描述 |
-| `metadata` | 否 | object | Workflow 局部元数据；`structs` 缺省为空数组 |
+| `metadata` | 否 | object | Workflow 局部元数据；`structs`、`tools`、`functions` 缺省为空数组 |
 | `input_ports` | 是 | port[] | Workflow 输入接口 |
 | `output_ports` | 是 | port[] | Workflow 输出接口 |
 | `nodes` | 是 | node[] | 节点列表 |
 | `connections` | 是* | connection[] | 控制流和数据连线 |
-| `workflow_nodes` | 否 | dependency[] | 子 Workflow 名称及接口快照 |
-| `remote_tools` | 否 | dependency[] | Remote Tool 名称及接口快照 |
+| `subprocess_workflow_files` | 否 | subprocessWorkflowFile[] | 子进程 Workflow 文件名及接口快照 |
+| `remote_tools` | 否 | toolContract[] | 旧格式 Remote Tool 名称及接口快照（兼容读取） |
 
-端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
+端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name`、函数边界标识 `function_id` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
 
-规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`workflow_nodes` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。`name` 长度为 1–120；`description` 最大长度 2000。`metadata` 当前只允许 `structs` 一个属性；`metadata.structs` 缺省为空数组。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`workflow_nodes` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
+规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`subprocess_workflow_files` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。Workflow 根对象和 metadata 均不包含 `name`；文件名由工作区文件记录提供。旧文件的名称字段在兼容读取时移除，保存和导出不再生成。`description` 最大长度 2000。`metadata` 允许 `structs`、`tools`、`functions` 三个属性，均缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`subprocess_workflow_files` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
 
 对根对象的未知字段，管理端请求模型会拒绝；当前 Agent 所用 JSON Schema 没有在根层设置 `additionalProperties: false`，因此 Agent 单独进行 Schema 校验时不拒绝未知根字段。这是接收端行为差异，不改变本协议规定的根字段集合；需要严格互操作的生产者不得发送未知根字段。
 
 ## 3. 数据类型与 Struct 声明
 
+内建数据类型为 `content`、`number`、`message`、`map-content`、`list-content` 和 `list-message`。`number` 可用于 Workflow 输入/输出、数据连线、Struct 字段、Tool 接口、Context 和 Session，以及 `deserialize_json` 输出。Tool schema 中的 `number` 和 `integer` 均映射为 `number`；传递时保留数值，不自动与 `content` 转换。
+
 ### 3.1 Struct 类型标识
 
 Struct 是 Workflow 局部类型，不是全局注册类型。标识形式为 `struct:<id>`，Struct 列表为 `list-struct:<id>`。`<id>` 必须匹配 `^[A-Za-z_][A-Za-z0-9_]*$`，并区分大小写。
 
-Struct 类型可用于 Workflow 内部数据端口、节点参数和 Context；不得用于 Workflow 输入/输出接口、`workflow_nodes` 或 `remote_tools` 的接口快照。需要跨 Workflow 或服务边界传递时，先用 `struct_to_json` 转成 `content`，接收方再用 `json_to_struct` 校验和恢复。
+Struct 类型可用于 Workflow 内部数据端口、节点参数和 Context；不得用于 Workflow 输入/输出接口、`subprocess_workflow_files`、`metadata.tools` 或兼容字段 `remote_tools` 的接口快照。需要跨 Workflow 或服务边界传递时，先用 `struct_to_json` 转成 `content`，接收方再用 `json_to_struct` 校验和恢复。
 
 ### 3.2 声明格式
 
@@ -81,9 +82,9 @@ Struct 值使用 JSON object 表示，属性名必须来自该 Struct 的字段�
 | 类型 | JSON 值约束 |
 | --- | --- |
 | `content` | string |
+| `number` | 有限整数或浮点数；不接受 boolean、null、数字字符串、NaN 或 Infinity |
 | `message` | object，且仅含 `role` 和 `content`；`role` 为 `system`、`user`、`assistant` 或 `tool`，`content` 为 string |
-| `event` | object，`event_type` 为非空 string，且存在 `payload` 属性；具体 Event 构造和发布节点还要求 Event 1.1 格式，见第 9.3 节 |
-| `list-content`、`list-message`、`list-event` | 对应值类型的数组 |
+| `list-content`、`list-message` | 对应值类型的数组 |
 | `map-content` | 属性名非空的 object，所有属性值均为 string |
 
 Struct 定义可引用其他已声明 Struct 或其列表，但定义之间不得循环引用。Agent 与管理端在接受 Workflow 时递归检查 Struct 声明；运行时 Struct 节点、Context 存取及 JSON 转换递归验证 Struct 值。一般数据边不会自动对所有内建类型进行全局递归校验。Struct 是结构化值，不等同于任意 JSON object。
@@ -93,6 +94,8 @@ Struct 定义可引用其他已声明 Struct 或其列表，但定义之间不�
 Struct 节点都是普通控制流节点：每个节点有 `control-in` 和 `control-out`，并按节点配置提供下列数据端口。`dataInputPorts` 用于声明动态输入端口，必须与参数推导出的端口集合一致；例外是 Struct 操作节点的 `struct-in` 固定输入也必须列入该数组（Struct 各节点精确数组见下文）。端口数据类型由 Struct 声明及参数推导，不允许在节点上另行覆盖。节点类别颜色固定；`metadata.structs[].color` 仅用于相应 Struct 数据类型及其列表的画布类型显示。
 
 节点创建与 `metadata.structs` 编辑互相独立。编辑器可以放置尚未绑定 Struct 的节点草稿，草稿的 `struct_id` 或 `value_type` 可为空字符串，创建时不打开 metadata 编辑窗。此类草稿不满足可执行 Workflow 的语义校验；保存或执行前必须绑定已声明的类型并配置有效参数与动态端口。
+
+编辑器新建节点的 ID 使用 `<节点名称>_<递增序号>`，例如 `构造 Content 1_3`。序号在当前编辑会话中单调递增，删除和撤销不会复用旧序号；导入时读取已有数字后缀并提高序号下限。导入文件的原节点 ID 保持不变，修改显示名称也不自动改写已有 ID 和连线端点。连线 ID 只用于编辑器内部的选择、拖线和撤销；导入时自动补齐缺失或重复的 ID，复制、导出时省略连接对象的 `id`，仅保留端点、端口及类型。旧文件携带的连线 ID 仍可读取。
 
 | 节点类型 | 参数（位于 `arguments`） | 数据输入端口 | 数据输出端口 | 行为 |
 | --- | --- | --- | --- | --- |
@@ -109,7 +112,6 @@ Struct 节点都是普通控制流节点：每个节点有 `control-in` 和 `con
 ```json
 {
   "schema_version": "2.0",
-  "name": "profile_example",
   "description": "Construct a profile and read its display name",
   "metadata": {
     "structs": [
@@ -153,15 +155,15 @@ Struct 节点都是普通控制流节点：每个节点有 `control-in` 和 `con
 | `context_read` | `context_id_source` 为 `port` 时使用 `context-id`：`content`；为 `fixed` 时无 ID 输入 | `value-out`：`value_type` |
 | `context_write` | `context_id_source` 为 `port` 时使用 `context-id`：`content`；另有 `value-in`：`value_type` | `context-id`：`content`、`value-out`：`value_type` |
 
-`context_create.context_id` 省略时生成 ID；若显式提供，必须是非空白字符串且该 ID 在 Context 存储中尚不存在。空字符串不是规范化 Workflow 中的生成 ID 表示，Schema 会拒绝它。读写节点的 `context_id_source` 为 `port` 或 `fixed`；固定来源必须给出非空 `context_id`。读写时 Context ID、当前 invocation 和声明类型必须匹配，否则操作失败。写入值在存储前递归验证，读取值在返回前再次验证；读写会刷新存储 TTL。
+`context_create.context_id` 省略时生成 ID；若显式提供，必须是非空白字符串且该 ID 在 Context 存储中尚不存在。空字符串不是规范化 Workflow 中的生成 ID 表示，Schema 会拒绝它。读写节点的 `context_id_source` 为 `port` 或 `fixed`；固定来源必须给出非空 `context_id`。读写时 Context ID 必须存在，所属 invocation 必须为当前调用或其祖先调用，且声明类型必须匹配，否则操作失败。写入值在存储前递归验证，读取值在返回前再次验证；读写会刷新存储 TTL。
 
-Context 按 Workflow invocation 隔离，不能被其他 invocation 读取或写入。子 Workflow 调用有独立 invocation，不能使用父 Workflow 的 Context。值以 JSON 序列化存储，默认 TTL 为 86400 秒，单个序列化值默认最大 1048576 字节；部署可分别通过 `WORKFLOW_CONTEXT_TTL_SECONDS` 和 `WORKFLOW_CONTEXT_MAX_VALUE_BYTES` 调整。每次执行创建的 Context 会在该 Workflow 执行结束（成功或失败）时尝试清理；清理失败会记日志，TTL 是兜底。Context ID 是不透明字符串。
+每次 Workflow 执行拥有独立 invocation。子进程可以通过 Context ID 读取、写入或弹出父 Workflow 及更上层祖先调用创建的 Context；嵌套子进程执行会继承完整祖先链。Context ID 可以通过 `content` 接口传入，也可使用已知的固定 ID。其他独立执行、兄弟调用或已返回的子进程执行不在访问范围内；父 Workflow 不能反向访问子进程执行的 Context。值以 JSON 序列化存储，默认 TTL 为 86400 秒，单个序列化值默认最大 1048576 字节；部署可分别通过 `WORKFLOW_CONTEXT_TTL_SECONDS` 和 `WORKFLOW_CONTEXT_MAX_VALUE_BYTES` 调整。每次执行仅在自身结束（成功或失败）时尝试清理自己创建的 Context，子进程执行结束不会清理祖先 Context；清理失败会记日志，TTL 是兜底。Context ID 是不透明字符串。访问 Struct Context 时，子进程仍须声明相同 ID 且兼容的 Struct 类型；祖先的 Struct 声明不会自动导入。
 
-Session 与 Context 不同：Session 仅支持七种内建值类型，ID 格式为 `ses_` 加 32 位小写十六进制字符，值存入 MongoDB 且不按 Workflow invocation 自动清理；单值序列化 UTF-8 大小上限默认 1048576 字节，可由 `WORKFLOW_SESSION_MAX_VALUE_BYTES` 配置。Session 读写要求 ID 存在且声明类型精确匹配，写入替换完整值；不得用于 Struct。
+Session 与 Context 不同：Session 仅支持六种内建值类型，ID 格式为 `ses_` 加 32 位小写十六进制字符，值存入 MongoDB 且不按 Workflow invocation 自动清理；单值序列化 UTF-8 大小上限默认 1048576 字节，可由 `WORKFLOW_SESSION_MAX_VALUE_BYTES` 配置。Session 读写要求 ID 存在且声明类型精确匹配，写入替换完整值；不得用于 Struct。
 
 ## 6. 类型边界与连线
 
-Struct 类型只在当前 Workflow 内有效。Workflow 的 `input_ports` / `output_ports`、`workflow_nodes` 中的子 Workflow 接口快照，以及 `remote_tools` 中的工具接口快照均不得声明 Struct 类型。外部数据若需跨边界传递，必须先使用 `struct_to_json` 转换为 `content`，接收侧再用 `json_to_struct` 按本地声明解析和校验。
+Struct 类型只在当前 Workflow 内有效。Workflow 的 `input_ports` / `output_ports`、`subprocess_workflow_files` 中的子进程 Workflow 文件接口快照，以及 `remote_tools` 中的工具接口快照均不得声明 Struct 类型。外部数据若需跨边界传递，必须先使用 `struct_to_json` 转换为 `content`，接收侧再用 `json_to_struct` 按本地声明解析和校验。
 
 数据连线的 `type` 必须与源端口、目标端口的推导类型完全一致。Struct 类型及 Struct 列表只允许连接到同类型端口；不同 Struct ID、Struct 与 Struct 列表、或 Struct 与普通 JSON `content` 之间不得直接连接。JSON 转换节点的 `content` 端口是显式边界，不会自动转换类型。控制连线规则见第 10 节。
 
@@ -189,13 +191,12 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | --- | --- |
 | `content` | 字符串 |
 | `message` | 仅含 `role` 和 `content` 的对象；role 为 `system`、`user`、`assistant`、`tool` 之一，content 为字符串 |
-| `event` | Workflow 内传播的 Event 对象，不自动转换成 JSON 字符串 |
-| `list-content`、`list-message`、`list-event` | 对应元素类型的数组 |
+| `list-content`、`list-message` | 对应元素类型的数组 |
 | `map-content` | 非空字符串键到字符串值的对象 |
 
 接口 `port` 必须恰含 `name`、`type`。名称非空；同一输入或输出接口数组内，端口名经去除首尾空白、忽略大小写后不得重复。依赖对象必须恰含 `name`、`input_ports`、`output_ports`；依赖名非空，同一依赖数组内不得重复，Remote Tool 名称比较时去除首尾空白并忽略大小写。
 
-`origin` 是保留的可选 Workflow 输入接口名，若存在，其类型必须为 `event`。Input 节点对应端口 ID 为 `workflow:origin`。外部事件绑定触发 Workflow 时，调度器构造 `event_type` 为 `workflow` 的 Event，并把完整原始事件放入 `payload.origin`；其他 Workflow 输入从该 Event 的 `payload` 按端口名取值。若直接传入的 Workflow Event 已带 `payload.origin`，使用该值；否则以该 Workflow Event 本身作为 origin。未声明 origin 输入时无需提供该值。
+`origin` 是可选 Workflow 输入接口名，其数据类型由端口声明决定。Input 节点对应端口 ID 为 `workflow:origin`。创建进程时，所有输入（包括 `origin`）均按声明类型从请求的 `inputs` 传入。
 
 ### 9.2 节点对象和边界快照
 
@@ -203,13 +204,13 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 节点 `id` 和 `type` 必需；`id` 是非空字符串且在 Workflow 内唯一，`type` 必须属于本规范列出的节点类型。`name` 若提供必须为字符串，`x`、`y` 若提供必须为数字。连接对象恰含 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`；不得含其他字段。
 
-`workflowPorts` 仅用于 Input/Output 节点。每项恰含 `id`、`name`、`type` 三个字段，id 必须精确为 `workflow:` 加该项 name；数组须按根接口顺序与根接口生成的端口快照完全相同。`dataInputPorts` 是数据输入端口 ID 数组，元素为非空字符串且不得重复；它必须完整且按节点定义顺序列出配置推导出的输入端口。除一般节点的动态输入外，Struct 操作节点也将 `struct-in` 及固定 JSON 转换输入列入该数组；不得列控制端口。`input_ports`、`output_ports` 仅用于可调用 Workflow 节点的接口快照，格式同根接口端口。共享字段均不得放在 `arguments` 内。
+`workflowPorts` 仅用于 Input/Output 节点。每项恰含 `id`、`name`、`type` 三个字段，id 必须精确为 `workflow:` 加该项 name；数组须按根接口顺序与根接口生成的端口快照完全相同。`dataInputPorts` 是数据输入端口 ID 数组，元素为非空字符串且不得重复；它必须完整且按节点定义顺序列出配置推导出的输入端口。除一般节点的动态输入外，Struct 操作节点也将 `struct-in` 及固定 JSON 转换输入列入该数组；不得列控制端口。`input_ports`、`output_ports` 仅用于`spawn_and_wait_subprocess` 节点的接口快照，格式同根接口端口。共享字段均不得放在 `arguments` 内。
 
 每个 Workflow 必须恰有一个 Input 节点和至少一个 Output 节点。Input/Output 快照不一致、未知节点类型、未知参数、未知节点字段、重复节点 ID 均为非法。
 
 ### 9.3 内建节点参数、数据端口和语义
 
-除表中标明的控制端口外，普通执行节点均有 `control-in`、`control-out`。Input 仅有 `control-out`；Output 仅有 `control-in`。Router 和 Foreach 的特殊控制端口见第 10 节。
+除表中标明的控制端口外，普通执行节点均有 `control-in`、`control-out`。Input 仅有 `control-out`；Output 仅有 `control-in`。Router、Foreach 和 While Pop 的特殊控制端口见第 10 节。
 
 | 节点类型 | arguments 字段 | 数据输入 | 数据输出 |
 | --- | --- | --- | --- |
@@ -220,16 +221,20 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `construct_content` | `append_items` | 每个 port 项对应一个 content 输入 | `content-out: content` |
 | `construct_map_content` | `mappings` | 每个 port 条目对应一个 content 输入 | `map-out: map-content` |
 | `map_content_get` | 无 | `map-in: map-content`、`key-in: content` | `content-out: content` |
-| `split_event` | 无 | `event-in: event` | `type-out: content`、`payload-out: content` |
-| `construct_event` | `event_type` | `payload-in: content`，内容为 JSON object 文本 | `event-out: event` |
-| `publish_event` | 无 | `event-in: event` | 无 |
+| `output_to_terminal` | 无 | `content-in: content` | 无 |
+| `wait_terminal_event` | 无 | 无 | 无；仅 `control-in` / `control-out` |
+| `read_terminal_input` | 无 | 无 | `list-out: list-content` |
 | `deserialize_json` | `outputs: [{key,type}]` | `content-in: content`，内容为 JSON object 文本 | 每个 key 一个对应 type 的端口 |
 | `construct_list` | `item_type`、`initial_value_count` | `<item_type>-in-0` 至 `<item_type>-in-(count-1)` | `list-out: list-<item_type>` |
+| `list_slice` | `value_type`（`list-content`、`list-message` 或已声明的 `list-struct:<id>`），可选 `start_source/start`、`stop_source/stop`、`step_source/step` | `list-in: value_type`；可选 `start-in` / `stop-in` / `step-in: number` | `list-out: value_type`，与输入类型相同 |
+| `list_get` | `value_type`（`list-content`、`list-message` 或已声明的 `list-struct:<id>`）、`index_source`（`port`/`fixed`）、`index`（固定模式） | `list-in: value_type`、`index-in: number`（仅 `port` 模式） | `item-out`，类型为列表元素类型 |
+| `list_length` | `value_type`，必须为 `list-content`、`list-message` 或已声明的 `list-struct:<id>` | `list-in: value_type` | `length-out: number` |
 | `list_append` | `item_type`、`position` | `list-in: list-<item_type>`、`item-in: <item_type>` | `list-out: list-<item_type>` |
 | `foreach` | `item_type` | `list-in: list-<item_type>` | `item-out: <item_type>`；控制端口见第 10 节 |
-| `history` | `event_types`、`limit` | 无 | `events: list-event` |
+| `while_pop` | `value_type`、可选 `position`、`context_id_source`、`context_id` | port 模式下 `context-id: content` | `item-out: <value_type 去除 list- 前缀>`；控制端口同 Foreach |
 | `llm` | `model`、`think`、`tool_calls`、`tools` | `messages-in: list-message` | `output: content`；配置启用时有 `reasoning: content`、`tool_calls: list-content` |
-| `local_tool` | `tool`、`parameters: string[]` | 每个参数名一个 content 输入 | `output: content` |
+| `tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `mode`（仅 sync）、`timeout_ms` | 每个 parameters 端口 | 同步返回每个 outputs 端口 |
+| `local_tool`（兼容） | `tool`、`parameters: string[]` | 每个参数名一个 content 输入 | `output: content` |
 | `remote_sync_tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `timeout_ms` | 每个 parameters 端口 | 每个 outputs 端口 |
 | `remote_async_tool` | `tool`、`parameters: port[]`、可选 `timeout_ms`、`callback` | 每个 parameters 端口 | `task_id: content` |
 | `context_create` | `value_type`、可选 `context_id` | `initial-value: value_type` | `context-id: content` |
@@ -238,24 +243,26 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `session_create` | `value_type` | `initial-value: value_type` | `session-id: content` |
 | `session_read` | `value_type` | `session-id: content` | `value-out: value_type` |
 | `session_write` | `value_type` | `session-id: content`、`value-in: value_type` | `session-id: content`、`value-out: value_type` |
-| `workflow` | `workflow_name` | input_ports 快照对应的 `workflow:<name>` | output_ports 快照对应的 `workflow:<name>` |
+| `spawn_and_wait_subprocess` | `workflow_file` | input_ports 快照对应的 `workflow:<name>` | output_ports 快照对应的 `workflow:<name>` |
 
 参数必需性和缺省值如下。节点 `arguments` 若省略，等价于空对象；必需参数未提供的节点无效。除列明字段外，节点不得携带其他 arguments 属性。
 
 | 节点类型 | 必需参数 | 可选参数（缺省值） |
 | --- | --- | --- |
-| `input`、`output`、`map_content_get`、`split_event`、`publish_event` | 无 | 无 |
+| `input`、`output`、`map_content_get`、`output_to_terminal`、`wait_terminal_event` | 无 | 无 |
 | `router` | `branches` | 无 |
 | `construct_message` | 无 | `role` (`user`)、`role_source` (`fixed`) |
 | `construct_content` | `append_items` | 无 |
 | `construct_map_content` | `mappings` | 无 |
-| `construct_event` | `event_type` | 无 |
 | `deserialize_json` | `outputs` | 无 |
+| `list_get` | `value_type` | `index_source` (`port`)；`fixed` 模式必填 `index` |
+| `list_length` | `value_type` | 无 |
 | `construct_list` | `item_type`、`initial_value_count` | 无 |
 | `list_append` | `item_type`、`position` | 无 |
 | `foreach` | `item_type` | 无 |
-| `history` | `event_types`、`limit` | 无 |
+| `while_pop` | `value_type` (仅列表类型) | `position` (`end`)、`context_id_source` (`port`)、`context_id` (仅 fixed 模式使用) |
 | `llm` | 无 | `model`、`think`、`tool_calls`、`tools` |
+| `tool` | `tool`、`parameters`、`outputs` | `mode`（固定 `sync`）、`timeout_ms`、`callback`（仅 null） |
 | `local_tool` | `tool` | `parameters` (空数组) |
 | `remote_sync_tool` | `tool` | `parameters` (空数组)、`outputs` (空数组)、`timeout_ms` |
 | `remote_async_tool` | `tool` | `parameters` (空数组)、`timeout_ms`、`callback` |
@@ -266,7 +273,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `context_create` | `value_type` | `context_id` (省略时生成 ID；显式值非空白) |
 | `context_read`、`context_write` | `value_type` | `context_id_source` (`port`)、`context_id` (仅 fixed 模式使用) |
 | `session_create`、`session_read`、`session_write` | `value_type` | 无 |
-| `workflow` | `workflow_name` | 无 |
+| `spawn_and_wait_subprocess` | `workflow_file` | 无 |
 
 内建节点额外语义：
 
@@ -274,30 +281,37 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `construct_content.append_items` 必须为非空数组。每项是 object，`type` 必须为 `fixed` 或 `port`。固定项恰含 `type`、`value`，且 value 为字符串；端口项恰含 `type`、`port_id`，且 port_id 为非空字符串。端口 ID 不重复，且端口项 ID 集合与 `dataInputPorts` 一致。按条目顺序拼接；运行时缺失的端口值跳过，非字符串值转换为字符串。
 - `construct_map_content.mappings` 必须为非空数组。每项必须包含非空字符串 `key` 且 key 唯一。固定值项含 `key`、`value`，可以附 `value_source` 且其值必须为 `fixed`；value 为字符串。端口项恰含 `key`、`value_source`、`port_id`，其中 value_source 固定为 `port`，port_id 非空且唯一，不得为控制端口，并与 `dataInputPorts` 一致。端口运行值必须为已提供的字符串；输出保留条目顺序。
 - `map_content_get` 按 key 查值；查不到时执行失败。
-- `split_event` 要求 Event 含非空字符串 `event_type` 和 `payload`；字符串 payload 原样输出，非字符串 payload 输出为紧凑 JSON 文本。
-- `construct_event` 要求非空 event_type，且 payload-in 可解析为 JSON object；输出 Event 1.1 对象，version 固定为字符串 `1.1`。
-- `publish_event` 只接受 version 为字符串 `1.1`、event_type 为非空字符串且 payload 为 object 的 Event；发布到 Agent 队列并继续当前控制流。
-- `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为七种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
-- `construct_list.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message`、`list-event` 或 `list-struct:<id>`。
-- `list_append.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
-- `foreach.item_type` 允许 `content`、`message`、`event`，或已声明的 `struct:<id>`。逐项输出列表元素，列表耗尽后退出循环；空列表直接退出。
-- `history.event_types` 必须为非空、不重复的 `terminal`/`response` 子集；limit 必须为 1 到 1000 的整数。
-- `llm.model` 在管理端保存及执行时必须为有效且已启用模型标识；通用静态契约校验器不保证验证模型存在。`llm.tools` 缺省为空数组并选择已注册的本地工具；`think`、`tool_calls` 布尔值控制 reasoning、tool_calls 输出端口是否存在，不表示发送给模型的推理开关。tool_calls 输出为 JSON 文本组成的 list-content。
+- `wait_terminal_event` 执行后保存工作流数据，将自身记录为最近完成节点并把进程设为 `blocked`，`wait_for` 指向关联终端的 `terminal_message`。终端输入成功保存后，仅唤醒来源和事件类型均匹配的进程，清除等待条件并重新入就绪队列，从下一节点继续。该节点无参数、无数据端口，不消费或输出消息正文；进入等待前的消息不缓存为待唤醒事件，终端输出也不唤醒。`read_terminal_input` 将当前进程终端所有已保存的 `role=user` 消息正文按时间升序读取为 `list-content`；不含助手输出、不删除记录，无消息时输出空列表。重复发送不会重复入队。根工作流和子进程均通过进程调度器执行，均支持该节点。
+- `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
+- `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为六种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
+- `construct_list.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message` 或 `list-struct:<id>`。
+- `list_get.value_type` 必填，允许 `list-content`、`list-message` 或已声明的 `list-struct:<id>`。`list-in` 连线必须匹配所选列表类型，端口模式下 `index-in` 为 `number`；`item-out` 类型为去掉 `list-` 前缀的元素类型。控制端口为 `control-in` / `control-out`。下标采用 Python 列表索引规则：从 `0` 开始，支持负数从末尾倒数（`-1` 为最后一个，`-2` 为倒数第二个）；必须为有限整数数值（`1.0`、`-1.0` 亦合法），不接受 boolean 或数字字符串；下标越界（含空列表）、输入缺失、输入不是列表或元素类型不符时执行失败，不输出元素。读取不修改原列表，输出按通常的数据传播规则深拷贝。 `index_source` 可选 `port`（默认，兼容旧流程）或 `fixed`。`port` 从 `index-in:number` 读取下标；`fixed` 使用 `arguments.index`（必填整数，支持负数），不提供 `index-in` 端口；两种模式采用相同的越界和类型校验。
+- `list_slice.value_type` 必填，允许 `list-content`、`list-message` 或已声明的 `list-struct:<id>`；起点、终点和步长分别通过 `start_source`、`stop_source`、`step_source` 选择 `port`（默认）或 `fixed`，可混合使用。`port` 模式暴露对应的可选整数 `number` 端口 `start-in`、`stop-in`、`step-in`，未连接时按 `None` 处理；`fixed` 模式隐藏对应端口，从 `start`、`stop`、`step` 读取整数，未填写或为 `null` 时按 `None` 处理。固定步长不得为 0。执行直接采用 Python `list[start:stop:step]` 语义，包括负下标、负步长、截断和空结果；步长为 0 或边界不是整数时报错。输出 `list-out` 保持所选列表类型，不修改输入。
+- `list_length.value_type` 必填，允许 `list-content`、`list-message` 或已声明的 `list-struct:<id>`；`list-in` 的连线类型必须与所选类型精确匹配。控制端口为 `control-in` / `control-out`。执行时要求输入已提供且为符合声明类型的列表，递归校验 Struct 元素；不修改输入，通过 `length-out: number` 输出非负整数，空列表返回 `0`，随后沿控制流继续。
+- `list_append.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
+- `while_pop.value_type` 必须是 `list-content`、`list-message` 或本 Workflow 声明的 `list-struct:<id>`。每轮从 Context 列表原子弹出一项；`position` 为 `end`（默认，末尾）或 `start`（最前）。Context 为空时退出，详情见 10.4。
+- `foreach.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`。逐项输出列表元素，列表耗尽后退出循环；空列表直接退出。
+- `llm.model` 在管理端保存及执行时必须为有效且已启用模型标识；通用静态契约校验器不保证验证模型存在。`llm.tools` 是未连接动态工具输入时的可选默认工具子集；省略或为空时默认使用 `metadata.tools` 中的全部 Local 与 Remote Tool。工具名称必须在 `metadata.tools` 声明且对应完整 schema 可用；Local schema 来自 Agent 注册表，Remote schema 来自 Tool Server。`think` 控制模型请求是否启用推理以及 reasoning 输出端口是否存在，`tool_calls` 控制工具调用能力、`available-tools-in: list-content` 输入端口及 `tool_calls` 输出端口是否存在。动态输入为 metadata.tools 中任意 kind 的工具名称列表，接入后覆盖默认列表。think 关闭时按模型 Provider 发送对应的关闭参数。tool_calls 输出为 JSON 文本组成的 list-content；模型生成 tool_calls 不代表 Workflow 自动执行这些工具。
+- 新建工具使用统一的 `tool` 节点，来源由 `metadata.tools` 中同名声明的 `kind` 决定，取值为 `local` 或 `remote`。声明恰含 `name`、`kind`、`input_ports`、`output_ports`，名称去除首尾空白并忽略大小写后全局唯一（local/remote 也不能重名）。每侧最多 50 个端口，只允许六种内建数据类型，禁止 Struct 和保留控制端口名。
+- `tool.parameters` / `tool.outputs` 必须与声明的输入/输出端口数组完全一致；Tool 节点仅同步执行，`mode` 省略或固定为 `sync`，callback 只能省略或为 null。local 输入类型允许 content 和 number，Tool schema 的 number/integer 参数映射为 number；当 Local Tool 提供 `outputSchema` 时，其一级 properties 对应具名输出端口，运行结果须为包含所有声明字段的对象；未提供 `outputSchema` 时兼容单个 `output:content`，非字符串结果序列化为 JSON 文本。remote 等待结果并遵循下述同步超时行为。
+- 工具执行时校验真实注册状态：Local 工具不存在时抛出异常，不返回成功结果；Remote 工具在提交同步或异步任务前查询 Tool Server 的实时目录，工具不存在或目录不可用时不提交任务。动态 `json_tool` 沿用同一入口，异常按其 `error-json` / `error-out` 契约处理。
+- `remote_async_tool` 是独立的异步 Tool 节点，只允许绑定 `metadata.tools` 中 kind 为 remote 的声明（旧格式仍可使用顶层 `remote_tools`），parameters 必须匹配声明，输出固定为 `task_id: content`。节点没有 mode 或 outputs 参数，支持异步超时和 Redis callback。
+- 编辑器 metadata 页合并 Local/Remote 目录，下拉选择后自动更新来源单选框和端口快照；目录不可用时保留已保存的声明。画布提供同步 `tool` 和异步 `remote_async_tool` 两类节点。旧 `local_tool`、`remote_sync_tool` 载入后迁移为同步 Tool，上一版 `tool + mode: async` 迁移为 `remote_async_tool`，保留连线和回调，并把顶层 `remote_tools` 合并到 `metadata.tools`。后端仍接受旧节点格式；此版保持 schema_version 为 2.0，使用新格式的 editor、manager、agent 需一起更新。
 - `local_tool.parameters` 是无重复的非空参数名数组；工具参数和输出均为 content。
 - Remote Tool 参数必须与 `remote_tools` 中同名声明的输入端口完全一致；sync 的 outputs 必须与输出声明完全一致。工具接口不能使用保留控制端口名。timeout_ms 若省略，同步默认 10000 ms、异步默认 600000 ms；同步最大值 10000 ms、异步最大值 3600000 ms，运行时还受部署配置限制。
 - async callback 若提供，必须恰含 `type`、`queue`、`event_type`、`on`；type 固定为 `redis`，queue 长度 1–256，event_type 长度 1–128，on 为不重复且非空的 `working`/`completed`/`failed` 数组。
 - sync 工具仅配置一个名为 `result` 的输出时，将完整工具返回值赋给该端口；其他输出配置要求工具返回包含所有输出名的对象。map-content 输出必须是字符串 map。
 - `context_create`、`context_read`、`context_write` 的 value_type 可以为内建数据类型或本 Workflow Struct 类型；Session 节点只允许内建数据类型。
 - Context ID 按原字符串逐字符区分，包括首尾空格，不得规范化。`context_create.context_id` 省略时自动生成，显式值必须非空白且在 Context 存储中不存在；空字符串不合法。context_id_source 缺省为 `port`，仅允许 `port`、`fixed`；port 模式读取 context-id，fixed 模式要求非空白 context_id 且不生成 ID 输入端口。详情见第 5 节。
-- 子 Workflow 快照必须与目标 Workflow 当前接口一致；递归调用失败。Struct 类型不得出现在任何公开接口快照。
+- 子进程 Workflow 文件快照必须与目标 Workflow 当前接口一致；递归调用失败。Struct 类型不得出现在任何公开接口快照。
 
 ## 10. 连线、控制流和执行模型
 
 ### 10.1 连线对象与连接基数
 
-连线对象必须含非空字符串 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`。端点节点及端口必须存在。type 为 `control` 或本规范定义的数据类型，包括当前 Workflow 的 Struct 类型。控制连线只能连接合法控制端口；数据连线类型必须同时等于源输出和目标输入端口推导类型。每个 control 输出最多一个后继；control 输入可汇合多个来源；每个数据输入最多一个来源。
+连线对象必须含非空字符串 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`。端点节点及端口必须存在。type 为 `control` 或本规范定义的数据类型，包括当前 Workflow 的 Struct 类型。控制连线只能连接合法控制端口；数据连线类型必须同时等于源输出和目标输入端口推导类型。每个 control 输出最多一个后继；控制流不允许汇合，每个 control 输入最多一个来源；Foreach 和 While Pop 的 control-in 与 loop-in 是两个独立入口。每个数据输入最多一个来源。
 
-Input 的 control-out、普通执行节点的 control-in/control-out、Output 的 control-in 必须连接。Router 的每个分支输出必须连接。Foreach 的 control-in、loop-in、loop-out、control-out 必须连接。允许控制流有向环，由 Workflow 自身提供退出条件。数据输入可以不连；运行时读取必要值而无值时失败。运行时 `None` 视为未提供。
+Input 的 control-out、普通执行节点的 control-in/control-out、Output 的 control-in 必须连接。Router 的每个分支输出必须连接。Foreach 和 While Pop 的 control-in、loop-in、loop-out、control-out 必须连接。控制流必须从唯一 Input 构成可达的树；只允许 Foreach 或 While Pop 循环体返回所属循环节点的 loop-in 形成回边，不允许其他环、分支汇合或共享节点（包括共用 Output）。除 Struct 必需输入和 While Pop 的端口模式 `context-id` 等显式必需输入外，数据输入可以不连；运行时读取必要值而无值时失败。运行时 `None` 视为未提供。
 
 ### 10.2 Router
 
@@ -311,8 +325,111 @@ Input 的 control-out、普通执行节点的 control-in/control-out、Output �
 
 Foreach 每轮从 list-in 取一个值，经 loop-out 控制端口进入循环体；循环体以 loop-in 回到 Foreach。所有元素处理完后走 control-out；空数组直接走 control-out。list-in 类型必须是 arguments.item_type 对应的 list 类型。
 
-Agent 的通用结构校验不证明节点从 Input 可达，也不保证其运行前置数据生产者已执行。每个 Workflow invocation 中，端口槽位的值在被覆盖前可能保留；生产者未运行时不得把槽位是否存在误认为当前轮次已成功生成值。Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据触发事件/调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子 Workflow 快照过期或递归调用均使执行失败。
+Agent 和管理端在基本端口、类型及连接基数校验后执行静态生命周期校验；编辑器的“编译生命周期”使用相同的作用域规则。所有节点必须从 Input 可达，分支不得汇合；除 Foreach 循环体到所属 loop-in 的回边外，控制图不得有环。Foreach 循环体内禁止多控制出口节点及 Router（包括只有兜底出口的 Router），循环体必须返回所属 Foreach，不得直接以 Output 结束。
 
-子 Workflow 在当前调用栈内执行，并使用自身 Input/Output 边界。Workflow 节点接口快照必须等于实际 Workflow 接口。调用链出现重复 Workflow 名称时拒绝递归。Struct 不能跨子 Workflow 接口传递，须显式 JSON 转换。
+生命周期按父子路径划分：工作流拥有根空间；Router 的每个控制出口各创建一个子空间；Foreach 的 loop-out 创建循环体子空间，control-out 延续父空间；JSON Tool 的成功与错误控制出口分别创建子空间。普通节点继承控制路径上的空间。Router 的数据输入和 Foreach 的 list-in 属于边界节点所在的父空间；Foreach 的 item-out 属于循环体空间。JSON Tool 的 result-json 属于成功分支，error-json 属于错误分支，工具名及参数输入属于父空间。
 
-`construct_event` 产生的 Event 以及 `publish_event` 接受的 Event 遵循 Event 1.1：JSON 对象含 `version` 字符串 `1.1`、非空字符串 `event_type` 和 object `payload`。作为 Struct 字段值或 Context 值递归校验的 `event` 还必须含非空字符串 `event_type` 和 `payload` 属性，但不额外要求 `version`。Event 节点之间按对象传值；只有显式 JSON 转换节点或规定的 payload 文本端口执行序列化/反序列化。`publish_event` 将事件发布到主 Agent 队列，由独立消费者调度，不在当前 Workflow 调用栈内递归启动。
+数据边的源空间必须等于目标空间或为其祖先；兄弟分支、不同循环体之间，以及子空间向父空间的数据连线均非法。Foreach 的 item-out 直接连接到循环外也非法。循环结果须通过 Context 显式写入并在外层读取；Context 节点的普通输出仍按节点空间校验，不能用 Context 写入节点的输出绕过循环边界。生命周期标签仅作为静态校验及编辑器预览状态，不写入 Workflow JSON。生命周期校验不额外证明同一空间内部的生产者执行顺序，也不改变运行时槽位的存储方式。
+
+Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子进程 Workflow 文件快照过期或递归调用均使执行失败。
+
+`spawn_and_wait_subprocess`（拉起并等待子进程）按 `arguments.workflow_file` 指定的精确工作区文件名加载 Workflow 文件，创建独立进程和终端，并阻塞父进程直到子进程退出。节点的输入复制到子进程 Input，子进程 Output 收集的结果在退出后传回节点输出，再沿 control-out 继续。文件声明和节点接口快照必须与目标文件当前接口一致；进程调用链中重复的文件引用会触发递归检查。Struct 不能跨进程接口传递，须显式转换为 JSON。该节点必须在进程调度上下文中执行；缺少上下文立即报错，不在当前调用栈执行子工作流。
+
+
+### 10.4 While Pop
+
+`while_pop` 使用 Foreach 的 `control-in`、`loop-in`、`loop-out`、`control-out` 控制端口。数据输入为 Context ID（`context-id`，类型 `content`）；必须配置该 Context 的列表类型 `arguments.value_type`。`context_id_source` 缺省为 `port`，此时必须连接 `context-id`；也可设置为 `fixed`，提供非空白 `context_id` 并省去 ID 输入端口。Context 必须属于当前 invocation 或其祖先调用，且存储类型与声明类型完全匹配。
+
+每次触发（包括循环体返回 `loop-in`）都读取 Context 的最新列表，从 `position` 指定的一端弹出一项，原子保存剩余列表，再通过 `item-out` 传出该项并走 `loop-out`。`position` 缺省为 `end`，可设置为 `start`。列表为空时直接走 `control-out`，不执行循环体；空字符串等合法元素仍会执行一轮。弹出操作刷新 Context TTL，并在并发修改冲突时重新读取、重试。Context 不存在、类型不符或存储值无效时执行失败。
+
+例如以下配置从列表末尾依次弹出 `content`：
+
+```json
+{
+  "id": "consume_queue",
+  "type": "while_pop",
+  "arguments": {
+    "value_type": "list-content",
+    "position": "end",
+    "context_id_source": "port"
+  }
+}
+```
+
+将创建 Context 节点的 `context-id` 输出接入此节点的 `context-id`；将 `loop-out` 接入循环体，循环体末尾返回 `loop-in`，`control-out` 接循环结束后的节点。初始列表 `["a", "b", "c"]` 在默认配置下传出 `"c"`、`"b"`、`"a"`，并留下空列表；改为 `start` 则传出 `"a"`、`"b"`、`"c"`。循环体可以修改同一 Context 列表，下一轮会使用修改后的值。
+
+While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out` 仅在循环体子空间可见，`context-id` 输入属于父空间，`control-out` 延续父空间；循环体禁止 Router、多控制出口节点和嵌套循环，必须返回自身的 `loop-in`。循环结果通过 Context 显式传递到外层。
+
+
+### 10.5 父子进程调度
+
+在进程调度器中，每次 `spawn_and_wait_subprocess` 节点调用创建一个普通 workflow 子进程及独立终端。执行目标文件、递归和接口校验，将节点输入复制到子进程。父图保存 `pending_call`（调用节点 ID、索引、子进程 ID、日志索引），进入 `blocked`，等待 `{"kind":"process_exit","process_id":"<child>"}`。父进程保存、子进程及终端创建、子进程入队在同一 Redis 事务提交。
+
+Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KERNEL_DB`（默认 1），配置要求两个编号不同。进程表、ready 队列、blocked 集合、内部终端索引和 Workflow Context 全部存于内核库；外部事件队列 `external_events`、公共终端状态 `terminal_sessions` 和工具注册存于公共库。WebUI 只连接公共库。
+
+当前采用单个 runtime 调度循环：先从内核 ready 队列非阻塞 `RPOP` 一个进程，执行一个节点后将公共库的外部事件逐个 `RPOP` 处理完；ready 为空时只在公共库的 `external_events` 上 `BRPOP`。外部事件产生新的 ready 进程后，下一轮继续执行，无需跨库阻塞取队列或增加轮询等待。外部事件的阻塞连接不设 socket 读取超时。
+
+调度器原子领取 `ready` 进程，设为 `running` 并记录本次 execution ID，每次只执行一个节点。完成后原子保存图、索引和状态，并更新就绪队列或阻塞集合。重复队列项不能执行 `running`、`blocked` 或终态进程；被终止的旧执行结果不能覆盖终态。多层调用重复相同规则，无需嵌套同步 runner。
+
+子进程执行到 `output` 时收集结果到进程的 `result`；保存终态、关闭自身终端、唤醒等待该子进程退出的父进程在同一事务提交。进程表中的 `current_node_id` 表示最近完成节点；`control_port` 保存已选控制端口，调度时由其与该节点的 `successors` 解析下一节点，不持久化 `next_node_id`。首次执行使用 `current_node_id: -1` 和 `control_port: null`，从 input 节点开始。父进程下次被调度时先处理 `pending_call`，校验父子关系、状态与输出类型，从原调用节点的数据输出向下游传播，将调用节点记为最近完成节点并保存其控制端口，再清除 pending；后继节点从该节点的控制端口按需解析；不会重新执行调用节点或再次创建子进程。`failed` 和 `terminated` 同样唤醒父进程，父进程失败并保留子进程标识和错误，逐层传播。
+
+前端为每个终端会话生成公共 `terminal_id`；Agent runtime 为工作流及其终端独立生成内部 `process_id` 和 `terminal_process_id`，内部字段不出现在 WebUI API。父子 workflow 可以共享同一个公共 `terminal_id`，runtime 通过内部终端索引将消息路由到当前活跃的等待者。终端列表只展示公共终端编号、工作流名称和等待状态。`wait_terminal_event` 仅负责唤醒，无消息数据输出；需要输入内容时，后续使用 `read_terminal_input` 查询该公共终端的完整用户输入列表。
+
+公共终端会话由 runtime 独占维护在 Redis `terminal_sessions` hash（环境变量 `TerminalSessions`）中，以 `terminal_id` 为键，保存 `status`（`open` / `closed`）、根会话 `start_time`、`closed_at` 及当前工作流名称和等待状态，不保存内部进程 ID。根进程创建时在同一事务中写入 `open`；只有根进程完成、失败或被终止时才原子写入 `closed` 并移除终端路由。子进程退出只切换内部路由和公开的活动信息，不关闭公共终端。WebUI 会话列表只读取此公共 hash，不读取进程表或内部终端索引。
+
+公共终端状态与内核变更使用同一 Redis 实例上的 `MULTI/EXEC` 提交：事务内先写内核状态，再用 `SELECT` 切换到公共库写终端状态，随后切回内核库，确保连接返回连接池时仍指向内核库。
+
+每个进程使用稳定的 `invocation_id`（缺省等于进程 ID），持久化 `context_ids` 和祖先 invocation ID 列表。每次节点执行临时恢复已有 Context 节点所需的运行作用域，保存工作流时剔除内存 set 等临时对象。子进程可沿用原有规则访问祖先 Context；自己创建的 Context 归自己所有。受进程管理的 Context 不设过期时间，挂起期间保留；进程完成、失败或显式终止时清理，Session 语义不变。
+
+执行超时按实际节点执行累计时间判断，终端等待、子进程等待和队列等待不计入；单个阻塞调用仍由其自身的工具或网络超时约束。进程日志分别记录总经过时间与 active_duration_ms。调用节点创建子进程后记为 waiting，接收子进程结果时再改为 completed 或 failed。取消入口 `terminate_process` 原子终止目标进程及仍活动的后代和终端，清理其 Context；若目标是子进程，则唤醒树外等待它的父进程。
+
+进程记录和队列依赖现有 Redis 持久化配置。当前不提供 worker 崩溃后自动重领 running 进程或任意外部副作用恰好一次的保证；execution ID 用于防止取消后的迟到提交，不是自动重试租约。受进程管理的 Context 需通过终态清理，不能仅删除进程记录。
+
+### 10.6 子进程 Workflow 文件格式迁移
+
+当前格式使用 `subprocess_workflow_files: [{name, input_ports, output_ports}]` 声明子进程 Workflow 文件；执行节点为 `type: "spawn_and_wait_subprocess"`，必需参数为 `arguments.workflow_file`。`name` 和 `workflow_file` 都是包含扩展名的精确工作区文件名，例如 `child.flow`。`workflow:<name>` 仍表示 Workflow 接口端口，连线 ID、节点 ID、输入输出、坐标和其他参数均保留。
+
+编辑器导入、工作区可视化编辑、管理端写入与读取、Agent 编译和已挂起进程恢复都将旧 `workflow_nodes`、`type: "workflow"` 和节点参数 `workflow_name` 转为上述格式。转换不修改输入对象；新旧字段同时出现且值冲突时拒绝读取或保存，避免静默覆盖。保存和导出只生成新格式；schema_version 继续使用字符串 `"2.0"`，相关服务应一起更新。进程记录中的 `workflow_name` 是兼容字段名，值取实际工作区文件名，不再读取 Workflow JSON 的名称。
+
+已有文件可使用 `python scripts/migrate_subprocess_workflows.py <路径>` 预览迁移，添加 `--apply` 写回；通过 `--workspace-url` 可批量迁移运行中工作区，使用文件 revision 做并发校验；`--manager-url` 可迁移管理端保存的 Workflow。历史检查点保留原始内容，恢复后可再次转换。
+
+### 10.7 Workflow 局部函数
+
+`metadata.functions` 声明同一 Workflow 内可调用的函数，每项恰含 `id`、`name`、`input_ports`、`output_ports`。`id` 匹配 `[A-Za-z_][A-Za-z0-9_]*` 且唯一；名称去除首尾空白后非空、忽略大小写唯一。接口端口仍为 `{name, type}`，同侧名称唯一，允许内建类型以及本 Workflow 声明的 Struct / List Struct。
+
+```json
+{
+  "metadata": {
+    "functions": [
+      {
+        "id": "normalize",
+        "name": "规范化",
+        "input_ports": [{"name": "text", "type": "content"}],
+        "output_ports": [{"name": "text", "type": "content"}]
+      }
+    ]
+  }
+}
+```
+
+只有 `function_input` / `function_output` 的顶层 `function_id` 用于标识函数声明。每个函数必须恰有一个 `function_input`、至少一个 `function_output`。普通节点不声明所属函数：校验时从主流程及各函数入口沿控制流 DFS 推导归属，遇到返回节点停止，调用节点仅沿自身后继继续，不进入被调用函数。归属分析不修改原始文档，也不写入运行图；旧文件普通节点上的顶层 `function_id` 在导入和编译时丢弃。主流程继续使用唯一 `input` 及一个或多个 `output`。节点 ID 在整个文件内唯一。函数入口和返回节点的端口由 metadata 生成，无需保存 `workflowPorts` 或其他接口快照。
+
+`function_call.arguments.function_id` 表示调用目标。例如将以下节点接在 A 的控制流中，即表示 A 内调用 B：
+
+```json
+{"id":"call_b","type":"function_call","arguments":{"function_id":"B"}}
+```
+
+函数入口仅有 `control-out`，函数返回仅有 `control-in`，调用节点同时具有 `control-in` 和 `control-out`。数据端口均使用 `function:<name>`。入口的数据输出对应函数实参，返回节点的数据输入对应返回值；调用节点的数据输入、输出分别对应被调用函数的声明。输入与输出可以同名且类型不同。函数调用实参与各返回节点声明的返回值均须连接并在执行时提供有效值；允许零参数或零返回值。
+
+主流程与每个函数分别从各自入口检查可达性、控制树及生命周期。不允许跨函数直接连接控制线或数据线，也不允许多个入口共享内部节点。生命周期仅在静态校验中使用；执行器沿控制后继执行、沿数据连接写入接口槽位，不计算或检查节点生命周期。函数可以有分支或循环，循环体仍不能直接包含 Router、多控制出口或嵌套循环，且必须返回所属 `loop-in`，不能直接执行函数返回。每条正常控制路径最终到达一个函数返回节点；本次调用执行到其中任意一个即返回。多个函数返回节点不是并行返回。
+
+调用函数是调用者图中的单一控制节点。因此循环体可以调用内部含分支的函数；函数内部独立校验，返回后继续调用者的单一控制链。第一版支持函数嵌套，静态拒绝直接及间接递归，运行时调用深度上限为 64 层。
+
+调度器始终执行栈顶。调用时从干净的已编译图模板复制一整份 Workflow map，清空所有输入槽位值及循环等运行状态，写入本次实参；栈中保留调用者的图实例、运行数据和返回位置。到达函数返回节点后收集并校验返回接口，弹出调用者图，将值作为调用节点输出沿原有连线写入后继接口，再沿 `control-out` 继续。返回函数内部的运行数据随该帧丢弃。同一函数多次调用互不共享槽位及循环游标。
+
+进程持久化保存活动图及 `function_stack` 中的每层图实例和位置，因此等待终端消息、等待子进程以及后续调度均保留调用关系。函数调用不创建新进程或新终端，累计执行时间仍计入当前进程；Context / Session 沿用现有进程归属、访问及清理规则，不因函数压栈产生新的 Context 所有者。既有 running 进程崩溃后自动重领的限制仍适用。节点日志中的 `function_id`、`function_depth` 标识实际执行的函数层。
+
+编辑器 metadata 提供函数声明及接口编辑；函数 ID 和显示名称独立且均可编辑。应用 ID 修改时，按原 ID 一次性更新函数输入、输出和调用节点的引用，支持同时交换 ID；重复或非法 ID、删除仍在使用的函数会阻止应用，保留原图。节点库提供函数输入、函数输出、函数调用。普通节点通过控制连线自动确定归属，无需手动选择；检查器可调整调用目标。生命周期编译为每个函数显示独立根作用域，并报告跨函数连线或共享节点。导入导出保留函数定义、边界标识及调用目标，普通节点归属和内部派生端口不写回文件。Schema 版本继续为 `2.0`；新增函数文件需使用支持函数的 Agent 和编辑器。
+
+可运行的嵌套示例见 `../examples/workflow-functions.flow`：主流程调用 A，A 调用 B，原样返回 `text`。

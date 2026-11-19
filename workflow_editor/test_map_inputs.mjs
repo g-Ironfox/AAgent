@@ -66,6 +66,56 @@ test('dynamic and fixed values survive save and reload', () => {
   assert.equal(portsForNode(state.nodes[1]).find((port) => port.id === 'value-7').type, 'content');
 });
 
+test('valid imported connections without IDs receive unique IDs and survive save and reload', () => {
+  for (const missingId of [undefined, null, '', '   ']) {
+    const document = fixture();
+    document.connections.push({
+      fromId: 'input', fromPortId: 'control-out', toId: 'map', toPortId: 'control-in', type: 'control',
+    });
+    for (const connection of document.connections) {
+      if (missingId === undefined) delete connection.id;
+      else connection.id = missingId;
+    }
+    const original = structuredClone(document);
+    assert.equal(loadSnapshot(document), true);
+    assert.equal(state.connections.length, 3);
+    const ids = state.connections.map((connection) => connection.id);
+    assert.ok(ids.every((id) => typeof id === 'string' && id.trim()));
+    assert.equal(new Set(ids).size, ids.length);
+    assert.deepEqual(document, original, 'import must not mutate the source document');
+
+    const saved = workflowSnapshot();
+    assert.ok(saved.connections.every((connection) => !Object.hasOwn(connection, 'id')));
+    assert.equal(loadSnapshot(saved), true);
+    assert.deepEqual(workflowSnapshot().connections, saved.connections);
+  }
+});
+
+test('generating missing IDs does not retain connections with invalid endpoints or types', () => {
+  const document = fixture();
+  const connection = { ...document.connections[0] };
+  delete connection.id;
+  document.connections.push(
+    { ...connection, toId: 'missing-node' },
+    { ...connection, toPortId: 'missing-port' },
+    { ...connection, type: 'message' },
+    null,
+  );
+  assert.equal(loadSnapshot(document), true);
+  assert.deepEqual(state.connections, document.connections.slice(0, 2));
+});
+
+test('imported connections keep unique IDs and repair duplicate IDs', () => {
+  const document = fixture();
+  document.connections[0].id = 'stable-id';
+  document.connections[1].id = 'stable-id';
+  assert.equal(loadSnapshot(document), true);
+  assert.equal(state.connections.length, 2);
+  assert.equal(state.connections[0].id, 'stable-id');
+  assert.notEqual(state.connections[1].id, 'stable-id');
+  assert.notEqual(state.connections[0].id, state.connections[1].id);
+});
+
 test('legacy mappings and default Map nodes remain fixed-value compatible', () => {
   const document = fixture();
   document.nodes[1].arguments.mappings = [{ key: 'old', value: '' }];

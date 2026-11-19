@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 进程日志</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/workflow-logs.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/terminal.html" aria-label="AAgent 终端">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name"><strong>AAgent</strong><small>PROCESS LOGS</small></span>
+    </a>
+    <nav class="page-nav" aria-label="页面导航">
+      <a href="/terminal.html">终端</a>
+      <a href="/workspace">工作区</a><a href="/workspace/replay">检查点</a>
+      <a class="active" href="/logs" aria-current="page">日志</a><a href="/scheduler">调度</a>
+    </nav>
+    <div class="log-actions"><span id="refreshState" role="status">正在同步</span>
+      <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
+  </header>
+  <main class="logs-main">
+    <header class="logs-heading"><div><p>PROCESS · MONGODB</p><h1>进程日志</h1></div><span id="logCount" class="log-count">0 个进程</span></header>
+    <section class="logs-toolbar" aria-label="筛选日志">
+      <label><span>状态</span><select id="statusFilter"><option value="all">全部状态</option><option value="ready">就绪</option><option value="running">运行中</option><option value="blocked">已挂起</option><option value="waiting_for_input">等待输入</option><option value="terminated">已终止</option><option value="completed">已完成</option><option value="failed">失败</option></select></label>
+      <label><span>进程类型</span><select id="typeFilter"><option value="all">全部进程</option><option value="workflow">工作流进程</option><option value="terminal">终端进程</option></select></label>
+      <label class="log-search"><span>搜索</span><input id="searchInput" type="search" placeholder="进程 ID、工作流名称或事件" autocomplete="off"></label>
+      <label><span>自动刷新</span><select id="interval"><option value="2000">2 秒</option><option value="5000" selected>5 秒</option><option value="10000">10 秒</option><option value="0">关闭</option></select></label>
+    </section>
+    <div id="warning" class="logs-warning" role="alert" hidden></div>
+    <section id="logList" class="log-list" aria-live="polite"></section>
+    <div id="emptyState" class="empty-state" hidden>没有符合条件的进程记录</div>
+  </main>
+  <script type="module" src="/workflow-logs.js"></script>
+</body>
+</html>

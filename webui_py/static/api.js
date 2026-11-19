@@ -1,8 +1,8 @@
 const FETCH_TIMEOUT_MS = 5000;
 
-async function request(path, options = {}) {
+async function request(path, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(path, { cache: 'no-store', ...options, signal: controller.signal });
     const body = await response.json().catch(() => ({}));
@@ -18,62 +18,36 @@ async function request(path, options = {}) {
   }
 }
 
-export function fetchEvents(limit = 150) {
-  return request(`/api/events?limit=${limit}`);
+export function fetchTerminalSessions() {
+  return request('/api/terminal/sessions');
 }
 
-export function deleteEvent(payload) {
-  return request('/api/events', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+export function fetchTerminalHistory(limit, terminalId) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  params.set('terminal_id', terminalId);
+  return request(`/api/terminal/history?${params}`);
 }
 
-export function updateEvent(payload) {
-  return request('/api/events', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-}
-
-export function fetchTerminalHistory(limit = 150) {
-  return request(`/api/terminal/history?limit=${limit}`);
-}
-
-export function submitTerminal(content) {
+export function submitTerminal(content, terminalId) {
   return request('/api/terminal', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, files: [] }),
+    body: JSON.stringify({
+      content,
+      files: [],
+      terminal_id: terminalId,
+    }),
   });
 }
 
-export function fetchEventBindings() {
-  return request('/api/event-bindings');
+export function fetchProcessWorkflowOptions() {
+  return request('/api/processes/workflow-options');
 }
 
-export function fetchEventBindingWorkflowOptions() {
-  return request('/api/event-bindings/workflow-options');
-}
-
-export function createEventBinding(binding) {
-  return request('/api/event-bindings', {
+export function createProcess(workflowFileId, terminalId, inputs) {
+  return request('/api/processes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(binding),
-  });
-}
-
-export function updateEventBinding(bindingId, binding) {
-  return request(`/api/event-bindings/${encodeURIComponent(bindingId)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(binding),
-  });
-}
-
-export function deleteEventBinding(bindingId) {
-  return request(`/api/event-bindings/${encodeURIComponent(bindingId)}`, { method: 'DELETE' });
+    body: JSON.stringify({ workflow_file_id: workflowFileId, terminal_id: terminalId, inputs }),
+  }, 30000);
 }

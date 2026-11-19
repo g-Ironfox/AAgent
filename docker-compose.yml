@@ -2,68 +2,37 @@ services:
   agent:
     build: ./agent
     container_name: agent_aagent
-    command: ["python", "task_worker.py"]
+    command: ["python", "main.py"]
     restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
       mongodb:
         condition: service_healthy
+      webui_py:
+        condition: service_healthy
     env_file:
       - .env
     environment:
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_KERNEL_DB: ${REDIS_KERNEL_DB:-1}
+      PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       TOOL_SERVER_URL: ${TOOL_SERVER_URL:-http://tool_server:8083}
+      WORKSPACE_API_URL: ${WORKSPACE_API_URL:-http://webui_py:8081}
+      MONGO_TERMINAL_COLLECTION: ${MONGO_TERMINAL_COLLECTION:-terminal_messages}
+      MONGO_PROCESS_LOG_COLLECTION: ${MONGO_PROCESS_LOG_COLLECTION:-process_logs}
       TOOL_CLIENT_DEFAULT_WAIT_MS: ${TOOL_CLIENT_DEFAULT_WAIT_MS:-10000}
       TOOL_CLIENT_MAX_WAIT_MS: ${TOOL_CLIENT_MAX_WAIT_MS:-10000}
       MONGO_SESSION_COLLECTION: ${MONGO_SESSION_COLLECTION:-sessions}
-    networks:
-      - aagent_net
-
-  qqbot:
-    build: ./qqbot
-    container_name: qqbot_aagent
-    command: ["python", "listener.py"]
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      QQ_QUEUE_NAME: ${QQ_QUEUE_NAME:-qq:events}
-    networks:
-      - aagent_net
-
-  qqbot_consumer:
-    build: ./qqbot_consumer
-    container_name: qqbot_consumer_aagent
-    command: ["python", "queue_consumer.py"]
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      QQ_QUEUE_NAME: ${QQ_QUEUE_NAME:-qq:events}
-      MAIN_AGENT_QUEUE_NAME: ${MAIN_AGENT_QUEUE_NAME:-main_agent_queue}
-      QQ_WORKER_STATUS_KEY: ${QQ_WORKER_STATUS_KEY:-qq:worker:status}
-      MONGO_HOST: mongodb
-      MONGO_PORT: 27017
-      MONGO_USER: ${MONGO_USER}
-      MONGO_PASS: ${MONGO_PASS}
-      MONGO_DATABASE: ${MONGO_DATABASE:-agent}
-      QQ_HISTORY_COLLECTION: ${QQ_HISTORY_COLLECTION:-qq_event_history}
+      MONGO_WORKSPACE_FILE_COLLECTION: ${MONGO_WORKSPACE_FILE_COLLECTION:-workspace_files}
     networks:
       - aagent_net
 
   webui_py:
-    build: ./webui_py
+    build:
+      context: .
+      dockerfile: webui_py/Dockerfile
     container_name: webui_py_aagent
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081"]
     restart: unless-stopped
@@ -75,14 +44,18 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MAIN_AGENT_QUEUE_NAME: ${MAIN_AGENT_QUEUE_NAME:-main_agent_queue}
-      AGENT_WORKER_STATUS_KEY: ${AGENT_WORKER_STATUS_KEY:-aagent:worker:status}
+      REDIS_DB: ${REDIS_DB:-0}
+      PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_USER: ${MONGO_USER}
       MONGO_PASS: ${MONGO_PASS}
       MONGO_DATABASE: ${MONGO_DATABASE:-agent}
-      MONGO_HISTORY_COLLECTION: ${MONGO_HISTORY_COLLECTION:-event_history}
+      MONGO_TERMINAL_COLLECTION: ${MONGO_TERMINAL_COLLECTION:-terminal_messages}
+      MONGO_PROCESS_LOG_COLLECTION: ${MONGO_PROCESS_LOG_COLLECTION:-process_logs}
+      MONGO_FILE_EVENT_COLLECTION: ${MONGO_FILE_EVENT_COLLECTION:-workspace_file_events}
+      MONGO_WORKSPACE_FILE_COLLECTION: ${MONGO_WORKSPACE_FILE_COLLECTION:-workspace_files}
     ports:
       - "8081:8081"
     healthcheck:
@@ -106,9 +79,8 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
-      TOOL_CLIENT_MAX_WAIT_MS: ${TOOL_CLIENT_MAX_WAIT_MS:-10000}
-      TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS: ${TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS:-3600000}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_USER: ${MONGO_USER}
@@ -116,7 +88,6 @@ services:
       MONGO_DATABASE: ${MONGO_DATABASE:-agent}
       MONGO_DOCUMENT_COLLECTION: ${MONGO_DOCUMENT_COLLECTION:-documents}
       MONGO_MODEL_COLLECTION: ${MONGO_MODEL_COLLECTION:-models}
-      MONGO_WORKFLOW_COLLECTION: ${MONGO_WORKFLOW_COLLECTION:-workflows}
       MONGO_SESSION_COLLECTION: ${MONGO_SESSION_COLLECTION:-sessions}
     ports:
       - "8084:8084"
@@ -140,6 +111,8 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       TOOL_SERVER_URL: ${TOOL_SERVER_URL:-http://tool_server:8083}
       MONGO_HOST: mongodb

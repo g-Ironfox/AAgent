@@ -10,6 +10,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from workflow_contract import (
+    migrate_subprocess_workflow_format,
     DATA_CONNECTION_TYPES,
     NODE_ARGUMENT_FIELDS,
     NODE_ARGUMENT_FIELDS_BY_TYPE,
@@ -19,6 +20,7 @@ from workflow_contract import (
     boundary_ports,
     connection_validation_error,
     control_ports_for_node,
+    is_number_value,
     node_argument,
 )
 from workflow_parser import WORKFLOW_SCHEMA_VERSION
@@ -35,11 +37,20 @@ _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
 
 def validate_workflow(workflow: dict[str, Any]) -> None:
+    try:
+        workflow = migrate_subprocess_workflow_format(workflow)
+    except ValueError as error:
+        raise WorkflowValidationError(str(error)) from error
     if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
         raise WorkflowValidationError(
             f"workflow.schema_version must be {WORKFLOW_SCHEMA_VERSION}"
         )
     _validate_workflow_schema(workflow)
+    from workflow_functions import bind_function_interfaces
+    try:
+        workflow = bind_function_interfaces(workflow)
+    except ValueError as error:
+        raise WorkflowValidationError(str(error)) from error
     from workflow_structs import StructValidationError, is_internal_type, validate_struct_definitions
     try:
         structs = validate_struct_definitions(workflow.get("metadata", {}).get("structs", []))
@@ -56,14 +67,12 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     for label, ports in (("input_ports", input_ports), ("output_ports", output_ports)):
         if any(port["type"].startswith(("struct:", "list-struct:")) for port in ports):
             raise WorkflowValidationError(f"workflow.{label} cannot expose Struct types; use JSON content")
-    origin_ports = [port for port in input_ports if port["name"] == "origin"]
-    if origin_ports and origin_ports[0]["type"] != "event":
-        raise WorkflowValidationError("workflow.input_ports origin must have type event")
     remote_tools = _validate_remote_tool_metadata(workflow)
-    for reference in workflow.get("workflow_nodes", []):
+    tools = _validate_tool_metadata(workflow)
+    for reference in workflow.get("subprocess_workflow_files", []):
         for port in reference.get("input_ports", []) + reference.get("output_ports", []):
             if port.get("type", "").startswith(("struct:", "list-struct:")):
-                raise WorkflowValidationError("callable Workflow interfaces cannot expose Struct types")
+                raise WorkflowValidationError("subprocess Workflow file interfaces cannot expose Struct types")
     for tool in workflow.get("remote_tools", []):
         for port in tool.get("input_ports", []) + tool.get("output_ports", []):
             if port.get("type", "").startswith(("struct:", "list-struct:")):
@@ -72,12 +81,22 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     node_by_id: dict[str, dict[str, Any]] = {}
     for index, node in enumerate(nodes):
         _validate_node(node, index, structs)
+        if node["type"] == "tool":
+            declaration = tools.get(node_argument(node, "tool"))
+            if declaration is None:
+                raise WorkflowValidationError(f"nodes[{index}] tool is not registered in metadata.tools")
+            if node_argument(node, "parameters") != declaration["input_ports"] or node_argument(node, "outputs") != declaration["output_ports"]:
+                raise WorkflowValidationError(f"nodes[{index}] tool ports must match metadata.tools")
+            if declaration["kind"] == "local" and node_argument(node, "mode", "sync") != "sync":
+                raise WorkflowValidationError("local tool only supports sync mode")
         if node["type"] in {"remote_sync_tool", "remote_async_tool"}:
-            declaration = remote_tools.get(node_argument(node, "tool"))
+            declaration = (tools.get(node_argument(node, "tool")) if node["type"] == "remote_async_tool" else None) or remote_tools.get(node_argument(node, "tool"))
             if declaration is None:
                 raise WorkflowValidationError(
-                    f"nodes[{index}] remote tool is not registered in workflow.remote_tools"
+                    f"nodes[{index}] remote tool is not registered in metadata.tools or workflow.remote_tools"
                 )
+            if declaration.get("kind", "remote") != "remote":
+                raise WorkflowValidationError("remote_async_tool requires a remote tool declaration")
             if node_argument(node, "parameters") != declaration["input_ports"]:
                 raise WorkflowValidationError(
                     f"nodes[{index}] remote tool inputs must match workflow.remote_tools"
@@ -110,6 +129,28 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
     if not any(node["type"] == "output" for node in nodes):
         raise WorkflowValidationError("workflow must contain at least one output node")
 
+    groups, owners = _infer_function_groups(workflow, node_by_id)
+
+    # Acyclic calls allow nesting while keeping this first version non-recursive.
+    calls = {f["id"]: set() for f in workflow.get("metadata", {}).get("functions", [])}
+    for node in nodes:
+        if node["type"] == "function_call" and owners[node["id"]] is not None:
+            calls[owners[node["id"]]].add(node_argument(node, "function_id"))
+    complete, active = set(), set()
+    for function_id in calls:
+        pending = [(function_id, False)]
+        while pending:
+            fid, exiting = pending.pop()
+            if exiting:
+                active.remove(fid)
+                complete.add(fid)
+            elif fid in active:
+                raise WorkflowValidationError(f"recursive function call is not supported: {fid}")
+            elif fid not in complete:
+                active.add(fid)
+                pending.append((fid, True))
+                pending.extend((target, False) for target in calls[fid])
+
     connected_control_inputs: dict[str, set[str]] = {
         node_id: set() for node_id in node_by_id
     }
@@ -137,6 +178,8 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         connection_type = connection.get("type")
         source_node = node_by_id[from_id]
         target_node = node_by_id[to_id]
+        if owners[from_id] != owners[to_id]:
+            raise WorkflowValidationError(f"connections[{index}] crosses function boundary")
         if connection_type == "control":
             _validate_control_connection(
                 source_node, from_port, target_node, to_port, index
@@ -173,10 +216,18 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
                 f"connections[{index}].type must be a supported control or data type"
             )
 
+    _validate_branches_in_foreach(node_by_id, connections)
+
     for node_id, node in node_by_id.items():
         node_type = node["type"]
         required_data_ports: set[str] = set()
-        if node_type == "construct_struct":
+        if node_type == "function_call":
+            required_data_ports = {f"function:{port['name']}" for port in node["input_ports"]}
+        elif node_type == "function_output":
+            required_data_ports = {f"function:{port['name']}" for port in node["function_ports"]}
+        elif node_type == "while_pop" and node_argument(node, "context_id_source", "port") == "port":
+            required_data_ports = {"context-id"}
+        elif node_type == "construct_struct":
             sid = node_argument(node, "struct_id")
             required_data_ports = {field["name"] for field in structs[sid]["fields"] if field["required"]}
         elif node_type == "struct_get":
@@ -195,6 +246,8 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         required_inputs, required_outputs = control_ports_for_node(node)
         missing_inputs = required_inputs - connected_control_inputs[node_id]
         missing_outputs = required_outputs - connected_control_outputs[node_id]
+        if node_type == "json_tool":
+            missing_outputs.discard("error-out")
         if missing_inputs or missing_outputs:
             missing = [
                 *(f"input:{port_id}" for port_id in sorted(missing_inputs)),
@@ -203,6 +256,197 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
             raise WorkflowValidationError(
                 f"control ports must be connected: node {node_id}, ports {', '.join(missing)}"
             )
+
+    # Each function is a separate control tree and lifecycle root.
+    for members in groups.values():
+        edges = [edge for edge in connections if edge["fromId"] in members]
+        _validate_lifecycles(members, edges)
+
+
+def _infer_function_groups(workflow, node_by_id):
+    """Infer static function membership by DFS; never annotate runtime nodes."""
+    groups = {None: {}}
+    roots = {None: next(n["id"] for n in node_by_id.values() if n["type"] == "input")}
+    for function in workflow.get("metadata", {}).get("functions", []):
+        fid = function["id"]
+        entries = [n["id"] for n in node_by_id.values()
+                   if n["type"] == "function_input" and n.get("function_id") == fid]
+        if len(entries) != 1:
+            raise WorkflowValidationError(f"function {fid} must contain exactly one function_input, found {len(entries)}")
+        if not any(n["type"] == "function_output" and n.get("function_id") == fid
+                   for n in node_by_id.values()):
+            raise WorkflowValidationError(f"function {fid} must contain at least one function_output")
+        roots[fid] = entries[0]
+        groups[fid] = {}
+    outgoing = {nid: [] for nid in node_by_id}
+    for edge in workflow["connections"]:
+        # Endpoint and port errors are reported by the regular connection checks.
+        if (edge.get("type") == "control" and edge.get("fromId") in outgoing
+                and edge.get("toId") in node_by_id):
+            outgoing[edge["fromId"]].append(edge["toId"])
+    owners = {}
+    for owner, root in roots.items():
+        pending = [root]
+        while pending:
+            nid = pending.pop()
+            node = node_by_id[nid]
+            if nid in owners:
+                if owners[nid] != owner:
+                    raise WorkflowValidationError(f"node {nid} is shared across function boundary")
+                continue  # Loop back edges are checked by the lifecycle validator.
+            if node["type"] in {"input", "output", "function_input", "function_output"}:
+                boundary = node.get("function_id") if node["type"].startswith("function_") else None
+                if boundary != owner:
+                    raise WorkflowValidationError(f"control flow crosses function boundary at node {nid}")
+            owners[nid] = owner
+            groups[owner][nid] = node
+            if node["type"] not in {"output", "function_output"}:
+                # A function_call is an ordinary step here; do not enter its callee.
+                pending.extend(outgoing[nid])
+    # Keep unreachable nodes for the existing port/lifecycle diagnostics. They
+    # cannot acquire function membership from legacy labels or data edges.
+    for nid in node_by_id.keys() - owners.keys():
+        owners[nid] = None
+        groups[None][nid] = node_by_id[nid]
+    return groups, owners
+
+
+def validate_subprocess_workflow_files(workflow: dict[str, Any], file_name: str = "<workflow file>") -> None:
+    """Ensure subprocess file interface snapshots still match their targets."""
+    workflow = migrate_subprocess_workflow_format(workflow)
+    from workflow_parser import _read_workspace_workflow_by_name
+
+    references: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for index, reference in enumerate(workflow.get("subprocess_workflow_files", [])):
+        name = reference.get("name")
+        if isinstance(name, str) and name:
+            references.setdefault(name, []).append((f"subprocess_workflow_files[{index}]", reference))
+    for node in workflow.get("nodes", []):
+        if node.get("type") != "spawn_and_wait_subprocess":
+            continue
+        name = node.get("arguments", {}).get("workflow_file")
+        if isinstance(name, str) and name:
+            references.setdefault(name, []).append((node.get("id", "spawn_and_wait_subprocess node"), node))
+
+    if not references:
+        return
+
+    for name, snapshots in references.items():
+        target = _read_workspace_workflow_by_name(name)
+        for source, snapshot in snapshots:
+            for field in ("input_ports", "output_ports"):
+                saved = snapshot.get(field, [])
+                actual = target.get(field, [])
+                if saved != actual:
+                    raise WorkflowValidationError(
+                        f"workflow {file_name} subprocess Workflow file {name} at {source} "
+                        f"has stale {field}: saved={saved!r}, actual={actual!r}; "
+                        "refresh the subprocess Workflow file metadata"
+                    )
+
+
+def _validate_lifecycles(
+    nodes_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
+) -> None:
+    """Check a control tree and visibility of values across branch/loop scopes.
+
+    Scope paths are static compiler state only. Parents may supply descendants;
+    a child or sibling may not supply its parent/sibling. Context operations are
+    ordinary nodes: explicitly stored values cross boundaries via a later read.
+    """
+    Scope = tuple[tuple[str, str], ...]
+    outgoing: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    for edge in connections:
+        if edge["type"] == "control":
+            outgoing[edge["fromId"]].append(edge)
+
+    node_scopes: dict[str, Scope] = {}
+    output_scopes: dict[tuple[str, str], Scope] = {}
+    active: set[str] = set()
+    returned_loops: set[str] = set()
+    input_id = next(node_id for node_id, node in nodes_by_id.items() if node["type"] in {"input", "function_input"})
+    # Explicit DFS stack keeps maximum-sized trees independent of recursion limits.
+    pending: list[tuple[str, Scope, str | None, bool]] = [(input_id, (), None, False)]
+    while pending:
+        node_id, scope, loop_id, exiting = pending.pop()
+        if exiting:
+            active.remove(node_id)
+            continue
+        if node_id in active:
+            raise WorkflowValidationError(
+                f"control-flow cycle is not a foreach loop-in return: node {node_id}"
+            )
+        if node_id in node_scopes:
+            raise WorkflowValidationError(
+                f"control-flow merge is not allowed: node {node_id} has multiple entries"
+            )
+        node = nodes_by_id[node_id]
+        node_type = node["type"]
+        _, control_outputs = control_ports_for_node(node)
+        if loop_id and (node_type == "router" or len(control_outputs) > 1):
+            raise WorkflowValidationError(
+                f"branching control flow is not allowed inside {nodes_by_id[loop_id]['type']}: node {node_id}"
+            )
+        if loop_id and node_type in {"output", "function_output"}:
+            raise WorkflowValidationError(
+                f"{nodes_by_id[loop_id]['type']} body must return to loop-in instead of output: node {node_id}"
+            )
+        node_scopes[node_id] = scope
+        active.add(node_id)
+        pending.append((node_id, scope, loop_id, True))
+
+        child_scopes = {}
+        for port in control_outputs:
+            child_scope = scope
+            if node_type in {"foreach", "while_pop"} and port == "loop-out":
+                child_scope = (*scope, (node_id, port))
+                output_scopes[(node_id, "item-out")] = child_scope
+            elif node_type not in {"foreach", "while_pop"} and (node_type == "router" or len(control_outputs) > 1):
+                child_scope = (*scope, (node_id, port))
+                if node_type == "json_tool":
+                    data_port = "error-json" if port == "error-out" else "result-json"
+                    output_scopes[(node_id, data_port)] = child_scope
+            child_scopes[port] = child_scope
+
+        for edge in reversed(outgoing[node_id]):
+            port = edge["fromPortId"]
+            child_scope = child_scopes[port]
+            child_loop = node_id if node_type in {"foreach", "while_pop"} and port == "loop-out" else loop_id
+            target_id = edge["toId"]
+            if nodes_by_id[target_id]["type"] in {"foreach", "while_pop"} and edge["toPortId"] == "loop-in":
+                if child_loop != target_id:
+                    raise WorkflowValidationError(
+                        f"{nodes_by_id[target_id]['type']} loop-in must return from its own body: node {target_id}, source {node_id}"
+                    )
+                returned_loops.add(target_id)
+            else:
+                pending.append((target_id, child_scope, child_loop, False))
+
+    unreachable = sorted(set(nodes_by_id) - set(node_scopes))
+    if unreachable:
+        raise WorkflowValidationError(
+            f"control-flow nodes are unreachable from input: {', '.join(unreachable)}"
+        )
+    for node_id, node in nodes_by_id.items():
+        if node["type"] in {"foreach", "while_pop"} and node_id not in returned_loops:
+            raise WorkflowValidationError(f"{node['type']} body has no loop-in return: node {node_id}")
+
+    def describe(scope: Scope) -> str:
+        return "root" + "".join(f" / {owner}:{port}" for owner, port in scope)
+
+    for index, edge in enumerate(connections):
+        if edge["type"] == "control":
+            continue
+        source = output_scopes.get((edge["fromId"], edge["fromPortId"]), node_scopes[edge["fromId"]])
+        target = node_scopes[edge["toId"]]
+        if target[:len(source)] != source:
+            raise WorkflowValidationError(
+                f"connections[{index}] crosses lifecycle boundary: "
+                f"{edge['fromId']}.{edge['fromPortId']} [{describe(source)}] -> "
+                f"{edge['toId']}.{edge['toPortId']} [{describe(target)}]; "
+                "data source must belong to the same or an ancestor lifecycle"
+            )
+
 
 def _validate_workflow_schema(workflow: dict[str, Any]) -> None:
     schema_errors = sorted(
@@ -228,7 +472,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
     arguments = node.get("arguments", {})
     if not isinstance(arguments, dict):
         raise WorkflowValidationError(f"nodes[{index}].arguments must be an object")
-    misplaced_arguments = NODE_ARGUMENT_FIELDS.intersection(node)
+    misplaced_arguments = (NODE_ARGUMENT_FIELDS - {"function_id"}).intersection(node)
     if misplaced_arguments:
         fields = ", ".join(sorted(misplaced_arguments))
         raise WorkflowValidationError(
@@ -313,10 +557,6 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             raise WorkflowValidationError(
                 "construct_message node role must be a supported message role"
             )
-    elif node_type == "construct_event":
-        event_type = node_argument(node, "event_type")
-        if not isinstance(event_type, str) or not event_type.strip():
-            raise WorkflowValidationError("construct_event event_type must be a non-empty string")
     elif node_type == "construct_content":
         _validate_construct_content(node)
     elif node_type == "construct_map_content":
@@ -342,10 +582,32 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             )
     elif node_type == "construct_list":
         _validate_construct_list(node, structs)
+    elif node_type in {"list_length", "list_get", "list_slice"}:
+        value_type = node_argument(node, "value_type")
+        if not isinstance(value_type, str) or not value_type.startswith("list-") or not _valid_item_type(value_type[5:], structs):
+            raise WorkflowValidationError(f"{node_type} value_type must be a supported list type")
+        if node_type == "list_slice":
+            for name in ("start", "stop", "step"):
+                if node_argument(node, f"{name}_source", "port") not in {"fixed", "port"}:
+                    raise WorkflowValidationError(f"list_slice {name}_source must be 'fixed' or 'port'")
+                value = node_argument(node, name)
+                if value is not None:
+                    if not is_number_value(value) or (isinstance(value, float) and not value.is_integer()):
+                        raise WorkflowValidationError(f"list_slice {name} must be an integer or null")
+                    if name == "step" and value == 0:
+                        raise WorkflowValidationError("list_slice step cannot be zero")
+        if node_type == "list_get":
+            source = node_argument(node, "index_source", "port")
+            if source not in {"fixed", "port"}:
+                raise WorkflowValidationError("list_get index_source must be 'fixed' or 'port'")
+            index = node_argument(node, "index")
+            if source == "fixed" or "index" in node.get("arguments", {}):
+                if not is_number_value(index) or (isinstance(index, float) and not index.is_integer()):
+                    raise WorkflowValidationError("list_get index must be an integer")
     elif node_type == "list_append":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
-                "list_append node item_type must be 'content', 'message', or 'event'"
+                "list_append node item_type must be 'content', 'message', or a declared Struct"
             )
         if node_argument(node, "position") not in {"start", "end"}:
             raise WorkflowValidationError(
@@ -354,15 +616,20 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
     elif node_type == "foreach":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
-                "foreach node item_type must be 'content', 'message', or 'event'"
+                "foreach node item_type must be 'content', 'message', or a declared Struct"
             )
-    elif node_type in {"context_create", "context_read", "context_write", "session_create", "session_read", "session_write"}:
+    elif node_type in {"context_create", "context_read", "context_write", "session_create", "session_read", "session_write", "while_pop"}:
         value_type = node_argument(node, "value_type")
-        is_context = node_type in {"context_create", "context_read", "context_write"}
+        is_context = node_type in {"context_create", "context_read", "context_write", "while_pop"}
         if value_type not in DATA_CONNECTION_TYPES and not (is_context and _valid_local_type(value_type, structs)):
             raise WorkflowValidationError(
                 "context node value_type must be a supported data type"
             )
+        if node_type == "while_pop":
+            if not isinstance(value_type, str) or not value_type.startswith("list-") or not _valid_item_type(value_type[5:], structs):
+                raise WorkflowValidationError("while_pop value_type must be a supported list type")
+            if node_argument(node, "position", "end") not in {"start", "end"}:
+                raise WorkflowValidationError("while_pop position must be 'start' or 'end'")
         if node_type == "context_create":
             context_id = node_argument(node, "context_id")
             if context_id is not None and (
@@ -371,7 +638,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
                 raise WorkflowValidationError(
                     "context_create context_id must be a non-empty string"
                 )
-        if node_type in {"context_read", "context_write"}:
+        if node_type in {"context_read", "context_write", "while_pop"}:
             source = node_argument(node, "context_id_source", "port")
             context_id = node_argument(node, "context_id")
             if source not in {"port", "fixed"}:
@@ -427,22 +694,19 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
         value_type = node_argument(node, "value_type")
         if not isinstance(value_type, str) or not value_type.startswith(("struct:", "list-struct:")) or not _valid_local_type(value_type, structs):
             raise WorkflowValidationError(f"{node_type} requires a declared Struct type")
-    elif node_type == "history":
-        event_types = node_argument(node, "event_types")
-        if (
-            not isinstance(event_types, list)
-            or not event_types
-            or any(event_type not in {"terminal", "response"} for event_type in event_types)
-            or len(event_types) != len(set(event_types))
-        ):
-            raise WorkflowValidationError(
-                "history node event_types must contain unique terminal or response values"
-            )
-        limit = node_argument(node, "limit")
-        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
-            raise WorkflowValidationError(
-                "history node limit must be an integer from 1 to 1000"
-            )
+    elif node_type == "tool":
+        if node_argument(node, "mode", "sync") != "sync":
+            raise WorkflowValidationError("tool only supports sync mode; use remote_async_tool")
+        # Reuse remote validation for typed ports, timeouts and callbacks.
+        arguments = dict(node.get("arguments", {}))
+        arguments.pop("mode", "sync")
+        callback = arguments.pop("callback", None)
+        outputs = arguments.pop("outputs", [])
+        if callback is not None:
+            raise WorkflowValidationError("sync tool cannot configure callback")
+        arguments["outputs"] = outputs
+        proxy = {**node, "type": "remote_sync_tool", "arguments": arguments}
+        _validate_node(proxy, index, structs)
     elif node_type == "local_tool":
         parameters = node_argument(node, "parameters", [])
         if not isinstance(parameters, list) or any(
@@ -525,12 +789,14 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
                 or len(callback["on"]) != len(set(callback["on"]))
             ):
                 raise WorkflowValidationError("remote async tool callback must be a valid Redis callback")
-    elif node_type == "workflow":
-        workflow_name = node_argument(node, "workflow_name")
-        if not isinstance(workflow_name, str) or not workflow_name:
-            raise WorkflowValidationError("workflow node workflow_name must be a non-empty string")
-        _validate_callable_workflow_ports(node, "input_ports")
-        _validate_callable_workflow_ports(node, "output_ports")
+    elif node_type == "spawn_and_wait_subprocess":
+        workflow_file = node_argument(node, "workflow_file")
+        if not isinstance(workflow_file, str) or not workflow_file:
+            raise WorkflowValidationError("spawn_and_wait_subprocess node workflow_file must be a non-empty string")
+        if len(workflow_file) > 200:
+            raise WorkflowValidationError("spawn_and_wait_subprocess node workflow_file cannot exceed 200 characters")
+        _validate_interface_ports(node, "input_ports")
+        _validate_interface_ports(node, "output_ports")
 
 
 def _validate_boundary_metadata(
@@ -539,8 +805,28 @@ def _validate_boundary_metadata(
     ports = workflow.get(field)
     if not isinstance(ports, list):
         raise WorkflowValidationError(f"workflow.{field} must be a list")
-    _validate_callable_workflow_ports({field: ports}, field)
+    _validate_interface_ports({field: ports}, field)
     return ports
+
+
+def _validate_tool_metadata(workflow: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    declarations = workflow.get("metadata", {}).get("tools", [])
+    tools: dict[str, dict[str, Any]] = {}
+    names: set[str] = set()
+    for declaration in declarations:
+        name = declaration["name"]
+        if not name.strip() or name.strip().casefold() in names:
+            raise WorkflowValidationError(f"metadata.tools contains an empty or duplicate tool name: {name}")
+        names.add(name.strip().casefold())
+        for field in ("input_ports", "output_ports"):
+            _validate_interface_ports(declaration, field)
+            if any(port["name"] in {"control-in", "control-out"} for port in declaration[field]):
+                raise WorkflowValidationError("Tool ports cannot use reserved control port names")
+        if declaration["kind"] == "local":
+            if any(port["type"] not in {"content", "number"} for port in declaration["input_ports"]):
+                raise WorkflowValidationError("local tool inputs must use content or number")
+        tools[name] = declaration
+    return tools
 
 
 def _validate_remote_tool_metadata(
@@ -569,13 +855,13 @@ def _validate_remote_tool_metadata(
         if normalized_name in normalized_names:
             raise WorkflowValidationError(f"duplicate remote tool name: {name}")
         normalized_names.add(normalized_name)
-        _validate_callable_workflow_ports(declaration, "input_ports")
-        _validate_callable_workflow_ports(declaration, "output_ports")
+        _validate_interface_ports(declaration, "input_ports")
+        _validate_interface_ports(declaration, "output_ports")
         remote_tools[name] = declaration
     return remote_tools
 
 
-def _validate_callable_workflow_ports(node: dict[str, Any], field: str) -> None:
+def _validate_interface_ports(node: dict[str, Any], field: str) -> None:
     ports = node.get(field)
     if not isinstance(ports, list):
         raise WorkflowValidationError(f"workflow node {field} must be a list")
@@ -725,7 +1011,7 @@ def _valid_local_type(value_type: Any, structs: dict[str, Any]) -> bool:
 
 
 def _valid_item_type(value_type: Any, structs: dict[str, Any]) -> bool:
-    return value_type in {"content", "message", "event"} or (
+    return value_type in {"content", "message"} or (
         isinstance(value_type, str) and value_type.startswith("struct:") and _valid_local_type(value_type, structs)
     )
 
@@ -735,7 +1021,7 @@ def _validate_construct_list(node: dict[str, Any], structs: dict[str, Any] | Non
     item_type = node_argument(node, "item_type")
     if not _valid_item_type(item_type, structs):
         raise WorkflowValidationError(
-            "construct_list node item_type must be 'content', 'message', or 'event'"
+            "construct_list node item_type must be 'content', 'message', or a declared Struct"
         )
     initial_value_count = node_argument(node, "initial_value_count")
     if (
@@ -763,6 +1049,49 @@ def _port_id(connection: dict[str, Any], index: int, field: str) -> str:
             f"connections[{index}].{field} must be a non-empty string"
         )
     return port_id
+
+
+def _validate_branches_in_foreach(
+    nodes_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
+) -> None:
+    control_edges = [connection for connection in connections if connection.get("type") == "control"]
+    outgoing: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    incoming: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    for edge in control_edges:
+        outgoing[edge["fromId"]].append(edge)
+        incoming[edge["toId"]].append(edge)
+
+    for foreach_id, foreach_node in nodes_by_id.items():
+        if foreach_node["type"] not in {"foreach", "while_pop"}:
+            continue
+
+        pending = [edge["toId"] for edge in outgoing[foreach_id] if edge["fromPortId"] == "loop-out"]
+        body: set[str] = set()
+        while pending:
+            node_id = pending.pop()
+            if node_id == foreach_id or node_id in body:
+                continue
+            if len(outgoing[node_id]) > 1:
+                raise WorkflowValidationError(
+                    f"branching control flow is not allowed inside {foreach_node['type']}: node {node_id}"
+                )
+            body.add(node_id)
+            for edge in outgoing[node_id]:
+                target_id = edge["toId"]
+                if target_id == foreach_id and edge["toPortId"] == "loop-in":
+                    continue
+                pending.append(target_id)
+
+        for node_id in body:
+            external_entries = [
+                edge for edge in incoming[node_id]
+                if edge["fromId"] not in body
+                and not (edge["fromId"] == foreach_id and edge["fromPortId"] == "loop-out")
+            ]
+            if external_entries:
+                raise WorkflowValidationError(
+                    f"{foreach_node['type']} body node also has a control-flow entry from outside the loop: node {node_id}"
+                )
 
 
 def _validate_control_connection(

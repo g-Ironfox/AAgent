@@ -1,8 +1,11 @@
-export const DATA_TYPES = new Set(['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event']);
+export const DATA_TYPES = new Set(['content', 'number', 'message', 'map-content', 'list-content', 'list-message']);
 
 export const NODE_TYPES = new Set([
   'input',
   'output',
+  'function_input',
+  'function_output',
+  'function_call',
   'router',
   'construct_message',
   'construct_content',
@@ -14,27 +17,33 @@ export const NODE_TYPES = new Set([
   'json_to_struct',
   'map_content_get',
   'deserialize_json',
-  'split_event',
-  'construct_event',
-  'publish_event',
+  'output_to_terminal',
+  'wait_terminal_event',
+  'read_terminal_input',
   'construct_list',
   'list_append',
+  'list_length',
+  'list_get',
+  'list_slice',
   'foreach',
-  'history',
+  'while_pop',
   'llm',
+  'tool',
   'local_tool',
   'remote_sync_tool',
   'remote_async_tool',
+  'json_tool',
   'context_create',
   'context_read',
   'context_write',
   'session_create',
   'session_read',
   'session_write',
-  'workflow',
+  'spawn_and_wait_subprocess',
 ]);
 
 let idSequence = 0;
+let nodeIdSequence = 0;
 
 export function createWorkflowId(prefix) {
   idSequence += 1;
@@ -72,6 +81,15 @@ function structColor(node, type) {
 }
 
 export function portsForNode(node) {
+  if (['function_input', 'function_output', 'function_call'].includes(node.type)) {
+    const port = (id, direction, type, label) => ({ id, direction, type, label, title: label, multiple: direction === 'output' && type !== 'control', color: structColor(node, type) });
+    return [
+      ...(node.type !== 'function_input' ? [port('control-in', 'input', 'control', '触发')] : []),
+      ...(node._function_inputs || []).map((p) => port(`function:${p.name}`, 'input', p.type, p.name)),
+      ...(node.type !== 'function_output' ? [port('control-out', 'output', 'control', '下一步')] : []),
+      ...(node._function_outputs || []).map((p) => port(`function:${p.name}`, 'output', p.type, p.name)),
+    ];
+  }
   if (node.type === 'input') {
     return [
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
@@ -191,28 +209,24 @@ export function portsForNode(node) {
       { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '查找到的 Content', multiple: true },
     ];
   }
-  if (node.type === 'split_event') {
+  if (node.type === 'read_terminal_input') {
     return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发拆分', multiple: false },
-      { id: 'event-in', direction: 'input', type: 'event', label: 'Event', title: '待拆分的事件', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'type-out', direction: 'output', type: 'content', label: 'Type', title: '事件类型', multiple: true },
-      { id: 'payload-out', direction: 'output', type: 'content', label: 'Payload', title: '事件 Payload 对象', multiple: true },
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '读取终端用户输入', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '读取后继续', multiple: false },
+      { id: 'list-out', direction: 'output', type: 'list-content', label: '用户输入', title: '当前终端全部用户输入正文，按时间从早到晚', multiple: true },
     ];
   }
-  if (node.type === 'publish_event') {
+  if (node.type === 'wait_terminal_event') {
     return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '发布 Event', multiple: false },
-      { id: 'event-in', direction: 'input', type: 'event', label: 'Event', title: '待发布的事件', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '发布后继续', multiple: false },
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '等待终端事件', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '唤醒后继续', title: '收到当前终端消息后继续', multiple: false },
     ];
   }
-  if (node.type === 'construct_event') {
+  if (node.type === 'output_to_terminal') {
     return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '构造 Event', multiple: false },
-      { id: 'payload-in', direction: 'input', type: 'content', label: 'Payload JSON', title: 'JSON 对象字符串', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'event-out', direction: 'output', type: 'event', label: 'Event', title: '构造后的 Event', multiple: true },
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '输出到终端', multiple: false },
+      { id: 'content-in', direction: 'input', type: 'content', label: 'content', title: '要输出的文本', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '输出后继续', multiple: false },
     ];
   }
   if (node.type === 'deserialize_json') {
@@ -240,30 +254,55 @@ export function portsForNode(node) {
       { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
+  if (node.type === 'list_get') {
+    const itemType = node.value_type?.replace(/^list-/, '');
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '按下标获取列表元素', multiple: false },
+      { id: 'list-in', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '列表', title: node.value_type, multiple: false },
+      ...(node.index_source === 'fixed' ? [] : [{ id: 'index-in', direction: 'input', type: 'number', label: '下标', title: '整数下标，负数从末尾倒数（-1 为最后一个）', multiple: false }]),
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'item-out', direction: 'output', type: itemType, color: structColor(node, itemType), label: '元素', title: itemType, multiple: true },
+    ];
+  }
+  if (node.type === 'list_length') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '计算列表长度', multiple: false },
+      { id: 'list-in', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '列表', title: node.value_type, multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'length-out', direction: 'output', type: 'number', label: '长度', title: '列表元素个数', multiple: true },
+    ];
+  }
+  if (node.type === 'list_slice') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '按 Python 切片规则截取列表', multiple: false },
+      { id: 'list-in', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '列表', title: node.value_type, multiple: false },
+      ...['start', 'stop', 'step'].filter((name) => node[`${name}_source`] !== 'fixed').map((name) => ({ id: `${name}-in`, direction: 'input', type: 'number', label: name, title: `${name}（可选）`, multiple: false })),
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'list-out', direction: 'output', type: node.value_type, color: structColor(node, node.value_type), label: '切片列表', title: node.value_type, multiple: true },
+    ];
+  }
   if (node.type === 'list_append') {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
       { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
-      { id: 'item-in', direction: 'input', type: node.item_type, label: '追加项', title: node.item_type, multiple: false },
+      { id: 'item-in', direction: 'input', type: node.item_type, color: structColor(node, node.item_type), label: '追加项', title: node.item_type, multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'list-out', direction: 'output', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '新列表', title: listTypeForItem(node.item_type), multiple: true },
     ];
   }
-  if (node.type === 'foreach') {
+  if (['foreach', 'while_pop'].includes(node.type)) {
+    const isPop = node.type === 'while_pop';
+    const itemType = isPop ? node.value_type?.replace(/^list-/, '') : node.item_type;
+    const inputPorts = isPop
+      ? ((node.context_id_source || 'port') === 'port' ? [{ id: 'context-id', direction: 'input', type: 'content', label: 'Context ID', title: node.value_type, multiple: false }] : [])
+      : [{ id: 'list-in', direction: 'input', type: listTypeForItem(itemType), color: structColor(node, listTypeForItem(itemType)), label: '列表', title: listTypeForItem(itemType), multiple: false }];
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发遍历', multiple: false },
       { id: 'loop-in', direction: 'input', type: 'control', label: '循环体结束', title: '循环体完成后返回', multiple: false },
-      { id: 'list-in', direction: 'input', type: listTypeForItem(node.item_type), color: structColor(node, listTypeForItem(node.item_type)), label: '列表', title: listTypeForItem(node.item_type), multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '列表遍历完成后继续', multiple: false },
+      ...inputPorts,
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: isPop ? 'Context 列表为空后继续' : '列表遍历完成后继续', multiple: false },
       { id: 'loop-out', direction: 'output', type: 'control', label: '循环体开始', title: '执行当前项的循环体', multiple: false },
-      { id: 'item-out', direction: 'output', type: node.item_type, color: structColor(node, node.item_type), label: '当前项', title: `当前 ${node.item_type}`, multiple: true },
-    ];
-  }
-  if (node.type === 'history') {
-    return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发查询', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'events', direction: 'output', type: 'list-event', label: '事件', title: '最近的事件列表', multiple: true },
+      { id: 'item-out', direction: 'output', type: itemType, color: structColor(node, itemType), label: isPop ? '弹出项' : '当前项', title: `当前 ${itemType}`, multiple: true },
     ];
   }
   if (node.type === 'context_create' || node.type === 'session_create') {
@@ -307,6 +346,16 @@ export function portsForNode(node) {
     }
     return ports;
   }
+  if (node.type === 'tool') {
+    const parameterPorts = (node.parameters || []).map((parameter) => ({ id: parameter.name, direction: 'input', type: parameter.type, label: parameter.name, title: `Tool parameter: ${parameter.name}`, multiple: false }));
+    const resultPorts = (node.outputs || []).map((output) => ({ id: output.name, direction: 'output', type: output.type, label: output.name, title: `Tool output: ${output.name}`, multiple: true }));
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+      ...parameterPorts,
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      ...resultPorts,
+    ];
+  }
   if (['local_tool', 'remote_sync_tool', 'remote_async_tool'].includes(node.type)) {
     const isRemote = node.type !== 'local_tool';
     const parameterPorts = (node.parameters || []).map((parameter) => ({
@@ -334,17 +383,29 @@ export function portsForNode(node) {
       ...resultPorts,
     ];
   }
-  if (node.type === 'workflow') {
+  if (node.type === 'json_tool') {
     return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '调用 Workflow', multiple: false },
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
+      { id: 'tool-name', direction: 'input', type: 'content', label: '工具名', title: '工具名称', multiple: false },
+      { id: 'arguments-json', direction: 'input', type: 'content', label: '参数 JSON', title: '工具参数 JSON 对象', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'error-out', direction: 'output', type: 'control', label: '错误', title: '工具调用失败', multiple: false },
+      { id: 'result-json', direction: 'output', type: 'content', label: '结果 JSON', title: '工具结果 JSON', multiple: true },
+      { id: 'error-json', direction: 'output', type: 'content', label: '错误 JSON', title: '工具调用错误信息', multiple: true },
+    ];
+  }
+  if (node.type === "spawn_and_wait_subprocess") {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '拉起并等待子进程', multiple: false },
       ...(node.input_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'input', type: port.type, label: port.name, title: port.name, multiple: false })),
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: 'Workflow 完成后继续', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '子进程退出后继续', multiple: false },
       ...(node.output_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'output', type: port.type, label: port.name, title: port.name, multiple: true })),
     ];
   }
   const ports = [
     { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
     { id: 'messages-in', direction: 'input', type: 'list-message', label: 'Messages', title: 'Message 列表', multiple: false },
+    ...(node.tool_calls === true ? [{ id: 'available-tools-in', direction: 'input', type: 'list-content', label: '可用 Tools', title: '覆盖默认工具列表；名称必须来自 metadata.tools', multiple: false }] : []),
     { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
     { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },
   ];
@@ -383,51 +444,75 @@ function nextNodePosition(nodes, viewport) {
 }
 
 export function createNode(type, nodes, configuration = null, viewport = null) {
+  const node = createNodeDefinition(type, nodes, configuration, viewport);
+  if (!node) return null;
+  reserveNodeIds(nodes);
+  const usedIds = new Set(nodes.map((existing) => existing.id));
+  do { node.id = `${node.name}_${++nodeIdSequence}`; } while (usedIds.has(node.id));
+  return node;
+}
+
+export function reserveNodeIds(nodes) {
+  for (const existing of nodes) {
+    const suffix = /_(\d+)$/.exec(existing.id)?.[1];
+    if (suffix && Number.isSafeInteger(Number(suffix))) nodeIdSequence = Math.max(nodeIdSequence, Number(suffix));
+  }
+}
+
+function createNodeDefinition(type, nodes, configuration = null, viewport = null) {
   if (!NODE_TYPES.has(type) || type === 'input') return null;
   const number = nodes.filter((node) => node.type === type).length + 1;
   const position = nextNodePosition(nodes, viewport);
-  if (type === 'router') return { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position };
-  if (type === 'output') return { id: createWorkflowId('output'), type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
-  if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
-  if (type === 'construct_content') return { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
-  if (type === 'construct_map_content') return { id: createWorkflowId('construct-map-content'), type, name: `构造 Map ${number}`, mappings: [{ key: 'key1', value: '' }], dataInputPorts: [], ...position };
+  if (type === 'router') return { type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position };
+  if (['function_input', 'function_output', 'function_call'].includes(type)) {
+    const label = { function_input: '函数输入', function_output: '函数输出', function_call: '调用函数' }[type];
+    return { type, name: `${label} ${configuration?.name || ''}`, ...position,
+      ...(type === 'function_call' ? { callee_id: configuration?.id } : { function_id: configuration?.id }) };
+  }
+  if (type === 'output') return { type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
+  if (type === 'construct_message') return { type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
+  if (type === 'construct_content') return { type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
+  if (type === 'construct_map_content') return { type, name: `构造 Map ${number}`, mappings: [{ key: 'key1', value: '' }], dataInputPorts: [], ...position };
   if (['construct_struct', 'struct_get', 'struct_update'].includes(type)) {
-    const prefix = type.replaceAll('_', '-');
     const label = type === 'construct_struct' ? '构造 Struct' : type === 'struct_get' ? '读取 Struct 字段' : '更新 Struct';
-    const node = { id: createWorkflowId(prefix), type, name: `${label} ${number}`, struct_id: '', ...position };
+    const node = { type, name: `${label} ${number}`, struct_id: '', ...position };
     if (type === 'construct_struct') node.dataInputPorts = [];
     if (type === 'struct_get') Object.assign(node, { field: '', missing: 'error', has_fallback: false, dataInputPorts: [] });
     if (type === 'struct_update') Object.assign(node, { updates: [], remove_fields: [], dataInputPorts: [] });
     return node;
   }
   if (type === 'struct_to_json' || type === 'json_to_struct') {
-    return { id: createWorkflowId(type.replaceAll('_', '-')), type, name: type === 'struct_to_json' ? `Struct 转 JSON ${number}` : `JSON 转 Struct ${number}`, value_type: '', ...position };
+    return { type, name: type === 'struct_to_json' ? `Struct 转 JSON ${number}` : `JSON 转 Struct ${number}`, value_type: '', ...position };
   }
-  if (type === 'map_content_get') return { id: createWorkflowId('map-content-get'), type, name: `Map 查找 ${number}`, ...position };
-  if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
-  if (type === 'split_event') return { id: createWorkflowId('split-event'), type, name: `拆分 Event ${number}`, ...position };
-  if (type === 'publish_event') return { id: createWorkflowId('publish-event'), type, name: `发布 Event ${number}`, ...position };
-  if (type === 'construct_event') return { id: createWorkflowId('construct-event'), type, name: `构造 Event ${number}`, event_type: 'event_type', ...position };
-  if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
-  if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
-  if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
-  if (type === 'history') return { id: createWorkflowId('history'), type, name: `召回 History ${number}`, event_types: ['terminal', 'response'], limit: 10, ...position };
-  if (type === 'context_create') return { id: createWorkflowId('context-create'), type, name: `创建 Context ${number}`, value_type: 'content', ...position };
-  if (type === 'context_read') return { id: createWorkflowId('context-read'), type, name: `读取 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
-  if (type === 'context_write') return { id: createWorkflowId('context-write'), type, name: `修改 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
-  if (type === 'session_create') return { id: createWorkflowId('session-create'), type, name: `创建 Session ${number}`, value_type: 'content', ...position };
-  if (type === 'session_read') return { id: createWorkflowId('session-read'), type, name: `读取 Session ${number}`, value_type: 'content', ...position };
-  if (type === 'session_write') return { id: createWorkflowId('session-write'), type, name: `修改 Session ${number}`, value_type: 'content', ...position };
-  if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
-  if (type === 'local_tool') return { id: createWorkflowId('local-tool'), type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
-  if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
-  if (type === 'remote_async_tool') return { id: createWorkflowId('remote-async-tool'), type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };
-  if (type === 'workflow' && configuration) {
+  if (type === 'map_content_get') return { type, name: `Map 查找 ${number}`, ...position };
+  if (type === 'deserialize_json') return { type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
+  if (type === 'read_terminal_input') return { type, name: `读取终端输入 ${number}`, ...position };
+  if (type === 'wait_terminal_event') return { type, name: `等待终端事件 ${number}`, ...position };
+  if (type === 'output_to_terminal') return { type, name: `输出到终端 ${number}`, ...position };
+  if (type === 'construct_list') return { type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
+  if (type === 'list_get') return { type, name: `按下标取元素 ${number}`, value_type: 'list-content', index_source: 'port', ...position };
+  if (type === 'list_length') return { type, name: `列表长度 ${number}`, value_type: 'list-content', ...position };
+  if (type === 'list_slice') return { type, name: `列表切片 ${number}`, value_type: 'list-content', ...position };
+  if (type === 'list_append') return { type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
+  if (type === 'while_pop') return { type, name: `弹出 Context 列表 ${number}`, value_type: 'list-content', position: 'end', context_id_source: 'port', ...position };
+  if (type === 'foreach') return { type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
+  if (type === 'context_create') return { type, name: `创建 Context ${number}`, value_type: 'content', ...position };
+  if (type === 'context_read') return { type, name: `读取 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
+  if (type === 'context_write') return { type, name: `修改 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
+  if (type === 'session_create') return { type, name: `创建 Session ${number}`, value_type: 'content', ...position };
+  if (type === 'session_read') return { type, name: `读取 Session ${number}`, value_type: 'content', ...position };
+  if (type === 'session_write') return { type, name: `修改 Session ${number}`, value_type: 'content', ...position };
+  if (type === 'llm') return { type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
+  if (type === 'tool') return { type, name: `Tool ${number}`, tool: '', parameters: [], outputs: [], mode: 'sync', timeout_ms: 10000, callback: null, ...position };
+  if (type === 'local_tool') return { type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
+  if (type === 'remote_sync_tool') return { type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
+  if (type === 'remote_async_tool') return { type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };
+  if (type === 'json_tool') return { type, name: 'JSON Tool ' + number, ...position };
+  if (type === "spawn_and_wait_subprocess" && configuration) {
     return {
-      id: createWorkflowId('workflow'),
       type,
-      name: configuration.name || `Workflow ${number}`,
-      workflow_name: configuration.name,
+      name: `拉起并等待子进程 ${number}`,
+      workflow_file: configuration.name,
       input_ports: structuredClone(configuration.input_ports || []),
       output_ports: structuredClone(configuration.output_ports || []),
       ...position,

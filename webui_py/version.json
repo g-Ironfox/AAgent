@@ -1,5 +1,5 @@
 {
-  "platform": "4.0.0",
+  "platform": "4.2.7",
   "protocol": {
     "event": "1.0",
     "workflow": "1.0"

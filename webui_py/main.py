@@ -6,20 +6,26 @@ from typing import Any
 
 import redis
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
-from event_bindings import create_event_bindings_router
-from events import create_events_router
+from file_store import FileStore, FileStoreUnavailableError
+from files import create_files_router
+from terminal import create_terminal_router
+from processes import create_processes_router
+from workflow_logs import create_workflow_logs_router
+from process_logs import create_process_logs_router
+from scheduler import create_scheduler_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("aagent.webui")
 
 MAX_TERMINAL_BODY_BYTES = 16 * 1024
-MAX_EVENT_BODY_BYTES = 256 * 1024
+MAX_PROCESS_BODY_BYTES = 256 * 1024
+MAX_FILE_BODY_BYTES = 1024 * 1024
 
 
 def env(name: str, fallback: str) -> str:
@@ -35,14 +41,14 @@ def redis_address() -> str:
 
 REDIS_ADDRESS = redis_address()
 REDIS_DB = int(env("REDIS_DB", "0"))
-QUEUE_NAME = env("MAIN_AGENT_QUEUE_NAME", "main_agent_queue")
-WORKER_STATUS_KEY = env("AGENT_WORKER_STATUS_KEY", "aagent:worker:status")
 MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
-MONGO_HISTORY_COLLECTION = env("MONGO_HISTORY_COLLECTION", "event_history")
-MONGO_WORKFLOW_COLLECTION = env("MONGO_WORKFLOW_COLLECTION", "workflows")
-MONGO_EVENT_BINDING_COLLECTION = env("MONGO_EVENT_BINDING_COLLECTION", "event_bindings")
+MONGO_TERMINAL_COLLECTION = env("MONGO_TERMINAL_COLLECTION", "terminal_messages")
+MONGO_WORKFLOW_LOG_COLLECTION = env("MONGO_WORKFLOW_LOG_COLLECTION", "workflow_logs")
+MONGO_PROCESS_LOG_COLLECTION = env("MONGO_PROCESS_LOG_COLLECTION", "process_logs")
+MONGO_FILE_EVENT_COLLECTION = env("MONGO_FILE_EVENT_COLLECTION", "workspace_file_events")
+MONGO_WORKSPACE_FILE_COLLECTION = env("MONGO_WORKSPACE_FILE_COLLECTION", "workspace_files")
 
 redis_client = redis.Redis.from_url(
     f"redis://{REDIS_ADDRESS}/{REDIS_DB}",
@@ -65,21 +71,44 @@ if os.getenv("MONGO_USER"):
     )
 mongo_client = MongoClient(**mongo_kwargs)
 database = mongo_client[MONGO_DATABASE]
-history: Collection = database[MONGO_HISTORY_COLLECTION]
-workflows: Collection = database[MONGO_WORKFLOW_COLLECTION]
-event_bindings: Collection = database[MONGO_EVENT_BINDING_COLLECTION]
+terminal_messages: Collection = database[MONGO_TERMINAL_COLLECTION]
+workflow_logs: Collection = database[MONGO_WORKFLOW_LOG_COLLECTION]
+process_logs: Collection = database[MONGO_PROCESS_LOG_COLLECTION]
+file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
+workspace_files: Collection = database[MONGO_WORKSPACE_FILE_COLLECTION]
+file_store = FileStore(file_events, workspace_files)
 
 app = FastAPI(title="AAgent WebUI")
 
 
+@app.exception_handler(FileStoreUnavailableError)
+def file_store_unavailable(_, error: FileStoreUnavailableError):
+    logger.error("workspace file store unavailable: %s", error)
+    return JSONResponse(status_code=503, content={"error": "workspace file store unavailable"})
+
+
 @app.on_event("startup")
-def create_config_indexes():
+def create_terminal_indexes():
     try:
-        if "unique_event_binding_route" in event_bindings.index_information():
-            event_bindings.drop_index("unique_event_binding_route")
-        event_bindings.create_index("event_type", unique=True, name="unique_event_binding_type")
+        terminal_messages.create_index(
+            [("created_at", -1), ("_id", -1)], name="terminal_created_at_id"
+        )
+        terminal_messages.create_index(
+            [("terminal_id", 1), ("created_at", -1), ("_id", -1)],
+            name="terminal_id_created_at_id",
+        )
     except PyMongoError as error:
-        logger.error("failed to create configuration indexes: %s", error)
+        logger.error("failed to create terminal indexes: %s", error)
+
+
+@app.on_event("startup")
+def create_scheduler_indexes():
+    try:
+        process_logs.create_index([("start_time", -1)], name="process_start_time")
+        process_logs.create_index([("status", 1), ("start_time", -1)], name="process_status_start_time")
+        process_logs.create_index([("finished_at", 1)], name="process_finished_at")
+    except PyMongoError as error:
+        logger.error("failed to create scheduler indexes: %s", error)
 
 
 @app.middleware("http")
@@ -109,10 +138,14 @@ async def request_logger(request: Request, call_next):
 @app.middleware("http")
 async def request_body_guard(request: Request, call_next):
     body_limits = {
+        ("POST", "/api/processes"): (MAX_PROCESS_BODY_BYTES, "请求体不能超过 256 KB"),
         ("POST", "/api/terminal"): (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
-        ("PUT", "/api/events"): (MAX_EVENT_BODY_BYTES, "请求体不能超过 256 KB"),
     }
     body_limit = body_limits.get((request.method, request.url.path))
+    if request.method in {"POST", "PUT"} and (
+        request.url.path == "/api/files" or request.url.path.startswith("/api/files/")
+    ):
+        body_limit = (MAX_FILE_BODY_BYTES, "文件请求体不能超过 1 MB")
     if body_limit:
         content_length = request.headers.get("content-length")
         if content_length:
@@ -134,10 +167,49 @@ def health():
     return {"status": "ok"}
 
 
-app.include_router(create_events_router(redis_client, history, QUEUE_NAME, WORKER_STATUS_KEY))
-app.include_router(create_event_bindings_router(event_bindings, workflows))
+app.include_router(create_terminal_router(redis_client, terminal_messages))
+app.include_router(create_processes_router(redis_client, file_store))
+app.include_router(create_workflow_logs_router(workflow_logs))
+app.include_router(create_process_logs_router(process_logs))
+app.include_router(create_scheduler_router(process_logs, redis_client))
+app.include_router(create_files_router(file_store))
 
 static_directory = Path(__file__).parent / "static"
+
+
+@app.get("/", include_in_schema=False)
+def home_page():
+    return RedirectResponse("/terminal.html", status_code=307)
+
+
+@app.get("/workspace", include_in_schema=False)
+def workspace_page():
+    return FileResponse(static_directory / "workspace.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/workspace/replay", include_in_schema=False)
+def workspace_replay_page():
+    return FileResponse(static_directory / "replay.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/logs", include_in_schema=False)
+def workflow_logs_page():
+    return FileResponse(static_directory / "workflow-logs.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/scheduler", include_in_schema=False)
+def scheduler_page():
+    return FileResponse(static_directory / "scheduler.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/workspace.html", include_in_schema=False)
+def old_workspace_page_url():
+    return RedirectResponse("/workspace", status_code=308)
+
+
+@app.get("/document.html", include_in_schema=False)
+def old_document_page_url():
+    return RedirectResponse("/workspace", status_code=308)
 
 
 class RevalidatingStaticFiles(StaticFiles):

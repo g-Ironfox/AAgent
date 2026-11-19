@@ -4,22 +4,24 @@ from __future__ import annotations
 
 import json
 import os
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
+
+from workflow_contract import is_number_value
 from uuid import uuid4
 
 import redis
 
-from queue_client import get_connection
+from redis_client import get_connection
 
 
 CONTEXT_VALUE_TYPES = {
     "content",
+    "number",
     "message",
-    "event",
     "list-content",
     "list-message",
-    "list-event",
     "map-content",
 }
 
@@ -45,6 +47,8 @@ def _valid_value(value_type: str, value: Any, struct_definitions: dict[str, Any]
             return True
         except ValueError:
             return False
+    if value_type == "number":
+        return is_number_value(value)
     if value_type == "content":
         return isinstance(value, str)
     if value_type == "message":
@@ -53,10 +57,6 @@ def _valid_value(value_type: str, value: Any, struct_definitions: dict[str, Any]
         return isinstance(value, list) and all(isinstance(item, str) for item in value)
     if value_type == "list-message":
         return isinstance(value, list) and all(_is_message(item) for item in value)
-    if value_type == "event":
-        return _is_event(value)
-    if value_type == "list-event":
-        return isinstance(value, list) and all(_is_event(item) for item in value)
     if value_type == "map-content":
         return isinstance(value, dict) and all(
             isinstance(key, str) and bool(key) and isinstance(item, str)
@@ -65,13 +65,14 @@ def _valid_value(value_type: str, value: Any, struct_definitions: dict[str, Any]
     return False
 
 
-def _is_event(value: Any) -> bool:
-    return (
-        isinstance(value, dict)
-        and isinstance(value.get("event_type"), str)
-        and bool(value["event_type"])
-        and "payload" in value
-    )
+current_persistent_invocation_id = ContextVar("persistent_workflow_invocation", default=None)
+
+
+def _refresh_lifetime(pipeline, key: str, stored: dict) -> None:
+    if stored.get("persistent") == "1":
+        pipeline.persist(key)
+    else:
+        pipeline.expire(key, _ttl_seconds())
 
 
 def _ttl_seconds() -> int:
@@ -127,16 +128,19 @@ def create_context(
         "created_at": now,
         "updated_at": now,
     }
+    persistent = current_persistent_invocation_id.get() == invocation_id
+    if persistent:
+        mapping["persistent"] = "1"
     try:
         created = get_connection().eval(
             "if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end "
             "redis.call('HSET', KEYS[1], unpack(ARGV, 1, #ARGV - 1)) "
-            "redis.call('EXPIRE', KEYS[1], ARGV[#ARGV]) "
+            "if tonumber(ARGV[#ARGV]) > 0 then redis.call('EXPIRE', KEYS[1], ARGV[#ARGV]) end "
             "return 1",
             1,
             key,
             *(argument for field_value in mapping.items() for argument in field_value),
-            str(_ttl_seconds()),
+            "0" if persistent else str(_ttl_seconds()),
         )
         if not created:
             raise WorkflowContextError("Context ID 已存在")
@@ -145,16 +149,24 @@ def create_context(
     return context_id
 
 
-def read_context(context_id: Any, invocation_id: str, value_type: str, struct_definitions: dict[str, Any] | None = None) -> Any:
+def read_context(
+    context_id: Any,
+    invocation_id: str,
+    value_type: str,
+    struct_definitions: dict[str, Any] | None = None,
+    *,
+    ancestor_invocation_ids: tuple[str, ...] = (),
+) -> Any:
     context_id = _validate_context_id(context_id)
     key = _key(context_id)
     client = get_connection()
+    allowed_invocation_ids = {invocation_id, *ancestor_invocation_ids}
     while True:
         try:
             with client.pipeline() as pipeline:
                 pipeline.watch(key)
                 stored = pipeline.hgetall(key)
-                if not stored or stored.get("invocation_id") != invocation_id:
+                if not stored or stored.get("invocation_id") not in allowed_invocation_ids:
                     raise WorkflowContextError("Workflow Context 不存在")
                 if stored.get("value_type") != value_type:
                     raise WorkflowContextError("Workflow Context 类型不匹配")
@@ -165,7 +177,7 @@ def read_context(context_id: Any, invocation_id: str, value_type: str, struct_de
                 if not _valid_value(value_type, value, struct_definitions):
                     raise WorkflowContextError("Workflow Context Value 无效")
                 pipeline.multi()
-                pipeline.expire(key, _ttl_seconds())
+                _refresh_lifetime(pipeline, key, stored)
                 pipeline.execute()
                 return value
         except redis.WatchError:
@@ -180,17 +192,20 @@ def write_context(
     value_type: str,
     value: Any,
     struct_definitions: dict[str, Any] | None = None,
+    *,
+    ancestor_invocation_ids: tuple[str, ...] = (),
 ) -> None:
     context_id = _validate_context_id(context_id)
     serialized = _serialize(value_type, value, struct_definitions)
     key = _key(context_id)
     client = get_connection()
+    allowed_invocation_ids = {invocation_id, *ancestor_invocation_ids}
     while True:
         try:
             with client.pipeline() as pipeline:
                 pipeline.watch(key)
                 stored = pipeline.hgetall(key)
-                if not stored or stored.get("invocation_id") != invocation_id:
+                if not stored or stored.get("invocation_id") not in allowed_invocation_ids:
                     raise WorkflowContextError("Workflow Context 不存在")
                 if stored.get("value_type") != value_type:
                     raise WorkflowContextError("Workflow Context 类型不匹配")
@@ -202,9 +217,60 @@ def write_context(
                         "updated_at": datetime.now(timezone.utc).isoformat(),
                     },
                 )
-                pipeline.expire(key, _ttl_seconds())
+                _refresh_lifetime(pipeline, key, stored)
                 pipeline.execute()
                 return
+        except redis.WatchError:
+            continue
+        except redis.RedisError as error:
+            raise WorkflowContextError("Context 存储操作失败") from error
+
+
+def pop_context(
+    context_id: Any,
+    invocation_id: str,
+    value_type: str,
+    position: str = "end",
+    struct_definitions: dict[str, Any] | None = None,
+    *,
+    ancestor_invocation_ids: tuple[str, ...] = (),
+) -> tuple[bool, Any]:
+    """Atomically remove one list item; an empty list returns (False, None)."""
+    context_id = _validate_context_id(context_id)
+    if not isinstance(value_type, str) or not value_type.startswith("list-"):
+        raise WorkflowContextError("while_pop Context 类型必须为列表")
+    if position not in {"start", "end"}:
+        raise WorkflowContextError("while_pop position must be 'start' or 'end'")
+    key = _key(context_id)
+    client = get_connection()
+    allowed_invocation_ids = {invocation_id, *ancestor_invocation_ids}
+    while True:
+        try:
+            with client.pipeline() as pipeline:
+                pipeline.watch(key)
+                stored = pipeline.hgetall(key)
+                if not stored or stored.get("invocation_id") not in allowed_invocation_ids:
+                    raise WorkflowContextError("Workflow Context 不存在")
+                if stored.get("value_type") != value_type:
+                    raise WorkflowContextError("Workflow Context 类型不匹配")
+                try:
+                    items = json.loads(stored["value"])
+                except (KeyError, TypeError, json.JSONDecodeError) as error:
+                    raise WorkflowContextError("Workflow Context Value 无效") from error
+                if not _valid_value(value_type, items, struct_definitions):
+                    raise WorkflowContextError("Workflow Context Value 无效")
+                has_item = bool(items)
+                item = items.pop(0 if position == "start" else -1) if has_item else None
+                serialized = _serialize(value_type, items, struct_definitions) if has_item else None
+                pipeline.multi()
+                if has_item:
+                    pipeline.hset(key, mapping={
+                        "value": serialized,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                _refresh_lifetime(pipeline, key, stored)
+                pipeline.execute()
+                return has_item, item
         except redis.WatchError:
             continue
         except redis.RedisError as error:

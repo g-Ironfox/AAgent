@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>AAgent Workflow 编辑器</title>
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/workflow.css?v=20">
+  <link rel="stylesheet" href="/css/workflow.css?v=25">
 </head>
 <body class="workflow-page">
   <header class="topbar">
@@ -90,19 +90,19 @@
             <div><strong>Map-Content 查找</strong><small>按键读取 Content</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <button class="library-item" type="button" data-add-node="split_event">
-            <span class="node-symbol split_event-symbol" aria-hidden="true">E/</span>
-            <div><strong>拆分 Event</strong><small>拆出事件类型与 Payload</small></div>
+          <button class="library-item" type="button" data-add-node="wait_terminal_event">
+            <span class="node-symbol wait_terminal_event-symbol" aria-hidden="true">WAIT</span>
+            <div><strong>等待终端事件</strong><small>挂起，收到当前终端消息后继续</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <button class="library-item" type="button" data-add-node="publish_event">
-            <span class="node-symbol publish_event-symbol" aria-hidden="true">E!</span>
-            <div><strong>发布 Event</strong><small>投递至主 Agent 队列</small></div>
+          <button class="library-item" type="button" data-add-node="read_terminal_input">
+            <span class="node-symbol read_terminal_input-symbol" aria-hidden="true">T&lt;</span>
+            <div><strong>读取终端输入</strong><small>获取当前终端全部用户输入列表</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <button class="library-item" type="button" data-add-node="construct_event">
-            <span class="node-symbol construct_event-symbol" aria-hidden="true">E+</span>
-            <div><strong>构造 Event</strong><small>组合事件类型与 JSON Payload</small></div>
+          <button class="library-item" type="button" data-add-node="output_to_terminal">
+            <span class="node-symbol output_to_terminal-symbol" aria-hidden="true">T&gt;</span>
+            <div><strong>输出到终端</strong><small>输出到当前进程的终端</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="deserialize_json">
@@ -115,19 +115,34 @@
             <div><strong>构造列表</strong><small>把同类型输入聚合为列表</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="list_get">
+            <span class="node-symbol list_get-symbol" aria-hidden="true">L[]</span>
+            <div><strong>按下标取元素</strong><small>按从 0 开始的下标读取列表元素</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="list_slice">
+            <span class="node-symbol list_slice-symbol" aria-hidden="true">L[:]</span>
+            <div><strong>列表切片</strong><small>按起点、终点和步长截取列表</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
+          <button class="library-item" type="button" data-add-node="list_length">
+            <span class="node-symbol list_length-symbol" aria-hidden="true">LEN</span>
+            <div><strong>列表长度</strong><small>按所选列表类型计算元素个数，输出 number</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="list_append">
             <span class="node-symbol list_append-symbol" aria-hidden="true">L+</span>
             <div><strong>List 追加</strong><small>在列表最前或最后追加同类型项</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
+          <button class="library-item" type="button" data-add-node="while_pop">
+            <span class="node-symbol while_pop-symbol" aria-hidden="true">WP</span>
+            <div><strong>弹出 Context 列表</strong><small>while_pop · 逐项弹出，直到列表为空</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="foreach">
             <span class="node-symbol foreach-symbol" aria-hidden="true">FE</span>
             <div><strong>遍历列表</strong><small>逐项执行循环体控制流</small></div>
-            <span class="add-symbol" aria-hidden="true">+</span>
-          </button>
-          <button class="library-item" type="button" data-add-node="history">
-            <span class="node-symbol history-symbol" aria-hidden="true">H</span>
-            <div><strong>召回 History</strong><small>按事件类型读取最近记录</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="context_create">
@@ -160,42 +175,49 @@
             <div><strong>修改 Session</strong><small>完整覆盖共享状态</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <button class="library-item" type="button" data-add-node="local_tool">
-            <span class="node-symbol local_tool-symbol" aria-hidden="true">LT</span>
-            <div><strong>Local Tool</strong><small>调用 Agent 进程内工具</small></div>
+          <button class="library-item" type="button" data-add-node="tool">
+            <span class="node-symbol tool-symbol" aria-hidden="true">T</span>
+            <div><strong>Tool</strong><small>同步执行 Local / Remote Tool</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <button class="library-item" type="button" data-add-node="remote_sync_tool">
-            <span class="node-symbol remote_sync_tool-symbol" aria-hidden="true">RS</span>
-            <div><strong>Remote Sync Tool</strong><small>等待 Tool Server 返回结果</small></div>
+          <button class="library-item" type="button" data-add-node="json_tool">
+            <span class="node-symbol json_tool-symbol" aria-hidden="true">J-T</span>
+            <div><strong>JSON Tool</strong><small>通过 JSON 输入动态同步调用工具</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="remote_async_tool">
             <span class="node-symbol remote_async_tool-symbol" aria-hidden="true">RA</span>
-            <div><strong>Remote Async Tool</strong><small>发布任务并返回 Task ID</small></div>
+            <div><strong>异步 Tool</strong><small>仅 Remote Tool，发布后返回 Task ID</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <div id="workflowNodeLibrary" class="workflow-node-library" hidden></div>
+          <div id="functionNodeLibrary" class="subprocess-node-library" hidden></div>
+          <div id="subprocessNodeLibrary" class="subprocess-node-library" hidden></div>
         </div>
-        <footer class="library-footer"><span>基础节点 + Workflow</span><span id="nodeCount">4 个实例</span></footer>
+        <footer class="library-footer"><span>基础节点 + 子进程</span><span id="nodeCount">4 个实例</span></footer>
       </aside>
 
       <section class="workflow-canvas-panel" aria-label="Workflow 画布">
         <header class="canvas-toolbar">
           <div class="canvas-context">
-            <div class="workflow-selector"><span>WORKFLOW</span><strong id="workflowNameDisplay">workflow</strong></div>
             <div class="canvas-meta"><span id="connectionCount">1 条连接</span><span id="workflowState"></span></div>
           </div>
           <div class="canvas-actions">
+            <button id="compileLifecyclesButton" class="toolbar-button secondary" type="button" aria-pressed="false" aria-controls="lifecyclePanel" title="静态编译控制树，按生命周期着色；不执行或修改 Workflow">编译生命周期</button>
             <button id="clearButton" class="toolbar-button secondary" type="button">清空</button>
             <button id="metadataButton" class="toolbar-button secondary" type="button">元数据</button>
           </div>
         </header>
+        <section id="lifecyclePanel" class="lifecycle-panel" aria-label="生命周期编译预览" hidden>
+          <header><strong id="lifecycleSummary" role="status" aria-live="polite"></strong><button id="clearLifecyclesButton" class="toolbar-button secondary" type="button">清除着色</button></header>
+          <p>仅静态预览，不执行 Workflow。节点底色代表生命周期；箭头指向子空间。只允许同一空间内部、祖先到子空间的数据连线；Context 是显式跨边界存取。悬停端口查看归属。</p>
+          <div id="lifecycleScopes" class="lifecycle-scopes" aria-label="生命周期图例"></div>
+          <ul id="lifecycleErrors" class="lifecycle-errors"></ul>
+        </section>
         <div id="workflowCanvas" class="workflow-canvas">
           <div class="canvas-grid" aria-hidden="true"></div>
           <svg id="connectionLayer" class="connection-layer" aria-hidden="true"></svg>
           <div id="nodeLayer" class="node-layer"></div>
-          <div id="canvasLegend" class="canvas-legend" aria-label="数据类型图例"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="event-dot"></i>EVENT</span><span><i class="map-content-dot"></i>MAP-CONTENT</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span><span><i class="list-event-dot"></i>LIST-EVENT</span><span data-struct-legend class="canvas-legend-structs"></span></div>
+          <div id="canvasLegend" class="canvas-legend" aria-label="数据类型图例"><span><i class="control-dot"></i>CONTROL</span><span><i class="content-dot"></i>CONTENT</span><span><i class="number-dot"></i>NUMBER</span><span><i class="message-dot"></i>MESSAGE</span><span><i class="map-content-dot"></i>MAP-CONTENT</span><span><i class="list-content-dot"></i>LIST-CONTENT</span><span><i class="list-message-dot"></i>LIST-MESSAGE</span><span data-struct-legend class="canvas-legend-structs"></span></div>
         </div>
       </section>
 
@@ -237,7 +259,6 @@
       </header>
       <div class="metadata-body">
         <div class="metadata-basics">
-          <label>Workflow 名称<input id="workflowName" maxlength="120" required value="workflow"></label>
           <label>描述<textarea id="workflowDescription" rows="4" maxlength="2000" placeholder="简要说明用途、输入输出或使用场景"></textarea></label>
         </div>
         <div class="metadata-columns">
@@ -250,25 +271,31 @@
             <div class="metadata-port-list" data-metadata-port-list="output_ports"></div>
           </section>
         </div>
-        <section class="callable-workflow-section struct-metadata-section">
+        <section class="metadata-resource-section struct-metadata-section">
           <header><div><span class="metadata-port-mark struct">ST</span><h3>Struct 声明</h3></div><button id="addStructButton" type="button" title="添加 Struct 声明" aria-label="添加 Struct 声明">+</button></header>
           <p class="section-help">每个声明仅在当前 Workflow 内有效；字段类型可引用其他 Struct。</p>
           <div id="structDefinitions" class="struct-definition-list"></div>
           <p id="structDefinitionsError" class="text-import-error" role="alert"></p>
         </section>
-        <section class="callable-workflow-section">
-          <header>
-            <div><span class="metadata-port-mark workflow">WF</span><h3>可调用 Workflow</h3></div>
-            <button id="addCallableWorkflowButton" type="button" title="添加可调用 Workflow" aria-label="添加可调用 Workflow">+</button>
-          </header>
-          <div id="callableWorkflowList" class="callable-workflow-list"></div>
+        <section class="metadata-resource-section function-metadata-section">
+          <header><div><span class="metadata-port-mark workflow">FN</span><h3>函数声明</h3></div><button id="addFunctionButton" type="button" title="添加函数">+</button></header>
+          <p class="section-help">声明函数及输入、输出接口，再从节点库添加入口、返回或调用节点。</p>
+          <div id="functionList" class="metadata-resource-list"></div>
         </section>
-        <section class="callable-workflow-section">
+        <section class="metadata-resource-section subprocess-workflow-section">
           <header>
-            <div><span class="metadata-port-mark remote-tool">RT</span><h3>Remote Tools</h3></div>
-            <button id="addRemoteToolButton" type="button" title="注册 Remote Tool" aria-label="注册 Remote Tool">+</button>
+            <div><span class="metadata-port-mark workflow">WF</span><h3>子进程 Workflow 文件</h3></div>
+            <button id="addSubprocessWorkflowFileButton" type="button" title="添加子进程 Workflow 文件" aria-label="添加子进程 Workflow 文件">+</button>
           </header>
-          <div id="remoteToolList" class="callable-workflow-list"></div>
+          <p class="section-help">填写工作区中的完整文件名（含扩展名），例如 <code>child.flow</code>。调用时拉起子进程，等待退出后继续。</p>
+          <div id="subprocessWorkflowFileList" class="metadata-resource-list"></div>
+        </section>
+        <section class="metadata-resource-section">
+          <header>
+            <div><span class="metadata-port-mark remote-tool">T</span><h3>Tools</h3></div>
+            <button id="addRemoteToolButton" type="button" title="注册 Tool" aria-label="注册 Tool">+</button>
+          </header>
+          <div id="remoteToolList" class="metadata-resource-list"></div>
         </section>
       </div>
       <footer><span id="resourceState">正在读取数据库资源</span><button id="applyMetadataButton" class="toolbar-button primary" value="default">应用</button></footer>
@@ -278,47 +305,53 @@
   <template id="metadataPortTemplate">
     <div class="metadata-port-row">
       <input data-metadata-port-name maxlength="80" required placeholder="port_name" aria-label="端口名称">
-      <select data-metadata-port-type aria-label="端口类型"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select>
+      <select data-metadata-port-type aria-label="端口类型"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select>
       <button type="button" data-remove-metadata-port title="删除接口" aria-label="删除接口">×</button>
     </div>
   </template>
 
-  <template id="callableWorkflowTemplate">
-    <article class="callable-workflow-row">
+  <template id="subprocessWorkflowFileTemplate">
+    <article class="metadata-resource-row">
       <header>
-        <label>Workflow 名称<input data-callable-workflow-name maxlength="120" required placeholder="workflow_name"></label>
-        <button type="button" data-remove-callable-workflow title="删除可调用 Workflow" aria-label="删除可调用 Workflow">×</button>
+        <label>文件名<input data-subprocess-workflow-file-name maxlength="200" required placeholder="child.flow"></label>
+        <button type="button" data-remove-subprocess-workflow-file title="删除子进程 Workflow 文件" aria-label="删除子进程 Workflow 文件">×</button>
       </header>
-      <div class="callable-contract-columns">
+      <div class="interface-contract-columns">
         <section>
-          <div class="callable-contract-heading"><strong>输入契约</strong><button type="button" data-add-callable-port="input_ports" title="添加输入接口">+</button></div>
-          <div class="metadata-port-list" data-callable-port-list="input_ports"></div>
+          <div class="interface-contract-heading"><strong>输入契约</strong><button type="button" data-add-interface-port="input_ports" title="添加输入接口">+</button></div>
+          <div class="metadata-port-list" data-interface-port-list="input_ports"></div>
         </section>
         <section>
-          <div class="callable-contract-heading"><strong>输出契约</strong><button type="button" data-add-callable-port="output_ports" title="添加输出接口">+</button></div>
-          <div class="metadata-port-list" data-callable-port-list="output_ports"></div>
+          <div class="interface-contract-heading"><strong>输出契约</strong><button type="button" data-add-interface-port="output_ports" title="添加输出接口">+</button></div>
+          <div class="metadata-port-list" data-interface-port-list="output_ports"></div>
         </section>
       </div>
     </article>
   </template>
 
   <template id="remoteToolMetadataTemplate">
-    <article class="callable-workflow-row remote-tool-metadata-row">
+    <article class="metadata-resource-row remote-tool-metadata-row">
       <header>
-        <label class="remote-tool-name-field">Remote Tool 名称<input data-remote-tool-name maxlength="128" required placeholder="输入工具名称以搜索"><div data-remote-tool-suggestions class="remote-tool-suggestions" role="listbox" hidden></div></label>
+        <div class="tool-metadata-picker">
+          <fieldset class="tool-kind-switch"><legend>执行位置</legend>
+            <label><input type="radio" data-tool-kind value="local"><span>Local</span></label>
+            <label><input type="radio" data-tool-kind value="remote"><span>Remote</span></label>
+          </fieldset>
+          <label class="remote-tool-name-field">Tool<input data-remote-tool-name maxlength="128" required autocomplete="off" placeholder="Search tools"><div data-remote-tool-suggestions class="remote-tool-suggestions" role="listbox" hidden></div></label>
+        </div>
         <div class="metadata-row-actions">
-          <button type="button" data-fill-remote-tool title="从 Tool Server 填充" aria-label="从 Tool Server 填充">↻</button>
-          <button type="button" data-remove-remote-tool title="删除 Remote Tool" aria-label="删除 Remote Tool">×</button>
+          <button type="button" data-fill-remote-tool title="从工具目录填充" aria-label="从工具目录填充">↻</button>
+          <button type="button" data-remove-remote-tool title="删除 Tool" aria-label="删除 Tool">×</button>
         </div>
       </header>
-      <div class="callable-contract-columns">
+      <div class="interface-contract-columns">
         <section>
-          <div class="callable-contract-heading"><strong>输入契约</strong><button type="button" data-add-callable-port="input_ports" title="添加输入接口">+</button></div>
-          <div class="metadata-port-list" data-callable-port-list="input_ports"></div>
+          <div class="interface-contract-heading"><strong>输入契约</strong><button type="button" data-add-interface-port="input_ports" title="添加输入接口">+</button></div>
+          <div class="metadata-port-list" data-interface-port-list="input_ports"></div>
         </section>
         <section>
-          <div class="callable-contract-heading"><strong>输出契约</strong><button type="button" data-add-callable-port="output_ports" title="添加输出接口">+</button></div>
-          <div class="metadata-port-list" data-callable-port-list="output_ports"></div>
+          <div class="interface-contract-heading"><strong>输出契约</strong><button type="button" data-add-interface-port="output_ports" title="添加输出接口">+</button></div>
+          <div class="metadata-port-list" data-interface-port-list="output_ports"></div>
         </section>
       </div>
     </article>
@@ -356,6 +389,10 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
+  <template id="function_inputInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+  <template id="function_outputInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+  <template id="function_callInspectorTemplate"><div data-interface-contract></div><section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label><label>调用函数<select data-function-target></select></label></section><button class="delete-node-button" type="button" data-delete-node>删除节点</button></template>
+
   <template id="routerInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
@@ -379,7 +416,7 @@
       <label class="checkbox-field"><input type="checkbox" data-tool-calls><span><strong>Tool Calls</strong><small>启用 OpenAI 格式的工具调用输出</small></span></label>
     </section>
     <section class="inspector-section" data-llm-tools>
-      <div class="section-label"><strong>挂载 Tools</strong><span data-tool-count>0 个</span></div>
+      <div class="section-label"><strong>默认 Tools</strong><span data-tool-count>0 个</span></div>
       <div class="tool-options"><div class="empty-options">加载 Tool 注册表中</div></div>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
@@ -397,27 +434,29 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="split_eventInspectorTemplate">
+  <template id="wait_terminal_eventInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
+      <p class="node-help">节点完成后挂起当前工作流进程；向关联终端发送一条消息后，从下一节点继续。使用“读取终端输入”获取用户输入，再由下游节点判断分支。子进程拥有独立终端，也支持等待。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="publish_eventInspectorTemplate">
+  <template id="read_terminal_inputInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
+      <p class="node-help">读取当前进程终端中全部已保存的用户输入正文，按时间从早到晚输出到 <code>list-out: list-content</code>。不包含助手输出，不删除历史；没有输入时返回空列表。可接在等待终端事件之后读取，再由下游节点判断分支。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="construct_eventInspectorTemplate">
+  <template id="output_to_terminalInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>事件类型<input data-field="event_type" maxlength="120" placeholder="event_type"></label>
+      <p class="node-help"><code>content-in</code> 写入当前进程终端后继续执行。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -460,8 +499,20 @@
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="struct:">Struct…</option></select></label>
+      <label>列表数据类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="struct:">Struct…</option></select></label>
       <label>初始值数量<input data-field="initial_value_count" type="number" min="0" max="20" step="1"></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="while_popInspectorTemplate">
+    <div data-interface-contract data-contract-status="每轮修改 Context 列表，空列表结束循环"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Context 列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>弹出位置<select data-field="position"><option value="end">末尾（默认）</option><option value="start">最前</option></select></label>
+      <label>Context ID 来源<select data-field="context_id_source"><option value="port">通过端口输入</option><option value="fixed">固定文本</option></select></label>
+      <label data-context-id-field>Context ID<input data-field="context_id" maxlength="200" placeholder="输入 Context ID"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -470,7 +521,42 @@
     <div data-interface-contract data-contract-status="受控循环"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="struct:">Struct…</option></select></label>
+      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="struct:">Struct…</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="list_getInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>输入列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>下标输入方式<select data-field="index_source"><option value="port">端口输入</option><option value="fixed">固定输入</option></select></label>
+      <label data-index-field hidden>下标<input data-field="index" type="number" step="1" required></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="list_lengthInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>输入列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="list_sliceInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>输入列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>起点 start输入方式<select data-field="start_source"><option value="port">端口输入</option><option value="fixed">固定输入</option></select></label>
+      <label data-start-field hidden>起点 start<input data-field="start" type="number" step="1" placeholder="留空使用默认值"></label>
+      <label>终点 stop输入方式<select data-field="stop_source"><option value="port">端口输入</option><option value="fixed">固定输入</option></select></label>
+      <label data-stop-field hidden>终点 stop<input data-field="stop" type="number" step="1" placeholder="留空使用默认值"></label>
+      <label>步长 step输入方式<select data-field="step_source"><option value="port">端口输入</option><option value="fixed">固定输入</option></select></label>
+      <label data-step-field hidden>步长 step<input data-field="step" type="number" step="1" placeholder="留空使用默认值"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -479,43 +565,27 @@
     <div data-interface-contract data-contract-status="输出新列表"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="struct:">Struct…</option></select></label>
+      <label>列表元素类型<select data-field="item_type"><option value="content">content</option><option value="message">message</option><option value="struct:">Struct…</option></select></label>
       <label>插入位置<select data-field="position"><option value="start">最前面</option><option value="end">最后面</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="historyInspectorTemplate">
-    <div data-interface-contract data-contract-status="按时间倒序"></div>
-    <section class="inspector-section form-section">
-      <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>召回数量<input data-field="limit" type="number" min="1" max="1000" step="1"></label>
-    </section>
-    <section class="inspector-section">
-      <div class="section-label"><strong>事件类型</strong><span>可多选</span></div>
-      <div class="tool-options">
-        <label class="checkbox-field"><input data-history-event-type type="checkbox" value="terminal"><span><strong>terminal</strong></span></label>
-        <label class="checkbox-field"><input data-history-event-type type="checkbox" value="response"><span><strong>response</strong></span></label>
-      </div>
-    </section>
-    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
-  </template>
-
   <template id="context_createInspectorTemplate">
-    <div data-interface-contract data-contract-status="Workflow 内局部状态"></div>
+    <div data-interface-contract data-contract-status="当前调用创建，子进程可访问"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
       <label>Context ID（可选）<input data-field="context_id" maxlength="200" placeholder="留空则自动生成"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
   <template id="context_readInspectorTemplate">
-    <div data-interface-contract data-contract-status="仅限当前 Workflow 执行"></div>
+    <div data-interface-contract data-contract-status="可读取当前及祖先调用的 Context"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
       <label>Context ID 来源<select data-field="context_id_source"><option value="port">通过端口输入</option><option value="fixed">固定文本</option></select></label>
       <label data-context-id-field>Context ID<input data-field="context_id" maxlength="200" placeholder="输入 Context ID"></label>
     </section>
@@ -523,10 +593,10 @@
   </template>
 
   <template id="context_writeInspectorTemplate">
-    <div data-interface-contract data-contract-status="完整覆盖"></div>
+    <div data-interface-contract data-contract-status="可修改当前及祖先调用的 Context"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
       <label>Context ID 来源<select data-field="context_id_source"><option value="port">通过端口输入</option><option value="fixed">固定文本</option></select></label>
       <label data-context-id-field>Context ID<input data-field="context_id" maxlength="200" placeholder="输入 Context ID"></label>
     </section>
@@ -537,7 +607,7 @@
     <div data-interface-contract data-contract-status="全局共享，永久保存"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -546,7 +616,7 @@
     <div data-interface-contract data-contract-status="按 Session ID 读取"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="map-content">map-content</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -555,7 +625,7 @@
     <div data-interface-contract data-contract-status="完整覆盖，永久保存"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select></label>
+      <label>Value 类型<select data-field="value_type"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -564,6 +634,20 @@
     <div data-interface-contract data-contract-status="按内容项顺序执行"></div>
     <section class="inspector-section form-section"><label>节点名称<input data-field="name" maxlength="30"></label></section>
     <section class="inspector-section"><div class="section-label"><strong>内容项</strong><span>可添加多个</span></div><div data-append-items></div><button class="add-branch-button" type="button" data-add-append>+ 添加内容项</button></section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="toolInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>Tool<select data-tool-reference></select></label>
+      <label>执行位置<strong data-tool-kind></strong></label>
+      <p class="section-help">同步执行，等待工具返回结果后继续。</p>
+      <div class="form-section" data-tool-remote-options>
+        <label>等待时间 (ms)<input data-tool-timeout type="number" min="1" max="10000" step="1"></label>
+      </div>
+    </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
@@ -592,7 +676,7 @@
     <div data-interface-contract data-contract-status="发布后不等待"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>Remote Async Tool
+      <label>Remote Tool
         <select data-field="tool"></select>
       </label>
       <label>任务超时 (ms)<input data-field="timeout_ms" type="number" min="1" max="3600000" step="1"></label>
@@ -614,15 +698,24 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="workflowInspectorTemplate">
-    <div data-interface-contract data-contract-title="Workflow 调用" data-contract-status="只读契约"></div>
+  <template id="json_toolInspectorTemplate">
+    <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>目标 Workflow<input data-workflow-name readonly></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=30"></script>
+  <template id="spawn_and_wait_subprocessInspectorTemplate">
+    <div data-interface-contract data-contract-title="拉起并等待子进程" data-contract-status="只读契约"></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
+      <label>子进程 Workflow 文件<input data-workflow-file readonly></label>
+      <p class="node-help">按精确工作区文件名拉起独立子进程和终端。当前进程等待子进程退出，接收输出后继续；子进程失败或被终止时向当前进程传播错误。</p>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <script type="module" src="/workflow.js?v=36"></script>
 </body>
 </html>

@@ -11,8 +11,9 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'construct_list') bindConstructList(node, context);
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
-  if (node.type === 'history') bindHistory(node, context);
-  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) bindContext(node, context);
+  if (node.type === 'list_get') bindListGet(node, context);
+  if (node.type === 'list_slice') bindListSlice(node, context);
+  if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) bindContext(node, context);
 }
 
 
@@ -21,7 +22,7 @@ function localStructs() { return state.metadata?.structs || []; }
 function addTypeOptions(select, { includeBuiltin = false, includeStructLists = false } = {}) {
   const existing = new Set([...select.options].map((option) => option.value));
   if (includeBuiltin) {
-    for (const type of ['content', 'message', 'event', 'map-content', 'list-content', 'list-message', 'list-event']) {
+    for (const type of ['content', 'number', 'message', 'map-content', 'list-content', 'list-message']) {
       if (!existing.has(type)) select.add(new Option(type, type));
     }
   }
@@ -292,29 +293,6 @@ function bindForeach(node, context) {
   });
 }
 
-function bindHistory(node, context) {
-  const eventTypeFields = context.elements.inspectorContent.querySelectorAll('[data-history-event-type]');
-  const limitField = context.elements.inspectorContent.querySelector('[data-field="limit"]');
-  for (const field of eventTypeFields) {
-    field.checked = node.event_types.includes(field.value);
-    field.addEventListener('change', () => {
-      const selected = [...eventTypeFields].filter((option) => option.checked).map((option) => option.value);
-      if (!selected.length) {
-        field.checked = true;
-        return;
-      }
-      node.event_types = selected;
-      context.markChanged();
-    });
-  }
-  limitField.value = node.limit;
-  limitField.addEventListener('change', () => {
-    node.limit = Math.min(1000, Math.max(1, Number.parseInt(limitField.value, 10) || 1));
-    limitField.value = node.limit;
-    context.markChanged();
-  });
-}
-
 function bindListAppend(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="item_type"]');
   addTypeOptions(typeField);
@@ -325,9 +303,77 @@ function bindListAppend(node, context) {
   });
 }
 
+function bindListGet(node, context) {
+  const content = context.elements.inspectorContent;
+  const sourceField = content.querySelector('[data-field="index_source"]');
+  const indexField = content.querySelector('[data-field="index"]');
+  const indexContainer = content.querySelector('[data-index-field]');
+  sourceField.value = node.index_source === 'fixed' ? 'fixed' : 'port';
+  indexField.value = node.index ?? 0;
+  indexContainer.hidden = sourceField.value !== 'fixed';
+  sourceField.addEventListener('change', () => {
+    node.index_source = sourceField.value;
+    if (node.index_source === 'fixed' && node.index === undefined) node.index = 0;
+    indexContainer.hidden = node.index_source !== 'fixed';
+    commitStructureChange(node, context);
+  });
+  indexField.addEventListener('input', () => {
+    const index = indexField.value.trim() === '' ? NaN : Number(indexField.value);
+    indexField.setCustomValidity(Number.isInteger(index) ? '' : '请输入整数');
+    if (Number.isInteger(index)) {
+      node.index = index;
+      commitStructureChange(node, context, false);
+    }
+  });
+  indexField.addEventListener('change', () => {
+    if (!indexField.checkValidity()) {
+      indexField.reportValidity();
+      indexField.value = node.index ?? 0;
+      indexField.setCustomValidity('');
+    }
+  });
+}
+
+function bindListSlice(node, context) {
+  for (const name of ['start', 'stop', 'step']) {
+    const sourceField = context.elements.inspectorContent.querySelector(`[data-field="${name}_source"]`);
+    const valueField = context.elements.inspectorContent.querySelector(`[data-field="${name}"]`);
+    const container = context.elements.inspectorContent.querySelector(`[data-${name}-field]`);
+    sourceField.value = node[`${name}_source`] || 'port';
+    valueField.value = node[name] ?? '';
+    container.hidden = sourceField.value !== 'fixed';
+    sourceField.addEventListener('change', () => {
+      node[`${name}_source`] = sourceField.value;
+      container.hidden = sourceField.value !== 'fixed';
+      commitStructureChange(node, context);
+    });
+    valueField.addEventListener('input', () => {
+      const value = valueField.value.trim() === '' ? null : Number(valueField.value);
+      const valid = !valueField.validity.badInput && (value === null || (Number.isInteger(value) && (name !== 'step' || value !== 0)));
+      valueField.setCustomValidity(valid ? '' : (name === 'step' ? '请输入非零整数，或留空使用默认值' : '请输入整数，或留空使用默认值'));
+      if (valid) {
+        node[name] = value;
+        commitStructureChange(node, context, false);
+      }
+    });
+    valueField.addEventListener('change', () => {
+      if (!valueField.checkValidity()) {
+        valueField.reportValidity();
+        valueField.value = node[name] ?? '';
+        valueField.setCustomValidity('');
+      }
+    });
+  }
+}
+
 function bindContext(node, context) {
   const typeField = context.elements.inspectorContent.querySelector('[data-field="value_type"]');
-  if (node.type.startsWith('context_')) addTypeOptions(typeField, { includeStructLists: true });
+  if (node.type.startsWith('context_') || ['while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) addTypeOptions(typeField, { includeStructLists: true });
+  if (['while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) {
+    for (const option of [...typeField.options]) {
+      if (!option.value.startsWith('list-')) option.remove();
+    }
+  }
   typeField.value = node.value_type;
   typeField.addEventListener('change', () => {
     node.value_type = typeField.value;
@@ -341,7 +387,7 @@ function bindContext(node, context) {
       commitStructureChange(node, context, false);
     });
   }
-  if (node.type === 'context_read' || node.type === 'context_write') {
+  if (['context_read', 'context_write', 'while_pop'].includes(node.type)) {
     const sourceField = context.elements.inspectorContent.querySelector('[data-field="context_id_source"]');
     const idField = context.elements.inspectorContent.querySelector('[data-field="context_id"]');
     const idContainer = context.elements.inspectorContent.querySelector('[data-context-id-field]');
@@ -365,7 +411,7 @@ function bindDeserializeJson(node, context) {
   node.outputs.forEach((output, index) => {
     const row = document.createElement('div');
     row.className = 'json-output-row';
-    row.innerHTML = '<span class="route-index"></span><input data-output-key maxlength="80" aria-label="JSON 键"><select data-output-type aria-label="输出类型"><option value="content">content</option><option value="message">message</option><option value="event">event</option><option value="list-content">list-content</option><option value="list-message">list-message</option><option value="list-event">list-event</option></select><button type="button" class="branch-delete" title="删除输出">×</button>';
+    row.innerHTML = '<span class="route-index"></span><input data-output-key maxlength="80" aria-label="JSON 键"><select data-output-type aria-label="输出类型"><option value="content">content</option><option value="number">number</option><option value="message">message</option><option value="list-content">list-content</option><option value="list-message">list-message</option></select><button type="button" class="branch-delete" title="删除输出">×</button>';
     row.querySelector('.route-index').textContent = String(index + 1).padStart(2, '0');
     const keyField = row.querySelector('[data-output-key]');
     const typeField = row.querySelector('[data-output-type]');

@@ -23,3 +23,5 @@ agent/downloaded/
 .vscode/
 .DS_Store
 Thumbs.db
+paper/
+tmp/

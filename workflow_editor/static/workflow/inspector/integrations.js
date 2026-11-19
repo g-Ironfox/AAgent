@@ -1,21 +1,61 @@
+import { applyToolDeclaration } from '../domain/tool-contract.js';
 import { reconcileConnections } from '../domain/connection-rules.js';
 import { nodeById, state } from '../domain/serialization.js';
 
 export function createIntegrationInspector(context) {
   let modelConfigs = [];
   let localToolSchemas = [];
+  let remoteToolSchemas = [];
   let remoteToolReferences = [];
+  let metadataToolReferences = [];
 
   function prepare(node) {
     if (node.type === 'llm') renderModelOptions(node);
+    if (node.type === 'tool') renderTool(node);
     if (node.type === 'local_tool') renderLocalToolSelect(node);
     if (['remote_sync_tool', 'remote_async_tool'].includes(node.type)) renderRemoteToolFields(node);
-    if (node.type === 'workflow') context.elements.inspectorContent.querySelector('[data-workflow-name]').value = node.workflow_name;
+    if (node.type === "spawn_and_wait_subprocess") context.elements.inspectorContent.querySelector('[data-workflow-file]').value = node.workflow_file;
   }
 
   function bind(node) {
     if (node.type === 'llm') bindLlm(node);
+    if (node.type === 'tool') bindTool(node);
     if (['remote_sync_tool', 'remote_async_tool'].includes(node.type)) bindRemoteTool(node);
+  }
+
+  function renderTool(node) {
+    const mount = context.elements.inspectorContent;
+    const select = mount.querySelector('[data-tool-reference]');
+    const tools = state.metadata.tools || [];
+    select.replaceChildren(new Option('选择 metadata 中的 Tool', ''), ...tools.map((tool) => new Option(tool.name + ' (' + tool.kind + ')', tool.name)));
+    select.value = node.tool;
+    const declaration = tools.find((tool) => tool.name === node.tool);
+    mount.querySelector('[data-tool-kind]').textContent = declaration?.kind || '未选择';
+    const remote = declaration?.kind === 'remote';
+    mount.querySelector('[data-tool-remote-options]').hidden = !remote;
+    const timeout = mount.querySelector('[data-tool-timeout]');
+    timeout.value = node.timeout_ms || 10000;
+    timeout.max = 10000;
+  }
+
+  function bindTool(node) {
+    const mount = context.elements.inspectorContent;
+    const refresh = () => {
+      reconcileConnections(state);
+      context.markChanged();
+      context.editor.renderNodes();
+      context.renderInspector();
+    };
+    mount.querySelector('[data-tool-reference]').addEventListener('change', (event) => {
+      const tool = state.metadata.tools.find((item) => item.name === event.target.value);
+      if (tool) applyToolDeclaration(node, tool);
+      else { node.tool = ''; node.parameters = []; node.outputs = []; }
+      refresh();
+    });
+    mount.querySelector('[data-tool-timeout]').addEventListener('input', (event) => {
+      node.timeout_ms = Number(event.target.value);
+      context.markChanged();
+    });
   }
 
   function renderModelOptions(node) {
@@ -83,16 +123,17 @@ export function createIntegrationInspector(context) {
       }));
     }
     toolSelect.replaceChildren(...options);
+    toolSelect.value = node.tool;
     toolSelect.disabled = remoteToolReferences.length === 0;
   }
 
   function renderCallback(node) {
     const enabled = context.elements.inspectorContent.querySelector('[data-callback-enabled]');
     const options = context.elements.inspectorContent.querySelector('[data-callback-options]');
-    const callback = node.callback;
+    const callback = node.callback ?? null;
     enabled.checked = callback !== null;
     options.hidden = callback === null;
-    options.querySelector('[data-callback-queue]').value = callback?.queue || 'main_agent_queue';
+    options.querySelector('[data-callback-queue]').value = callback?.queue || 'tool:callback:events';
     options.querySelector('[data-callback-event-type]').value = callback?.event_type || 'async_result';
     for (const input of options.querySelectorAll('[data-callback-status]')) {
       input.checked = callback?.on?.includes(input.value) ?? ['completed', 'failed'].includes(input.value);
@@ -114,6 +155,7 @@ export function createIntegrationInspector(context) {
     const timeoutInput = context.elements.inspectorContent.querySelector('[data-field="timeout_ms"]');
     timeoutInput.addEventListener('input', () => {
       node.timeout_ms = Number(timeoutInput.value);
+      context.markChanged();
     });
     if (node.type === 'remote_async_tool') bindCallback(node);
   }
@@ -143,26 +185,28 @@ export function createIntegrationInspector(context) {
   function bindTools(node) {
     const count = context.elements.inspectorContent.querySelector('[data-tool-count]');
     const container = context.elements.inspectorContent.querySelector('.tool-options');
-    const availableNames = new Set(localToolSchemas.map((tool) => tool.name));
+    const availableNames = new Set(metadataToolReferences.map((tool) => tool.name));
     const availableTools = node.tools.filter((toolName) => availableNames.has(toolName));
     if (availableTools.length !== node.tools.length) {
       node.tools = availableTools;
       context.markChanged();
     }
-    const options = localToolSchemas.map((tool) => {
+    const options = metadataToolReferences.map((tool) => {
       const label = document.createElement('label');
       label.innerHTML = '<input type="checkbox" data-tool><span><strong></strong><small></small></span>';
       label.querySelector('input').value = tool.name;
-      label.querySelector('strong').textContent = tool.name;
+      label.querySelector('strong').textContent = `${tool.name} (${tool.kind})`;
       label.querySelector('small').textContent = tool.description || '无描述';
       return label;
     });
     if (!options.length) options.push(Object.assign(document.createElement('div'), { className: 'empty-options', textContent: '没有已注册的 Tool' }));
     container.replaceChildren(...options);
     const inputs = context.elements.inspectorContent.querySelectorAll('[data-tool]');
-    const syncCount = () => { count.textContent = `${node.tools.length} 个`; };
+    const selectedTools = () => node.tools.length ? node.tools : metadataToolReferences.map((tool) => tool.name);
+    const syncCount = () => { count.textContent = `${selectedTools().length} 个`; };
+    count.title = '未连接可用 Tools 输入端口时使用此默认列表';
     for (const input of inputs) {
-      input.checked = node.tools.includes(input.value);
+      input.checked = selectedTools().includes(input.value);
       input.addEventListener('change', () => {
         node.tools = Array.from(inputs).filter((item) => item.checked).map((item) => item.value);
         syncCount();
@@ -205,13 +249,37 @@ export function createIntegrationInspector(context) {
 
   function setLocalTools(tools) {
     localToolSchemas = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
+    refreshMetadataToolDescriptions();
     if (['llm', 'local_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
   }
 
-  function setRemoteToolReferences(tools) {
-    remoteToolReferences = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
-    if (['remote_sync_tool', 'remote_async_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
+  function refreshMetadataToolDescriptions() {
+    const schemas = new Map([...localToolSchemas, ...remoteToolSchemas].map((tool) => [tool.name, tool]));
+    metadataToolReferences = metadataToolReferences.map((tool) => ({
+      ...tool,
+      description: schemas.get(tool.name)?.description || '',
+    }));
   }
 
-  return { bind, prepare, setModels, setLocalTools, setRemoteToolReferences };
+  function setMetadataTools(tools) {
+    metadataToolReferences = tools
+      .filter((tool) => typeof tool.name === 'string' && tool.name)
+      .map((tool) => ({ ...tool }));
+    refreshMetadataToolDescriptions();
+    if (nodeById(context.editor.editorState.selectedId)?.type === 'llm') context.renderInspector();
+  }
+
+  function setRemoteToolReferences(tools) {
+    remoteToolReferences = tools.filter((tool) => tool.kind === 'remote' && typeof tool.name === 'string' && tool.name);
+    if (nodeById(context.editor.editorState.selectedId)?.type === 'llm') refreshMetadataToolDescriptions();
+    if (['tool', 'remote_sync_tool', 'remote_async_tool'].includes(nodeById(context.editor.editorState.selectedId)?.type)) context.renderInspector();
+  }
+
+  function setRemoteToolSchemas(tools) {
+    remoteToolSchemas = tools.filter((tool) => typeof tool.name === 'string' && tool.name);
+    refreshMetadataToolDescriptions();
+    if (nodeById(context.editor.editorState.selectedId)?.type === 'llm') context.renderInspector();
+  }
+
+  return { bind, prepare, setModels, setLocalTools, setMetadataTools, setRemoteToolReferences, setRemoteToolSchemas };
 }
