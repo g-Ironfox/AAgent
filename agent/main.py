@@ -10,6 +10,7 @@ from process_creation import initialize_process_pair
 from pymongo import ASCENDING, MongoClient
 
 from redis_client import get_connection, get_event_connection
+from scheduler_projection import queue_public_process_updates, rebuild_public_scheduler
 from process_repository import (
     BLOCKED_PROCESSES, EXTERNAL_EVENTS, PROCESSTABLE, READY_PROCESSES,
     TERMINAL_INDEX, record_process_event,
@@ -161,7 +162,10 @@ def write_process(process: dict) -> bool:
         raw = json.dumps(process, ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError) as error:
         raise ValueError(f'process data is not JSON serializable: {process_id}') from error
-    get_connection().hset(PROCESSTABLE, process_id, raw)
+    with get_connection().pipeline(transaction=True) as pipe:
+        pipe.hset(PROCESSTABLE, process_id, raw)
+        queue_public_process_updates(pipe, {process_id: process})
+        pipe.execute()
     return True
 
 
@@ -327,6 +331,8 @@ def _sync_process_observability(process: dict) -> None:
             'workflow_name': process.get('workflow_name'),
             'nodes': node_trace,
             'active_duration_ms': process.get('active_duration_ms', 0),
+            'observed_at': datetime.now(timezone.utc),
+            'current_node_id': process.get('current_node_id'),
         }
         if process.get('finished_at'):
             finished_at = _parse_start_time(process['finished_at'])
@@ -612,6 +618,7 @@ def Scheduler(timeout: int = 0) -> None:
 def main() -> None:
     from tools import workspace as _workspace_tools  # noqa: F401
 
+    rebuild_public_scheduler(get_connection(), PROCESSTABLE, READY_PROCESSES)
     logger.info('Process scheduler started')
     Scheduler()
 

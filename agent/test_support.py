@@ -54,6 +54,13 @@ class MemoryRedis:
         self._changed(key)
         return len(self.lists[key])
 
+    def lrange(self, key, start, stop):
+        values = self.lists.get(key, [])
+        return list(values[start:] if stop == -1 else values[start:stop + 1])
+
+    def smembers(self, key):
+        return set(self.sets.get(key, set()))
+
     def lrem(self, key, count, value):
         self.lists[key] = [item for item in self.lists.get(key, []) if item != value]
         self._changed(key)
@@ -96,6 +103,7 @@ class MemoryRedis:
     def delete(self, *keys):
         for key in keys:
             self.hashes.pop(key, None)
+            self.lists.pop(key, None)
             self.sets.pop(key, None)
             self.expirations.pop(key, None)
             self._changed(key)

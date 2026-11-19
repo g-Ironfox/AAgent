@@ -17,7 +17,7 @@ const statusLabels = {
   ready: '就绪', running: '运行中', blocked: '已挂起', waiting_for_input: '等待输入',
   completed: '已完成', failed: '失败', terminated: '已终止', waiting: '等待子进程',
 };
-const eventLabels = { created: '创建', started: '开始执行', blocked: '挂起', woken: '唤醒', completed: '完成', failed: '失败', terminated: '终止' };
+const eventLabels = { resumed: '再次调度', yielded: '返回就绪', created: '创建', started: '开始执行', blocked: '挂起', woken: '唤醒', completed: '完成', failed: '失败', terminated: '终止' };
 function waitDescription(waitFor) {
   if (!waitFor) return '';
   const reason = { terminal_message: '等待终端消息', process_exit: '等待子进程退出' }[waitFor.kind] || waitFor.kind || '等待事件';

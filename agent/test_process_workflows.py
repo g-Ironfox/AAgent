@@ -293,10 +293,25 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(completed["output"], {"text": "hello"})
         self.assertEqual([event["event"] for event in completed["events"]],
-                         ["created", "started", "blocked", "woken", "completed"])
+                         ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "completed"])
         self.assertTrue(all(event["timestamp"] for event in completed["events"]))
         self.assertEqual(self.latest_log(root["terminal_process_id"])["status"], "terminated")
         self.assertEqual(self.latest_log(root["terminal_process_id"])["events"][-1]["event"], "terminated")
+
+    def test_scheduling_events_capture_each_dispatch_and_return_to_ready(self):
+        root = self.start(document("Root"))
+        main.schedule_once(timeout=1)
+        ready = self.latest_log(root["process_id"])
+        self.assertEqual(ready["status"], "ready")
+        self.assertEqual([event["event"] for event in ready["events"]],
+                         ["created", "started", "yielded"])
+        self.assertTrue(ready["events"][1]["dispatch"])
+        self.assertIsNotNone(ready["observed_at"].tzinfo)
+        main.schedule_once(timeout=1)
+        completed = self.latest_log(root["process_id"])
+        self.assertEqual([event["event"] for event in completed["events"]],
+                         ["created", "started", "yielded", "resumed", "completed"])
+        self.assertTrue(completed["events"][-2]["dispatch"])
 
     def test_child_exit_publishes_parent_wakeup_before_next_execution(self):
         self.documents = {"Child.flow": document("Child", wait=True)}
@@ -324,7 +339,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         saved = main.read_process(root["process_id"])
         self.assertEqual(saved["status"], "completed")
         self.assertEqual([item["event"] for item in saved["events"]],
-                         ["created", "started", "blocked", "woken", "completed"])
+                         ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "completed"])
 
     def test_commit_retry_does_not_duplicate_suspend_events(self):
         root = self.start(document("Root", wait=True))

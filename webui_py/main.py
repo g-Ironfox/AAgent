@@ -18,6 +18,7 @@ from terminal import create_terminal_router
 from processes import create_processes_router
 from workflow_logs import create_workflow_logs_router
 from process_logs import create_process_logs_router
+from scheduler import create_scheduler_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("aagent.webui")
@@ -100,6 +101,16 @@ def create_terminal_indexes():
         logger.error("failed to create terminal indexes: %s", error)
 
 
+@app.on_event("startup")
+def create_scheduler_indexes():
+    try:
+        process_logs.create_index([("start_time", -1)], name="process_start_time")
+        process_logs.create_index([("status", 1), ("start_time", -1)], name="process_status_start_time")
+        process_logs.create_index([("finished_at", 1)], name="process_finished_at")
+    except PyMongoError as error:
+        logger.error("failed to create scheduler indexes: %s", error)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -160,6 +171,7 @@ app.include_router(create_terminal_router(redis_client, terminal_messages))
 app.include_router(create_processes_router(redis_client, file_store))
 app.include_router(create_workflow_logs_router(workflow_logs))
 app.include_router(create_process_logs_router(process_logs))
+app.include_router(create_scheduler_router(process_logs, redis_client))
 app.include_router(create_files_router(file_store))
 
 static_directory = Path(__file__).parent / "static"
@@ -183,6 +195,11 @@ def workspace_replay_page():
 @app.get("/logs", include_in_schema=False)
 def workflow_logs_page():
     return FileResponse(static_directory / "workflow-logs.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/scheduler", include_in_schema=False)
+def scheduler_page():
+    return FileResponse(static_directory / "scheduler.html", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/workspace.html", include_in_schema=False)

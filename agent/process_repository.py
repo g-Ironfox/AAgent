@@ -7,6 +7,7 @@ from uuid import uuid4
 import redis
 
 from redis_client import REDIS_KERNEL_DB, REDIS_PUBLIC_DB
+from scheduler_projection import queue_public_process_updates
 
 PROCESSTABLE = os.getenv("ProcessTable", "processtable")
 READY_PROCESSES = os.getenv("ReadyProcesses", "ready_processes")
@@ -188,7 +189,9 @@ def claim_process(client, process_id: str) -> tuple[dict, bool]:
                 process["status"] = "running"
                 process["execution_id"] = uuid4().hex
                 if not any(item["event"] == "started" for item in process.get("events", [])):
-                    record_process_event(process, "started")
+                    record_process_event(process, "started", dispatch=True)
+                else:
+                    record_process_event(process, "resumed", dispatch=True)
                 existing = _read_terminal_scope(pipe, process)
                 pipe.multi()
                 pipe.hset(PROCESSTABLE, process_id, _encode_process(process))
@@ -218,7 +221,9 @@ def commit_process(client, process: dict, child: dict | None = None,
                         or saved.get("execution_id") != process.get("execution_id")):
                     return saved
                 candidate = copy.deepcopy(process)
-                if candidate.get("status") == "blocked":
+                if candidate.get("status") == "ready":
+                    record_process_event(candidate, "yielded")
+                elif candidate.get("status") == "blocked":
                     record_process_event(candidate, "blocked", wait_for=candidate.get("wait_for"))
                 elif candidate.get("status") in TERMINAL_STATUSES:
                     record_process_event(candidate, candidate["status"], error=candidate.get("error"))
