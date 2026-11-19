@@ -58,7 +58,6 @@ class WorkflowListLengthTest(unittest.TestCase):
     def test_all_supported_list_types_execute_and_preserve_the_input(self):
         samples = {
             "list-content": ["first", "", "first"],
-            "list-message": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}],
             "list-struct:task": [{"name": "one"}, {"name": "two"}],
         }
         for value_type, values in samples.items():
@@ -111,7 +110,7 @@ class WorkflowListLengthTest(unittest.TestCase):
             _validate_workflow_schema(workflow)
 
     def test_input_and_output_edge_types_must_match_the_port_contract(self):
-        for edge_id, edge_type in (("length-data", "list-message"), ("output-data", "content")):
+        for edge_id, edge_type in (("length-data", "message"), ("output-data", "content")):
             with self.subTest(edge_id=edge_id):
                 workflow = fixture()
                 next(edge for edge in workflow["connections"] if edge["id"] == edge_id)["type"] = edge_type
@@ -119,7 +118,7 @@ class WorkflowListLengthTest(unittest.TestCase):
                     validate_workflow(workflow)
 
     def test_data_ports_are_fixed_and_report_the_configured_list_type(self):
-        for value_type in ("list-content", "list-message", "list-struct:task"):
+        for value_type in ("list-content", "list-struct:task"):
             node = {"type": "list_length", "arguments": {"value_type": value_type}}
             self.assertEqual(data_ports_for_node(node, [], []), ({"list-in"}, {"length-out"}))
             self.assertEqual(data_type_for_port(node, "list-in"), value_type)

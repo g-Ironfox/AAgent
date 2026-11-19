@@ -377,28 +377,28 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
         || !output.key
         || output.key === 'control-out'
         || outputKeys.has(output.key)
-        || !['content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(output.type)
+        || !['content', 'number', 'map-content', 'list-content'].includes(output.type)
       ) return null;
       outputKeys.add(output.key);
       normalized.outputs.push({ key: output.key, type: output.type });
     }
   }
   if (['construct_list', 'list_append', 'foreach'].includes(node.type) && node.item_type !== undefined
-    && !['content', 'message'].includes(node.item_type)
+    && node.item_type !== 'content'
     && !(/^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')
       && structs.some((item) => item.id === node.item_type.slice('struct:'.length)))) return null;
   if (node.type === 'construct_list') {
-    normalized.item_type = (['content', 'message'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
+    normalized.item_type = (node.item_type === 'content' || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
     normalized.initial_value_count = Number.isInteger(node.initial_value_count) ? Math.min(20, Math.max(0, node.initial_value_count)) : 1;
     normalized.dataInputPorts = Array.from({ length: normalized.initial_value_count }, (_, index) => `${normalized.item_type}-in-${index}`);
   }
   if (node.type === 'list_append') {
-    normalized.item_type = (['content', 'message'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
+    normalized.item_type = (node.item_type === 'content' || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
     normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
   }
-  if (node.type === 'foreach') normalized.item_type = (['content', 'message'].includes(node.item_type) || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
+  if (node.type === 'foreach') normalized.item_type = (node.item_type === 'content' || /^struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.item_type || '')) ? node.item_type : 'content';
   if (['while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) {
-    if (!['list-content', 'list-message'].includes(node.value_type)
+    if (node.value_type !== 'list-content'
       && !(/^list-struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.slice('list-struct:'.length)))) return null;
     normalized.value_type = node.value_type;
@@ -424,7 +424,7 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
     }
   }
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write'].includes(node.type)) {
-    if (!['content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(node.value_type)
+    if (!['content', 'number', 'map-content', 'list-content'].includes(node.value_type)
       && !((node.type.startsWith('context_')) && /^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(node.value_type || '')
         && (structs || []).some((item) => item.id === node.value_type.replace(/^list-/, '').slice('struct:'.length)))) return null;
     normalized.value_type = node.value_type;
@@ -474,7 +474,7 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
           || !parameter.name
           || parameter.name === 'control-in'
           || parameterNames.has(parameter.name)
-          || !['content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(parameter.type)
+          || !['content', 'number', 'map-content', 'list-content'].includes(parameter.type)
         ) return null;
         parameterNames.add(parameter.name);
         normalized.parameters.push({ name: parameter.name, type: parameter.type });
@@ -493,7 +493,7 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
             || !output.name
             || output.name === 'control-out'
             || outputNames.has(output.name)
-            || !['content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(output.type)
+            || !['content', 'number', 'map-content', 'list-content'].includes(output.type)
           ) return null;
           outputNames.add(output.name);
           normalized.outputs.push({ name: output.name, type: output.type });

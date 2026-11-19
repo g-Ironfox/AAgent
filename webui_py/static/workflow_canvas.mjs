@@ -45,18 +45,14 @@ const CONNECTION_COLORS = {
   control: '#13775a',
   content: '#356e9b',
   number: '#147d78',
-  message: '#b75b18',
   'map-content': '#46713f',
   'list-content': '#d12f72',
-  'list-message': '#7a3e88',
 };
 
 const CONNECTION_DASHES = {
   content: '5 5',
   number: '9 3',
-  message: '2 4',
   'list-content': '7 3',
-  'list-message': '7 3',
 };
 
 function escapeXml(value) {
@@ -112,7 +108,7 @@ function contractPortIds(node, direction, workflow) {
     ? ['control-in', 'content-in']
     : [...(Array.isArray(args.branches) ? args.branches.map((branch) => branch.id).filter((id) => id !== 'branch$others') : []), 'branch$others'];
   if (node.type === 'construct_tool') return direction === 'input' ? ['control-in', ...[['tool_name', 'name-in'], ['description', 'description-in'], ['schema', 'schema-in'], ['required', 'required-in']].filter(([field]) => (args[`${field}_source`] || node[`${field}_source`]) === 'port').map(([, port]) => port)] : ['control-out', 'tool-out'];
-  if (node.type === 'construct_message') return direction === 'input' ? ['control-in', 'content-in'] : ['control-out', 'message-out'];
+  if (node.type === 'construct_message') return direction === 'input' ? ['control-in', 'content-in'] : ['control-out', 'content-out'];
   if (node.type === 'construct_content') {
     const inputs = (Array.isArray(args.append_items) ? args.append_items : [])
       .filter((item) => item?.type === 'port')

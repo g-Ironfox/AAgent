@@ -56,7 +56,6 @@ class WorkflowListGetTest(unittest.TestCase):
     def test_lookup_executes_for_each_list_type_and_preserves_inputs(self):
         samples = {
             "list-content": ["first", "", "last"],
-            "list-message": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}],
             "list-struct:task": [{"name": "first"}, {"name": "last"}],
         }
         for value_type, values in samples.items():
@@ -101,9 +100,8 @@ class WorkflowListGetTest(unittest.TestCase):
                 with self.assertRaises(ValueError): workflow_list_get(0, graph)
                 self.assertIsNone(graph[1]["data_inputs"]["result"][2])
 
-    def test_struct_and_message_outputs_are_independent_copies(self):
-        for value_type, values in (("list-message", [{"role": "user", "content": "original"}]),
-                                   ("list-struct:task", [{"name": "original"}])):
+    def test_struct_outputs_are_independent_copies(self):
+        for value_type, values in (("list-struct:task", [{"name": "original"}]),):
             graph = direct_graph(value_type, values, 0)
             self.assertEqual(workflow_list_get(0, graph), 1)
             first, second = (node["data_inputs"]["result"][2] for node in graph[1:])
@@ -117,7 +115,7 @@ class WorkflowListGetTest(unittest.TestCase):
 
     def test_list_type_is_required_and_must_reference_a_supported_list(self):
         for arguments in (None, {}, {"value_type": "content"}, {"value_type": "number"},
-                          {"value_type": "list-number"}, {"value_type": "list-struct:missing"},
+                          {"value_type": "list-number"}, {"value_type": "list-message"}, {"value_type": "list-struct:missing"},
                           {"value_type": None}, {"value_type": "list-content", "index_source": "fixed"}):
             with self.subTest(arguments=arguments):
                 workflow = fixture()
@@ -127,13 +125,13 @@ class WorkflowListGetTest(unittest.TestCase):
                 with self.assertRaises(WorkflowValidationError): validate_workflow(workflow)
 
     def test_input_and_output_edges_match_the_configured_types(self):
-        for port, invalid_type in (("list-in", "list-message"), ("index-in", "content"), ("workflow:result", "number")):
+        for port, invalid_type in (("list-in", "message"), ("index-in", "content"), ("workflow:result", "number")):
             workflow = fixture()
             next(edge for edge in workflow["connections"] if edge["toPortId"] == port)["type"] = invalid_type
             with self.subTest(port=port), self.assertRaises(WorkflowValidationError): validate_workflow(workflow)
 
     def test_ports_declare_list_numeric_index_and_element_types(self):
-        for value_type in ("list-content", "list-message", "list-struct:task"):
+        for value_type in ("list-content", "list-struct:task"):
             node = {"type": "list_get", "arguments": {"value_type": value_type}}
             self.assertEqual(data_ports_for_node(node, [], []), ({"list-in", "index-in"}, {"item-out"}))
             self.assertEqual(data_type_for_port(node, "list-in"), value_type)
@@ -146,7 +144,6 @@ class WorkflowListGetIndexSourceTest(unittest.TestCase):
     def test_fixed_index_runs_without_an_index_connection_for_every_list_type(self):
         samples = {
             "list-content": ["first", "last"],
-            "list-message": [{"role": "user", "content": "first"}, {"role": "assistant", "content": "last"}],
             "list-struct:task": [{"name": "first"}, {"name": "last"}],
         }
         for value_type, values in samples.items():
@@ -168,15 +165,15 @@ class WorkflowListGetIndexSourceTest(unittest.TestCase):
                     self.assertEqual(result, values[int(index)])
 
     def test_fixed_index_takes_precedence_and_copies_outputs(self):
-        values = [{"role": "user", "content": "first"}, {"role": "assistant", "content": "last"}]
-        graph = direct_graph("list-message", values, 0)
+        values = [{"name": "first"}, {"name": "last"}]
+        graph = direct_graph("list-struct:task", values, 0)
         graph[0]["arguments"].update(index_source="fixed", index=-1)
         workflow_list_get(0, graph)
         result = graph[1]["data_inputs"]["result"][2]
         self.assertEqual(result, values[1])
         self.assertIsNot(result, values[1])
-        result["content"] = "changed"
-        self.assertEqual(values[1]["content"], "last")
+        result["name"] = "changed"
+        self.assertEqual(values[1]["name"], "last")
 
     def test_fixed_index_is_validated_at_runtime(self):
         for index in (None, True, False, "0", 0.5, -0.5, float("nan"), float("inf"), [], {}, 2, -3, -(10 ** 100)):

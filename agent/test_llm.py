@@ -166,7 +166,7 @@ class ToolCallCompatibilityTest(unittest.TestCase):
                     "id": "choose-tool", "type": "llm", "arguments": {"model": "model-id", "think": False},
                     "_metadata_tools": [{"name": name, "kind": kind}],
                     "successors": {"next": 1},
-                    "data_inputs": {"messages-in": [None, None, [{"role": "user", "content": "Find a file"}]]},
+                    "data_inputs": {"messages-in": [None, None, ['{"role":"user","content":"Find a file"}']]},
                     "data_outputs": {"tool_calls": [[1, "calls"]]},
                 }, {"data_inputs": {"calls": [0, "tool_calls", None]}}]
                 def post(*args, **kwargs):

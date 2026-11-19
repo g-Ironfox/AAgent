@@ -280,14 +280,21 @@ def workflow_llm(current_id: int, workflow_map: WorkflowMap) -> int:
         raise ValueError(f"llm messages input is missing: node {node.get('id')}")
     if not isinstance(value, list) or not value:
         raise ValueError(f"llm messages input must be a non-empty list: node {node.get('id')}")
-    if any(
-        not isinstance(message, dict)
-        or message.get("role") not in {"system", "user", "assistant", "tool"}
-        or not isinstance(message.get("content"), str)
-        for message in value
-    ):
-        raise ValueError(f"llm messages input contains an invalid message: node {node.get('id')}")
-    messages = list(value)
+    messages = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"llm messages input must contain JSON content strings: node {node.get('id')}")
+        try:
+            message = json.loads(item)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"llm messages input contains invalid JSON: node {node.get('id')}") from error
+        if (
+            not isinstance(message, dict)
+            or message.get("role") not in {"system", "user", "assistant", "tool"}
+            or not isinstance(message.get("content"), str)
+        ):
+            raise ValueError(f"llm messages input contains an invalid message: node {node.get('id')}")
+        messages.append(message)
 
     from llm import chat_with_model
     tools_source = node_argument(node, "tools_source", "declared")
@@ -379,7 +386,10 @@ def workflow_construct_message(current_id: int, workflow_map: WorkflowMap) -> in
     if role not in {"system", "user", "assistant", "tool"}:
         raise ValueError(f"construct_message role is invalid: node {node.get('id')}")
     message = {"role": role, "content": content}
-    propagate_workflow_output(workflow_map, node, "message-out", message)
+    propagate_workflow_output(
+        workflow_map, node, "content-out",
+        json.dumps(message, ensure_ascii=False, separators=(",", ":")),
+    )
     return next_successor(node)
 
 
@@ -445,15 +455,6 @@ def _json_content(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def _is_message(value: Any) -> bool:
-    return (
-        isinstance(value, dict)
-        and set(value) == {"role", "content"}
-        and value.get("role") in {"system", "user", "assistant", "tool"}
-        and isinstance(value.get("content"), str)
-    )
-
-
 def _deserialize_json_value(value: Any, value_type: str) -> Any:
     if value_type == "number" and is_number_value(value):
         return value
@@ -461,10 +462,6 @@ def _deserialize_json_value(value: Any, value_type: str) -> Any:
         return _json_content(value)
     if value_type == "list-content" and isinstance(value, list):
         return [_json_content(item) for item in value]
-    if value_type == "message" and _is_message(value):
-        return value
-    if value_type == "list-message" and isinstance(value, list) and all(_is_message(item) for item in value):
-        return value
     if value_type == "map-content" and _is_map_content(value):
         return dict(value)
     raise ValueError(f"value does not match declared type {value_type}")

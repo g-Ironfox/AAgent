@@ -25,10 +25,10 @@ def edge(source, source_port, target, target_port, kind="control"):
 def fixture():
     return {
         "schema_version": "2.0", "metadata": {"structs": [], "tools": []},
-        "input_ports": [{"name": "messages", "type": "list-message"}],
+        "input_ports": [{"name": "messages", "type": "list-content"}],
         "output_ports": [{"name": "calls", "type": "list-content"}],
         "nodes": [
-            {"id": "input", "type": "input", "workflowPorts": [{"id": "workflow:messages", "name": "messages", "type": "list-message"}]},
+            {"id": "input", "type": "input", "workflowPorts": [{"id": "workflow:messages", "name": "messages", "type": "list-content"}]},
             {"id": "a", "type": "construct_tool", "arguments": {"tool_name": "normalize", "description": "Normalize", "schema": copy.deepcopy(SCHEMA)}},
             {"id": "b", "type": "construct_tool", "arguments": {"tool_name": "search", "description": "Search", "schema": {"type": "object", "properties": {}}}},
             {"id": "list", "type": "construct_list", "arguments": {"item_type": "content", "initial_value_count": 2}, "dataInputPorts": ["content-in-0", "content-in-1"]},
@@ -41,7 +41,7 @@ def fixture():
             edge("llm", "control-out", "output", "control-in"),
             edge("a", "tool-out", "list", "content-in-0", "content"), edge("b", "tool-out", "list", "content-in-1", "content"),
             edge("list", "list-out", "llm", "tools-in", "list-content"),
-            edge("input", "workflow:messages", "llm", "messages-in", "list-message"),
+            edge("input", "workflow:messages", "llm", "messages-in", "list-content"),
             edge("llm", "tool_calls", "output", "workflow:calls", "list-content"),
         ],
     }
@@ -60,12 +60,12 @@ class ToolConstructionTest(ToolTestCase):
         _validate_workflow_schema(document)
         validate_workflow(document)
         graph = parse_workflow(document)
-        messages = [{"role": "user", "content": "hello"}]
+        messages = ['{"role":"user","content":"hello"}']
         propagate_workflow_output(graph, graph[0], "workflow:messages", messages)
         with patch("llm.chat_with_model", return_value=("", "", [CALL])) as chat, patch("tool_server_client.get_remote_tool_schemas") as remote:
             result = run_scheduled_workflow(graph, 0)
         self.assertEqual(json.loads(result["calls"][0]), CALL)
-        self.assertEqual(chat.call_args.args, (messages, "model-id"))
+        self.assertEqual(chat.call_args.args, ([{"role": "user", "content": "hello"}], "model-id"))
         self.assertEqual([t["function"]["name"] for t in chat.call_args.kwargs["tools"]], ["normalize", "search"])
         remote.assert_not_called()
 
@@ -137,7 +137,7 @@ class ToolConstructionTest(ToolTestCase):
 class ToolDefinitionInputTest(ToolTestCase):
     def graph(self, contents):
         return [{"id": "llm", "type": "llm", "arguments": {"model": "model-id", "tool_calls": True, "tools_source": "definitions"},
-                 "data_inputs": {"messages-in": [0, "messages", [{"role": "user", "content": "hello"}]], "tools-in": [0, "list-out", contents]},
+                 "data_inputs": {"messages-in": [0, "messages", ['{"role":"user","content":"hello"}']], "tools-in": [0, "list-out", contents]},
                  "data_outputs": {"tool_calls": [[1, "calls"]]}, "successors": {"next": 1}},
                 {"data_inputs": {"calls": [0, "tool_calls", None]}}]
 

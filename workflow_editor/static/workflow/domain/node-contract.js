@@ -1,4 +1,4 @@
-export const DATA_TYPES = new Set(['content', 'number', 'message', 'map-content', 'list-content', 'list-message']);
+export const DATA_TYPES = new Set(['content', 'number', 'map-content', 'list-content']);
 
 export const NODE_TYPES = new Set([
   'input',
@@ -128,7 +128,7 @@ export function portsForNode(node) {
         ? [{ id: 'role-in', direction: 'input', type: 'content', label: 'Role', title: 'Message role', multiple: false }]
         : []),
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
-      { id: 'message-out', direction: 'output', type: 'message', label: 'Message', title: '构造后的 Message', multiple: true },
+      { id: 'content-out', direction: 'output', type: 'content', label: 'JSON Content', title: '构造后的 Message JSON', multiple: true },
     ];
   }
   if (node.type === 'construct_content') {
@@ -414,7 +414,7 @@ export function portsForNode(node) {
   }
   const ports = [
     { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '触发', multiple: false },
-    { id: 'messages-in', direction: 'input', type: 'list-message', label: 'Messages', title: 'Message 列表', multiple: false },
+    { id: 'messages-in', direction: 'input', type: 'list-content', label: 'Messages JSON', title: '每项为一个 Message JSON 字符串', multiple: false },
     ...(node.tool_calls === true ? [{ id: node.tools_source === 'definitions' ? 'tools-in' : 'available-tools-in', direction: 'input', type: 'list-content', label: node.tools_source === 'definitions' ? 'Tools JSON' : '可用 Tools', title: node.tools_source === 'definitions' ? '每项为一个 Tool 定义的 JSON 文本；空列表表示不使用工具' : '覆盖默认工具列表；名称必须来自 metadata.tools', multiple: false }] : []),
     { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
     { id: 'output', direction: 'output', type: 'content', label: '输出', title: '模型输出', multiple: true },

@@ -69,7 +69,7 @@ class SubprocessWorkflowFileValidationTest(unittest.TestCase):
         ]
         changed = [
             [{"name": "renamed", "type": "content"}, original[1]],
-            [{"name": "first", "type": "message"}, original[1]],
+            [{"name": "first", "type": "number"}, original[1]],
             original[:1],
             [*original, {"name": "third", "type": "content"}],
             list(reversed(original)),

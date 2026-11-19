@@ -485,7 +485,7 @@ class ToolNodeValidationTest(unittest.TestCase):
                 "tool": "echo",
                 "parameters": [
                     {"name": "output", "type": "content"},
-                    {"name": "control-out", "type": "message"},
+                    {"name": "control-out", "type": "number"},
                     {"name": "content-in", "type": "list-content"},
                 ],
                 "outputs": [{"name": "task_id", "type": "content"}],
@@ -529,7 +529,7 @@ class ToolNodeValidationTest(unittest.TestCase):
                 "type": "remote_sync_tool",
                 "arguments": {
                     "tool": "echo",
-                    "parameters": [{"name": "value", "type": "message"}],
+                    "parameters": [{"name": "value", "type": "content"}],
                     "outputs": [{"name": "answer", "type": "list-content"}],
                     "timeout_ms": 1000,
                 },
@@ -537,14 +537,14 @@ class ToolNodeValidationTest(unittest.TestCase):
         }
         connection = {
             "fromId": "source",
-            "fromPortId": "message-out",
+            "fromPortId": "content-out",
             "toId": "remote",
             "toPortId": "value",
-            "type": "message",
+            "type": "content",
         }
 
         self.assertTrue(is_valid_connection(connection, nodes, [], []))
-        self.assertFalse(is_valid_connection({**connection, "type": "content"}, nodes, [], []))
+        self.assertFalse(is_valid_connection({**connection, "type": "number"}, nodes, [], []))
 
         output_connection = {
             "fromId": "remote",

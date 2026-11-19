@@ -93,16 +93,16 @@ class WorkflowContextRepositoryTest(unittest.TestCase):
         pipeline = MagicMock()
         pipeline.__enter__.return_value = pipeline
         pipeline.hgetall.return_value = {
-            "value_type": "message",
-            "value": '{"role":"user","content":"hello"}',
+            "value_type": "content",
+            "value": '"hello"',
             "invocation_id": "invocation-1",
         }
         get_connection.return_value.pipeline.return_value = pipeline
 
         with patch("workflow_context_repository._ttl_seconds", return_value=90):
-            value = read_context("ctx-one", "invocation-1", "message")
+            value = read_context("ctx-one", "invocation-1", "content")
 
-        self.assertEqual(value, {"role": "user", "content": "hello"})
+        self.assertEqual(value, "hello")
         pipeline.multi.assert_called_once_with()
         pipeline.expire.assert_called_once_with("workflow-context:ctx-one", 90)
         pipeline.execute.assert_called_once_with()

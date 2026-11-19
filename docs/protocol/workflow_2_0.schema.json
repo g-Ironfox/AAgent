@@ -139,7 +139,7 @@
         },
         "type": {
           "type": "string",
-          "pattern": "^(content|number|message|list-content|list-message|map-content|struct:[A-Za-z_][A-Za-z0-9_]*|list-struct:[A-Za-z_][A-Za-z0-9_]*)$"
+          "pattern": "^(content|number|list-content|map-content|struct:[A-Za-z_][A-Za-z0-9_]*|list-struct:[A-Za-z_][A-Za-z0-9_]*)$"
         }
       },
       "additionalProperties": false
@@ -459,10 +459,8 @@
                         "enum": [
                           "content",
                           "number",
-                          "message",
                           "map-content",
-                          "list-content",
-                          "list-message"
+                          "list-content"
                         ]
                       },
                       {
@@ -510,10 +508,8 @@
                       "enum": [
                         "content",
                         "number",
-                        "message",
                         "map-content",
-                        "list-content",
-                        "list-message"
+                        "list-content"
                       ]
                     }
                   }
@@ -623,8 +619,7 @@
                     "anyOf": [
                       {
                         "enum": [
-                          "list-content",
-                          "list-message"
+                          "list-content"
                         ]
                       },
                       {
@@ -702,8 +697,7 @@
                     "anyOf": [
                       {
                         "enum": [
-                          "list-content",
-                          "list-message"
+                          "list-content"
                         ]
                       },
                       {
@@ -744,8 +738,7 @@
                     "anyOf": [
                       {
                         "enum": [
-                          "list-content",
-                          "list-message"
+                          "list-content"
                         ]
                       },
                       {
@@ -825,8 +818,7 @@
                     "anyOf": [
                       {
                         "enum": [
-                          "list-content",
-                          "list-message"
+                          "list-content"
                         ]
                       },
                       {
@@ -1037,9 +1029,7 @@
                 "control",
                 "content",
                 "number",
-                "message",
                 "list-content",
-                "list-message",
                 "map-content"
               ]
             },
@@ -1106,10 +1096,8 @@
             "enum": [
               "content",
               "number",
-              "message",
               "map-content",
-              "list-content",
-              "list-message"
+              "list-content"
             ]
           }
         },

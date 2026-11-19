@@ -37,7 +37,7 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 
 ## 3. 数据类型与 Struct 声明
 
-内建数据类型为 `content`、`number`、`message`、`map-content`、`list-content` 和 `list-message`。`number` 可用于 Workflow 输入/输出、数据连线、Struct 字段、Tool 接口、Context 和 Session，以及 `deserialize_json` 输出。Tool schema 中的 `number` 和 `integer` 均映射为 `number`；传递时保留数值，不自动与 `content` 转换。
+内建数据类型为 `content`、`number`、`map-content`、`list-content`。`number` 可用于 Workflow 输入/输出、数据连线、Struct 字段、Tool 接口、Context 和 Session，以及 `deserialize_json` 输出。Tool schema 中的 `number` 和 `integer` 均映射为 `number`；传递时保留数值，不自动与 `content` 转换。
 
 ### 3.1 Struct 类型标识
 
@@ -83,8 +83,7 @@ Struct 值使用 JSON object 表示，属性名必须来自该 Struct 的字段�
 | --- | --- |
 | `content` | string |
 | `number` | 有限整数或浮点数；不接受 boolean、null、数字字符串、NaN 或 Infinity |
-| `message` | object，且仅含 `role` 和 `content`；`role` 为 `system`、`user`、`assistant` 或 `tool`，`content` 为 string |
-| `list-content`、`list-message` | 对应值类型的数组 |
+| `list-content` | 字符串数组；用于 LLM 输入时，每项是包含合法 `role` 和字符串 `content` 的 Message JSON 字符串 |
 | `map-content` | 属性名非空的 object，所有属性值均为 string |
 
 Struct 定义可引用其他已声明 Struct 或其列表，但定义之间不得循环引用。Agent 与管理端在接受 Workflow 时递归检查 Struct 声明；运行时 Struct 节点、Context 存取及 JSON 转换递归验证 Struct 值。一般数据边不会自动对所有内建类型进行全局递归校验。Struct 是结构化值，不等同于任意 JSON object。
@@ -159,7 +158,7 @@ Struct 节点都是普通控制流节点：每个节点有 `control-in` 和 `con
 
 每次 Workflow 执行拥有独立 invocation。子进程可以通过 Context ID 读取、写入或弹出父 Workflow 及更上层祖先调用创建的 Context；嵌套子进程执行会继承完整祖先链。Context ID 可以通过 `content` 接口传入，也可使用已知的固定 ID。其他独立执行、兄弟调用或已返回的子进程执行不在访问范围内；父 Workflow 不能反向访问子进程执行的 Context。值以 JSON 序列化存储，默认 TTL 为 86400 秒，单个序列化值默认最大 1048576 字节；部署可分别通过 `WORKFLOW_CONTEXT_TTL_SECONDS` 和 `WORKFLOW_CONTEXT_MAX_VALUE_BYTES` 调整。每次执行仅在自身结束（成功或失败）时尝试清理自己创建的 Context，子进程执行结束不会清理祖先 Context；清理失败会记日志，TTL 是兜底。Context ID 是不透明字符串。访问 Struct Context 时，子进程仍须声明相同 ID 且兼容的 Struct 类型；祖先的 Struct 声明不会自动导入。
 
-Session 与 Context 不同：Session 仅支持六种内建值类型，ID 格式为 `ses_` 加 32 位小写十六进制字符，值存入 MongoDB 且不按 Workflow invocation 自动清理；单值序列化 UTF-8 大小上限默认 1048576 字节，可由 `WORKFLOW_SESSION_MAX_VALUE_BYTES` 配置。Session 读写要求 ID 存在且声明类型精确匹配，写入替换完整值；不得用于 Struct。
+Session 与 Context 不同：Session 仅支持四种内建值类型，ID 格式为 `ses_` 加 32 位小写十六进制字符，值存入 MongoDB 且不按 Workflow invocation 自动清理；单值序列化 UTF-8 大小上限默认 1048576 字节，可由 `WORKFLOW_SESSION_MAX_VALUE_BYTES` 配置。Session 读写要求 ID 存在且声明类型精确匹配，写入替换完整值；不得用于 Struct。
 
 ## 6. 类型边界与连线
 
@@ -190,8 +189,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | 类型 | 值语义 |
 | --- | --- |
 | `content` | 字符串 |
-| `message` | 仅含 `role` 和 `content` 的对象；role 为 `system`、`user`、`assistant`、`tool` 之一，content 为字符串 |
-| `list-content`、`list-message` | 对应元素类型的数组 |
+| `list-content` | 字符串数组 |
 | `map-content` | 非空字符串键到字符串值的对象 |
 
 接口 `port` 必须恰含 `name`、`type`。名称非空；同一输入或输出接口数组内，端口名经去除首尾空白、忽略大小写后不得重复。依赖对象必须恰含 `name`、`input_ports`、`output_ports`；依赖名非空，同一依赖数组内不得重复，Remote Tool 名称比较时去除首尾空白并忽略大小写。
@@ -217,7 +215,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `input` | 无 | 无 | 根 `input_ports` 的 `workflow:<name>` |
 | `output` | 无 | 根 `output_ports` 的 `workflow:<name>` | 无 |
 | `router` | `branches` | `content-in: content` | 分支控制端口，见第 10 节 |
-| `construct_message` | 可选 `role`、`role_source` | `content-in: content`；role_source 为 `port` 时另有 `role-in: content` | `message-out: message` |
+| `construct_message` | 可选 `role`、`role_source` | `content-in: content`；role_source 为 `port` 时另有 `role-in: content` | `content-out: content`（紧凑 Message JSON 字符串） |
 | `construct_content` | `append_items` | 每个 port 项对应一个 content 输入 | `content-out: content` |
 | `construct_map_content` | `mappings` | 每个 port 条目对应一个 content 输入 | `map-out: map-content` |
 | `map_content_get` | 无 | `map-in: map-content`、`key-in: content` | `content-out: content` |
@@ -226,13 +224,13 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `read_terminal_input` | 无 | 无 | `list-out: list-content` |
 | `deserialize_json` | `outputs: [{key,type}]` | `content-in: content`，内容为 JSON object 文本 | 每个 key 一个对应 type 的端口 |
 | `construct_list` | `item_type`、`initial_value_count` | `<item_type>-in-0` 至 `<item_type>-in-(count-1)` | `list-out: list-<item_type>` |
-| `list_slice` | `value_type`（`list-content`、`list-message` 或已声明的 `list-struct:<id>`），可选 `start_source/start`、`stop_source/stop`、`step_source/step` | `list-in: value_type`；可选 `start-in` / `stop-in` / `step-in: number` | `list-out: value_type`，与输入类型相同 |
-| `list_get` | `value_type`（`list-content`、`list-message` 或已声明的 `list-struct:<id>`）、`index_source`（`port`/`fixed`）、`index`（固定模式） | `list-in: value_type`、`index-in: number`（仅 `port` 模式） | `item-out`，类型为列表元素类型 |
-| `list_length` | `value_type`，必须为 `list-content`、`list-message` 或已声明的 `list-struct:<id>` | `list-in: value_type` | `length-out: number` |
+| `list_slice` | `value_type`（`list-content` 或已声明的 `list-struct:<id>`），可选 `start_source/start`、`stop_source/stop`、`step_source/step` | `list-in: value_type`；可选 `start-in` / `stop-in` / `step-in: number` | `list-out: value_type`，与输入类型相同 |
+| `list_get` | `value_type`（`list-content` 或已声明的 `list-struct:<id>`）、`index_source`（`port`/`fixed`）、`index`（固定模式） | `list-in: value_type`、`index-in: number`（仅 `port` 模式） | `item-out`，类型为列表元素类型 |
+| `list_length` | `value_type`，必须为 `list-content` 或已声明的 `list-struct:<id>` | `list-in: value_type` | `length-out: number` |
 | `list_append` | `item_type`、`position` | `list-in: list-<item_type>`、`item-in: <item_type>` | `list-out: list-<item_type>` |
 | `foreach` | `item_type` | `list-in: list-<item_type>` | `item-out: <item_type>`；控制端口见第 10 节 |
 | `while_pop` | `value_type`、可选 `position`、`context_id_source`、`context_id` | port 模式下 `context-id: content` | `item-out: <value_type 去除 list- 前缀>`；控制端口同 Foreach |
-| `llm` | `model`、`think`、`tool_calls`、`tools` | `messages-in: list-message` | `output: content`；配置启用时有 `reasoning: content`、`tool_calls: list-content` |
+| `llm` | `model`、`think`、`tool_calls`、`tools` | `messages-in: list-content`（每项为 Message JSON 字符串） | `output: content`；配置启用时有 `reasoning: content`、`tool_calls: list-content` |
 | `tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `mode`（仅 sync）、`timeout_ms` | 每个 parameters 端口 | 同步返回每个 outputs 端口 |
 | `local_tool`（兼容） | `tool`、`parameters: string[]` | 每个参数名一个 content 输入 | `output: content` |
 | `remote_sync_tool` | `tool`、`parameters: port[]`、`outputs: port[]`、可选 `timeout_ms` | 每个 parameters 端口 | 每个 outputs 端口 |
@@ -283,16 +281,16 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `map_content_get` 按 key 查值；查不到时执行失败。
 - `wait_terminal_event` 执行后保存工作流数据，将自身记录为最近完成节点并把进程设为 `blocked`，`wait_for` 指向关联终端的 `terminal_message`。终端输入成功保存后，仅唤醒来源和事件类型均匹配的进程，清除等待条件并重新入就绪队列，从下一节点继续。该节点无参数、无数据端口，不消费或输出消息正文；进入等待前的消息不缓存为待唤醒事件，终端输出也不唤醒。`read_terminal_input` 将当前进程终端所有已保存的 `role=user` 消息正文按时间升序读取为 `list-content`；不含助手输出、不删除记录，无消息时输出空列表。重复发送不会重复入队。根工作流和子进程均通过进程调度器执行，均支持该节点。
 - `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
-- `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为六种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
-- `construct_list.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content`、`list-message` 或 `list-struct:<id>`。
-- `list_get.value_type` 必填，允许 `list-content`、`list-message` 或已声明的 `list-struct:<id>`。`list-in` 连线必须匹配所选列表类型，端口模式下 `index-in` 为 `number`；`item-out` 类型为去掉 `list-` 前缀的元素类型。控制端口为 `control-in` / `control-out`。下标采用 Python 列表索引规则：从 `0` 开始，支持负数从末尾倒数（`-1` 为最后一个，`-2` 为倒数第二个）；必须为有限整数数值（`1.0`、`-1.0` 亦合法），不接受 boolean 或数字字符串；下标越界（含空列表）、输入缺失、输入不是列表或元素类型不符时执行失败，不输出元素。读取不修改原列表，输出按通常的数据传播规则深拷贝。 `index_source` 可选 `port`（默认，兼容旧流程）或 `fixed`。`port` 从 `index-in:number` 读取下标；`fixed` 使用 `arguments.index`（必填整数，支持负数），不提供 `index-in` 端口；两种模式采用相同的越界和类型校验。
-- `list_slice.value_type` 必填，允许 `list-content`、`list-message` 或已声明的 `list-struct:<id>`；起点、终点和步长分别通过 `start_source`、`stop_source`、`step_source` 选择 `port`（默认）或 `fixed`，可混合使用。`port` 模式暴露对应的可选整数 `number` 端口 `start-in`、`stop-in`、`step-in`，未连接时按 `None` 处理；`fixed` 模式隐藏对应端口，从 `start`、`stop`、`step` 读取整数，未填写或为 `null` 时按 `None` 处理。固定步长不得为 0。执行直接采用 Python `list[start:stop:step]` 语义，包括负下标、负步长、截断和空结果；步长为 0 或边界不是整数时报错。输出 `list-out` 保持所选列表类型，不修改输入。
-- `list_length.value_type` 必填，允许 `list-content`、`list-message` 或已声明的 `list-struct:<id>`；`list-in` 的连线类型必须与所选类型精确匹配。控制端口为 `control-in` / `control-out`。执行时要求输入已提供且为符合声明类型的列表，递归校验 Struct 元素；不修改输入，通过 `length-out: number` 输出非负整数，空列表返回 `0`，随后沿控制流继续。
-- `list_append.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
-- `while_pop.value_type` 必须是 `list-content`、`list-message` 或本 Workflow 声明的 `list-struct:<id>`。每轮从 Context 列表原子弹出一项；`position` 为 `end`（默认，末尾）或 `start`（最前）。Context 为空时退出，详情见 10.4。
-- `foreach.item_type` 允许 `content`、`message`，或已声明的 `struct:<id>`。逐项输出列表元素，列表耗尽后退出循环；空列表直接退出。
+- `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为四种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
+- `construct_list.item_type` 允许 `content` 或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content` 或 `list-struct:<id>`。
+- `list_get.value_type` 必填，允许 `list-content` 或已声明的 `list-struct:<id>`。`list-in` 连线必须匹配所选列表类型，端口模式下 `index-in` 为 `number`；`item-out` 类型为去掉 `list-` 前缀的元素类型。控制端口为 `control-in` / `control-out`。下标采用 Python 列表索引规则：从 `0` 开始，支持负数从末尾倒数（`-1` 为最后一个，`-2` 为倒数第二个）；必须为有限整数数值（`1.0`、`-1.0` 亦合法），不接受 boolean 或数字字符串；下标越界（含空列表）、输入缺失、输入不是列表或元素类型不符时执行失败，不输出元素。读取不修改原列表，输出按通常的数据传播规则深拷贝。 `index_source` 可选 `port`（默认，兼容旧流程）或 `fixed`。`port` 从 `index-in:number` 读取下标；`fixed` 使用 `arguments.index`（必填整数，支持负数），不提供 `index-in` 端口；两种模式采用相同的越界和类型校验。
+- `list_slice.value_type` 必填，允许 `list-content` 或已声明的 `list-struct:<id>`；起点、终点和步长分别通过 `start_source`、`stop_source`、`step_source` 选择 `port`（默认）或 `fixed`，可混合使用。`port` 模式暴露对应的可选整数 `number` 端口 `start-in`、`stop-in`、`step-in`，未连接时按 `None` 处理；`fixed` 模式隐藏对应端口，从 `start`、`stop`、`step` 读取整数，未填写或为 `null` 时按 `None` 处理。固定步长不得为 0。执行直接采用 Python `list[start:stop:step]` 语义，包括负下标、负步长、截断和空结果；步长为 0 或边界不是整数时报错。输出 `list-out` 保持所选列表类型，不修改输入。
+- `list_length.value_type` 必填，允许 `list-content` 或已声明的 `list-struct:<id>`；`list-in` 的连线类型必须与所选类型精确匹配。控制端口为 `control-in` / `control-out`。执行时要求输入已提供且为符合声明类型的列表，递归校验 Struct 元素；不修改输入，通过 `length-out: number` 输出非负整数，空列表返回 `0`，随后沿控制流继续。
+- `list_append.item_type` 允许 `content` 或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
+- `while_pop.value_type` 必须是 `list-content` 或本 Workflow 声明的 `list-struct:<id>`。每轮从 Context 列表原子弹出一项；`position` 为 `end`（默认，末尾）或 `start`（最前）。Context 为空时退出，详情见 10.4。
+- `foreach.item_type` 允许 `content` 或已声明的 `struct:<id>`。逐项输出列表元素，列表耗尽后退出循环；空列表直接退出。
 - `construct_tool` 生成单个 Tool 定义，输出 `tool-out: content`，可接 `construct_list(item_type: content)` 组成 LLM 工具列表。`tool_name`、`description`、`schema` 和 `required` 各自支持 `fixed` / `port` 来源；动态字段分别使用 `name-in: content`、`description-in: content`、`schema-in: content`（JSON Schema 文本）、`required-in: list-content`。Schema 必须是 Draft 2020-12 中的 object 参数 Schema，必填名须属于其 properties。省略 `required` 时保留 Schema 自带的 required，显式空数组用于清除必填项。编辑器可从本地 Workflow 函数生成名称和输入参数 Schema。\n- `llm.model` 在管理端保存及执行时必须为有效且已启用模型标识；通用静态契约校验器不保证验证模型存在。`llm.tools_source` 缺省为 `declared`，保持既有行为：`llm.tools` 是可选默认工具子集，未设置时使用 `metadata.tools` 中全部工具；`available-tools-in: list-content` 输入仍接收 metadata 工具名称。设为 `definitions` 时改由必须连接的 `tools-in: list-content` 接收完整 Tool JSON 文本列表，每项为 `{"type":"function","function":{"name":"...","description":"...","parameters":{"type":"object","properties":{},"required":[]}}}`；空列表表示本次不提供工具。Agent 校验 JSON、JSON Schema、required 参数名及名称唯一性，且不要求这些工具预先登记。`think` 控制推理参数及 reasoning 输出端口；`tool_calls` 控制工具输入和 `tool_calls` 输出端口。think 关闭时按 Provider 发送对应关闭参数。`tool_calls` 输出为 JSON 文本组成的 list-content，每项保留模型的调用 ID、工具名和 arguments JSON 文本；生成调用不代表 Workflow 自动执行工具。
-- 新建工具使用统一的 `tool` 节点，来源由 `metadata.tools` 中同名声明的 `kind` 决定，取值为 `local` 或 `remote`。声明恰含 `name`、`kind`、`input_ports`、`output_ports`，名称去除首尾空白并忽略大小写后全局唯一（local/remote 也不能重名）。每侧最多 50 个端口，只允许六种内建数据类型，禁止 Struct 和保留控制端口名。
+- 新建工具使用统一的 `tool` 节点，来源由 `metadata.tools` 中同名声明的 `kind` 决定，取值为 `local` 或 `remote`。声明恰含 `name`、`kind`、`input_ports`、`output_ports`，名称去除首尾空白并忽略大小写后全局唯一（local/remote 也不能重名）。每侧最多 50 个端口，只允许四种内建数据类型，禁止 Struct 和保留控制端口名。
 - `tool.parameters` / `tool.outputs` 必须与声明的输入/输出端口数组完全一致；Tool 节点仅同步执行，`mode` 省略或固定为 `sync`，callback 只能省略或为 null。local 输入类型允许 content 和 number，Tool schema 的 number/integer 参数映射为 number；当 Local Tool 提供 `outputSchema` 时，其一级 properties 对应具名输出端口，运行结果须为包含所有声明字段的对象；未提供 `outputSchema` 时兼容单个 `output:content`，非字符串结果序列化为 JSON 文本。remote 等待结果并遵循下述同步超时行为。
 - 工具执行时校验真实注册状态：Local 工具不存在时抛出异常，不返回成功结果；Remote 工具在提交同步或异步任务前查询 Tool Server 的实时目录，工具不存在或目录不可用时不提交任务。动态 `json_tool` 沿用同一入口，异常按其 `error-json` / `error-out` 契约处理。
 - `remote_async_tool` 是独立的异步 Tool 节点，只允许绑定 `metadata.tools` 中 kind 为 remote 的声明（旧格式仍可使用顶层 `remote_tools`），parameters 必须匹配声明，输出固定为 `task_id: content`。节点没有 mode 或 outputs 参数，支持异步超时和 Redis callback。

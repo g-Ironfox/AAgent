@@ -13,9 +13,7 @@ from workflow_session_repository import (
 VALUES = {
     "number": 0,
     "content": "hello",
-    "message": {"role": "user", "content": "hello"},
     "list-content": ["hello"],
-    "list-message": [{"role": "assistant", "content": "hello"}],
     "map-content": {"done": "finished"},
 }
 

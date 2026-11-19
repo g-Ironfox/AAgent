@@ -54,7 +54,6 @@ class WorkflowListSliceTest(unittest.TestCase):
     def test_default_slicing_and_typed_lists(self):
         samples = {
             "list-content": ["zero", "one", "two", "three", "four"],
-            "list-message": [{"role": "user", "content": str(index)} for index in range(5)],
             "list-struct:task": [{"name": str(index)} for index in range(5)],
         }
         for value_type, values in samples.items():
@@ -105,7 +104,6 @@ class WorkflowListSliceTest(unittest.TestCase):
     def test_each_bound_can_independently_use_a_fixed_value_or_port(self):
         samples = {
             "list-content": [str(index) for index in range(6)],
-            "list-message": [{"role": "user", "content": str(index)} for index in range(6)],
             "list-struct:task": [{"name": str(index)} for index in range(6)],
         }
         for value_type, values in samples.items():

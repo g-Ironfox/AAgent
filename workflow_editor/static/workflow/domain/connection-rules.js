@@ -10,7 +10,7 @@ function endpointPort(node, portId, direction, type) {
 
 export function isValidConnection(connection, nodes) {
   if (!connection || typeof connection.id !== 'string' || !connection.id.trim()) return false;
-  if (!['control', 'content', 'number', 'message', 'map-content', 'list-content', 'list-message'].includes(connection.type)
+  if (!['control', 'content', 'number', 'map-content', 'list-content'].includes(connection.type)
     && !/^(struct|list-struct):[A-Za-z_][A-Za-z0-9_]*$/.test(connection.type || '')) return false;
   const source = nodes.find((node) => node.id === connection.fromId);
   const target = nodes.find((node) => node.id === connection.toId);

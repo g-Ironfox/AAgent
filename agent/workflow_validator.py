@@ -621,7 +621,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
     elif node_type == "list_append":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
-                "list_append node item_type must be 'content', 'message', or a declared Struct"
+                "list_append node item_type must be 'content' or a declared Struct"
             )
         if node_argument(node, "position") not in {"start", "end"}:
             raise WorkflowValidationError(
@@ -630,7 +630,7 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
     elif node_type == "foreach":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(
-                "foreach node item_type must be 'content', 'message', or a declared Struct"
+                "foreach node item_type must be 'content' or a declared Struct"
             )
     elif node_type in {"context_create", "context_read", "context_write", "session_create", "session_read", "session_write", "while_pop"}:
         value_type = node_argument(node, "value_type")
@@ -1025,7 +1025,7 @@ def _valid_local_type(value_type: Any, structs: dict[str, Any]) -> bool:
 
 
 def _valid_item_type(value_type: Any, structs: dict[str, Any]) -> bool:
-    return value_type in {"content", "message"} or (
+    return value_type == "content" or (
         isinstance(value_type, str) and value_type.startswith("struct:") and _valid_local_type(value_type, structs)
     )
 
@@ -1035,7 +1035,7 @@ def _validate_construct_list(node: dict[str, Any], structs: dict[str, Any] | Non
     item_type = node_argument(node, "item_type")
     if not _valid_item_type(item_type, structs):
         raise WorkflowValidationError(
-            "construct_list node item_type must be 'content', 'message', or a declared Struct"
+            "construct_list node item_type must be 'content' or a declared Struct"
         )
     initial_value_count = node_argument(node, "initial_value_count")
     if (

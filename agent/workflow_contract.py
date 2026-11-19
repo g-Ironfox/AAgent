@@ -9,9 +9,7 @@ from typing import Any
 DATA_CONNECTION_TYPES = {
     "content",
     "number",
-    "message",
     "list-content",
-    "list-message",
     "map-content",
 }
 SUPPORTED_NODE_TYPES = {
@@ -234,7 +232,7 @@ def data_ports_for_node(
         inputs = declared_inputs | {"content-in"}
         if node_argument(node, "role_source", "fixed") == "port":
             inputs.add("role-in")
-        return inputs, {"message-out"}
+        return inputs, {"content-out"}
     if node_type == "construct_content":
         return declared_inputs, {"content-out"}
     if node_type == "construct_map_content":
@@ -502,7 +500,7 @@ def connection_validation_error(
         source_type = source_node["type"]
         target_type = target_node["type"]
         if target_type == "llm":
-            expected_type = "list-message" if to_port == "messages-in" else "list-content"
+            expected_type = "list-content"
             if connection_type != expected_type:
                 return f"llm {to_port} input requires {expected_type} data"
         if target_type == "construct_tool":
@@ -513,8 +511,8 @@ def connection_validation_error(
             return "construct_tool tool-out requires content data"
         if target_type == "construct_message" and connection_type != "content":
             return f"construct_message {to_port} requires content data"
-        if source_type == "construct_message" and connection_type != "message":
-            return "construct_message message-out requires message data"
+        if source_type == "construct_message" and connection_type != "content":
+            return "construct_message content-out requires content data"
         if target_type == "construct_list" and connection_type != node_argument(target_node, "item_type"):
             return f"construct_list input requires {node_argument(target_node, 'item_type')} data"
         if source_type == "construct_list" and connection_type != list_type_for_item(node_argument(source_node, "item_type")):

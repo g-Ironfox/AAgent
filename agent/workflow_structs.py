@@ -112,14 +112,8 @@ def _builtin(t: str, v: Any) -> bool:
     if t == "number": return is_number_value(v)
     if t == "content": return isinstance(v, str)
     if t == "list-content": return isinstance(v, list) and all(isinstance(x, str) for x in v)
-    if t == "message": return _message(v)
-    if t == "list-message": return isinstance(v, list) and all(_message(x) for x in v)
     if t == "map-content": return isinstance(v, dict) and all(isinstance(k, str) and bool(k) and isinstance(x, str) for k, x in v.items())
     return False
-
-
-def _message(v: Any) -> bool:
-    return isinstance(v, dict) and set(v) == {"role", "content"} and v["role"] in {"system", "user", "assistant", "tool"} and isinstance(v["content"], str)
 
 
 def _actual(v: Any) -> str:

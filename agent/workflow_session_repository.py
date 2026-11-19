@@ -18,9 +18,7 @@ from pymongo.errors import PyMongoError
 SESSION_VALUE_TYPES = {
     "content",
     "number",
-    "message",
     "list-content",
-    "list-message",
     "map-content",
 }
 SESSION_ID_PATTERN = re.compile(r"^ses_[0-9a-f]{32}$")
@@ -34,26 +32,13 @@ _client = None
 _collection = None
 
 
-def _is_message(value: Any) -> bool:
-    return (
-        isinstance(value, dict)
-        and set(value) == {"role", "content"}
-        and value.get("role") in {"system", "user", "assistant", "tool"}
-        and isinstance(value.get("content"), str)
-    )
-
-
 def valid_value(value_type: str, value: Any) -> bool:
     if value_type == "number":
         return is_number_value(value)
     if value_type == "content":
         return isinstance(value, str)
-    if value_type == "message":
-        return _is_message(value)
     if value_type == "list-content":
         return isinstance(value, list) and all(isinstance(item, str) for item in value)
-    if value_type == "list-message":
-        return isinstance(value, list) and all(_is_message(item) for item in value)
     if value_type == "map-content":
         return isinstance(value, dict) and all(
             isinstance(key, str) and bool(key) and isinstance(item, str)

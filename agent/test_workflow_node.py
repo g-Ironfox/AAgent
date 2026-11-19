@@ -200,7 +200,7 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
         workflow = {
             "schema_version": WORKFLOW_SCHEMA_VERSION,
             "name": "llm_fixture",
-            "input_ports": [{"name": "messages", "type": "list-message"}],
+            "input_ports": [{"name": "messages", "type": "list-content"}],
             "output_ports": [],
             "nodes": [
                 {
@@ -210,7 +210,7 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
                         {
                             "id": "workflow:messages",
                             "name": "messages",
-                            "type": "list-message",
+                            "type": "list-content",
                         }
                     ],
                 },
@@ -246,7 +246,7 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
                     "fromPortId": "workflow:messages",
                     "toId": "llm",
                     "toPortId": "messages-in",
-                    "type": "list-message",
+                    "type": "list-content",
                 },
             ],
         }
@@ -271,12 +271,12 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
             {"name": "remote_echo", "kind": "remote"},
         ])
 
-        workflow["input_ports"][0]["type"] = "message"
-        workflow["nodes"][0]["workflowPorts"][0]["type"] = "message"
-        workflow["connections"][2]["type"] = "message"
+        workflow["input_ports"][0]["type"] = "content"
+        workflow["nodes"][0]["workflowPorts"][0]["type"] = "content"
+        workflow["connections"][2]["type"] = "content"
         with self.assertRaisesRegex(
             WorkflowValidationError,
-            "llm messages-in input requires list-message data",
+            "llm messages-in input requires list-content data",
         ):
             validate_workflow(workflow)
 
@@ -582,7 +582,7 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
 
     def test_validator_rejects_wrong_callable_workflow_port_type(self):
         workflow = callable_workflow_fixture()
-        workflow["connections"][2]["type"] = "message"
+        workflow["connections"][2]["type"] = "list-content"
 
         with self.assertRaisesRegex(
             WorkflowValidationError, "workflow input port workflow:query requires content data"
@@ -652,14 +652,14 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
 
     def test_validator_rejects_duplicate_callable_input_port_names(self):
         workflow = callable_workflow_fixture()
-        workflow["nodes"][1]["input_ports"].append({"name": " Query ", "type": "message"})
+        workflow["nodes"][1]["input_ports"].append({"name": " Query ", "type": "content"})
 
         with self.assertRaisesRegex(WorkflowValidationError, "input_ports contains duplicate names"):
             validate_workflow(workflow)
 
     def test_validator_rejects_duplicate_callable_output_port_names(self):
         workflow = callable_workflow_fixture()
-        workflow["nodes"][1]["output_ports"].append({"name": "RESULT", "type": "message"})
+        workflow["nodes"][1]["output_ports"].append({"name": "RESULT", "type": "content"})
 
         with self.assertRaisesRegex(WorkflowValidationError, "output_ports contains duplicate names"):
             validate_workflow(workflow)
@@ -700,7 +700,7 @@ class WorkflowExecutionTest(unittest.TestCase):
         connection = {"fromId": "tools", "fromPortId": "list-out", "toId": "llm", "toPortId": "available-tools-in", "type": "list-content"}
         nodes = {"tools": source, "llm": target}
         self.assertTrue(is_valid_connection(connection, nodes, [], []))
-        self.assertFalse(is_valid_connection({**connection, "type": "list-message"}, nodes, [], []))
+        self.assertFalse(is_valid_connection({**connection, "type": "message"}, nodes, [], []))
         target["arguments"]["tool_calls"] = False
         self.assertFalse(is_valid_connection(connection, nodes, [], []))
 
@@ -754,16 +754,16 @@ class WorkflowExecutionTest(unittest.TestCase):
                     "content-in": [None, None, "hello"],
                     "role-in": [None, None, "assistant"],
                 },
-                "data_outputs": {"message-out": [[1, "message-in"]]},
+                "data_outputs": {"content-out": [[1, "content-in"]]},
             },
-            {"data_inputs": {"message-in": [0, "message-out", None]}},
+            {"data_inputs": {"content-in": [0, "content-out", None]}},
         ]
 
         workflow_construct_message(0, workflow_map)
 
         self.assertEqual(
-            workflow_map[1]["data_inputs"]["message-in"][2],
-            {"role": "assistant", "content": "hello"},
+            workflow_map[1]["data_inputs"]["content-in"][2],
+            '{"role":"assistant","content":"hello"}',
         )
 
     def test_construct_message_rejects_missing_port_role(self):
@@ -774,7 +774,7 @@ class WorkflowExecutionTest(unittest.TestCase):
                 "arguments": {"role_source": "port", "role": "user"},
                 "successors": {"next": 1},
                 "data_inputs": {"content-in": [None, None, "hello"]},
-                "data_outputs": {"message-out": []},
+                "data_outputs": {"content-out": []},
             },
             {},
         ]
@@ -787,11 +787,11 @@ class WorkflowExecutionTest(unittest.TestCase):
             {
                 "id": "messages",
                 "type": "construct_list",
-                "arguments": {"item_type": "message", "initial_value_count": 2},
+                "arguments": {"item_type": "content", "initial_value_count": 2},
                 "successors": {"next": 1},
                 "data_inputs": {
-                    "message-in-1": [None, None, {"role": "user", "content": "second"}],
-                    "message-in-0": [None, None, {"role": "system", "content": "first"}],
+                    "content-in-1": [None, None, '{"role":"user","content":"second"}'],
+                    "content-in-0": [None, None, '{"role":"system","content":"first"}'],
                 },
                 "data_outputs": {"list-out": [[1, "messages-in"]]},
             },
@@ -806,8 +806,8 @@ class WorkflowExecutionTest(unittest.TestCase):
         self.assertEqual(
             workflow_map[1]["data_inputs"]["messages-in"][2],
             [
-                {"role": "system", "content": "first"},
-                {"role": "user", "content": "second"},
+                '{"role":"system","content":"first"}',
+                '{"role":"user","content":"second"}',
             ],
         )
 
@@ -819,7 +819,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             "successors": {"next": 1},
             "data_outputs": {"output": []},
         }
-        invalid_values = [None, [], [{"role": "user"}], ["not-a-message"]]
+        invalid_values = [None, [], ["not-a-message"], ['{"role":"invalid","content":"text"}']]
 
         for value in invalid_values:
             with self.subTest(value=value):
@@ -840,7 +840,7 @@ class WorkflowExecutionTest(unittest.TestCase):
                 "type": "llm",
                 "arguments": {"model": "model-id", "think": False, "tools": []},
                 "successors": {"next": 1},
-                "data_inputs": {"messages-in": [None, None, [{"role": "user", "content": "hello"}]]},
+                "data_inputs": {"messages-in": [None, None, ['{"role":"user","content":"hello"}']]},
                 "data_outputs": {"output": [[1, "result"]]},
             },
             {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}},
@@ -872,7 +872,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             "arguments": {"model": "model-id", "think": False, "tool_calls": True, "tools": []},
             "_metadata_tools": metadata_tools,
             "successors": {"next": 1},
-            "data_inputs": {"messages-in": [None, None, [{"role": "user", "content": "hello"}]]},
+            "data_inputs": {"messages-in": [None, None, ['{"role":"user","content":"hello"}']]},
             "data_outputs": {"output": [[1, "result"]]},
         }, {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}}]
         with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
@@ -897,7 +897,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             "_metadata_tools": [{"name": "local_echo", "kind": "local"}, {"name": "remote_echo", "kind": "remote"}],
             "successors": {"next": 1},
             "data_inputs": {
-                "messages-in": [None, None, [{"role": "user", "content": "hello"}]],
+                "messages-in": [None, None, ['{"role":"user","content":"hello"}']],
                 "available-tools-in": [0, "list-out", ["remote_echo", "local_echo"]],
             },
         }, {"id": "next", "successors": {}, "data_inputs": {}, "data_outputs": {}}]
@@ -916,7 +916,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             "id": "llm", "type": "llm", "arguments": {"model": "model-id", "tools": []},
             "_metadata_tools": [{"name": "local_echo", "kind": "local"}],
             "data_inputs": {
-                "messages-in": [None, None, [{"role": "user", "content": "hello"}]],
+                "messages-in": [None, None, ['{"role":"user","content":"hello"}']],
                 "available-tools-in": [0, "list-out", ["remote_echo"]],
             },
         }, {}]
@@ -1225,7 +1225,7 @@ class WorkflowExecutionTest(unittest.TestCase):
                 "type": "construct_message",
                 "successors": {"next": 1},
                 "data_inputs": {"content-in": [1, "item-out", None]},
-                "data_outputs": {"message-out": []},
+                "data_outputs": {"content-out": []},
             },
             {
                 "id": "output",

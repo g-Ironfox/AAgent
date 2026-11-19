@@ -8,10 +8,8 @@
 .connection-path[class*="struct:"] { stroke:var(--connection-color,#3a7d68); }
 .connection-path.number { stroke:#147d78; stroke-dasharray:9 3; }
 .connection-path.content { stroke:var(--blue); stroke-dasharray:5 5; }
-.connection-path.message { stroke:#b75b18; stroke-dasharray:2 4; }
 .connection-path.map-content { stroke:#46713f; }
 .connection-path.list-content { stroke:var(--workflow-list-content); stroke-dasharray:7 3; }
-.connection-path.list-message { stroke:#7a3e88; stroke-dasharray:7 3; }
 .connection-path.preview { stroke-width:2.5; opacity:.7; }
 .node-layer { position:relative; z-index:2; min-width:1800px; width:max(100%,1800px); height:1200px; }
 .flow-node { position:absolute; width:190px; min-height:116px; padding:0; color:var(--ink); border:1px solid #cbd2cd; border-top:3px solid var(--ink); background:var(--surface); box-shadow:0 8px 18px rgba(28,42,36,.08); text-align:left; cursor:grab; touch-action:none; user-select:none; }
@@ -70,10 +68,8 @@
 .node-port[data-port-type="control"] { background:var(--green); }
 .node-port[data-port-type="number"] { background:#147d78; }
 .node-port[data-port-type="content"] { background:var(--blue); }
-.node-port[data-port-type="message"] { background:#b75b18; }
 .node-port[data-port-type="map-content"] { background:#46713f; }
 .node-port[data-port-type="list-content"] { background:var(--workflow-list-content); }
-.node-port[data-port-type="list-message"] { background:#7a3e88; }
 .canvas-legend { position:sticky; z-index:4; left:14px; bottom:14px; width:max-content; max-width:calc(100% - 28px); max-height:96px; padding:7px 9px; display:flex; flex-wrap:wrap; gap:8px 12px; overflow:auto; color:var(--muted); border:1px solid var(--line); background:rgba(255,255,255,.94); font:8px Consolas,monospace; }
 .canvas-legend span { display:flex; align-items:center; gap:5px; }
 .canvas-legend i { width:7px; height:7px; border-radius:50%; }
@@ -82,10 +78,8 @@
 .control-dot { background:var(--green); }
 .number-dot { background:#147d78; }
 .content-dot { background:var(--blue); }
-.message-dot { background:#b75b18; }
 .map-content-dot { background:#46713f; }
 .list-content-dot { background:var(--workflow-list-content); }
-.list-message-dot { background:#7a3e88; }
 .node-port[data-port-type^="struct:"] { background:var(--port-color,#3a7d68); }
 .node-port[data-port-type^="list-struct:"] { background:var(--port-color,#3a7d68); }
 .clipboard-fallback { position:fixed; left:-10000px; top:0; opacity:0; }
