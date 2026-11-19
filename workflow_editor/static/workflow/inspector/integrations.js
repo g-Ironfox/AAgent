@@ -4,6 +4,7 @@ import { nodeById, state } from '../domain/serialization.js';
 
 export function createIntegrationInspector(context) {
   let modelConfigs = [];
+  let modelLoadState = { loading: true, error: '' };
   let localToolSchemas = [];
   let remoteToolSchemas = [];
   let remoteToolReferences = [];
@@ -70,14 +71,29 @@ export function createIntegrationInspector(context) {
       context.markChanged();
     }
     const options = modelConfigs.map((model) => Object.assign(document.createElement('option'), { value: model.id, textContent: model.name }));
+    const missingMessage = modelLoadState.loading ? '正在加载模型配置…'
+      : modelLoadState.error ? '模型列表加载失败，请刷新'
+      : '没有已启用的模型配置';
     if (!modelConfigs.some((model) => model.id === node.model)) {
       options.unshift(Object.assign(document.createElement('option'), {
         value: node.model || '',
-        textContent: node.model ? `当前不可用 (${node.model})` : '没有可用的模型配置',
+        textContent: modelConfigs.length
+          ? `当前不可用 (${node.model})`
+          : `${missingMessage}${node.model ? ` (${node.model})` : ''}`,
       }));
     }
     select.replaceChildren(...options);
+    select.value = node.model || '';
     select.disabled = modelConfigs.length === 0;
+    const status = context.elements.inspectorContent.querySelector('[data-model-status]');
+    if (status) {
+      status.textContent = modelLoadState.loading ? '正在加载模型配置…'
+        : modelLoadState.error ? `模型列表加载失败：${modelLoadState.error}`
+        : !modelConfigs.length ? '请先在管理页面添加并启用模型，然后刷新。'
+        : !modelConfigs.some((model) => model.id === node.model) ? '当前值未匹配，请从下拉框选择模型。' : '';
+    }
+    const refresh = context.elements.inspectorContent.querySelector('[data-refresh-models]');
+    if (refresh) refresh.disabled = modelLoadState.loading;
   }
 
   function renderLocalToolSelect(node) {
@@ -218,6 +234,8 @@ export function createIntegrationInspector(context) {
   }
 
   function bindLlm(node) {
+    context.elements.inspectorContent.querySelector('[data-refresh-models]')?.addEventListener('click', () => context.reloadModels?.());
+    context.elements.inspectorContent.querySelector('[data-field="model"]').addEventListener('change', () => renderModelOptions(node));
     const toolsSection = context.elements.inspectorContent.querySelector('[data-llm-tools]');
     const think = context.elements.inspectorContent.querySelector('[data-think]');
     const toolCalls = context.elements.inspectorContent.querySelector('[data-tool-calls]');
@@ -255,7 +273,14 @@ export function createIntegrationInspector(context) {
     });
   }
 
+  function setModelLoadState({ loading = false, error = '' }) {
+    modelLoadState = { loading, error };
+    const node = nodeById(context.editor.editorState.selectedId);
+    if (node?.type === 'llm') renderModelOptions(node);
+  }
+
   function setModels(models) {
+    modelLoadState = { loading: false, error: '' };
     modelConfigs = models.filter((model) => model.enabled === true);
     if (nodeById(context.editor.editorState.selectedId)?.type === 'llm') context.renderInspector();
   }
@@ -294,5 +319,5 @@ export function createIntegrationInspector(context) {
     if (nodeById(context.editor.editorState.selectedId)?.type === 'llm') context.renderInspector();
   }
 
-  return { bind, prepare, setModels, setLocalTools, setMetadataTools, setRemoteToolReferences, setRemoteToolSchemas };
+  return { bind, prepare, setModels, setModelLoadState, setLocalTools, setMetadataTools, setRemoteToolReferences, setRemoteToolSchemas };
 }

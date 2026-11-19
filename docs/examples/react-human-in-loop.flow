@@ -1,0 +1,842 @@
+{
+  "schema_version": "2.0",
+  "description": "Human-supervised ReAct loop. The model proposes one action, a person performs or rejects it and returns an observation, and DONE ends the run.",
+  "input_ports": [
+    {
+      "name": "task",
+      "type": "content"
+    }
+  ],
+  "output_ports": [],
+  "metadata": {
+    "structs": [],
+    "tools": [],
+    "functions": [
+      {
+        "id": "react_turn",
+        "name": "ReAct turn with human review",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "tokens_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "in",
+      "type": "input",
+      "name": "Input",
+      "workflowPorts": [
+        {
+          "id": "workflow:task",
+          "name": "task",
+          "type": "content"
+        }
+      ],
+      "x": 80,
+      "y": 100
+    },
+    {
+      "id": "system_prompt",
+      "type": "construct_content",
+      "name": "System prompt",
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "You are a ReAct assistant working under human supervision. For each turn, briefly state your reasoning and propose exactly one concrete action. Do not claim that an action was executed. The human will perform, reject, or modify it and send the observation. When the human sends DONE, treat your current proposal as the final answer and end the run."
+          }
+        ]
+      },
+      "dataInputPorts": [],
+      "x": 330,
+      "y": 100
+    },
+    {
+      "id": "system",
+      "type": "construct_message",
+      "name": "System instruction",
+      "arguments": {
+        "role": "system"
+      },
+      "x": 580,
+      "y": 100
+    },
+    {
+      "id": "task_message",
+      "type": "construct_message",
+      "name": "Task message",
+      "arguments": {
+        "role": "user"
+      },
+      "x": 830,
+      "y": 100
+    },
+    {
+      "id": "initial_history",
+      "type": "construct_list",
+      "name": "Initial history",
+      "arguments": {
+        "item_type": "content",
+        "initial_value_count": 2
+      },
+      "dataInputPorts": [
+        "content-in-0",
+        "content-in-1"
+      ],
+      "x": 1080,
+      "y": 100
+    },
+    {
+      "id": "create_history",
+      "type": "context_create",
+      "name": "Create history",
+      "arguments": {
+        "value_type": "list-content"
+      },
+      "x": 1330,
+      "y": 100
+    },
+    {
+      "id": "start_token",
+      "type": "construct_content",
+      "name": "Start token",
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "start"
+          }
+        ]
+      },
+      "dataInputPorts": [],
+      "x": 1580,
+      "y": 100
+    },
+    {
+      "id": "initial_token_list",
+      "type": "construct_list",
+      "name": "Initial turn tokens",
+      "arguments": {
+        "item_type": "content",
+        "initial_value_count": 1
+      },
+      "dataInputPorts": [
+        "content-in-0"
+      ],
+      "x": 1830,
+      "y": 100
+    },
+    {
+      "id": "create_turn_tokens",
+      "type": "context_create",
+      "name": "Create turn tokens",
+      "arguments": {
+        "value_type": "list-content"
+      },
+      "x": 2080,
+      "y": 100
+    },
+    {
+      "id": "turn_gate",
+      "type": "while_pop",
+      "name": "Next ReAct turn",
+      "arguments": {
+        "value_type": "list-content",
+        "context_id_source": "port",
+        "position": "end"
+      },
+      "x": 2330,
+      "y": 100
+    },
+    {
+      "id": "call_turn",
+      "type": "function_call",
+      "name": "Run one ReAct turn",
+      "arguments": {
+        "function_id": "react_turn"
+      },
+      "x": 2580,
+      "y": 100
+    },
+    {
+      "id": "out",
+      "type": "output",
+      "name": "Completed",
+      "workflowPorts": [],
+      "x": 2830,
+      "y": 100
+    },
+    {
+      "id": "turn_in",
+      "type": "function_input",
+      "name": "Turn input",
+      "function_id": "react_turn",
+      "x": 80,
+      "y": 500
+    },
+    {
+      "id": "read_for_llm",
+      "type": "context_read",
+      "name": "Read history",
+      "arguments": {
+        "value_type": "list-content",
+        "context_id_source": "port"
+      },
+      "x": 330,
+      "y": 500
+    },
+    {
+      "id": "llm",
+      "type": "llm",
+      "name": "Reason and propose",
+      "arguments": {
+        "model": "REPLACE_WITH_MODEL_ID",
+        "think": true
+      },
+      "x": 580,
+      "y": 500
+    },
+    {
+      "id": "assistant_message",
+      "type": "construct_message",
+      "name": "Store assistant turn",
+      "arguments": {
+        "role": "assistant"
+      },
+      "x": 830,
+      "y": 500
+    },
+    {
+      "id": "read_before_assistant",
+      "type": "context_read",
+      "name": "Read before append",
+      "arguments": {
+        "value_type": "list-content",
+        "context_id_source": "port"
+      },
+      "x": 1080,
+      "y": 500
+    },
+    {
+      "id": "append_assistant",
+      "type": "list_append",
+      "name": "Append assistant turn",
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      },
+      "x": 1330,
+      "y": 500
+    },
+    {
+      "id": "save_assistant",
+      "type": "context_write",
+      "name": "Save assistant turn",
+      "arguments": {
+        "value_type": "list-content",
+        "context_id_source": "port"
+      },
+      "x": 1580,
+      "y": 500
+    },
+    {
+      "id": "show_proposal",
+      "type": "output_to_terminal",
+      "name": "Show proposal",
+      "x": 1830,
+      "y": 500
+    },
+    {
+      "id": "wait_for_human",
+      "type": "wait_terminal_event",
+      "name": "Wait for human",
+      "x": 2080,
+      "y": 500
+    },
+    {
+      "id": "read_human",
+      "type": "read_terminal_input",
+      "name": "Read human response",
+      "x": 2330,
+      "y": 500
+    },
+    {
+      "id": "latest_human",
+      "type": "list_get",
+      "name": "Latest response",
+      "arguments": {
+        "value_type": "list-content",
+        "index_source": "fixed",
+        "index": -1
+      },
+      "x": 2580,
+      "y": 500
+    },
+    {
+      "id": "done_gate",
+      "type": "router",
+      "name": "Finish?",
+      "arguments": {
+        "branches": [
+          {
+            "id": "done",
+            "name": "DONE"
+          }
+        ]
+      },
+      "x": 2830,
+      "y": 500
+    },
+    {
+      "id": "turn_done",
+      "type": "function_output",
+      "name": "Done: leave queue empty",
+      "function_id": "react_turn",
+      "x": 2830,
+      "y": 800
+    },
+    {
+      "id": "observation_message",
+      "type": "construct_message",
+      "name": "Store human observation",
+      "arguments": {
+        "role": "user"
+      },
+      "x": 3330,
+      "y": 500
+    },
+    {
+      "id": "read_before_observation",
+      "type": "context_read",
+      "name": "Read before observation",
+      "arguments": {
+        "value_type": "list-content",
+        "context_id_source": "port"
+      },
+      "x": 3580,
+      "y": 500
+    },
+    {
+      "id": "append_observation",
+      "type": "list_append",
+      "name": "Append human observation",
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      },
+      "x": 3830,
+      "y": 500
+    },
+    {
+      "id": "save_observation",
+      "type": "context_write",
+      "name": "Save human observation",
+      "arguments": {
+        "value_type": "list-content",
+        "context_id_source": "port"
+      },
+      "x": 4080,
+      "y": 500
+    },
+    {
+      "id": "read_turn_tokens",
+      "type": "context_read",
+      "name": "Read turn tokens",
+      "arguments": {
+        "value_type": "list-content",
+        "context_id_source": "port"
+      },
+      "x": 4330,
+      "y": 500
+    },
+    {
+      "id": "append_turn_token",
+      "type": "list_append",
+      "name": "Queue next turn",
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      },
+      "x": 4580,
+      "y": 500
+    },
+    {
+      "id": "save_turn_tokens",
+      "type": "context_write",
+      "name": "Save turn token",
+      "arguments": {
+        "value_type": "list-content",
+        "context_id_source": "port"
+      },
+      "x": 4830,
+      "y": 500
+    },
+    {
+      "id": "turn_continue",
+      "type": "function_output",
+      "name": "Continue: next turn queued",
+      "function_id": "react_turn",
+      "x": 5080,
+      "y": 500
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "in",
+      "fromPortId": "control-out",
+      "toId": "system_prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "system_prompt",
+      "fromPortId": "control-out",
+      "toId": "system",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "system",
+      "fromPortId": "control-out",
+      "toId": "task_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "task_message",
+      "fromPortId": "control-out",
+      "toId": "initial_history",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_history",
+      "fromPortId": "control-out",
+      "toId": "create_history",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "create_history",
+      "fromPortId": "control-out",
+      "toId": "start_token",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "start_token",
+      "fromPortId": "control-out",
+      "toId": "initial_token_list",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_token_list",
+      "fromPortId": "control-out",
+      "toId": "create_turn_tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "create_turn_tokens",
+      "fromPortId": "control-out",
+      "toId": "turn_gate",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_gate",
+      "fromPortId": "control-out",
+      "toId": "out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_gate",
+      "fromPortId": "loop-out",
+      "toId": "call_turn",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_for_llm",
+      "fromPortId": "control-out",
+      "toId": "llm",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "control-out",
+      "toId": "assistant_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "assistant_message",
+      "fromPortId": "control-out",
+      "toId": "read_before_assistant",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_before_assistant",
+      "fromPortId": "control-out",
+      "toId": "append_assistant",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "append_assistant",
+      "fromPortId": "control-out",
+      "toId": "save_assistant",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_assistant",
+      "fromPortId": "control-out",
+      "toId": "show_proposal",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "show_proposal",
+      "fromPortId": "control-out",
+      "toId": "wait_for_human",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "wait_for_human",
+      "fromPortId": "control-out",
+      "toId": "read_human",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_human",
+      "fromPortId": "control-out",
+      "toId": "latest_human",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "latest_human",
+      "fromPortId": "control-out",
+      "toId": "done_gate",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "done_gate",
+      "fromPortId": "done",
+      "toId": "turn_done",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "done_gate",
+      "fromPortId": "branch$others",
+      "toId": "observation_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "observation_message",
+      "fromPortId": "control-out",
+      "toId": "read_before_observation",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_before_observation",
+      "fromPortId": "control-out",
+      "toId": "append_observation",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "append_observation",
+      "fromPortId": "control-out",
+      "toId": "save_observation",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_observation",
+      "fromPortId": "control-out",
+      "toId": "read_turn_tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_turn_tokens",
+      "fromPortId": "control-out",
+      "toId": "append_turn_token",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "append_turn_token",
+      "fromPortId": "control-out",
+      "toId": "save_turn_tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_turn_tokens",
+      "fromPortId": "control-out",
+      "toId": "turn_continue",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "in",
+      "fromPortId": "workflow:task",
+      "toId": "task_message",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "system_prompt",
+      "fromPortId": "content-out",
+      "toId": "system",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "system",
+      "fromPortId": "content-out",
+      "toId": "initial_history",
+      "toPortId": "content-in-0",
+      "type": "content"
+    },
+    {
+      "fromId": "task_message",
+      "fromPortId": "content-out",
+      "toId": "initial_history",
+      "toPortId": "content-in-1",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_history",
+      "fromPortId": "list-out",
+      "toId": "create_history",
+      "toPortId": "initial-value",
+      "type": "list-content"
+    },
+    {
+      "fromId": "start_token",
+      "fromPortId": "content-out",
+      "toId": "initial_token_list",
+      "toPortId": "content-in-0",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_token_list",
+      "fromPortId": "list-out",
+      "toId": "create_turn_tokens",
+      "toPortId": "initial-value",
+      "type": "list-content"
+    },
+    {
+      "fromId": "create_turn_tokens",
+      "fromPortId": "context-id",
+      "toId": "turn_gate",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "read_for_llm",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "read_for_llm",
+      "fromPortId": "value-out",
+      "toId": "llm",
+      "toPortId": "messages-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "output",
+      "toId": "assistant_message",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "output",
+      "toId": "show_proposal",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "read_before_assistant",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "read_before_assistant",
+      "fromPortId": "value-out",
+      "toId": "append_assistant",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "assistant_message",
+      "fromPortId": "content-out",
+      "toId": "append_assistant",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "save_assistant",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "append_assistant",
+      "fromPortId": "list-out",
+      "toId": "save_assistant",
+      "toPortId": "value-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "read_human",
+      "fromPortId": "list-out",
+      "toId": "latest_human",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "latest_human",
+      "fromPortId": "item-out",
+      "toId": "done_gate",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "latest_human",
+      "fromPortId": "item-out",
+      "toId": "observation_message",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "read_before_observation",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "read_before_observation",
+      "fromPortId": "value-out",
+      "toId": "append_observation",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "observation_message",
+      "fromPortId": "content-out",
+      "toId": "append_observation",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "save_observation",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "append_observation",
+      "fromPortId": "list-out",
+      "toId": "save_observation",
+      "toPortId": "value-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "read_turn_tokens",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "read_turn_tokens",
+      "fromPortId": "value-out",
+      "toId": "append_turn_token",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "latest_human",
+      "fromPortId": "item-out",
+      "toId": "append_turn_token",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "save_turn_tokens",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "append_turn_token",
+      "fromPortId": "list-out",
+      "toId": "save_turn_tokens",
+      "toPortId": "value-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "call_turn",
+      "fromPortId": "control-out",
+      "toId": "turn_gate",
+      "toPortId": "loop-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_in",
+      "fromPortId": "control-out",
+      "toId": "read_for_llm",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "create_history",
+      "fromPortId": "context-id",
+      "toId": "call_turn",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "create_turn_tokens",
+      "fromPortId": "context-id",
+      "toId": "call_turn",
+      "toPortId": "function:tokens_id",
+      "type": "content"
+    }
+  ]
+}

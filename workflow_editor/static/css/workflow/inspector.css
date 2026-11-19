@@ -141,3 +141,7 @@
 }
 [data-tool-remote-options].form-section { display:grid; gap:12px; }
 [data-tool-remote-options][hidden], [data-tool-callback][hidden] { display:none; }
+
+.model-resource-actions { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.model-resource-actions [data-model-status] { flex:1; min-width:0; overflow-wrap:anywhere; }
+.model-resource-actions button { flex:none; }

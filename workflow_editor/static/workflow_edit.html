@@ -413,6 +413,7 @@
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>模型<select data-field="model"><option>加载模型配置中</option></select></label>
+      <div class="model-resource-actions"><span class="section-help" data-model-status role="status"></span><button class="toolbar-button" type="button" data-refresh-models>刷新模型</button></div>
       <label class="checkbox-field"><input type="checkbox" data-think><span><strong>Think</strong><small>启用推理过程输出</small></span></label>
       <label class="checkbox-field"><input type="checkbox" data-tool-calls><span><strong>Tool Calls</strong><small>启用 OpenAI 格式的工具调用输出</small></span></label>
       <label data-tools-source-field>工具来源<select data-tools-source><option value="definitions">输入 Tool JSON 列表</option><option value="declared">已声明的工具</option></select><small>JSON 列表每项为一个完整工具定义；连接空列表表示不使用工具。</small></label>

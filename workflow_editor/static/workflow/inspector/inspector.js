@@ -6,8 +6,8 @@ import { bindStructureInspector } from './structure.js';
 import { setRuntimeStyles } from '../domain/runtime-styles.js';
 import { bindNodeFunctions } from '../domain/functions.js';
 
-export function createInspector(elements, editor, markChanged) {
-  const context = { elements, editor, markChanged, renderInspector, renderInterfaceContract };
+export function createInspector(elements, editor, markChanged, { reloadModels } = {}) {
+  const context = { elements, editor, markChanged, renderInspector, renderInterfaceContract, reloadModels };
   const integrations = createIntegrationInspector(context);
 
   function renderInspector() {
@@ -136,6 +136,7 @@ export function createInspector(elements, editor, markChanged) {
   return {
     renderInspector,
     setModels: integrations.setModels,
+    setModelLoadState: integrations.setModelLoadState,
     setLocalTools: integrations.setLocalTools,
     setMetadataTools: integrations.setMetadataTools,
     setRemoteToolReferences,

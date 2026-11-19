@@ -81,7 +81,7 @@ function markChanged() {
 }
 
 const editor = createWorkflowEditor(elements, markChanged);
-const inspector = createInspector(elements, editor, markChanged);
+const inspector = createInspector(elements, editor, markChanged, { reloadModels: loadModelConfigs });
 let remoteToolSchemas = [];
 let localToolSchemas = [];
 let toolRowSequence = 0;
@@ -233,17 +233,28 @@ function renderResourceState() {
   elements.resourceState.textContent = [...counts, ...errors].join(' · ') || '资源读取中';
 }
 
-fetchModels()
-  .then((models) => {
-    inspector.setModels(models.items);
+let loadingModels = false;
+async function loadModelConfigs() {
+  if (loadingModels) return;
+  loadingModels = true;
+  delete resourceErrors.models;
+  inspector.setModelLoadState({ loading: true });
+  try {
+    const models = await fetchModels();
+    if (!Array.isArray(models.items)) throw new Error('模型列表格式无效');
     resourceCounts.models = models.items.length;
-    renderResourceState();
-  })
-  .catch((error) => {
+    inspector.setModels(models.items);
+  } catch (error) {
     console.warn('模型配置读取失败', error);
-    resourceErrors.models = `Models: ${error.message || '读取失败'}`;
+    const message = error.name === 'AbortError' ? '请求超时，请重试' : error.message || '读取失败';
+    resourceErrors.models = `Models: ${message}`;
+    inspector.setModelLoadState({ loading: false, error: message });
+  } finally {
+    loadingModels = false;
     renderResourceState();
-  });
+  }
+}
+loadModelConfigs();
 
 fetchLocalTools()
   .then((tools) => {
