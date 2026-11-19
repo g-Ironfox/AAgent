@@ -35,6 +35,7 @@
     </section>
     <section class="panel" aria-labelledby="tableTitle">
       <header class="panel-heading"><div><h2 id="tableTitle">当前进程表</h2><p>来自公开 Redis 的实时进程投影；与历史时间范围独立。</p></div><span id="tableCount" class="muted"></span></header>
+      <div id="tableTabs" class="table-tabs" role="group" aria-label="查看进程表"><button type="button" data-table="all" aria-pressed="true">全部活跃</button><button type="button" data-table="ready" aria-pressed="false">就绪队列</button><button type="button" data-table="running" aria-pressed="false">运行表</button><button type="button" data-table="blocked" aria-pressed="false">阻塞表</button><button type="button" data-table="waiting_for_input" aria-pressed="false">等待输入表</button></div>
       <div class="table-scroll"><table><thead><tr><th>进程 / 工作流</th><th>类型</th><th>状态</th><th>父进程</th><th>等待对象</th><th>累计执行</th><th>创建时间</th><th>快照时间</th></tr></thead><tbody id="processTable"></tbody></table></div>
       <p id="tableEmpty" class="empty" hidden>当前没有符合筛选条件的活跃进程</p>
     </section>

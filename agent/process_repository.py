@@ -67,7 +67,7 @@ def wake_process(client, process_id: str, source_process_id: str, event_kind: st
                 pipe.srem(BLOCKED_PROCESSES, process_id)
                 pipe.lrem(READY_PROCESSES, 0, process_id)
                 pipe.lpush(READY_PROCESSES, process_id)
-                _queue_terminal_updates(pipe, existing, {process_id: process})
+                _queue_public_updates(pipe, existing, {process_id: process})
                 pipe.execute()
                 return process
             except redis.WatchError:
@@ -109,12 +109,12 @@ def _read_terminal_scope(client, process: dict) -> dict[str, dict]:
     return records
 
 
-def _queue_terminal_updates(
+def _queue_public_updates(
     pipe,
     existing: dict[str, dict],
     updates: dict[str, dict],
 ) -> None:
-    """Publish routing and public session state in the process transaction."""
+    """Publish routing, public sessions, and scheduler projections in one transaction."""
     projected = dict(existing)
     projected.update(updates)
     terminal_ids = {
@@ -161,6 +161,8 @@ def _queue_terminal_updates(
         }))
         pipe.execute_command("SELECT", REDIS_KERNEL_DB)
 
+    queue_public_process_updates(pipe, updates)
+
 
 def publish_process_pair(client, process: dict, terminal: dict) -> None:
     """Publish a complete root workflow and its terminal before making it runnable."""
@@ -169,7 +171,7 @@ def publish_process_pair(client, process: dict, terminal: dict) -> None:
             process["process_id"]: _encode_process(process),
             terminal["process_id"]: _encode_process(terminal),
         })
-        _queue_terminal_updates(pipe, {}, {
+        _queue_public_updates(pipe, {}, {
             process["process_id"]: process,
             terminal["process_id"]: terminal,
         })
@@ -197,7 +199,7 @@ def claim_process(client, process_id: str) -> tuple[dict, bool]:
                 pipe.hset(PROCESSTABLE, process_id, _encode_process(process))
                 pipe.lrem(READY_PROCESSES, 0, process_id)
                 pipe.srem(BLOCKED_PROCESSES, process_id)
-                _queue_terminal_updates(pipe, existing, {process_id: process})
+                _queue_public_updates(pipe, existing, {process_id: process})
                 pipe.execute()
                 return process, True
             except redis.WatchError:
@@ -261,7 +263,7 @@ def commit_process(client, process: dict, child: dict | None = None,
                                                 for key, value in records.items()})
                 for record in records.values():
                     _index_process(pipe, record)
-                _queue_terminal_updates(pipe, existing, records)
+                _queue_public_updates(pipe, existing, records)
                 pipe.execute()
                 return candidate
             except redis.WatchError:
@@ -308,7 +310,7 @@ def terminate_process_tree(client, process_id: str) -> list[dict]:
                                                     for item in updates})
                     for record in updates:
                         _index_process(pipe, record)
-                    _queue_terminal_updates(
+                    _queue_public_updates(
                         pipe,
                         records,
                         {item["process_id"]: item for item in updates},

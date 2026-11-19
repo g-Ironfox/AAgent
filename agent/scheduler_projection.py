@@ -30,7 +30,7 @@ def _encode(process, observed_at):
     return json.dumps(result, ensure_ascii=False, allow_nan=False)
 
 
-def queue_public_process_updates(pipe, updates):
+def queue_public_process_updates(pipe, updates, *, enqueue_ready=True):
     """Queue only committed records, after execution/cancellation fencing succeeds."""
     if not updates:
         return
@@ -39,13 +39,14 @@ def queue_public_process_updates(pipe, updates):
     pipe.execute_command("SELECT", REDIS_PUBLIC_DB)
     pipe.hset(PUBLIC_PROCESSES, mapping=encoded)
     for process_id, process in updates.items():
-        pipe.lrem(PUBLIC_TABLES["ready"], 0, process_id)
+        if enqueue_ready or process.get("status") != "ready":
+            pipe.lrem(PUBLIC_TABLES["ready"], 0, process_id)
         for status in ("running", "blocked", "waiting_for_input"):
             pipe.srem(PUBLIC_TABLES[status], process_id)
         status = process.get("status")
-        if status == "ready":
+        if status == "ready" and enqueue_ready:
             pipe.lpush(PUBLIC_TABLES[status], process_id)
-        elif status in PUBLIC_TABLES:
+        elif status in {"running", "blocked", "waiting_for_input"}:
             pipe.sadd(PUBLIC_TABLES[status], process_id)
     pipe.hset(PUBLIC_META, mapping={"updated_at": now})
     pipe.execute_command("SELECT", REDIS_KERNEL_DB)

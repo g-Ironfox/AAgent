@@ -164,7 +164,7 @@ def write_process(process: dict) -> bool:
         raise ValueError(f'process data is not JSON serializable: {process_id}') from error
     with get_connection().pipeline(transaction=True) as pipe:
         pipe.hset(PROCESSTABLE, process_id, raw)
-        queue_public_process_updates(pipe, {process_id: process})
+        queue_public_process_updates(pipe, {process_id: process}, enqueue_ready=False)
         pipe.execute()
     return True
 

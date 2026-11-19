@@ -56,9 +56,12 @@ def _current_snapshot(client):
         if process["status"] not in FINAL_STATUSES:
             processes.append(process)
     counts = dict(Counter(process["status"] for process in processes))
-    priority = {status: index for index, status in enumerate(PUBLIC_TABLES)}
+    priority = {"running": 0, "ready": 1, "blocked": 2, "waiting_for_input": 3}
+    ready_positions = {process_id: index for index, process_id in enumerate(reversed(ready))}
     processes.sort(key=lambda process: (
-        priority.get(process["status"], 99), process.get("start_time") or "", process["process_id"],
+        priority.get(process["status"], 99),
+        ready_positions.get(process["process_id"], len(ready)) if process["status"] == "ready" else 0,
+        process.get("start_time") or "", process["process_id"],
     ))
     return {
         "active_items": processes[:ACTIVE_LIMIT], "active_count": len(processes),

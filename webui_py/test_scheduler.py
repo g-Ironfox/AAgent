@@ -9,24 +9,38 @@ from unittest.mock import MagicMock
 from bson import ObjectId
 from fastapi import FastAPI
 from pymongo.errors import ServerSelectionTimeoutError
+from redis.exceptions import ConnectionError
 
-from scheduler import ACTIVE_LIMIT, PROJECTION, create_scheduler_router
+from scheduler import ACTIVE_LIMIT, PROJECTION, PUBLIC_PROCESSES, PUBLIC_TABLES, create_scheduler_router
 
 
 class SchedulerApiTest(unittest.TestCase):
     def setUp(self):
         self.logs = MagicMock()
+        self.redis = MagicMock()
+        self.pipe = self.redis.pipeline.return_value.__enter__.return_value
         self.app = FastAPI()
-        self.app.include_router(create_scheduler_router(self.logs))
+        self.app.include_router(create_scheduler_router(self.logs, self.redis))
         self.end = datetime.now(timezone.utc) - timedelta(seconds=5)
         self.start = self.end - timedelta(hours=1)
-        self.logs.count_documents.side_effect = [2, 1]
-        self.logs.find.return_value.sort.return_value.limit.side_effect = [
-            [{"_id": ObjectId(), "process_id": "finished", "status": "completed",
-              "start_time": self.start, "finished_at": self.end}],
-            [{"_id": ObjectId(), "process_id": "old-active", "status": "blocked",
-              "start_time": self.start - timedelta(days=10), "events": [],
-              "wait_for": {"kind": "process_exit", "process_id": "child"}}],
+        self.logs.count_documents.return_value = 2
+        self.logs.find.return_value.sort.return_value.limit.return_value = [
+            {"_id": ObjectId(), "process_id": "finished", "status": "completed",
+             "start_time": self.start, "finished_at": self.end},
+        ]
+        self.current = {
+            "old-active": {"process_id": "old-active", "status": "blocked",
+                           "start_time": (self.start - timedelta(days=10)).isoformat(),
+                           "observed_at": self.end.isoformat(),
+                           "wait_for": {"kind": "process_exit", "process_id": "child"}},
+            "finished": {"process_id": "finished", "status": "completed"},
+        }
+        self.public_snapshot()
+
+    def public_snapshot(self):
+        self.pipe.execute.return_value = [
+            {key: json.dumps(value) for key, value in self.current.items()},
+            {"updated_at": self.end.isoformat()}, [], set(), {"old-active"}, set(),
         ]
 
     def get(self, path, params=None):
@@ -45,7 +59,7 @@ class SchedulerApiTest(unittest.TestCase):
             return SimpleNamespace(status_code=status, json=lambda: json.loads(body))
         return asyncio.run(request())
 
-    def test_snapshot_keeps_current_processes_independent_of_history_window(self):
+    def test_current_processes_come_only_from_public_redis(self):
         response = self.get("/api/scheduler", params={"start": self.start.isoformat(), "end": self.end.isoformat(), "limit": 1})
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -55,13 +69,17 @@ class SchedulerApiTest(unittest.TestCase):
         self.assertEqual(data["active_items"][0]["wait_for"]["process_id"], "child")
         self.assertTrue(data["history_truncated"])
         self.assertFalse(data["active_truncated"])
-        history_query = self.logs.find.call_args_list[0].args[0]
-        self.assertEqual(history_query, {"start_time": {"$lte": self.end}, "$or": [{"finished_at": {"$gte": self.start}}, {"finished_at": None}]})
-        active_query = self.logs.find.call_args_list[1].args[0]
-        self.assertEqual(active_query, {"status": {"$nin": ["completed", "failed", "terminated"]}})
+        self.assertEqual(data["active_count"], 1)
+        self.assertEqual(data["status_counts"], {"blocked": 1})
+        self.assertEqual(data["process_tables"]["blocked"], ["old-active"])
+        self.assertEqual(data["current_source"], "public_redis")
+        self.logs.find.assert_called_once_with({"start_time": {"$lte": self.end}, "$or": [{"finished_at": {"$gte": self.start}}, {"finished_at": None}]}, PROJECTION)
+        self.logs.find.return_value.sort.return_value.limit.assert_called_once_with(1)
         self.assertNotIn("input", PROJECTION)
-        self.assertNotIn("nodes", PROJECTION)
-        self.assertEqual(self.logs.find.return_value.sort.return_value.limit.call_args_list[1].args, (ACTIVE_LIMIT,))
+        self.redis.pipeline.assert_called_once_with(transaction=True)
+        self.pipe.hgetall.assert_any_call(PUBLIC_PROCESSES)
+        self.assertFalse(any(call.args and call.args[0] in {"processtable", "ready_processes", "blocked_processes"}
+                             for call in self.pipe.method_calls))
 
     def test_defaults_to_last_fifteen_minutes(self):
         data = self.get("/api/scheduler").json()
@@ -79,19 +97,61 @@ class SchedulerApiTest(unittest.TestCase):
                 self.assertEqual(self.get("/api/scheduler", params=params).status_code, 422)
         self.logs.find.assert_not_called()
         self.logs.count_documents.assert_not_called()
+        self.redis.pipeline.assert_not_called()
 
-    def test_outage_is_a_service_unavailable_response(self):
+    def test_mongo_outage_does_not_hide_current_state(self):
         self.logs.count_documents.side_effect = ServerSelectionTimeoutError("offline")
         response = self.get("/api/scheduler")
-        self.assertEqual(response.status_code, 503)
-        self.assertIn("unavailable", response.json()["error"])
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["current_available"])
+        self.assertFalse(data["history_available"])
+        self.assertEqual(data["active_count"], 1)
+        self.assertTrue(data["warnings"])
 
-    def test_reports_current_table_truncation(self):
-        self.logs.count_documents.side_effect = [0, ACTIVE_LIMIT + 1]
-        self.logs.find.return_value.sort.return_value.limit.side_effect = [[], []]
+    def test_redis_outage_does_not_hide_history(self):
+        self.pipe.execute.side_effect = ConnectionError("offline")
+        data = self.get("/api/scheduler").json()
+        self.assertFalse(data["current_available"])
+        self.assertTrue(data["history_available"])
+        self.assertTrue(data["warnings"])
+
+    def test_both_sources_offline_returns_service_unavailable(self):
+        self.logs.count_documents.side_effect = ServerSelectionTimeoutError("offline")
+        self.pipe.execute.side_effect = ConnectionError("offline")
+        self.assertEqual(self.get("/api/scheduler").status_code, 503)
+
+    def test_empty_uninitialized_projection_is_not_reported_as_zero_processes(self):
+        self.pipe.execute.return_value = [{}, {}, [], set(), set(), set()]
+        data = self.get("/api/scheduler").json()
+        self.assertFalse(data["current_available"])
+        self.assertIn("not initialized", data["warnings"][0])
+
+    def test_initialized_empty_projection_is_available(self):
+        self.current = {}
+        self.public_snapshot()
+        data = self.get("/api/scheduler").json()
+        self.assertTrue(data["current_available"])
+        self.assertEqual(data["active_count"], 0)
+        self.assertFalse(data["warnings"])
+
+    def test_invalid_public_record_is_a_visible_projection_error(self):
+        self.pipe.execute.return_value[0]["bad"] = "not json"
+        data = self.get("/api/scheduler").json()
+        self.assertFalse(data["current_available"])
+        self.assertTrue(data["warnings"])
+
+    def test_current_counts_remain_complete_when_rows_are_truncated(self):
+        self.current = {str(index): {"process_id": str(index), "status": "ready"} for index in range(ACTIVE_LIMIT + 1)}
+        self.public_snapshot()
+        self.pipe.execute.return_value[2] = list(self.current)
         data = self.get("/api/scheduler").json()
         self.assertTrue(data["active_truncated"])
         self.assertEqual(data["active_count"], ACTIVE_LIMIT + 1)
+        self.assertEqual(data["status_counts"], {"ready": ACTIVE_LIMIT + 1})
+        self.assertEqual(len(data["active_items"]), ACTIVE_LIMIT)
+        self.assertEqual(data["process_tables"]["ready"], list(reversed(self.current)))
+        self.pipe.lrange.assert_called_once_with(PUBLIC_TABLES["ready"], 0, -1)
 
 
 if __name__ == "__main__":

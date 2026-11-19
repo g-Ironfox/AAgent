@@ -1,8 +1,8 @@
 import { finalStatuses, statusLabels, timestamp, formatDuration, waitLabel, matches, buildSegments, isPrecise } from './scheduler-data.mjs';
 
-const el = Object.fromEntries(['refreshState', 'refreshButton', 'summary', 'range', 'customRange', 'startTime', 'endTime', 'applyRange', 'typeFilter', 'statusFilter', 'searchInput', 'interval', 'warning', 'limits', 'gantt', 'timeWindow', 'timelineCount', 'timelineNote', 'processTable', 'tableEmpty', 'tableCount', 'details', 'detailContent', 'closeDetails'].map(id => [id, document.getElementById(id)]));
+const el = Object.fromEntries(['refreshState', 'refreshButton', 'summary', 'range', 'customRange', 'startTime', 'endTime', 'applyRange', 'typeFilter', 'statusFilter', 'searchInput', 'interval', 'warning', 'limits', 'gantt', 'timeWindow', 'timelineCount', 'timelineNote', 'processTable', 'tableTabs', 'tableEmpty', 'tableCount', 'details', 'detailContent', 'closeDetails'].map(id => [id, document.getElementById(id)]));
 let snapshot = null, selectedId = null, timer = null, controller = null, requestId = 0;
-let customWindow = null;
+let customWindow = null, tableView = 'all';
 const dateFormat = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const timeFormat = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 function date(value) { const time = timestamp(value); return time === null ? '未记录' : dateFormat.format(time); }
@@ -70,10 +70,12 @@ function renderTimeline() {
 }
 function renderTable() {
   const order = { running: 0, ready: 1, blocked: 2, waiting_for_input: 3 };
-  const items = (snapshot.active_items || []).filter(p => !finalStatuses.has(p.status) && matches(p, filter())).sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4) || (timestamp(a.start_time) || 0) - (timestamp(b.start_time) || 0));
+  const readyPositions = new Map((snapshot.process_tables?.ready || []).map((id, index) => [id, index]));
+  const items = (snapshot.active_items || []).filter(p => !finalStatuses.has(p.status) && (tableView === 'all' || p.status === tableView) && matches(p, filter())).sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4) || (a.status === 'ready' && b.status === 'ready' ? (readyPositions.get(a.process_id) ?? Infinity) - (readyPositions.get(b.process_id) ?? Infinity) : 0) || (timestamp(a.start_time) || 0) - (timestamp(b.start_time) || 0));
   el.processTable.replaceChildren(...items.map(process => {
     const row = node('tr'); const identity = node('td'); identity.append(processButton(process));
     const type = node('td', '', process.process_type === 'terminal' ? '终端' : '工作流'); const state = node('td'); state.append(badge(process.status));
+    if (process.status === 'ready' && readyPositions.has(process.process_id)) state.append(node('small', '', '就绪队列第 ' + (readyPositions.get(process.process_id) + 1) + ' 位'));
     const parent = node('td', 'mono id-cell', process.parent_process_id || '—'); parent.title = process.parent_process_id || '';
     const wait = node('td', 'id-cell', waitLabel(process.wait_for)); wait.title = waitLabel(process.wait_for);
     const observed = node('td', '', date(process.observed_at));
@@ -138,6 +140,11 @@ async function refresh() {
     if (id === requestId) { el.refreshButton.disabled = false; schedule(); }
   }
 }
+for (const button of el.tableTabs.children) button.addEventListener('click', () => {
+  tableView = button.dataset.table;
+  for (const tab of el.tableTabs.children) tab.setAttribute('aria-pressed', String(tab === button));
+  if (snapshot) renderTable();
+});
 for (const element of [el.typeFilter, el.statusFilter]) element.addEventListener('change', render);
 el.searchInput.addEventListener('input', render);
 el.refreshButton.addEventListener('click', refresh);

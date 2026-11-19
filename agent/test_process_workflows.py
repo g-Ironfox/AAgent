@@ -10,6 +10,7 @@ from test_support import MemoryRedis
 
 import main
 import process_repository as r
+import scheduler_projection as projection
 from process_creation import build_workflow_process
 from workflow_nodes import WorkflowStep, workflow_wait_terminal_event
 from terminal_repository import terminal_process_context
@@ -297,6 +298,123 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertTrue(all(event["timestamp"] for event in completed["events"]))
         self.assertEqual(self.latest_log(root["terminal_process_id"])["status"], "terminated")
         self.assertEqual(self.latest_log(root["terminal_process_id"])["events"][-1]["event"], "terminated")
+
+    def public_process(self, process_id):
+        return json.loads(self.public_redis.hget(projection.PUBLIC_PROCESSES, process_id))
+
+    def assert_public_matches_kernel(self):
+        private = {key: json.loads(raw) for key, raw in self.redis.hgetall(r.PROCESSTABLE).items()}
+        public = {key: json.loads(raw) for key, raw in self.public_redis.hgetall(projection.PUBLIC_PROCESSES).items()}
+        self.assertEqual(set(private), set(public))
+        for key, process in private.items():
+            self.assertEqual(public[key]["status"], process["status"])
+            self.assertEqual(public[key].get("wait_for"), process.get("wait_for"))
+            self.assertTrue(public[key]["observed_at"])
+        self.assertEqual(self.public_redis.lrange(projection.PUBLIC_TABLES["ready"], 0, -1),
+                         self.redis.lrange(r.READY_PROCESSES, 0, -1))
+        for status in ("running", "blocked", "waiting_for_input"):
+            self.assertEqual(self.public_redis.smembers(projection.PUBLIC_TABLES[status]),
+                             {key for key, process in private.items() if process["status"] == status})
+        self.assertFalse(self.public_redis.hgetall(r.PROCESSTABLE))
+        self.assertFalse(self.redis.hgetall(projection.PUBLIC_PROCESSES))
+
+    def test_public_projection_is_minimal_and_tracks_each_runtime_transition(self):
+        root = self.start(document("Root", wait=True))
+        public = self.public_process(root["process_id"])
+        self.assertEqual(public["process_type"], "workflow")
+        self.assertEqual(public["terminal_process_id"], root["terminal_process_id"])
+        self.assertEqual(public["status"], "ready")
+        for key in ("workflow", "input", "output", "result", "events", "node_trace", "context_ids", "execution_id"):
+            self.assertNotIn(key, public)
+        self.assert_public_matches_kernel()
+        execute = main.execute_node
+        def check_running(index, graph):
+            self.assertEqual(self.public_process(root["process_id"])["status"], "running")
+            self.assert_public_matches_kernel()
+            return execute(index, graph)
+        with patch("main.execute_node", side_effect=check_running):
+            main.schedule_once(timeout=1)
+        self.assert_public_matches_kernel()
+        self.drain()
+        self.assertEqual(self.public_process(root["process_id"])["status"], "blocked")
+        self.assert_public_matches_kernel()
+        self.send(root)
+        self.assertEqual(self.public_process(root["process_id"])["status"], "ready")
+        self.assert_public_matches_kernel()
+        self.drain()
+        self.assertEqual(self.public_process(root["process_id"])["status"], "completed")
+        self.assertEqual(self.public_process(root["terminal_process_id"])["status"], "terminated")
+        self.assert_public_matches_kernel()
+
+    def test_public_projection_publishes_children_and_parent_wakeup_together(self):
+        self.documents = {"Child.flow": document("Child", wait=True)}
+        root = self.start(document("Root", "Child.flow"))
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        self.assert_public_matches_kernel()
+        self.send(child)
+        while main.read_process(child["process_id"])["status"] != "completed":
+            main.schedule_once(timeout=1)
+        self.assertEqual(self.public_process(root["process_id"])["status"], "ready")
+        self.assertIsNone(self.public_process(root["process_id"])["wait_for"])
+        self.assert_public_matches_kernel()
+
+    def test_cancellation_cannot_be_overwritten_by_a_late_publication(self):
+        root = self.start(document("Root"))
+        claimed, ok = r.claim_process(self.redis, root["process_id"])
+        self.assertTrue(ok)
+        self.assert_public_matches_kernel()
+        r.terminate_process_tree(self.redis, root["process_id"])
+        before = self.public_process(root["process_id"])
+        claimed["status"] = "ready"
+        r.commit_process(self.redis, claimed)
+        self.assertEqual(self.public_process(root["process_id"]), before)
+        self.assert_public_matches_kernel()
+
+    def test_projection_rebuild_removes_stale_rows_and_preserves_ready_order(self):
+        first = self.start(document("First"))
+        self.start(document("Second"))
+        self.public_redis.hset(projection.PUBLIC_PROCESSES, "stale", "{}")
+        self.public_redis.lpush(projection.PUBLIC_TABLES["ready"], "stale")
+        self.public_redis.sadd(projection.PUBLIC_TABLES["blocked"], "stale")
+        self.redis.before_execute = lambda: main.write_process({**main.read_process(first["process_id"]), "workflow_name": "Changed"})
+        projection.rebuild_public_scheduler(self.redis, r.PROCESSTABLE, r.READY_PROCESSES)
+        self.assert_public_matches_kernel()
+        self.assertEqual(self.public_process(first["process_id"])["workflow_name"], "Changed")
+        self.assertTrue(self.public_redis.hget(projection.PUBLIC_META, "initialized_at"))
+
+    def test_record_only_write_does_not_reorder_the_public_ready_queue(self):
+        first = self.start(document("First"))
+        self.start(document("Second"))
+        main.write_process({**main.read_process(first["process_id"]), "workflow_name": "Changed"})
+        self.assert_public_matches_kernel()
+
+    def test_empty_projection_rebuild_marks_an_initialized_empty_runtime(self):
+        self.public_redis.hset(projection.PUBLIC_PROCESSES, "stale", "{}")
+        projection.rebuild_public_scheduler(self.redis, r.PROCESSTABLE, r.READY_PROCESSES)
+        self.assertFalse(self.public_redis.hgetall(projection.PUBLIC_PROCESSES))
+        self.assertTrue(self.public_redis.hget(projection.PUBLIC_META, "updated_at"))
+        self.assert_public_matches_kernel()
+
+    def test_public_projection_still_updates_when_mongo_is_offline(self):
+        self.logs.update_one.side_effect = RuntimeError("logs offline")
+        with self.assertLogs("main", level="ERROR"):
+            root = self.start(document("Root", wait=True))
+            self.drain()
+            self.assertEqual(self.public_process(root["process_id"])["status"], "blocked")
+            self.send(root)
+            self.drain()
+        self.assertEqual(self.public_process(root["process_id"])["status"], "completed")
+        self.assert_public_matches_kernel()
+
+    def test_changes_to_public_projection_do_not_control_kernel_execution(self):
+        root = self.start(document("Root"))
+        self.public_redis.hset(projection.PUBLIC_PROCESSES, root["process_id"],
+                              json.dumps({"process_id": root["process_id"], "status": "terminated"}))
+        self.public_redis.delete(projection.PUBLIC_TABLES["ready"])
+        self.drain()
+        self.assertEqual(main.read_process(root["process_id"])["status"], "completed")
+        self.assert_public_matches_kernel()
 
     def test_scheduling_events_capture_each_dispatch_and_return_to_ready(self):
         root = self.start(document("Root"))

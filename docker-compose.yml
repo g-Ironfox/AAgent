@@ -16,6 +16,7 @@ services:
     environment:
       REDIS_DB: ${REDIS_DB:-0}
       REDIS_KERNEL_DB: ${REDIS_KERNEL_DB:-1}
+      PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       TOOL_SERVER_URL: ${TOOL_SERVER_URL:-http://tool_server:8083}
       WORKSPACE_API_URL: ${WORKSPACE_API_URL:-http://webui_py:8081}
@@ -44,6 +45,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: ${REDIS_DB:-0}
+      PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       MONGO_HOST: mongodb
       MONGO_PORT: 27017

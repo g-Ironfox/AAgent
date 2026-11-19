@@ -67,3 +67,7 @@ td small { display:block; font:10px Consolas,monospace; color:var(--muted); marg
 footer { text-align:center; color:var(--muted); font-size:11px; padding:4px 0 12px; }
 @media(max-width:1100px) { .topbar { flex-wrap:wrap; height:auto; min-height:90px; padding:12px 24px; gap:12px; } .topbar .page-nav { position:static; transform:none; margin-left:auto; } .sync-state { flex-basis:100%; text-align:right; font-size:10px; } }
 @media(max-width:700px) { .scheduler-main { width:calc(100% - 24px); padding-top:20px; } .summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .summary-card:first-child { grid-column:1/-1; } .summary-card { padding:12px 16px; } .summary-card strong { font-size:24px; } .page-heading { align-items:start; } h1 { font-size:24px; } .page-heading span { font-size:11px; } .topbar { padding:12px; } .topbar .brand-name { display:none; } .topbar .page-nav a { padding:0 9px; } .custom-range { flex-wrap:wrap; } .panel-heading { padding:16px; align-items:start; } .detail-grid { grid-template-columns:1fr; } }
+
+.table-tabs { display:flex; flex-wrap:wrap; gap:6px; padding:12px 20px; border-bottom:1px solid var(--line); }
+.table-tabs button { font-size:11px; padding:6px 10px; background:#f7f9f5; }
+.table-tabs button[aria-pressed="true"] { color:#fff; background:var(--ink); border-color:var(--ink); }
