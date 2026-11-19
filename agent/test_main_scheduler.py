@@ -6,11 +6,12 @@ import main
 
 
 class SchedulerTest(unittest.TestCase):
+    @patch('main._sync_process_observability')
     @patch('main.get_connection')
     @patch('main.write_process')
     @patch('main.read_process')
     def test_block_process_persists_process_event_reference(
-        self, read_process, write_process, get_connection
+        self, read_process, write_process, get_connection, sync
     ):
         process = {'process_id': 'p1', 'status': 'ready'}
         read_process.return_value = process
@@ -22,6 +23,8 @@ class SchedulerTest(unittest.TestCase):
 
         self.assertEqual(result['status'], 'blocked')
         self.assertEqual(result['wait_for'], wait_for)
+        self.assertEqual(result['events'][-1]['event'], 'blocked')
+        sync.assert_called_once_with(process)
         write_process.assert_called_once_with(process)
         client.lrem.assert_called_once_with(main.READY_PROCESSES, 0, 'p1')
         client.sadd.assert_called_once_with(main.BLOCKED_PROCESSES, 'p1')
@@ -136,8 +139,9 @@ class SchedulerTest(unittest.TestCase):
         )
         create_process.assert_called_once_with(process)
 
+    @patch('main._sync_process_observability')
     @patch('main.wake_process_record')
-    def test_terminal_event_is_applied_by_runtime(self, wake):
+    def test_terminal_event_is_applied_by_runtime(self, wake, sync):
         client = Mock()
         client.hget.return_value = json.dumps({
             'process_id': 'terminal-1',

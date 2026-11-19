@@ -265,6 +265,78 @@ class ProcessWorkflowTest(unittest.TestCase):
         )
         self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
 
+    def latest_log(self, process_id):
+        return next(call.args[1]["$set"] for call in reversed(self.logs.update_one.call_args_list)
+                    if call.args[0] == {"process_id": process_id} and "$set" in call.args[1])
+
+    def test_process_logs_capture_creation_suspend_wake_and_completion(self):
+        root = self.start(document("Root", wait=True))
+        process_id = root["process_id"]
+        self.assertEqual(self.latest_log(process_id)["status"], "ready")
+        self.assertEqual(self.latest_log(root["terminal_process_id"])["process_type"], "terminal")
+        self.drain()
+        blocked = self.latest_log(process_id)
+        self.assertEqual(blocked["status"], "blocked")
+        self.assertEqual(blocked["events"][-1]["event"], "blocked")
+        self.assertEqual(blocked["events"][-1]["wait_for"], blocked["wait_for"])
+        self.assertEqual(blocked["wait_for"]["kind"], "terminal_message")
+        self.send(root)
+        ready = self.latest_log(process_id)
+        self.assertEqual(ready["status"], "ready")
+        self.assertIsNone(ready["wait_for"])
+        self.assertEqual(ready["events"][-1]["event"], "woken")
+        self.assertEqual(ready["events"][-1]["wait_for"], blocked["wait_for"])
+        self.send(root)
+        self.assertEqual(self.latest_log(process_id)["events"], ready["events"])
+        self.drain()
+        completed = self.latest_log(process_id)
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["output"], {"text": "hello"})
+        self.assertEqual([event["event"] for event in completed["events"]],
+                         ["created", "started", "blocked", "woken", "completed"])
+        self.assertTrue(all(event["timestamp"] for event in completed["events"]))
+        self.assertEqual(self.latest_log(root["terminal_process_id"])["status"], "terminated")
+        self.assertEqual(self.latest_log(root["terminal_process_id"])["events"][-1]["event"], "terminated")
+
+    def test_child_exit_publishes_parent_wakeup_before_next_execution(self):
+        self.documents = {"Child.flow": document("Child", wait=True)}
+        root = self.start(document("Root", "Child.flow"))
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        self.assertEqual(self.latest_log(child["process_id"])["parent_process_id"], root["process_id"])
+        self.assertEqual(self.latest_log(root["process_id"])["wait_for"],
+                         {"kind": "process_exit", "process_id": child["process_id"]})
+        self.send(child)
+        while main.read_process(child["process_id"])["status"] != "completed":
+            main.schedule_once(timeout=1)
+        parent_log = self.latest_log(root["process_id"])
+        self.assertEqual(parent_log["status"], "ready")
+        self.assertEqual(parent_log["events"][-1]["event"], "woken")
+        self.assertEqual(parent_log["events"][-1]["wait_for"]["process_id"], child["process_id"])
+
+    def test_log_database_failure_does_not_interrupt_process_or_lose_events(self):
+        self.logs.update_one.side_effect = RuntimeError("logs offline")
+        with self.assertLogs("main", level="ERROR"):
+            root = self.start(document("Root", wait=True))
+            self.drain()
+            self.send(root)
+            self.drain()
+        saved = main.read_process(root["process_id"])
+        self.assertEqual(saved["status"], "completed")
+        self.assertEqual([item["event"] for item in saved["events"]],
+                         ["created", "started", "blocked", "woken", "completed"])
+
+    def test_commit_retry_does_not_duplicate_suspend_events(self):
+        root = self.start(document("Root", wait=True))
+        main.schedule_once(timeout=1)  # input
+        claimed, ok = r.claim_process(self.redis, root["process_id"])
+        self.assertTrue(ok)
+        claimed.update(status="blocked", wait_for={"kind": "terminal_message", "process_id": root["terminal_process_id"]})
+        self.redis.before_execute = lambda: main.write_process(main.read_process(root["process_id"]))
+        committed = r.commit_process(self.redis, claimed)
+        self.assertEqual([item["event"] for item in committed["events"]].count("blocked"), 1)
+        self.assertEqual(main.read_process(root["process_id"])["events"], committed["events"])
+
     def test_legacy_pending_node_resumes_without_spawning_a_second_child(self):
         self.documents = {"Child.flow": document("Child", wait=True)}
         root = self.start(document("Root", "Child.flow"))
@@ -327,6 +399,8 @@ class ProcessWorkflowTest(unittest.TestCase):
         child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         main.terminate_process(child["process_id"])
         self.assertEqual(main.read_process(root["process_id"])["status"], "ready")
+        self.assertEqual(self.latest_log(root["process_id"])["events"][-1]["event"], "woken")
+        self.assertEqual(self.latest_log(child["process_id"])["status"], "terminated")
         with self.assertLogs("main", level="ERROR"):
             self.drain()
         self.assertEqual(main.read_process(root["process_id"])["status"], "failed")
@@ -365,7 +439,9 @@ class ProcessWorkflowTest(unittest.TestCase):
             main.write_process(saved)
         self.redis.before_execute = concurrent_update
         self.send(root)
-        self.assertEqual(main.read_process(root["process_id"])["test_marker"], "preserved")
+        saved = main.read_process(root["process_id"])
+        self.assertEqual(saved["test_marker"], "preserved")
+        self.assertEqual([item["event"] for item in saved["events"]].count("woken"), 1)
         self.assertEqual(self.redis.lists[r.READY_PROCESSES], [root["process_id"]])
 
     def test_context_scope_survives_nested_process_scheduling_and_cleanup(self):

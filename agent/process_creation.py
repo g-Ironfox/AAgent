@@ -3,6 +3,8 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from process_repository import record_process_event
+
 
 def initialize_process_pair(process: dict) -> dict:
     """Initialize the supplied workflow process and return its passive terminal."""
@@ -34,12 +36,16 @@ def initialize_process_pair(process: dict) -> dict:
         'process_id': terminal_process_id,
         'process_type': 'terminal',
         'parent_process_id': process_id,
+        'root_process_id': process['root_process_id'],
+        'workflow_name': process.get('workflow_name'),
         'terminal_id': terminal_id,
         'start_time': now,
         'status': 'waiting_for_input',
         'wait_for': {'kind': 'terminal_message'},
     }
 
+    record_process_event(process, 'created')
+    record_process_event(terminal_process, 'created')
     return terminal_process
 
 

@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 from datetime import datetime, timezone
@@ -25,6 +26,22 @@ def _read_process_record(client, process_id: str) -> dict:
     return process
 
 
+def record_process_event(process: dict, event: str, **details) -> None:
+    """Keep lifecycle history in the same Redis record as its committed state."""
+    process.setdefault("events", []).append({
+        "event": event,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": process["status"],
+        **copy.deepcopy(details),
+    })
+
+
+def _wake_record(process: dict) -> None:
+    wait_for = process.get("wait_for")
+    process.update(status="ready", wait_for=None)
+    record_process_event(process, "woken", wait_for=wait_for)
+
+
 def wake_process(client, process_id: str, source_process_id: str, event_kind: str) -> dict:
     """Atomically wake only the matching blocked process and enqueue it once."""
     if not isinstance(source_process_id, str) or not source_process_id:
@@ -42,8 +59,7 @@ def wake_process(client, process_id: str, source_process_id: str, event_kind: st
                     != {"kind": event_kind, "process_id": source_process_id}
                 ):
                     return process
-                process["status"] = "ready"
-                process["wait_for"] = None
+                _wake_record(process)
                 existing = _read_terminal_scope(pipe, process)
                 pipe.multi()
                 pipe.hset(PROCESSTABLE, process_id, json.dumps(process, ensure_ascii=False, allow_nan=False))
@@ -171,6 +187,8 @@ def claim_process(client, process_id: str) -> tuple[dict, bool]:
                     return process, False
                 process["status"] = "running"
                 process["execution_id"] = uuid4().hex
+                if not any(item["event"] == "started" for item in process.get("events", [])):
+                    record_process_event(process, "started")
                 existing = _read_terminal_scope(pipe, process)
                 pipe.multi()
                 pipe.hset(PROCESSTABLE, process_id, _encode_process(process))
@@ -199,7 +217,12 @@ def commit_process(client, process: dict, child: dict | None = None,
                 if (saved.get("status") != "running"
                         or saved.get("execution_id") != process.get("execution_id")):
                     return saved
-                records = {process_id: process}
+                candidate = copy.deepcopy(process)
+                if candidate.get("status") == "blocked":
+                    record_process_event(candidate, "blocked", wait_for=candidate.get("wait_for"))
+                elif candidate.get("status") in TERMINAL_STATUSES:
+                    record_process_event(candidate, candidate["status"], error=candidate.get("error"))
+                records = {process_id: candidate}
                 if child is not None:
                     if child_terminal is None:
                         raise ValueError("child terminal is required")
@@ -216,6 +239,7 @@ def commit_process(client, process: dict, child: dict | None = None,
                                 and terminal.get("parent_process_id") == process_id):
                             terminal.update(status="terminated", wait_for=None,
                                             finished_at=process["finished_at"])
+                            record_process_event(terminal, "terminated")
                             records[terminal_process_id] = terminal
                     parent_id = process.get("parent_process_id")
                     raw_parent = pipe.hget(PROCESSTABLE, parent_id) if parent_id else None
@@ -225,7 +249,7 @@ def commit_process(client, process: dict, child: dict | None = None,
                                 and parent.get("wait_for") == {
                                     "kind": "process_exit", "process_id": process_id,
                                 }):
-                            parent.update(status="ready", wait_for=None)
+                            _wake_record(parent)
                             records[parent_id] = parent
                 pipe.multi()
                 pipe.hset(PROCESSTABLE, mapping={key: _encode_process(value)
@@ -234,7 +258,7 @@ def commit_process(client, process: dict, child: dict | None = None,
                     _index_process(pipe, record)
                 _queue_terminal_updates(pipe, existing, records)
                 pipe.execute()
-                return process
+                return candidate
             except redis.WatchError:
                 continue
 
@@ -261,6 +285,7 @@ def terminate_process_tree(client, process_id: str) -> list[dict]:
                     record = records[key]
                     if record.get("status") not in TERMINAL_STATUSES:
                         record.update(status="terminated", wait_for=None, finished_at=now)
+                        record_process_event(record, "terminated")
                         changed.append(record)
                 parent_id = records[process_id].get("parent_process_id")
                 parent = records.get(parent_id)
@@ -270,7 +295,7 @@ def terminate_process_tree(client, process_id: str) -> list[dict]:
                                    "kind": "process_exit", "process_id": process_id,
                                })
                 if wake_parent:
-                    parent.update(status="ready", wait_for=None)
+                    _wake_record(parent)
                 updates = changed + ([parent] if wake_parent else [])
                 pipe.multi()
                 if updates:

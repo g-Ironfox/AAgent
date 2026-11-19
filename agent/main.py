@@ -12,7 +12,7 @@ from pymongo import ASCENDING, MongoClient
 from redis_client import get_connection, get_event_connection
 from process_repository import (
     BLOCKED_PROCESSES, EXTERNAL_EVENTS, PROCESSTABLE, READY_PROCESSES,
-    TERMINAL_INDEX,
+    TERMINAL_INDEX, record_process_event,
     claim_process, commit_process, publish_process_pair, terminate_process_tree,
     TERMINAL_STATUSES, wake_process as wake_process_record,
 )
@@ -124,23 +124,8 @@ def _record_process_completion(
 
 
 def _initialize_process_timing(process: dict) -> None:
-    try:
-        _get_process_log_collection().update_one(
-            {'process_id': process['process_id']},
-            {
-                '$setOnInsert': {
-                    'process_id': process['process_id'],
-                    'start_time': _parse_start_time(process['start_time']),
-                    'nodes': [],
-                    'status': 'running',
-                }
-            },
-            upsert=True,
-        )
-    except Exception:
-        logger.exception(
-            'failed to initialize process timing for %s', process['process_id']
-        )
+    _sync_process_observability(process)
+    _sync_related_process_logs(process.get('terminal_process_id'))
 
 
 def _enqueue_ready_process(process_id: str) -> None:
@@ -231,9 +216,10 @@ def handle_external_event(client, raw_event: str) -> None:
                 return
             parent_process_id = terminal.get("parent_process_id")
             if isinstance(parent_process_id, str) and parent_process_id:
-                wake_process_record(
+                awakened = wake_process_record(
                     client, parent_process_id, terminal_process_id, "terminal_message"
                 )
+                _sync_process_observability(awakened)
             return
         raise ValueError(f"unsupported external event type: {event_type!r}")
     except (KeyError, TypeError, ValueError) as error:
@@ -267,18 +253,22 @@ def block_process(process_id: str, wait_for: dict) -> dict:
     process = read_process(process_id)
     process['status'] = 'blocked'
     process['wait_for'] = dict(wait_for)
+    record_process_event(process, 'blocked', wait_for=wait_for)
     write_process(process)
     client = get_connection()
     client.lrem(READY_PROCESSES, 0, process_id)
     client.sadd(BLOCKED_PROCESSES, process_id)
+    _sync_process_observability(process)
     return process
 
 
 def wake_process(process_id: str, source_process_id: str, event_kind: str) -> dict:
     """Wake a process only when the source process and event kind both match."""
-    return wake_process_record(
+    process = wake_process_record(
         get_connection(), process_id, source_process_id, event_kind
     )
+    _sync_process_observability(process)
+    return process
 
 
 def _terminate_terminal_process(parent_process: dict) -> None:
@@ -325,6 +315,13 @@ def _sync_process_observability(process: dict) -> None:
                     entry[field] = _parse_start_time(entry[field])
         fields = {
             'status': process['status'],
+            'process_type': process.get('process_type', 'workflow'),
+            'terminal_id': process.get('terminal_id'),
+            'terminal_process_id': process.get('terminal_process_id'),
+            'wait_for': process.get('wait_for'),
+            'events': copy.deepcopy(process.get('events', [])),
+            'input': process.get('input', {}),
+            'output': process.get('result', {}),
             'parent_process_id': process.get('parent_process_id'),
             'root_process_id': process.get('root_process_id'),
             'workflow_name': process.get('workflow_name'),
@@ -345,7 +342,8 @@ def _sync_process_observability(process: dict) -> None:
                 'start_time': _parse_start_time(process['start_time']),
             }, '$set': fields}, upsert=True,
         )
-        if process.get('status') in TERMINAL_STATUSES and process.get('workflow_name'):
+        if (process.get('process_type') == 'workflow'
+                and process.get('status') in TERMINAL_STATUSES and process.get('workflow_name')):
             from workflow_run_repository import record_process_workflow_run
             record_process_workflow_run({
                 'run_id': process['invocation_id'],
@@ -368,6 +366,19 @@ def _sync_process_observability(process: dict) -> None:
         logger.exception('failed to record process observations for %s', process['process_id'])
 
 
+def _sync_related_process_logs(*process_ids: str | None) -> None:
+    for process_id in dict.fromkeys(process_ids):
+        if not process_id:
+            continue
+        try:
+            _sync_process_observability(read_process(process_id))
+        except KeyError:
+            # Root callers can be external identities rather than kernel processes.
+            continue
+        except Exception:
+            logger.exception('failed to read process for logging: %s', process_id)
+
+
 def _cleanup_process_contexts(process: dict) -> None:
     from workflow_context_repository import delete_contexts
     try:
@@ -381,8 +392,10 @@ def terminate_process(process_id: str) -> dict:
     for process in changed:
         if process.get('process_type') == 'workflow':
             _cleanup_process_contexts(process)
-            _sync_process_observability(process)
-    return read_process(process_id)
+        _sync_process_observability(process)
+    process = read_process(process_id)
+    _sync_related_process_logs(process.get('parent_process_id'))
+    return process
 
 
 def _resume_subprocess(process: dict, workflow_map: list[dict]) -> None:
@@ -455,6 +468,7 @@ def Executor(process_id: str) -> dict:
     process, claimed = claim_process(client, process_id)
     if not claimed:
         return process
+    _sync_process_observability(process)
     process.setdefault('invocation_id', process_id)
     process.setdefault('root_process_id', process_id)
     process.setdefault('ancestor_invocation_ids', [])
@@ -558,7 +572,13 @@ def Executor(process_id: str) -> dict:
         # Include Contexts created by an in-flight node after cancellation.
         _cleanup_process_contexts(process)
     if committed.get('execution_id') == process.get('execution_id') and committed.get('status') == process['status']:
-        _sync_process_observability(process)
+        _sync_process_observability(committed)
+        _sync_related_process_logs(
+            committed.get('terminal_process_id') if committed['status'] in TERMINAL_STATUSES else None,
+            committed.get('parent_process_id') if committed['status'] in TERMINAL_STATUSES else None,
+            child.get('process_id') if child else None,
+            child_terminal.get('process_id') if child_terminal else None,
+        )
     return committed
 
 

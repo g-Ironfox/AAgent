@@ -17,6 +17,7 @@ from files import create_files_router
 from terminal import create_terminal_router
 from processes import create_processes_router
 from workflow_logs import create_workflow_logs_router
+from process_logs import create_process_logs_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("aagent.webui")
@@ -44,6 +45,7 @@ MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
 MONGO_TERMINAL_COLLECTION = env("MONGO_TERMINAL_COLLECTION", "terminal_messages")
 MONGO_WORKFLOW_LOG_COLLECTION = env("MONGO_WORKFLOW_LOG_COLLECTION", "workflow_logs")
+MONGO_PROCESS_LOG_COLLECTION = env("MONGO_PROCESS_LOG_COLLECTION", "process_logs")
 MONGO_FILE_EVENT_COLLECTION = env("MONGO_FILE_EVENT_COLLECTION", "workspace_file_events")
 MONGO_WORKSPACE_FILE_COLLECTION = env("MONGO_WORKSPACE_FILE_COLLECTION", "workspace_files")
 
@@ -70,6 +72,7 @@ mongo_client = MongoClient(**mongo_kwargs)
 database = mongo_client[MONGO_DATABASE]
 terminal_messages: Collection = database[MONGO_TERMINAL_COLLECTION]
 workflow_logs: Collection = database[MONGO_WORKFLOW_LOG_COLLECTION]
+process_logs: Collection = database[MONGO_PROCESS_LOG_COLLECTION]
 file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
 workspace_files: Collection = database[MONGO_WORKSPACE_FILE_COLLECTION]
 file_store = FileStore(file_events, workspace_files)
@@ -156,6 +159,7 @@ def health():
 app.include_router(create_terminal_router(redis_client, terminal_messages))
 app.include_router(create_processes_router(redis_client, file_store))
 app.include_router(create_workflow_logs_router(workflow_logs))
+app.include_router(create_process_logs_router(process_logs))
 app.include_router(create_files_router(file_store))
 
 static_directory = Path(__file__).parent / "static"

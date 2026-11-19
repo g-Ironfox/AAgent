@@ -49,6 +49,8 @@
 
 终端消息保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），并按进程终端隔离。用户输入仅保存到选定终端；Workflow 执行 `output_to_terminal` 节点时，将 Agent 输出追加到对应终端。
 
+`webui_py` 的 `/logs` 页面按进程展示日志，数据来自 MongoDB 的 `process_logs` 集合（可通过 `MONGO_PROCESS_LOG_COLLECTION` 配置）。每个工作流进程和终端进程都有独立记录，可查看进程 ID、父子关系、当前状态、节点轨迹和进程事件。挂起与唤醒事件包含发生时间、等待原因及关联进程 ID，涵盖终端消息和子进程退出；页面支持按状态、进程类型和关键词筛选。新增事件从更新后的运行时开始记录，旧记录不会补造历史事件。
+
 ![进程终端](docs/images/terminal.png)
 
 ### 管理
