@@ -752,6 +752,25 @@
                         "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
                       }
                     ]
+                  },
+                  "start_source": {
+                    "enum": ["port", "fixed"]
+                  },
+                  "start": {
+                    "type": ["integer", "null"]
+                  },
+                  "stop_source": {
+                    "enum": ["port", "fixed"]
+                  },
+                  "stop": {
+                    "type": ["integer", "null"]
+                  },
+                  "step_source": {
+                    "enum": ["port", "fixed"]
+                  },
+                  "step": {
+                    "type": ["integer", "null"],
+                    "not": {"const": 0}
                   }
                 },
                 "additionalProperties": false

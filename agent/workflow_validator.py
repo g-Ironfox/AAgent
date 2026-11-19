@@ -586,6 +586,16 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
         value_type = node_argument(node, "value_type")
         if not isinstance(value_type, str) or not value_type.startswith("list-") or not _valid_item_type(value_type[5:], structs):
             raise WorkflowValidationError(f"{node_type} value_type must be a supported list type")
+        if node_type == "list_slice":
+            for name in ("start", "stop", "step"):
+                if node_argument(node, f"{name}_source", "port") not in {"fixed", "port"}:
+                    raise WorkflowValidationError(f"list_slice {name}_source must be 'fixed' or 'port'")
+                value = node_argument(node, name)
+                if value is not None:
+                    if not is_number_value(value) or (isinstance(value, float) and not value.is_integer()):
+                        raise WorkflowValidationError(f"list_slice {name} must be an integer or null")
+                    if name == "step" and value == 0:
+                        raise WorkflowValidationError("list_slice step cannot be zero")
         if node_type == "list_get":
             source = node_argument(node, "index_source", "port")
             if source not in {"fixed", "port"}:

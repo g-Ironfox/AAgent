@@ -146,7 +146,7 @@ function contractPortIds(node, direction, workflow) {
   }
   if (node.type === 'list_get') return direction === 'input' ? ['control-in', 'list-in', ...((node.arguments?.index_source || node.index_source || 'port') === 'fixed' ? [] : ['index-in'])] : ['control-out', 'item-out'];
   if (node.type === 'list_length') return direction === 'input' ? ['control-in', 'list-in'] : ['control-out', 'length-out'];
-  if (node.type === 'list_slice') return direction === 'input' ? ['control-in', 'list-in', 'start-in', 'stop-in', 'step-in'] : ['control-out', 'list-out'];
+  if (node.type === 'list_slice') return direction === 'input' ? ['control-in', 'list-in', ...['start', 'stop', 'step'].filter((name) => (args[`${name}_source`] || node[`${name}_source`] || 'port') !== 'fixed').map((name) => `${name}-in`)] : ['control-out', 'list-out'];
   if (node.type === 'list_append') return direction === 'input' ? ['control-in', 'list-in', 'item-in'] : ['control-out', 'list-out'];
   if (node.type === 'while_pop') return direction === 'input' ? ['control-in', 'loop-in', ...((node.arguments?.context_id_source || node.context_id_source || 'port') === 'port' ? ['context-id'] : [])] : ['control-out', 'loop-out', 'item-out'];
   if (node.type === 'foreach') return direction === 'input' ? ['control-in', 'loop-in', 'list-in'] : ['control-out', 'loop-out', 'item-out'];

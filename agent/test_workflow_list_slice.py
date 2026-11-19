@@ -1,6 +1,7 @@
 """Python-compatible typed list slicing for Workflow 2.0."""
 import copy
 import json
+import itertools
 import unittest
 
 from test_workflow_list_length import TASK, fixture as length_fixture
@@ -36,8 +37,9 @@ def fixture(value_type="list-content", bounds=None):
 
 
 class WorkflowListSliceTest(unittest.TestCase):
-    def execute(self, value_type, values, bounds=None):
+    def execute(self, value_type, values, bounds=None, arguments=None):
         workflow = fixture(value_type, bounds)
+        next(node for node in workflow["nodes"] if node["id"] == "slice")["arguments"].update(arguments or {})
         validate_workflow(workflow)
         graph = parse_workflow(workflow)
         payload = json.dumps(values) if value_type.startswith("list-struct:") else values
@@ -95,6 +97,53 @@ class WorkflowListSliceTest(unittest.TestCase):
 
     def test_slice_schema_rejects_unknown_arguments(self):
         workflow = fixture()
-        next(node for node in workflow["nodes"] if node["id"] == "slice")["arguments"]["step"] = 2
+        next(node for node in workflow["nodes"] if node["id"] == "slice")["arguments"]["unknown"] = 2
         with self.assertRaises(WorkflowValidationError):
             validate_workflow(workflow)
+
+
+    def test_each_bound_can_independently_use_a_fixed_value_or_port(self):
+        samples = {
+            "list-content": [str(index) for index in range(6)],
+            "list-message": [{"role": "user", "content": str(index)} for index in range(6)],
+            "list-struct:task": [{"name": str(index)} for index in range(6)],
+        }
+        for value_type, values in samples.items():
+            for sources in itertools.product(("port", "fixed"), repeat=3):
+                for bounds in ({"start": 1, "stop": 5, "step": 2}, {"start": -1, "stop": 0, "step": -2}):
+                    with self.subTest(value_type=value_type, sources=sources, bounds=bounds):
+                        arguments, ports = {}, {}
+                        for (name, value), source in zip(bounds.items(), sources):
+                            arguments[f"{name}_source"] = source
+                            if source == "fixed": arguments[name] = value
+                            else: ports[name] = value
+                        result, sliced = self.execute(value_type, values, ports, arguments)
+                        self.assertEqual(sliced, values[slice(*bounds.values())])
+                        self.assertEqual(result, {"length": len(sliced)})
+
+    def test_empty_fixed_bounds_use_python_defaults(self):
+        for explicit_null in (False, True):
+            arguments = {f"{name}_source": "fixed" for name in ("start", "stop", "step")}
+            if explicit_null: arguments.update(start=None, stop=None, step=None)
+            self.assertEqual(self.execute("list-content", ["a", "b"], arguments=arguments)[1], ["a", "b"])
+        self.assertEqual(self.execute("list-content", ["a", "b"], arguments={"step_source": "fixed", "step": -1.0})[1], ["b", "a"])
+
+    def test_fixed_bounds_hide_ports_and_reject_connections(self):
+        for name in ("start", "stop", "step"):
+            workflow = fixture(bounds={name: 1})
+            node = next(node for node in workflow["nodes"] if node["id"] == "slice")
+            node["arguments"].update({f"{name}_source": "fixed", name: 1})
+            self.assertNotIn(f"{name}-in", data_ports_for_node(node, [], [])[0])
+            self.assertIsNone(data_type_for_port(node, f"{name}-in"))
+            with self.assertRaises(WorkflowValidationError): validate_workflow(workflow)
+
+    def test_invalid_fixed_bounds_fail_validation(self):
+        for name in ("start", "stop", "step"):
+            for value in (True, 1.5, "2", [], {}):
+                with self.subTest(name=name, value=value):
+                    with self.assertRaises(WorkflowValidationError):
+                        self.execute("list-content", [], arguments={f"{name}_source": "fixed", name: value})
+            with self.assertRaises(WorkflowValidationError):
+                self.execute("list-content", [], arguments={f"{name}_source": "unknown"})
+        with self.assertRaises(WorkflowValidationError):
+            self.execute("list-content", [], arguments={"step_source": "fixed", "step": 0})

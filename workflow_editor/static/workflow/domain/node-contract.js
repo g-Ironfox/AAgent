@@ -276,7 +276,7 @@ export function portsForNode(node) {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '按 Python 切片规则截取列表', multiple: false },
       { id: 'list-in', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '列表', title: node.value_type, multiple: false },
-      ...['start', 'stop', 'step'].map((name) => ({ id: `${name}-in`, direction: 'input', type: 'number', label: name, title: `${name}（可选）`, multiple: false })),
+      ...['start', 'stop', 'step'].filter((name) => node[`${name}_source`] !== 'fixed').map((name) => ({ id: `${name}-in`, direction: 'input', type: 'number', label: name, title: `${name}（可选）`, multiple: false })),
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'list-out', direction: 'output', type: node.value_type, color: structColor(node, node.value_type), label: '切片列表', title: node.value_type, multiple: true },
     ];

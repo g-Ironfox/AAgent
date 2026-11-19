@@ -551,6 +551,12 @@
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
       <label>输入列表类型<select data-field="value_type"><option value="list-content">list-content</option><option value="list-message">list-message</option></select></label>
+      <label>起点 start输入方式<select data-field="start_source"><option value="port">端口输入</option><option value="fixed">固定输入</option></select></label>
+      <label data-start-field hidden>起点 start<input data-field="start" type="number" step="1" placeholder="留空使用默认值"></label>
+      <label>终点 stop输入方式<select data-field="stop_source"><option value="port">端口输入</option><option value="fixed">固定输入</option></select></label>
+      <label data-stop-field hidden>终点 stop<input data-field="stop" type="number" step="1" placeholder="留空使用默认值"></label>
+      <label>步长 step输入方式<select data-field="step_source"><option value="port">端口输入</option><option value="fixed">固定输入</option></select></label>
+      <label data-step-field hidden>步长 step<input data-field="step" type="number" step="1" placeholder="留空使用默认值"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
@@ -710,6 +716,6 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <script type="module" src="/workflow.js?v=35"></script>
+  <script type="module" src="/workflow.js?v=36"></script>
 </body>
 </html>

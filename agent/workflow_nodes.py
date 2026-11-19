@@ -531,13 +531,20 @@ def workflow_list_slice(current_id: int, workflow_map: WorkflowMap) -> int:
     validate_value(node_argument(node, "value_type"), input_list, _struct_defs(node))
     bounds = []
     for name in ("start", "stop", "step"):
-        has_value, value = read_workflow_input(node, f"{name}-in")
+        source = node_argument(node, f"{name}_source", "port")
+        if source == "fixed":
+            value = node_argument(node, name)
+            has_value = value is not None
+        elif source == "port":
+            has_value, value = read_workflow_input(node, f"{name}-in")
+        else:
+            raise ValueError(f"list_slice {name}_source must be 'fixed' or 'port': node {node.get('id')}")
         if not has_value:
             bounds.append(None)
-        elif isinstance(value, bool) or not isinstance(value, int):
+        elif not is_number_value(value) or (isinstance(value, float) and not value.is_integer()):
             raise ValueError(f"list_slice {name} must be an integer: node {node.get('id')}")
         else:
-            bounds.append(value)
+            bounds.append(int(value))
     start, stop, step = bounds
     try:
         output = input_list[slice(start, stop, step)]

@@ -37,7 +37,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   construct_list: new Set(['item_type', 'initial_value_count']),
   list_append: new Set(['item_type', 'position']),
   list_length: new Set(['value_type']),
-  list_slice: new Set(['value_type']),
+  list_slice: new Set(['value_type', 'start_source', 'start', 'stop_source', 'stop', 'step_source', 'step']),
   list_get: new Set(['value_type', 'index_source', 'index']),
   foreach: new Set(['item_type']),
   while_pop: new Set(['value_type', 'position', 'context_id_source', 'context_id']),
@@ -388,6 +388,16 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
         && (structs || []).some((item) => item.id === node.value_type.slice('list-struct:'.length)))) return null;
     normalized.value_type = node.value_type;
     if (node.type === 'while_pop') normalized.position = ['start', 'end'].includes(node.position) ? node.position : 'end';
+  }
+  if (node.type === 'list_slice') {
+    for (const name of ['start', 'stop', 'step']) {
+      const source = node[`${name}_source`];
+      const value = node[name];
+      if (source !== undefined && !['fixed', 'port'].includes(source)) return null;
+      if (value != null && (!Number.isInteger(value) || (name === 'step' && value === 0))) return null;
+      if (source !== undefined) normalized[`${name}_source`] = source;
+      if (source === 'fixed' && value !== undefined) normalized[name] = value;
+    }
   }
   if (node.type === 'list_get') {
     if (node.index_source !== undefined && !['fixed', 'port'].includes(node.index_source)) return null;

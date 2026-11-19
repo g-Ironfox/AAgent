@@ -12,6 +12,7 @@ export function bindStructureInspector(node, context) {
   if (node.type === 'list_append') bindListAppend(node, context);
   if (node.type === 'foreach') bindForeach(node, context);
   if (node.type === 'list_get') bindListGet(node, context);
+  if (node.type === 'list_slice') bindListSlice(node, context);
   if (['context_create', 'context_read', 'context_write', 'session_create', 'session_read', 'session_write', 'while_pop', 'list_length', 'list_get', 'list_slice'].includes(node.type)) bindContext(node, context);
 }
 
@@ -331,6 +332,38 @@ function bindListGet(node, context) {
       indexField.setCustomValidity('');
     }
   });
+}
+
+function bindListSlice(node, context) {
+  for (const name of ['start', 'stop', 'step']) {
+    const sourceField = context.elements.inspectorContent.querySelector(`[data-field="${name}_source"]`);
+    const valueField = context.elements.inspectorContent.querySelector(`[data-field="${name}"]`);
+    const container = context.elements.inspectorContent.querySelector(`[data-${name}-field]`);
+    sourceField.value = node[`${name}_source`] || 'port';
+    valueField.value = node[name] ?? '';
+    container.hidden = sourceField.value !== 'fixed';
+    sourceField.addEventListener('change', () => {
+      node[`${name}_source`] = sourceField.value;
+      container.hidden = sourceField.value !== 'fixed';
+      commitStructureChange(node, context);
+    });
+    valueField.addEventListener('input', () => {
+      const value = valueField.value.trim() === '' ? null : Number(valueField.value);
+      const valid = !valueField.validity.badInput && (value === null || (Number.isInteger(value) && (name !== 'step' || value !== 0)));
+      valueField.setCustomValidity(valid ? '' : (name === 'step' ? '请输入非零整数，或留空使用默认值' : '请输入整数，或留空使用默认值'));
+      if (valid) {
+        node[name] = value;
+        commitStructureChange(node, context, false);
+      }
+    });
+    valueField.addEventListener('change', () => {
+      if (!valueField.checkValidity()) {
+        valueField.reportValidity();
+        valueField.value = node[name] ?? '';
+        valueField.setCustomValidity('');
+      }
+    });
+  }
 }
 
 function bindContext(node, context) {
