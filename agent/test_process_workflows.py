@@ -16,6 +16,7 @@ from terminal_repository import terminal_process_context
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "webui_py"))
 from terminal import TerminalRequest, create_terminal_router
+from processes import CreateProcessRequest, create_processes_router
 
 
 PORTS = [{"name": "text", "type": "content"}]
@@ -53,12 +54,14 @@ def document(name, child=None, wait=False, output_terminal=False):
 class ProcessWorkflowTest(unittest.TestCase):
     def setUp(self):
         self.redis = MemoryRedis()
+        self.public_redis = self.redis.with_db(r.REDIS_PUBLIC_DB)
         self.documents = {}
         self.logs = MagicMock()
         self.runs = MagicMock()
         self.output = MagicMock()
         for target, value in [
             ("main.get_connection", self.redis),
+            ("main.get_event_connection", self.public_redis),
             ("workflow_context_repository.get_connection", self.redis),
             ("main._get_process_log_collection", self.logs),
             ("workflow_run_repository.get_workflow_log_collection", self.runs),
@@ -74,11 +77,18 @@ class ProcessWorkflowTest(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.messages = MagicMock()
-        router = create_terminal_router(self.redis, self.messages)
+        router = create_terminal_router(self.public_redis, self.messages)
         self.submit = next(route.endpoint for route in router.routes if route.path == "/api/terminal")
+        self.sessions = next(route.endpoint for route in router.routes if route.path == "/api/terminal/sessions")
 
     def start(self, workflow, text="hello", inputs=None):
-        process = build_workflow_process(workflow, inputs if inputs is not None else {"text": text}, "root-file", "Root.flow")
+        process = build_workflow_process(
+            workflow,
+            inputs if inputs is not None else {"text": text},
+            "root-file",
+            "Root.flow",
+            "terminal-root",
+        )
         return main.create_process(process)
 
     def drain(self):
@@ -95,7 +105,113 @@ class ProcessWorkflowTest(unittest.TestCase):
                 if json.loads(raw).get("process_type") == "workflow"]
 
     def send(self, process, text="continue"):
-        return self.submit(TerminalRequest(content=text, terminal_process_id=process["terminal_process_id"]))
+        result = self.submit(TerminalRequest(content=text, terminal_id=process["terminal_id"]))
+        main.drain_external_events(self.redis, self.public_redis)
+        return result
+
+    def terminal_session(self, root):
+        return json.loads(self.public_redis.hget(r.TERMINAL_SESSIONS, root["terminal_id"]))
+
+    def assert_database_isolation(self):
+        internal_keys = {r.PROCESSTABLE, r.READY_PROCESSES, r.BLOCKED_PROCESSES, r.TERMINAL_INDEX}
+        public_keys = {r.EXTERNAL_EVENTS, r.TERMINAL_SESSIONS}
+        for state in ("hashes", "lists", "sets"):
+            self.assertTrue(internal_keys.isdisjoint(getattr(self.public_redis, state)))
+            self.assertTrue(public_keys.isdisjoint(getattr(self.redis, state)))
+        self.assertFalse(any(key.startswith("workflow-context:") for key in self.public_redis.hashes))
+
+    def test_webui_creation_and_terminal_input_cross_only_the_public_database(self):
+        store = MagicMock()
+        store.get_file.return_value = {
+            "file_id": "root-file", "name": "Root.flow",
+            "content": json.dumps(document("Root", wait=True)),
+        }
+        router = create_processes_router(self.public_redis, store)
+        create = next(route.endpoint for route in router.routes if route.path == "/api/processes")
+        response = create(CreateProcessRequest(
+            workflow_file_id="root-file", terminal_id="terminal-root", inputs={"text": "hello"},
+        ))
+        self.assertEqual(response, {
+            "status": "queued", "terminal_id": "terminal-root", "workflow_name": "Root.flow",
+        })
+        self.assertEqual(self.redis.hgetall(r.PROCESSTABLE), {})
+        self.assertEqual(len(self.public_redis.lists[r.EXTERNAL_EVENTS]), 1)
+
+        # Idle runtime wakes on the public event, then executes private ready work.
+        self.assertIsNone(main.schedule_once(timeout=1))
+        root, = self.workflows()
+        self.assertNotEqual(root["process_id"], "terminal-root")
+        self.assertEqual(self.redis.lists[r.READY_PROCESSES], [root["process_id"]])
+        self.assertEqual(self.terminal_session(root)["status"], "open")
+        self.assert_database_isolation()
+        self.drain()
+        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+
+        self.submit(TerminalRequest(content="continue", terminal_id="terminal-root"))
+        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.assertIsNone(main.schedule_once(timeout=1))
+        self.assertEqual(main.read_process(root["process_id"])["status"], "ready")
+        self.drain()
+        self.assertEqual(main.read_process(root["process_id"])["status"], "completed")
+        self.assertEqual(self.terminal_session(root)["status"], "closed")
+        self.assert_database_isolation()
+
+    def test_public_terminal_stays_open_after_child_exit_and_closes_with_root(self):
+        self.documents = {"Child.flow": document("Child", wait=True)}
+        root = self.start(document("Root", "Child.flow", wait=True))
+        session = self.terminal_session(root)
+        self.assertEqual(session["status"], "open")
+        self.assertIsNone(session["closed_at"])
+        self.assertFalse({"process_id", "root_process_id", "terminal_process_id"} & session.keys())
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        self.assertEqual(self.terminal_session(root)["workflow_name"], "Child.flow")
+        self.send(child)
+        self.drain()
+        self.assertEqual(main.read_process(child["process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(child["terminal_process_id"])["status"], "terminated")
+        session = self.terminal_session(root)
+        self.assertEqual(session["status"], "open")
+        self.assertEqual(session["workflow_name"], "Root.flow")
+        self.assertEqual(self.sessions()["sessions"], [session])
+        self.assertEqual(session["wait_kind"], "terminal_message")
+        self.assertEqual(session["start_time"], root["start_time"])
+        self.assertEqual(self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]), root["terminal_process_id"])
+        self.send(root)
+        self.assertEqual(self.terminal_session(root)["workflow_status"], "ready")
+        self.drain()
+        session = self.terminal_session(root)
+        self.assertEqual(session["status"], "closed")
+        self.assertEqual(session["closed_at"], main.read_process(root["process_id"])["finished_at"])
+        self.assertIsNone(self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]))
+
+    def test_child_cancellation_keeps_public_terminal_open_until_root_fails(self):
+        self.documents = {"Child.flow": document("Child", wait=True)}
+        root = self.start(document("Root", "Child.flow"))
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        main.terminate_process(child["process_id"])
+        self.assertEqual(self.terminal_session(root)["status"], "open")
+        self.assertIsNone(self.terminal_session(root)["closed_at"])
+        with self.assertLogs("main", level="ERROR"):
+            self.drain()
+        self.assertEqual(self.terminal_session(root)["status"], "closed")
+        self.assertEqual(self.terminal_session(root)["workflow_status"], "failed")
+
+    def test_root_cancellation_closes_public_terminal_and_fences_late_commit(self):
+        root = self.start(document("Root", wait=True))
+        claimed, ok = r.claim_process(self.redis, root["process_id"])
+        self.assertTrue(ok)
+        main.terminate_process(root["process_id"])
+        closed = self.terminal_session(root)
+        self.assertEqual(closed["status"], "closed")
+        self.assertEqual(closed["workflow_status"], "terminated")
+        self.assertEqual(self.sessions()["sessions"], [closed])
+        self.assertIsNotNone(closed["closed_at"])
+        self.assertIsNone(self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]))
+        claimed["status"] = "ready"
+        r.commit_process(self.redis, claimed)
+        self.assertEqual(self.terminal_session(root), closed)
 
     def test_root_identity_and_self_recursion_use_the_external_filename(self):
         graph = document("ignored display name", "Root.flow")
@@ -127,10 +243,10 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(leaf["root_process_id"], root["process_id"])
         self.assertEqual(leaf["ancestor_invocation_ids"], [root["process_id"], processes["Middle.flow"]["process_id"]])
         self.assertEqual(len({item["terminal_process_id"] for item in processes.values()}), 3)
-        # Parent terminal messages cannot satisfy a wait on child exit.
+        # The public terminal ID routes to the currently active descendant wait.
         self.send(root)
         self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
-        self.assertFalse(self.redis.lists[r.READY_PROCESSES])
+        self.assertEqual(self.redis.lists[r.READY_PROCESSES], [leaf["process_id"]])
         self.send(leaf)
         self.send(leaf)
         self.assertEqual(self.redis.lists[r.READY_PROCESSES], [leaf["process_id"]])
@@ -142,7 +258,11 @@ class ProcessWorkflowTest(unittest.TestCase):
             self.assertEqual(main.read_process(process["terminal_process_id"])["status"], "terminated")
             self.assertTrue(all(entry["status"] == "completed" for entry in process["node_trace"]))
         self.assertEqual(len(self.workflows()), 3)
-        self.output.assert_called_once_with("hello", terminal_process_id=leaf["terminal_process_id"])
+        self.output.assert_called_once_with(
+            "hello",
+            terminal_id=leaf["terminal_id"],
+            terminal_process_id=leaf["terminal_process_id"],
+        )
         self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
 
     def test_legacy_pending_node_resumes_without_spawning_a_second_child(self):
@@ -266,6 +386,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertIn("workflow-context:child-local", self.redis.hashes)
         self.assertNotIn("workflow-context:root-list", self.redis.expirations)
         self.assertNotIn("workflow-context:child-local", self.redis.expirations)
+        self.assert_database_isolation()
         child = next(item for item in self.workflows() if item["workflow_name"] == "Leaf")
         self.send(child)
         self.drain()
@@ -302,10 +423,13 @@ class ProcessWorkflowTest(unittest.TestCase):
         node = {"id": "wait", "type": "wait_terminal_event", "successors": {"next": 1}}
         with self.assertRaisesRegex(ValueError, "process terminal"):
             workflow_wait_terminal_event(0, [node])
-        with terminal_process_context("terminal"):
+        with terminal_process_context("internal-terminal", "public-terminal"):
             outcome = workflow_wait_terminal_event(0, [node])
             self.assertIsInstance(outcome, WorkflowStep)
-            self.assertEqual(outcome.wait_for, {"kind": "terminal_message", "process_id": "terminal"})
+            self.assertEqual(
+                outcome.wait_for,
+                {"kind": "terminal_message", "process_id": "internal-terminal"},
+            )
 
 
 if __name__ == "__main__":

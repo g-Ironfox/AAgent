@@ -7,6 +7,31 @@ from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
 
+_PRIVATE_PROCESS_FIELDS = {
+    "process_id",
+    "terminal_process_id",
+    "parent_process_id",
+    "root_process_id",
+    "child_process_id",
+    "invocation_id",
+    "ancestor_invocation_ids",
+    "run_id",
+    "execution_id",
+}
+
+
+def _public_value(value):
+    if isinstance(value, dict):
+        return {
+            key: _public_value(item)
+            for key, item in value.items()
+            if key not in _PRIVATE_PROCESS_FIELDS
+        }
+    if isinstance(value, list):
+        return [_public_value(item) for item in value]
+    return value
+
+
 def create_workflow_logs_router(logs: Collection) -> APIRouter:
     router = APIRouter()
 
@@ -19,8 +44,10 @@ def create_workflow_logs_router(logs: Collection) -> APIRouter:
 
         items = []
         for document in documents:
-            document["id"] = str(document.pop("_id", ""))
-            items.append(document)
+            item = _public_value(document)
+            item.pop("_id", None)
+            item["id"] = str(document.get("_id", ""))
+            items.append(item)
         return {"fetched_at": datetime.now(timezone.utc), "items": items}
 
     return router

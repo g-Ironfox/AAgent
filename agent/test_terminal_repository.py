@@ -18,7 +18,7 @@ class TerminalRepositoryTest(unittest.TestCase):
         self.assertEqual(document["role"], "assistant")
         self.assertEqual(document["created_at"].tzinfo, timezone.utc)
         self.assertNotIn("event_type", document)
-        self.assertEqual(document["terminal_process_id"], "terminal-1")
+        self.assertEqual(document["terminal_id"], "terminal-1")
         self.assertEqual(result, collection.insert_one.return_value.inserted_id)
 
     @patch("terminal_repository.get_terminal_collection")
@@ -27,7 +27,7 @@ class TerminalRepositoryTest(unittest.TestCase):
         cursor.sort.return_value = [{"content": "first"}, {"content": "second\nline"}]
         self.assertEqual(read_terminal_input("terminal-1"), ["first", "second\nline"])
         get_collection.return_value.find.assert_called_once_with(
-            {"terminal_process_id": "terminal-1", "role": "user"}, {"content": 1}
+            {"terminal_id": "terminal-1", "role": "user"}, {"content": 1}
         )
         cursor.sort.assert_called_once_with([("created_at", 1), ("_id", 1)])
 
@@ -44,9 +44,9 @@ class TerminalRepositoryTest(unittest.TestCase):
                 "successors": {"next": 1},
                 "data_outputs": {"list-out": [[1, "list-in"]]}}
         target = {"data_inputs": {"list-in": [None, "list-content", None]}}
-        with terminal_process_context("terminal-1"):
+        with terminal_process_context("internal-terminal-1", "public-terminal-1"):
             self.assertEqual(nodes_map["read_terminal_input"](0, [node, target]), 1)
-        read_input.assert_called_once_with("terminal-1")
+        read_input.assert_called_once_with("public-terminal-1")
         self.assertEqual(target["data_inputs"]["list-in"][2], ["one", "two"])
 
     @patch("terminal_repository.get_terminal_collection")

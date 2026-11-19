@@ -1,4 +1,4 @@
-"""Shared workflow compilation and process/terminal initialization."""
+"""Runtime workflow compilation and process/terminal initialization."""
 import json
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -12,6 +12,9 @@ def initialize_process_pair(process: dict) -> dict:
     if not isinstance(process_id, str) or not process_id:
         raise ValueError('process_id must be a non-empty string')
     now = datetime.now(timezone.utc).isoformat()
+    terminal_id = process.get('terminal_id')
+    if not isinstance(terminal_id, str) or not terminal_id.strip():
+        raise ValueError('terminal_id must be a non-empty string')
     terminal_process_id = uuid4().hex
     process['process_type'] = 'workflow'
     process.setdefault('root_process_id', process_id)
@@ -25,11 +28,13 @@ def initialize_process_pair(process: dict) -> dict:
     process['status'] = 'ready'
     process['wait_for'] = None
     process['terminal_process_id'] = terminal_process_id
+    process['terminal_id'] = terminal_id
 
     terminal_process = {
         'process_id': terminal_process_id,
         'process_type': 'terminal',
         'parent_process_id': process_id,
+        'terminal_id': terminal_id,
         'start_time': now,
         'status': 'waiting_for_input',
         'wait_for': {'kind': 'terminal_message'},
@@ -38,7 +43,13 @@ def initialize_process_pair(process: dict) -> dict:
     return terminal_process
 
 
-def build_workflow_process(document: dict, inputs: dict, file_id: str, file_name: str) -> dict:
+def build_workflow_process(
+    document: dict,
+    inputs: dict,
+    file_id: str,
+    file_name: str,
+    terminal_id: str,
+) -> dict:
     from workflow_nodes import propagate_workflow_output
     from workflow_parser import parse_workflow
     from workflow_structs import validate_struct_definitions, validate_value
@@ -48,6 +59,8 @@ def build_workflow_process(document: dict, inputs: dict, file_id: str, file_name
 
     if not isinstance(file_name, str) or not file_name.strip():
         raise ValueError("工作流文件名不能为空")
+    if not isinstance(terminal_id, str) or not terminal_id.strip():
+        raise ValueError("terminal_id must be a non-empty string")
     document = migrate_subprocess_workflow_format(document)
     validate_workflow(document)
     validate_subprocess_workflow_files(document, file_name)
@@ -82,4 +95,5 @@ def build_workflow_process(document: dict, inputs: dict, file_id: str, file_name
         "workflow": json.dumps(workflow, ensure_ascii=False, allow_nan=False),
         "current_node_id": -1,
         "control_port": None,
+        "terminal_id": terminal_id,
     }

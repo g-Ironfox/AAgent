@@ -9,9 +9,10 @@ from process_creation import initialize_process_pair
 
 from pymongo import ASCENDING, MongoClient
 
-from redis_client import get_connection
+from redis_client import get_connection, get_event_connection
 from process_repository import (
-    BLOCKED_PROCESSES, PROCESSTABLE, READY_PROCESSES,
+    BLOCKED_PROCESSES, EXTERNAL_EVENTS, PROCESSTABLE, READY_PROCESSES,
+    TERMINAL_INDEX,
     claim_process, commit_process, publish_process_pair, terminate_process_tree,
     TERMINAL_STATUSES, wake_process as wake_process_record,
 )
@@ -186,6 +187,70 @@ def create_process(process: dict) -> dict:
     publish_process_pair(get_connection(), process, terminal_process)
     _initialize_process_timing(process)
     return process
+
+
+def handle_external_event(client, raw_event: str) -> None:
+    """Apply one external command inside the runtime ownership boundary."""
+    try:
+        event = json.loads(raw_event)
+        if not isinstance(event, dict):
+            raise ValueError("external event must be an object")
+        event_type = event.get("type")
+        if event_type == "create_process":
+            from process_creation import build_workflow_process
+
+            content = event["workflow_content"]
+            document = json.loads(content) if isinstance(content, str) else content
+            process = build_workflow_process(
+                document,
+                event.get("inputs", {}),
+                event["workflow_file_id"],
+                event["workflow_name"],
+                event["terminal_id"],
+            )
+            create_process(process)
+            return
+        if event_type == "terminal_message":
+            terminal_id = event["terminal_id"]
+            if not isinstance(terminal_id, str) or not terminal_id.strip():
+                raise ValueError("terminal_id must be a non-empty string")
+            terminal_process_id = client.hget(TERMINAL_INDEX, terminal_id)
+            if not terminal_process_id:
+                return
+            raw_terminal = client.hget(PROCESSTABLE, terminal_process_id)
+            if raw_terminal is None:
+                return
+            terminal = json.loads(raw_terminal)
+            if (
+                not isinstance(terminal, dict)
+                or terminal.get("process_type") != "terminal"
+                or terminal.get("process_id") != terminal_process_id
+                or terminal.get("terminal_id") != terminal_id
+                or terminal.get("status") in TERMINAL_STATUSES
+            ):
+                return
+            parent_process_id = terminal.get("parent_process_id")
+            if isinstance(parent_process_id, str) and parent_process_id:
+                wake_process_record(
+                    client, parent_process_id, terminal_process_id, "terminal_message"
+                )
+            return
+        raise ValueError(f"unsupported external event type: {event_type!r}")
+    except (KeyError, TypeError, ValueError) as error:
+        logger.warning("discarding invalid external event: %s", error)
+    except Exception:
+        logger.exception("failed to handle external event")
+
+
+def drain_external_events(client, event_client) -> int:
+    """Read public events and apply their effects to the kernel client."""
+    handled = 0
+    while True:
+        raw_event = event_client.rpop(EXTERNAL_EVENTS)
+        if raw_event is None:
+            return handled
+        handle_external_event(client, raw_event)
+        handled += 1
 
 
 def block_process(process_id: str, wait_for: dict) -> dict:
@@ -429,7 +494,10 @@ def Executor(process_id: str) -> dict:
             'started_at': datetime.now(timezone.utc).isoformat(),
             'status': 'completed',
         }
-        with terminal_process_context(process.get('terminal_process_id')):
+        with terminal_process_context(
+            process.get('terminal_process_id'),
+            process.get('terminal_id'),
+        ):
             outcome = execute_node(current_id, workflow_map)
         elapsed_ms = (time.perf_counter() - started) * 1000
         if process['active_duration_ms'] + elapsed_ms > WORKFLOW_TIMEOUT_SECONDS * 1000:
@@ -494,16 +562,29 @@ def Executor(process_id: str) -> dict:
     return committed
 
 
-def schedule_once(timeout: int = 5) -> dict | None:
-    """Take one runnable entry; Executor commits its state and queue effects."""
-    item = get_connection().brpop(READY_PROCESSES, timeout=timeout)
+def schedule_once(timeout: int = 0) -> dict | None:
+    """Run one kernel step; wait on public events only when no process is ready.
+
+    A single runtime owns the ready queue. New runnable work while idle comes
+    from external events, so the private queue does not need a blocking wait.
+    """
+    client = get_connection()
+    event_client = get_event_connection()
+    process_id = client.rpop(READY_PROCESSES)
+    if process_id is not None:
+        result = Executor(process_id)
+        drain_external_events(client, event_client)
+        return result
+    item = event_client.brpop(EXTERNAL_EVENTS, timeout=timeout)
     if item is None:
         return None
-    return Executor(item[1])
+    handle_external_event(client, item[1])
+    drain_external_events(client, event_client)
+    return None
 
 
-def Scheduler(timeout: int = 5) -> None:
-    """Run the blocking scheduler loop; BRPOP sleeps while no process is ready."""
+def Scheduler(timeout: int = 0) -> None:
+    """Block for work, execute ready processes, and drain events between steps."""
     while True:
         schedule_once(timeout=timeout)
 

@@ -1,4 +1,7 @@
 # AAgent
+用OS的思路做Workflow调度。内核隔离!
+
+
 高可塑性且具备工业级弹性优化(对mcp进行了魔改)的智能体"平台",希望通过这个框架对多个技术进行探索,比如(功能分化的)multiagents支持不同于以往的一问一答交互模式而是由事件驱动架构启发的长程(reAct)与瞬时任务合理调度的零等待自由交互,以及workflow的可塑性支持Agent自演进的探索,未来我也期待从数学的角度探索mcts的规划、上下文压缩、马尔科夫链决策等与llm的结合。  
 
 目前思路(暂时):Agent中的部分操作是模式化可以通过规则(workflow)及其执行器来实现的,而不需要占用宝贵的llm throughput。进一步的,我把Agent建模为大部分的规则操作加上少部分的关键判断。
@@ -138,6 +141,15 @@ docker compose logs -f agent webui_py
 | 进程调度 | REDIS_*、AGENT_TOOLS_KEY、ProcessTable、ReadyProcesses、BlockedProcesses |
 | Tool | `TOOL_SERVER_URL`、`TOOL_MAX_WAIT_MS`、`TOOL_CLIENT_*`、`TOOL_PROVIDER_*`、`TOOL_MODULES` |
 | 存储 | `MONGO_*` 及各集合名 |
+
+Redis 使用两个独立数字库，两个编号必须不同：
+
+| 配置 | 默认库 | 数据 |
+| --- | --- | --- |
+| `REDIS_DB` | 0 | 公共事件队列 `external_events`、终端状态 `terminal_sessions`、工具注册及工具服务数据 |
+| `REDIS_KERNEL_DB` | 1 | runtime 进程表、ready / blocked、内部终端索引、Workflow Context |
+
+WebUI 等服务只连接公共库，只有 agent 连接内核库。调度器非阻塞读取内核 ready 队列，每执行一个节点后处理公共库的外部事件；ready 为空时阻塞等待外部事件。当前按单个 runtime 调度循环运行。变更库编号后不自动迁移旧库中的运行状态。
 
 ## 开发调试
 

@@ -168,27 +168,36 @@ def workflow_input(current_id: int, workflow_map: WorkflowMap) -> int:
 
 
 def workflow_output_to_terminal(current_id: int, workflow_map: WorkflowMap) -> int:
-    from terminal_repository import append_terminal_output, current_terminal_process_id
+    from terminal_repository import (
+        append_terminal_output,
+        current_terminal_id,
+        current_terminal_process_id,
+    )
 
     node = workflow_map[current_id]
     present, content = read_workflow_input(node, "content-in")
     if not present or not isinstance(content, str) or not content.strip():
         raise ValueError("output_to_terminal content-in requires non-empty text")
     terminal_process_id = current_terminal_process_id.get()
-    if not terminal_process_id:
+    terminal_id = current_terminal_id.get()
+    if not terminal_process_id or not terminal_id:
         raise ValueError("output_to_terminal requires a process terminal")
-    append_terminal_output(content, terminal_process_id=terminal_process_id)
+    append_terminal_output(
+        content,
+        terminal_id=terminal_id,
+        terminal_process_id=terminal_process_id,
+    )
     return next_successor(node)
 
 
 def workflow_read_terminal_input(current_id: int, workflow_map: WorkflowMap) -> int:
-    from terminal_repository import current_terminal_process_id, read_terminal_input
+    from terminal_repository import current_terminal_id, read_terminal_input
 
-    terminal_process_id = current_terminal_process_id.get()
-    if not terminal_process_id:
+    terminal_id = current_terminal_id.get()
+    if not terminal_id:
         raise ValueError("read_terminal_input requires a process terminal")
     node = workflow_map[current_id]
-    contents = read_terminal_input(terminal_process_id)
+    contents = read_terminal_input(terminal_id)
     propagate_workflow_output(workflow_map, node, "list-out", contents)
     return next_successor(node)
 
@@ -910,6 +919,7 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
         "process_id": child_id,
         "parent_process_id": process["process_id"],
         "root_process_id": process.get("root_process_id", process["process_id"]),
+        "terminal_id": process.get("terminal_id"),
         "workflow_name": workflow_file,
         "workflow_file": workflow_file,
         "call_stack": next_call_stack,

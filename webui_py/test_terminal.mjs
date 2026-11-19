@@ -40,7 +40,7 @@ class Element {
 }
 
 async function harness(items = [], submit = async () => {}, sessions = [{
-  terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input',
+  terminal_id: 'terminal-1', status: 'open',
 }], creation = {}) {
   const elements = new Map();
   const historyRequests = [];
@@ -53,14 +53,15 @@ async function harness(items = [], submit = async () => {}, sessions = [{
   };
   const context = vm.createContext({
     document,
-    fetchTerminalHistory: async (limit, terminalProcessId) => {
-      historyRequests.push({ limit, terminalProcessId });
+    fetchTerminalHistory: async (limit, terminalId) => {
+      historyRequests.push({ limit, terminalId });
       return { fetched_at: '2026-11-16T00:00:00Z', items };
     },
     fetchTerminalSessions: async () => ({ sessions }),
     submitTerminal: submit,
     fetchProcessWorkflowOptions: creation.options || (async () => ({ items: [] })),
     createProcess: creation.submit || (async () => {}),
+    crypto: { randomUUID: () => 'generated-terminal' },
     createAutoRefresh: () => ({ schedule() {} }),
   });
   vm.runInContext(source, context);
@@ -118,26 +119,26 @@ test('failed send preserves draft and does not append a message', async () => {
 
 test('loads available process terminals and reloads history after switching', async () => {
   const sessions = [
-    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input' },
-    { terminal_process_id: 'terminal-2', parent_process_id: 'process-2', status: 'waiting_for_input' },
+    { terminal_id: 'terminal-1', status: 'open' },
+    { terminal_id: 'terminal-2', status: 'open' },
   ];
   const h = await harness([], async () => ({}), sessions);
   const select = h.get('#terminalSelect');
   assert.equal(select.children.length, 2);
   assert.equal(select.value, 'terminal-1');
-  assert.equal(h.historyRequests.at(-1).terminalProcessId, 'terminal-1');
+  assert.equal(h.historyRequests.at(-1).terminalId, 'terminal-1');
 
   select.value = 'terminal-2';
   select.listeners.change();
   while (vm.runInContext('state.loading', h.context)) await Promise.resolve();
-  assert.equal(h.historyRequests.at(-1).terminalProcessId, 'terminal-2');
+  assert.equal(h.historyRequests.at(-1).terminalId, 'terminal-2');
   assert.equal(h.get('#terminalTitle').textContent, '进程终端 · terminal');
 });
 
 test('sends a message to the selected process terminal', async () => {
   const sent = [];
   const sessions = [
-    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input' },
+    { terminal_id: 'terminal-1', status: 'open' },
   ];
   const h = await harness([], async (...args) => {
     sent.push(args);
@@ -152,13 +153,13 @@ test('sends a message to the selected process terminal', async () => {
 test('closed terminals stay readable but cannot send', async () => {
   let sends = 0;
   const sessions = [
-    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'terminated' },
+    { terminal_id: 'terminal-1', status: 'closed' },
   ];
   const h = await harness([], async () => { sends += 1; }, sessions);
   h.get('#terminalSelect').value = 'terminal-1';
   h.get('#terminalSelect').listeners.change();
   while (vm.runInContext('state.loading', h.context)) await Promise.resolve();
-  assert.equal(h.historyRequests.at(-1).terminalProcessId, 'terminal-1');
+  assert.equal(h.historyRequests.at(-1).terminalId, 'terminal-1');
   assert.equal(h.get('#messageInput').disabled, true);
   assert.equal(h.get('#sendButton').disabled, true);
   h.get('#messageInput').value = 'not allowed';
@@ -168,8 +169,8 @@ test('closed terminals stay readable but cannot send', async () => {
 
 test('switching terminals keeps separate drafts', async () => {
   const sessions = [
-    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input' },
-    { terminal_process_id: 'terminal-2', parent_process_id: 'process-2', status: 'waiting_for_input' },
+    { terminal_id: 'terminal-1', status: 'open' },
+    { terminal_id: 'terminal-2', status: 'open' },
   ];
   const h = await harness([], async () => {}, sessions);
   h.get('#messageInput').value = 'draft for first';
@@ -186,8 +187,8 @@ test('switching terminals keeps separate drafts', async () => {
 
 test('late history from previous terminal never appears after switching', async () => {
   const sessions = [
-    { terminal_process_id: 'terminal-1', parent_process_id: 'process-1', status: 'waiting_for_input' },
-    { terminal_process_id: 'terminal-2', parent_process_id: 'process-2', status: 'waiting_for_input' },
+    { terminal_id: 'terminal-1', status: 'open' },
+    { terminal_id: 'terminal-2', status: 'open' },
   ];
   const h = await harness([], async () => {}, sessions);
   let release;
@@ -243,20 +244,20 @@ test('creating a process posts inputs and selects its paired terminal', async ()
   const sessions = [];
   const h = await harness([], undefined, sessions, {
     options: async () => ({ items: [workflowOption] }),
-    submit: async (file, inputs) => {
-      requests.push({ file, inputs: JSON.parse(JSON.stringify(inputs)) });
-      sessions.push({ terminal_process_id: 'new-terminal', parent_process_id: 'new-process', status: 'waiting_for_input' });
-      return { process_id: 'new-process', terminal_process_id: 'new-terminal' };
+    submit: async (file, terminalId, inputs) => {
+      requests.push({ file, terminalId, inputs: JSON.parse(JSON.stringify(inputs)) });
+      sessions.push({ terminal_id: terminalId, status: 'open' });
+      return { terminal_id: terminalId, workflow_name: 'demo.json' };
     },
   });
   await vm.runInContext('openCreateProcess()', h.context);
   h.get('#processInputs').value = '{"text":"hello"}';
   await vm.runInContext('submitNewProcess()', h.context);
-  assert.deepEqual(requests, [{ file: 'workflow-file', inputs: { text: 'hello' } }]);
+  assert.deepEqual(requests, [{ file: 'workflow-file', terminalId: 'generated-terminal', inputs: { text: 'hello' } }]);
   assert.equal(h.get('#terminalSelect').value, 'new-terminal');
   assert.equal(h.get('#createProcessDialog').open, false);
-  assert.equal(h.historyRequests.at(-1).terminalProcessId, 'new-terminal');
-  assert.match(h.get('#sendStatus').textContent, /new-process/);
+  assert.equal(h.historyRequests.at(-1).terminalId, 'generated-terminal');
+  assert.match(h.get('#sendStatus').textContent, /创建请求已排队/);
 });
 
 test('invalid creation input is rejected locally without posting', async () => {

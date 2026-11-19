@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import redis
 
-from queue_client import get_connection
+from redis_client import get_connection
 
 
 CONTEXT_VALUE_TYPES = {

@@ -22,20 +22,20 @@ export function fetchTerminalSessions() {
   return request('/api/terminal/sessions');
 }
 
-export function fetchTerminalHistory(limit, terminalProcessId) {
+export function fetchTerminalHistory(limit, terminalId) {
   const params = new URLSearchParams({ limit: String(limit) });
-  params.set('terminal_process_id', terminalProcessId);
+  params.set('terminal_id', terminalId);
   return request(`/api/terminal/history?${params}`);
 }
 
-export function submitTerminal(content, terminalProcessId) {
+export function submitTerminal(content, terminalId) {
   return request('/api/terminal', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       content,
       files: [],
-      terminal_process_id: terminalProcessId,
+      terminal_id: terminalId,
     }),
   });
 }
@@ -44,10 +44,10 @@ export function fetchProcessWorkflowOptions() {
   return request('/api/processes/workflow-options');
 }
 
-export function createProcess(workflowFileId, inputs) {
+export function createProcess(workflowFileId, terminalId, inputs) {
   return request('/api/processes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workflow_file_id: workflowFileId, inputs }),
+    body: JSON.stringify({ workflow_file_id: workflowFileId, terminal_id: terminalId, inputs }),
   }, 30000);
 }

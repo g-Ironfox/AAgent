@@ -36,6 +36,23 @@ class WorkflowLogsApiTest(unittest.TestCase):
         response = self.endpoint()
         self.assertEqual(response.status_code, 503)
 
+    def test_internal_process_fields_are_not_returned(self):
+        self.logs.find.return_value.sort.return_value.limit.return_value = [{
+            "_id": ObjectId(),
+            "process_id": "internal-process",
+            "parent_process_id": "internal-parent",
+            "node_trace": [{"child_process_id": "internal-child", "node_name": "wait"}],
+            "output": {"content": "done"},
+        }]
+
+        item = self.endpoint()["items"][0]
+
+        encoded = str(item)
+        self.assertNotIn("internal-process", encoded)
+        self.assertNotIn("internal-parent", encoded)
+        self.assertNotIn("internal-child", encoded)
+        self.assertEqual(item["output"], {"content": "done"})
+
 
 if __name__ == "__main__":
     unittest.main()

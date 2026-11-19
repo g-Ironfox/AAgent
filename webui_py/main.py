@@ -70,7 +70,6 @@ mongo_client = MongoClient(**mongo_kwargs)
 database = mongo_client[MONGO_DATABASE]
 terminal_messages: Collection = database[MONGO_TERMINAL_COLLECTION]
 workflow_logs: Collection = database[MONGO_WORKFLOW_LOG_COLLECTION]
-process_logs: Collection = database[env("MONGO_PROCESS_LOG_COLLECTION", "process_logs")]
 file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
 workspace_files: Collection = database[MONGO_WORKSPACE_FILE_COLLECTION]
 file_store = FileStore(file_events, workspace_files)
@@ -91,8 +90,8 @@ def create_terminal_indexes():
             [("created_at", -1), ("_id", -1)], name="terminal_created_at_id"
         )
         terminal_messages.create_index(
-            [("terminal_process_id", 1), ("created_at", -1), ("_id", -1)],
-            name="terminal_process_created_at_id",
+            [("terminal_id", 1), ("created_at", -1), ("_id", -1)],
+            name="terminal_id_created_at_id",
         )
     except PyMongoError as error:
         logger.error("failed to create terminal indexes: %s", error)
@@ -155,7 +154,7 @@ def health():
 
 
 app.include_router(create_terminal_router(redis_client, terminal_messages))
-app.include_router(create_processes_router(redis_client, file_store, process_logs))
+app.include_router(create_processes_router(redis_client, file_store))
 app.include_router(create_workflow_logs_router(workflow_logs))
 app.include_router(create_files_router(file_store))
 

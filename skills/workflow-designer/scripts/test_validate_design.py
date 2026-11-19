@@ -261,12 +261,16 @@ class WorkflowDesignTest(unittest.TestCase):
 
     def test_output_is_written_only_to_the_process_terminal(self):
         text = 'quoted "text"\nnew line \\ backslash'
-        with terminal_process_context("unrelated-terminal"), patch("process_creation.uuid4") as terminal_id:
+        with terminal_process_context("unrelated-terminal", "public-terminal"), patch("process_creation.uuid4") as terminal_id:
             terminal_id.return_value.hex = "terminal-example"
             output, append = self.execute(self.examples[2], {"text": text})
         terminal_id.assert_called_once_with()
         self.assertEqual(output, {"content": text})
-        append.assert_called_once_with(text, terminal_process_id="terminal-example")
+        append.assert_called_once_with(
+            text,
+            terminal_id="public-terminal",
+            terminal_process_id="terminal-example",
+        )
 
 
 if __name__ == "__main__":

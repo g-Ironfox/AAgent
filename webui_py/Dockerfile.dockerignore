@@ -1,15 +1,6 @@
 **
 !webui_py/
 !webui_py/**
-!agent/
-!agent/process_creation.py
-!agent/process_repository.py
-!agent/workflow_parser.py
-!agent/workflow_validator.py
-!agent/workflow_contract.py
-!agent/workflow_structs.py
-!agent/workflow_nodes.py
-!agent/workflow_2_0.schema.json
 **/__pycache__/
 **/*.py[cod]
 **/.env

@@ -37,12 +37,16 @@ class OutputToTerminalNodeTest(unittest.TestCase):
         workflow = parse_workflow(document)
         workflow[1]["data_inputs"]["content-in"][2] = "hello"
         with patch("terminal_repository.append_terminal_output") as append:
-            with terminal_process_context("terminal-123"):
+            with terminal_process_context("internal-terminal-123", "public-terminal-123"):
                 next_node = nodes_map["input"](0, workflow)
                 self.assertEqual(next_node, 1)
                 next_node = workflow_output_to_terminal(next_node, workflow)
         self.assertEqual(next_node, 2)
-        append.assert_called_once_with("hello", terminal_process_id="terminal-123")
+        append.assert_called_once_with(
+            "hello",
+            terminal_id="public-terminal-123",
+            terminal_process_id="internal-terminal-123",
+        )
         self.assertIsNone(current_terminal_process_id.get())
 
     def test_requires_process_terminal_and_nonempty_text(self):
@@ -53,7 +57,7 @@ class OutputToTerminalNodeTest(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "requires a process terminal"):
             workflow_output_to_terminal(0, [node])
-        with terminal_process_context("terminal-123"):
+        with terminal_process_context("internal-terminal-123", "public-terminal-123"):
             for value in (None, 4, " "):
                 node["data_inputs"]["content-in"][2] = value
                 with self.subTest(value=value), self.assertRaisesRegex(ValueError, "non-empty text"):

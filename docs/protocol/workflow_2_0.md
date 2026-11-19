@@ -364,11 +364,19 @@ While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out`
 
 在进程调度器中，每次 `spawn_and_wait_subprocess` 节点调用创建一个普通 workflow 子进程及独立终端。执行目标文件、递归和接口校验，将节点输入复制到子进程。父图保存 `pending_call`（调用节点 ID、索引、子进程 ID、日志索引），进入 `blocked`，等待 `{"kind":"process_exit","process_id":"<child>"}`。父进程保存、子进程及终端创建、子进程入队在同一 Redis 事务提交。
 
+Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KERNEL_DB`（默认 1），配置要求两个编号不同。进程表、ready 队列、blocked 集合、内部终端索引和 Workflow Context 全部存于内核库；外部事件队列 `external_events`、公共终端状态 `terminal_sessions` 和工具注册存于公共库。WebUI 只连接公共库。
+
+当前采用单个 runtime 调度循环：先从内核 ready 队列非阻塞 `RPOP` 一个进程，执行一个节点后将公共库的外部事件逐个 `RPOP` 处理完；ready 为空时只在公共库的 `external_events` 上 `BRPOP`。外部事件产生新的 ready 进程后，下一轮继续执行，无需跨库阻塞取队列或增加轮询等待。外部事件的阻塞连接不设 socket 读取超时。
+
 调度器原子领取 `ready` 进程，设为 `running` 并记录本次 execution ID，每次只执行一个节点。完成后原子保存图、索引和状态，并更新就绪队列或阻塞集合。重复队列项不能执行 `running`、`blocked` 或终态进程；被终止的旧执行结果不能覆盖终态。多层调用重复相同规则，无需嵌套同步 runner。
 
 子进程执行到 `output` 时收集结果到进程的 `result`；保存终态、关闭自身终端、唤醒等待该子进程退出的父进程在同一事务提交。进程表中的 `current_node_id` 表示最近完成节点；`control_port` 保存已选控制端口，调度时由其与该节点的 `successors` 解析下一节点，不持久化 `next_node_id`。首次执行使用 `current_node_id: -1` 和 `control_port: null`，从 input 节点开始。父进程下次被调度时先处理 `pending_call`，校验父子关系、状态与输出类型，从原调用节点的数据输出向下游传播，将调用节点记为最近完成节点并保存其控制端口，再清除 pending；后继节点从该节点的控制端口按需解析；不会重新执行调用节点或再次创建子进程。`failed` 和 `terminated` 同样唤醒父进程，父进程失败并保留子进程标识和错误，逐层传播。
 
-各进程有自己的 `terminal_process_id`。等待终端只匹配该终端的输入；向父终端发送消息不会唤醒正在等待子进程退出的父进程。终端列表展示工作流名称、子进程标识及等待状态。`wait_terminal_event` 仅负责唤醒，无消息数据输出；需要输入内容时，后续使用 `read_terminal_input` 查询完整的用户输入列表。
+前端为每个终端会话生成公共 `terminal_id`；Agent runtime 为工作流及其终端独立生成内部 `process_id` 和 `terminal_process_id`，内部字段不出现在 WebUI API。父子 workflow 可以共享同一个公共 `terminal_id`，runtime 通过内部终端索引将消息路由到当前活跃的等待者。终端列表只展示公共终端编号、工作流名称和等待状态。`wait_terminal_event` 仅负责唤醒，无消息数据输出；需要输入内容时，后续使用 `read_terminal_input` 查询该公共终端的完整用户输入列表。
+
+公共终端会话由 runtime 独占维护在 Redis `terminal_sessions` hash（环境变量 `TerminalSessions`）中，以 `terminal_id` 为键，保存 `status`（`open` / `closed`）、根会话 `start_time`、`closed_at` 及当前工作流名称和等待状态，不保存内部进程 ID。根进程创建时在同一事务中写入 `open`；只有根进程完成、失败或被终止时才原子写入 `closed` 并移除终端路由。子进程退出只切换内部路由和公开的活动信息，不关闭公共终端。WebUI 会话列表只读取此公共 hash，不读取进程表或内部终端索引。
+
+公共终端状态与内核变更使用同一 Redis 实例上的 `MULTI/EXEC` 提交：事务内先写内核状态，再用 `SELECT` 切换到公共库写终端状态，随后切回内核库，确保连接返回连接池时仍指向内核库。
 
 每个进程使用稳定的 `invocation_id`（缺省等于进程 ID），持久化 `context_ids` 和祖先 invocation ID 列表。每次节点执行临时恢复已有 Context 节点所需的运行作用域，保存工作流时剔除内存 set 等临时对象。子进程可沿用原有规则访问祖先 Context；自己创建的 Context 归自己所有。受进程管理的 Context 不设过期时间，挂起期间保留；进程完成、失败或显式终止时清理，Session 语义不变。
 

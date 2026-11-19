@@ -8,15 +8,22 @@ from unittest.mock import MagicMock, patch
 
 from redis.exceptions import WatchError
 
+from redis_client import REDIS_KERNEL_DB, REDIS_PUBLIC_DB
+
 
 class MemoryRedis:
-    def __init__(self):
-        self.hashes = {}
-        self.lists = {}
-        self.sets = {}
-        self.versions = {}
-        self.expirations = {}
+    def __init__(self, database=REDIS_KERNEL_DB, databases=None):
+        self.database = database
+        self.databases = {} if databases is None else databases
+        state = self.databases.setdefault(database, {
+            name: {} for name in ("hashes", "lists", "sets", "versions", "expirations")
+        })
+        for name, values in state.items():
+            setattr(self, name, values)
         self.before_execute = None
+
+    def with_db(self, database):
+        return MemoryRedis(database, self.databases)
 
     def _changed(self, key):
         self.versions[key] = self.versions.get(key, 0) + 1
@@ -35,6 +42,13 @@ class MemoryRedis:
         self._changed(key)
         return 1
 
+    def hdel(self, key, *fields):
+        values = self.hashes.setdefault(key, {})
+        removed = sum(1 for field in fields if values.pop(field, None) is not None)
+        if removed:
+            self._changed(key)
+        return removed
+
     def lpush(self, key, value):
         self.lists.setdefault(key, []).insert(0, value)
         self._changed(key)
@@ -46,10 +60,18 @@ class MemoryRedis:
         return 0
 
     def brpop(self, key, timeout=0):
+        keys = key if isinstance(key, list) else [key]
+        for candidate in keys:
+            if self.lists.get(candidate):
+                self._changed(candidate)
+                return candidate, self.lists[candidate].pop()
+        return None
+
+    def rpop(self, key):
         if not self.lists.get(key):
             return None
         self._changed(key)
-        return key, self.lists[key].pop()
+        return self.lists[key].pop()
 
     def sadd(self, key, value):
         self.sets.setdefault(key, set()).add(value)
@@ -118,7 +140,18 @@ class MemoryPipeline:
             hook()
         if any(self.client.versions.get(key, 0) != version for key, version in self.watched.items()):
             raise WatchError("concurrent update")
-        return [getattr(self.client, name)(*args, **kwargs) for name, args, kwargs in self.commands]
+        selected = self.client
+        results = []
+        for name, args, kwargs in self.commands:
+            if name == "execute_command" and args[0] == "SELECT":
+                selected = self.client.with_db(args[1])
+                results.append(True)
+            else:
+                results.append(getattr(selected, name)(*args, **kwargs))
+        if selected.database != self.client.database:
+            raise AssertionError("transaction did not restore the connection database")
+        self.commands.clear()
+        return results
 
     def __getattr__(self, name):
         def command(*args, **kwargs):
@@ -156,6 +189,7 @@ def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=
                       "successors": {"next": start}, "data_inputs": {}, "data_outputs": {}})
     process = {
         "process_id": uuid4().hex, "parent_process_id": "user_interface",
+        "terminal_id": uuid4().hex,
         "workflow_name": name, "workflow_file": name, "call_stack": call_stack or [name],
         "workflow": json.dumps(graph, ensure_ascii=False, allow_nan=False),
         "current_node_id": -1, "control_port": None, "input": inputs,
@@ -173,6 +207,7 @@ def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=
 
     with ExitStack() as stack:
         stack.enter_context(patch("main.get_connection", return_value=redis))
+        stack.enter_context(patch("main.get_event_connection", return_value=redis.with_db(REDIS_PUBLIC_DB)))
         stack.enter_context(patch("main.execute_node", side_effect=capture_error))
         stack.enter_context(patch("main._get_process_log_collection", return_value=MagicMock()))
         stack.enter_context(patch("workflow_run_repository.get_workflow_log_collection", return_value=MagicMock()))

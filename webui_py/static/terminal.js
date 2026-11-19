@@ -6,7 +6,8 @@ const state = {
   loading: false,
   historyLoaded: false,
   seen: new Set(),
-  terminalProcessId: null,
+  terminalId: null,
+  pendingSessions: new Map(),
   terminalClosed: false,
   refreshPending: false,
   drafts: new Map(),
@@ -53,18 +54,18 @@ async function refreshStatus() {
     const revision = state.sessionRevision;
     const sessionResult = await fetchTerminalSessions();
     if (revision !== state.sessionRevision) return;
-    const previousTerminalProcessId = state.terminalProcessId;
+    const previousTerminalId = state.terminalId;
     updateTerminalOptions(sessionResult.sessions || []);
-    if (previousTerminalProcessId !== state.terminalProcessId) resetHistory();
-    const terminalProcessId = state.terminalProcessId || '';
-    if (!terminalProcessId) {
+    if (previousTerminalId !== state.terminalId) resetHistory();
+    const terminalId = state.terminalId || '';
+    if (!terminalId) {
       resetHistory();
       elements.lastRefresh.textContent = '暂无可用终端会话';
       elements.lastRefresh.classList.remove('sync-error');
       return;
     }
-    const snapshot = await fetchTerminalHistory(150, terminalProcessId);
-    if (terminalProcessId !== state.terminalProcessId) return;
+    const snapshot = await fetchTerminalHistory(150, terminalId);
+    if (terminalId !== state.terminalId) return;
     appendHistory(snapshot.items);
     elements.lastRefresh.textContent = new Date(snapshot.fetched_at).toLocaleTimeString('zh-CN', { hour12: false });
     elements.lastRefresh.classList.remove('sync-error');
@@ -84,51 +85,51 @@ async function refreshStatus() {
 }
 
 function updateTerminalOptions(sessions) {
-  state.sessions = sessions;
+  const fetchedIds = new Set(sessions.map((session) => session.terminal_id));
+  for (const terminalId of fetchedIds) state.pendingSessions.delete(terminalId);
+  state.sessions = [...state.pendingSessions.values(), ...sessions];
   const select = elements.terminalSelect;
-  const availableIds = new Set(sessions.map((session) => session.terminal_process_id));
-  if (state.terminalProcessId === null) {
-    state.terminalProcessId = sessions.find((session) => session.status !== 'terminated')
-      ?.terminal_process_id || '';
-  } else if (state.terminalProcessId && !availableIds.has(state.terminalProcessId)) {
-    state.terminalProcessId = '';
+  const availableIds = new Set(state.sessions.map((session) => session.terminal_id));
+  if (state.terminalId === null) {
+    state.terminalId = state.sessions.find((session) => session.status !== 'closed')
+      ?.terminal_id || '';
+  } else if (state.terminalId && !availableIds.has(state.terminalId)) {
+    state.terminalId = '';
   }
 
-  const options = sessions.length ? [] : [document.createElement('option')];
-  if (!sessions.length) {
+  const options = state.sessions.length ? [] : [document.createElement('option')];
+  if (!state.sessions.length) {
     options[0].value = '';
     options[0].textContent = '暂无进程终端';
   }
-  for (const session of sessions) {
-    if (!session.terminal_process_id) continue;
+  for (const session of state.sessions) {
+    if (!session.terminal_id) continue;
     const option = document.createElement('option');
-    option.value = session.terminal_process_id;
-    const parent = String(session.parent_process_id || session.terminal_process_id);
-    const waitKind = session.wait_for?.kind;
-    const stateLabel = session.status === 'terminated' ? '已关闭'
+    option.value = session.terminal_id;
+    const waitKind = session.wait_kind;
+    const stateLabel = session.status === 'closed' ? '已关闭'
       : session.workflow_status === 'blocked'
         ? (waitKind === 'process_exit' ? '等待子进程' : '等待终端输入')
         : '运行中';
     const workflowLabel = session.workflow_name ? `${session.workflow_name} · ` : '';
-    const isChild = session.root_process_id && session.root_process_id !== session.parent_process_id;
-    option.textContent = `${isChild ? '↳ ' : ''}${workflowLabel}${parent.slice(0, 12)} · ${stateLabel}`;
+    option.textContent = `${workflowLabel}${session.terminal_id.slice(0, 12)} · ${stateLabel}`;
     options.push(option);
   }
   select.replaceChildren(...options);
-  select.value = state.terminalProcessId;
-  elements.title.textContent = state.terminalProcessId
-    ? `进程终端 · ${state.terminalProcessId.slice(0, 8)}`
+  select.value = state.terminalId;
+  elements.title.textContent = state.terminalId
+    ? `终端 · ${state.terminalId.slice(0, 8)}`
     : '请先创建进程';
   state.terminalClosed = Boolean(
-    state.terminalProcessId
-    && sessions.find((session) => session.terminal_process_id === state.terminalProcessId)?.status === 'terminated'
+    state.terminalId
+    && state.sessions.find((session) => session.terminal_id === state.terminalId)?.status === 'closed'
   );
   updateComposerState();
 }
 
 function updateComposerState() {
-  elements.input.disabled = state.sending || state.creating || state.terminalClosed || !state.terminalProcessId;
-  elements.sendButton.disabled = state.sending || state.creating || state.terminalClosed || !state.terminalProcessId;
+  elements.input.disabled = state.sending || state.creating || state.terminalClosed || !state.terminalId;
+  elements.sendButton.disabled = state.sending || state.creating || state.terminalClosed || !state.terminalId;
   elements.terminalSelect.disabled = state.sending || state.creating;
   elements.createButton.disabled = state.sending || state.creating;
 }
@@ -213,17 +214,17 @@ function appendMessage(item) {
 
 async function sendMessage() {
   const content = elements.input.value.trim();
-  if (!content || !state.terminalProcessId || state.sending || state.creating || state.terminalClosed) return;
+  if (!content || !state.terminalId || state.sending || state.creating || state.terminalClosed) return;
 
-  const targetTerminalProcessId = state.terminalProcessId;
+  const targetTerminalId = state.terminalId;
   state.sending = true;
   updateComposerState();
   elements.sendStatus.className = 'send-status';
   elements.sendStatus.textContent = '正在发送…';
 
   try {
-    const result = await submitTerminal(content, targetTerminalProcessId);
-    if (targetTerminalProcessId !== state.terminalProcessId) return;
+    const result = await submitTerminal(content, targetTerminalId);
+    if (targetTerminalId !== state.terminalId) return;
     appendHistory([result.message]);
     elements.input.value = '';
     elements.sendStatus.className = 'send-status success';
@@ -311,19 +312,20 @@ async function submitNewProcess() {
   elements.cancelDialog.disabled = true;
   updateComposerState();
   try {
-    const result = await createProcess(elements.workflowSelect.value, inputs);
-    state.drafts.set(state.terminalProcessId || '', elements.input.value);
+    const terminalId = crypto.randomUUID();
+    const result = await createProcess(elements.workflowSelect.value, terminalId, inputs);
+    state.drafts.set(state.terminalId || '', elements.input.value);
     state.sessionRevision += 1;
-    state.terminalProcessId = result.terminal_process_id;
-    updateTerminalOptions([{
-      terminal_process_id: result.terminal_process_id,
-      parent_process_id: result.process_id,
-      status: 'waiting_for_input',
-      start_time: result.start_time,
-    }, ...state.sessions]);
+    state.pendingSessions.set(terminalId, {
+      terminal_id: terminalId,
+      workflow_name: result.workflow_name,
+      status: 'queued',
+    });
+    state.terminalId = terminalId;
+    updateTerminalOptions(state.sessions.filter((session) => !state.pendingSessions.has(session.terminal_id)));
     elements.input.value = '';
     elements.sendStatus.className = 'send-status success';
-    elements.sendStatus.textContent = '进程已创建：' + result.process_id;
+    elements.sendStatus.textContent = '创建请求已排队';
     resetHistory();
     resizeInput();
     elements.createDialog.close();
@@ -363,10 +365,10 @@ elements.form.addEventListener('submit', (event) => {
 });
 elements.refreshButton.addEventListener('click', refreshStatus);
 elements.terminalSelect.addEventListener('change', () => {
-  state.drafts.set(state.terminalProcessId || '', elements.input.value);
-  state.terminalProcessId = elements.terminalSelect.value;
-  updateTerminalOptions(state.sessions);
-  elements.input.value = state.drafts.get(state.terminalProcessId) || '';
+  state.drafts.set(state.terminalId || '', elements.input.value);
+  state.terminalId = elements.terminalSelect.value;
+  updateTerminalOptions(state.sessions.filter((session) => !state.pendingSessions.has(session.terminal_id)));
+  elements.input.value = state.drafts.get(state.terminalId) || '';
   elements.sendStatus.textContent = '';
   resizeInput();
   resetHistory();
