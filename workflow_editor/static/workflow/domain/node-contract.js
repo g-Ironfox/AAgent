@@ -17,6 +17,7 @@ export const NODE_TYPES = new Set([
   'struct_to_json',
   'json_to_struct',
   'map_content_get',
+  'number_to_content',
   'deserialize_json',
   'output_to_terminal',
   'wait_terminal_event',
@@ -208,6 +209,14 @@ export function portsForNode(node) {
       { id: toJson ? 'value-in' : 'content-in', direction: 'input', type: toJson ? valueType : 'content', color: structColor(node, valueType), label: toJson ? valueType : 'JSON', title: toJson ? valueType : 'JSON content', multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: toJson ? 'content-out' : 'value-out', direction: 'output', type: toJson ? 'content' : valueType, color: structColor(node, valueType), label: toJson ? 'JSON' : valueType, title: toJson ? 'JSON content' : valueType, multiple: true },
+    ];
+  }
+  if (node.type === 'number_to_content') {
+    return [
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '数字转文本', multiple: false },
+      { id: 'number-in', direction: 'input', type: 'number', label: '数字', title: '要转换的有限数值', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
+      { id: 'content-out', direction: 'output', type: 'content', label: '文本', title: '数字的文本表示', multiple: true },
     ];
   }
   if (node.type === 'map_content_get') {
@@ -495,6 +504,7 @@ function createNodeDefinition(type, nodes, configuration = null, viewport = null
   if (type === 'struct_to_json' || type === 'json_to_struct') {
     return { type, name: type === 'struct_to_json' ? `Struct 转 JSON ${number}` : `JSON 转 Struct ${number}`, value_type: '', ...position };
   }
+  if (type === 'number_to_content') return { type, name: `数字转文本 ${number}`, ...position };
   if (type === 'map_content_get') return { type, name: `Map 查找 ${number}`, ...position };
   if (type === 'deserialize_json') return { type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
   if (type === 'read_terminal_input') return { type, name: `读取终端输入 ${number}`, ...position };

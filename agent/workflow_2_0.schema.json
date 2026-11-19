@@ -243,6 +243,7 @@
             "construct_content",
             "construct_map_content",
             "map_content_get",
+            "number_to_content",
             "output_to_terminal",
             "wait_terminal_event",
             "read_terminal_input",

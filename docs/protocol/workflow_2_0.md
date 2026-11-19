@@ -37,7 +37,7 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 
 ## 3. 数据类型与 Struct 声明
 
-内建数据类型为 `content`、`number`、`map-content`、`list-content`。`number` 可用于 Workflow 输入/输出、数据连线、Struct 字段、Tool 接口、Context 和 Session，以及 `deserialize_json` 输出。Tool schema 中的 `number` 和 `integer` 均映射为 `number`；传递时保留数值，不自动与 `content` 转换。
+内建数据类型为 `content`、`number`、`map-content`、`list-content`。`number` 可用于 Workflow 输入/输出、数据连线、Struct 字段、Tool 接口、Context 和 Session，以及 `deserialize_json` 输出。Tool schema 中的 `number` 和 `integer` 均映射为 `number`；传递时保留数值，不自动与 `content` 转换；需要文本时使用 `number_to_content` 显式转换。
 
 ### 3.1 Struct 类型标识
 
@@ -247,7 +247,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 | 节点类型 | 必需参数 | 可选参数（缺省值） |
 | --- | --- | --- |
-| `input`、`output`、`map_content_get`、`output_to_terminal`、`wait_terminal_event` | 无 | 无 |
+| `input`、`output`、`number_to_content`、`map_content_get`、`output_to_terminal`、`wait_terminal_event` | 无 | 无 |
 | `router` | `branches` | 无 |
 | `construct_message` | 无 | `role` (`user`)、`role_source` (`fixed`) |
 | `construct_content` | `append_items` | 无 |
@@ -285,6 +285,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `construct_list.item_type` 允许 `content` 或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content` 或 `list-struct:<id>`。
 - `list_get.value_type` 必填，允许 `list-content` 或已声明的 `list-struct:<id>`。`list-in` 连线必须匹配所选列表类型，端口模式下 `index-in` 为 `number`；`item-out` 类型为去掉 `list-` 前缀的元素类型。控制端口为 `control-in` / `control-out`。下标采用 Python 列表索引规则：从 `0` 开始，支持负数从末尾倒数（`-1` 为最后一个，`-2` 为倒数第二个）；必须为有限整数数值（`1.0`、`-1.0` 亦合法），不接受 boolean 或数字字符串；下标越界（含空列表）、输入缺失、输入不是列表或元素类型不符时执行失败，不输出元素。读取不修改原列表，输出按通常的数据传播规则深拷贝。 `index_source` 可选 `port`（默认，兼容旧流程）或 `fixed`。`port` 从 `index-in:number` 读取下标；`fixed` 使用 `arguments.index`（必填整数，支持负数），不提供 `index-in` 端口；两种模式采用相同的越界和类型校验。
 - `list_slice.value_type` 必填，允许 `list-content` 或已声明的 `list-struct:<id>`；起点、终点和步长分别通过 `start_source`、`stop_source`、`step_source` 选择 `port`（默认）或 `fixed`，可混合使用。`port` 模式暴露对应的可选整数 `number` 端口 `start-in`、`stop-in`、`step-in`，未连接时按 `None` 处理；`fixed` 模式隐藏对应端口，从 `start`、`stop`、`step` 读取整数，未填写或为 `null` 时按 `None` 处理。固定步长不得为 0。执行直接采用 Python `list[start:stop:step]` 语义，包括负下标、负步长、截断和空结果；步长为 0 或边界不是整数时报错。输出 `list-out` 保持所选列表类型，不修改输入。
+- `number_to_content` 无节点参数，控制端口为 `control-in` / `control-out`；固定输入为 `number-in: number`，输出为 `content-out: content`。执行时要求输入已提供且为整数或有限浮点数（不接受 boolean、字符串、null、NaN 或 Infinity），按 JSON 数字格式输出文本并继续控制流，例如 `42` → `"42"`、`-1.25` → `"-1.25"`、`0.0` → `"0.0"`，大数可能使用科学计数法。
 - `list_length.value_type` 必填，允许 `list-content` 或已声明的 `list-struct:<id>`；`list-in` 的连线类型必须与所选类型精确匹配。控制端口为 `control-in` / `control-out`。执行时要求输入已提供且为符合声明类型的列表，递归校验 Struct 元素；不修改输入，通过 `length-out: number` 输出非负整数，空列表返回 `0`，随后沿控制流继续。
 - `list_append.item_type` 允许 `content` 或已声明的 `struct:<id>`；`position` 只允许 `start` 或 `end`，输入和输出列表类型为对应的 `list-<item_type>`。
 - `while_pop.value_type` 必须是 `list-content` 或本 Workflow 声明的 `list-struct:<id>`。每轮从 Context 列表原子弹出一项；`position` 为 `end`（默认，末尾）或 `start`（最前）。Context 为空时退出，详情见 10.4。

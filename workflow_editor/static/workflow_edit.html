@@ -86,6 +86,11 @@
           <button class="library-item" type="button" data-add-node="struct_update"><span class="node-symbol struct_update-symbol" aria-hidden="true">S±</span><div><strong>更新 Struct</strong><small>复制后替换或移除字段</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
           <button class="library-item" type="button" data-add-node="struct_to_json"><span class="node-symbol struct_to_json-symbol" aria-hidden="true">S→</span><div><strong>Struct 转 JSON</strong><small>将局部类型序列化为 JSON content</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
           <button class="library-item" type="button" data-add-node="json_to_struct"><span class="node-symbol json_to_struct-symbol" aria-hidden="true">→S</span><div><strong>JSON 转 Struct</strong><small>校验 JSON 并构造局部类型</small></div><span class="add-symbol" aria-hidden="true">+</span></button>
+          <button class="library-item" type="button" data-add-node="number_to_content">
+            <span class="node-symbol number_to_content-symbol" aria-hidden="true">N→C</span>
+            <div><strong>数字转文本</strong><small>将 number 转换为 content</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
           <button class="library-item" type="button" data-add-node="map_content_get">
             <span class="node-symbol map_content_get-symbol" aria-hidden="true">GET</span>
             <div><strong>Map-Content 查找</strong><small>按键读取 Content</small></div>
@@ -492,6 +497,14 @@
       <div class="section-label"><strong>Map-Content 条目</strong><span>值可使用固定文本或 content 端口</span></div>
       <div class="json-output-list" data-content-mappings></div>
       <button class="add-branch-button" type="button" data-add-content-mapping>+ 添加映射</button>
+    </section>
+    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
+  </template>
+
+  <template id="number_to_contentInspectorTemplate">
+    <div data-interface-contract></div>
+    <section class="inspector-section form-section">
+      <label>节点名称<input data-field="name" maxlength="30"></label>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

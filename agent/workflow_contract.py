@@ -29,6 +29,7 @@ SUPPORTED_NODE_TYPES = {
     "struct_to_json",
     "json_to_struct",
     "map_content_get",
+    "number_to_content",
     "output_to_terminal",
     "wait_terminal_event",
     "read_terminal_input",
@@ -80,6 +81,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "struct_to_json": {"value_type"},
     "json_to_struct": {"value_type"},
     "map_content_get": set(),
+    "number_to_content": set(),
     "output_to_terminal": set(),
     "wait_terminal_event": set(),
     "read_terminal_input": set(),
@@ -248,6 +250,8 @@ def data_ports_for_node(
         return declared_inputs | {"struct-in"}, {"struct-out"}
     if node_type in {"struct_to_json", "json_to_struct"}:
         return declared_inputs | ({"value-in"} if node_type == "struct_to_json" else {"content-in"}), {"content-out" if node_type == "struct_to_json" else "value-out"}
+    if node_type == "number_to_content":
+        return {"number-in"}, {"content-out"}
     if node_type == "map_content_get":
         return declared_inputs | {"map-in", "key-in"}, {"content-out"}
     if node_type == "read_terminal_input":
@@ -336,6 +340,8 @@ def data_type_for_port(
         return value_type if port_id == "value-in" else ("content" if port_id == "content-out" else None)
     if kind == "json_to_struct":
         return "content" if port_id == "content-in" else (value_type if port_id == "value-out" else None)
+    if kind == "number_to_content":
+        return {"number-in": "number", "content-out": "content"}.get(port_id)
     if kind == "read_terminal_input":
         return "list-content" if port_id == "list-out" else None
     if kind == "construct_list":

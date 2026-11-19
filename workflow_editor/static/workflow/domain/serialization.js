@@ -31,6 +31,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   struct_to_json: new Set(['value_type']),
   json_to_struct: new Set(['value_type']),
   map_content_get: new Set(),
+  number_to_content: new Set(),
   deserialize_json: new Set(['outputs']),
   output_to_terminal: new Set(),
   wait_terminal_event: new Set(),

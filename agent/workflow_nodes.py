@@ -407,6 +407,17 @@ def workflow_construct_content(current_id: int, workflow_map: WorkflowMap) -> in
     return next_successor(node)
 
 
+def workflow_number_to_content(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    present, value = read_workflow_input(node, "number-in")
+    if not present:
+        raise ValueError(f"number_to_content number-in is missing: node {node.get('id')}")
+    if not is_number_value(value):
+        raise ValueError(f"number_to_content number-in must be a finite number: node {node.get('id')}")
+    propagate_workflow_output(workflow_map, node, "content-out", json.dumps(value, allow_nan=False))
+    return next_successor(node)
+
+
 def workflow_construct_map_content(current_id: int, workflow_map: WorkflowMap) -> int:
     node = workflow_map[current_id]
     mappings = {}
@@ -1022,6 +1033,7 @@ nodes_map: dict[str, NodeHandler] = {
     "struct_to_json": workflow_struct_to_json,
     "json_to_struct": workflow_json_to_struct,
     "map_content_get": workflow_map_content_get,
+    "number_to_content": workflow_number_to_content,
     "output_to_terminal": workflow_output_to_terminal,
     "wait_terminal_event": workflow_wait_terminal_event,
     "read_terminal_input": workflow_read_terminal_input,

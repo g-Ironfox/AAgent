@@ -49,6 +49,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .struct_update-symbol { background:#9a5a24; }
 .struct_to_json-symbol { background:#61568a; }
 .json_to_struct-symbol { background:#147d78; }
+.number_to_content-symbol { background:#147d78; }
 .map_content_get-symbol { background:#326b4b; }
 .deserialize_json-symbol { background:#61568a; }
 .construct_list-symbol { background:#176f73; }
