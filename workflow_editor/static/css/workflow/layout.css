@@ -35,6 +35,9 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .node-symbol { width:34px; height:34px; display:grid; place-items:center; color:#fff; font:700 10px Consolas,monospace; }
 .input-symbol { background:var(--ink); }
 .output-symbol { background:#7a3e88; }
+.function_input-symbol { background:#376c78; }
+.function_output-symbol { background:#7a3e88; }
+.function_call-symbol { background:#785d9b; }
 .router-symbol { background:var(--amber); }
 .llm-symbol { background:var(--blue); }
 .construct_message-symbol { background:#b75b18; }
@@ -69,6 +72,12 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .subprocess-node-library[hidden] { display:none; }
 .spawn_and_wait_subprocess-symbol { background:#785d9b; }
 .subprocess-library-item { border-left-color:#785d9b; }
+.function_input-library-item { border-left-color:#376c78; }
+.function_output-library-item { border-left-color:#7a3e88; }
+.function_call-library-item { border-left-color:#785d9b; }
+.function-library-item strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.function-library-item small { overflow-wrap:anywhere; }
+.function-library-item:disabled { opacity:.5; cursor:not-allowed; }
 .add-symbol { color:var(--green); font-size:20px; }
 .fixed-tag { padding:3px 5px; color:var(--muted); border:1px solid var(--line); font-size:8px; }
 .library-footer { margin-top:auto; min-height:42px; padding:0 13px; display:flex; align-items:center; justify-content:space-between; color:var(--muted); border-top:1px solid var(--line); font:9px Consolas,monospace; }

@@ -53,9 +53,10 @@
 .flow-node.spawn_and_wait_subprocess { border-top-color:#785d9b; }
 .flow-node-head { height:45px; padding:0 11px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); }
 .flow-node-head .node-symbol { width:29px; height:29px; flex:none; font-size:10px; }
+.flow-node-head .function_input-symbol,.flow-node-head .function_output-symbol { font-size:8px; }
 .flow-node-head > span:last-child { min-width:0; display:grid; gap:1px; }
 .flow-node-head strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
-.flow-node-head small { color:var(--muted); font:8px Consolas,monospace; }
+.flow-node-head small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font:8px Consolas,monospace; }
 .flow-node-body { position:relative; display:block; height:70px; }
 .node-port { position:absolute; z-index:2; width:12px; height:12px; border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px #809087; cursor:crosshair; transition:box-shadow .12s ease,transform .12s ease; }
 .node-port::after { content:attr(data-port-label); position:absolute; top:50%; color:var(--muted); font:8px Consolas,monospace; line-height:1; white-space:nowrap; pointer-events:none; transform:translateY(-50%); }

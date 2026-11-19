@@ -366,11 +366,20 @@ function renderFunctionLibrary() {
   const mount = document.querySelector('#functionNodeLibrary');
   mount.hidden = !functions.length;
   mount.replaceChildren(...functions.flatMap((fn) => ['function_input', 'function_output', 'function_call'].map((kind) => {
+    const labels = { function_input: '输入', function_output: '输出', function_call: '调用' };
+    const symbols = { function_input: 'F-IN', function_output: 'F-OUT', function_call: 'F()' };
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'library-item';
-    button.textContent = `${fn.name} · ${{ function_input: '输入', function_output: '输出', function_call: '调用' }[kind]} +`;
+    button.className = `library-item function-library-item ${kind}-library-item`;
+    button.title = `${fn.name} · ${labels[kind]}`;
+    button.setAttribute('aria-label', `添加函数${labels[kind]}：${fn.name}`);
+    button.innerHTML = `<span class="node-symbol ${kind}-symbol" aria-hidden="true">${symbols[kind]}</span><div><strong></strong><small></small></div><span class="add-symbol" aria-hidden="true">+</span>`;
+    button.querySelector('strong').textContent = fn.name;
+    button.querySelector('small').textContent = kind === 'function_call'
+      ? `函数调用 · ${fn.input_ports.length} 输入 / ${fn.output_ports.length} 输出`
+      : `函数${labels[kind]} · ${fn[kind === 'function_input' ? 'input_ports' : 'output_ports'].length} 个接口`;
     button.disabled = kind === 'function_input' && state.nodes.some((n) => n.type === kind && n.function_id === fn.id);
+    if (button.disabled) button.title += '（已添加）';
     button.addEventListener('click', () => {
       const node = addNode(kind, fn, currentCanvasViewport());
       if (!node) return;

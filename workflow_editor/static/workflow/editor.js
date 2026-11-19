@@ -221,6 +221,7 @@ export function createWorkflowEditor(elements, markChanged) {
     head.innerHTML = `<span class="node-symbol ${node.type}-symbol">${symbols[node.type] || 'L'}</span><span><strong></strong><small></small></span>`;
     head.querySelector('strong').textContent = node.name;
     head.querySelector('small').textContent = node.type.toUpperCase() + (node.function_id ? ` · ${node.function_id}` : '');
+    head.querySelector('small').title = head.querySelector('small').textContent;
     const body = document.createElement('span');
     body.className = 'flow-node-body';
     const portCount = Math.max(inputs.length, outputs.length);
