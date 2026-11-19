@@ -1,4 +1,4 @@
-"""Typed zero-based list lookup, including numeric and bounds validation."""
+"""Typed Python list indexing, including numeric and bounds validation."""
 import copy
 import json
 import unittest
@@ -62,7 +62,7 @@ class WorkflowListGetTest(unittest.TestCase):
         for value_type, values in samples.items():
             workflow = fixture(value_type)
             validate_workflow(workflow)
-            for index in (0, len(values) - 1, 0.0, float(len(values) - 1)):
+            for index in (0, len(values) - 1, 0.0, float(len(values) - 1), -1, -len(values), -1.0, float(-len(values))):
                 with self.subTest(value_type=value_type, index=index):
                     original = copy.deepcopy(values)
                     graph = parse_workflow(workflow)
@@ -78,13 +78,13 @@ class WorkflowListGetTest(unittest.TestCase):
                     self.assertEqual(get["data_inputs"]["list-in"][2], original)
 
     def test_invalid_indices_are_rejected_without_output(self):
-        for index in (None, True, False, "0", -1, -1.0, 0.5, float("nan"), float("inf"), -float("inf"), [], {}, 2, 2.0, 10 ** 100, 1e100):
+        for index in (None, True, False, "0", 0.5, -0.5, float("nan"), float("inf"), -float("inf"), [], {}, 2, 2.0, -3, -3.0, 10 ** 100, 1e100, -(10 ** 100), -1e100):
             with self.subTest(index=index):
                 graph = direct_graph("list-content", ["a", "b"], index)
                 with self.assertRaisesRegex(ValueError, "index"):
                     workflow_list_get(0, graph)
                 self.assertIsNone(graph[1]["data_inputs"]["result"][2])
-        for values, index in (([], 0), (["one"], 1)):
+        for values, index in (([], 0), ([], -1), (["one"], 1), (["one"], -2)):
             with self.subTest(values=values, index=index), self.assertRaisesRegex(ValueError, "out of range"):
                 workflow_list_get(0, direct_graph("list-content", values, index))
 
@@ -150,7 +150,7 @@ class WorkflowListGetIndexSourceTest(unittest.TestCase):
             "list-struct:task": [{"name": "first"}, {"name": "last"}],
         }
         for value_type, values in samples.items():
-            for index in (0, 1, 1.0):
+            for index in (0, 1, 1.0, -1, -2, -1.0, -2.0):
                 with self.subTest(value_type=value_type, index=index):
                     workflow = fixture(value_type)
                     get = next(node for node in workflow["nodes"] if node["id"] == "get")
@@ -170,7 +170,7 @@ class WorkflowListGetIndexSourceTest(unittest.TestCase):
     def test_fixed_index_takes_precedence_and_copies_outputs(self):
         values = [{"role": "user", "content": "first"}, {"role": "assistant", "content": "last"}]
         graph = direct_graph("list-message", values, 0)
-        graph[0]["arguments"].update(index_source="fixed", index=1)
+        graph[0]["arguments"].update(index_source="fixed", index=-1)
         workflow_list_get(0, graph)
         result = graph[1]["data_inputs"]["result"][2]
         self.assertEqual(result, values[1])
@@ -179,7 +179,7 @@ class WorkflowListGetIndexSourceTest(unittest.TestCase):
         self.assertEqual(values[1]["content"], "last")
 
     def test_fixed_index_is_validated_at_runtime(self):
-        for index in (None, True, False, "0", -1, 0.5, float("nan"), float("inf"), [], {}, 2):
+        for index in (None, True, False, "0", 0.5, -0.5, float("nan"), float("inf"), [], {}, 2, -3, -(10 ** 100)):
             with self.subTest(index=index):
                 graph = direct_graph("list-content", ["a", "b"], 0)
                 graph[0]["arguments"].update(index_source="fixed", index=index)
@@ -216,7 +216,7 @@ class WorkflowListGetIndexSourceTest(unittest.TestCase):
     def test_invalid_index_configuration_is_rejected(self):
         cases = [{"index_source": source} for source in (None, "", "unknown", True)]
         cases += [{"index_source": "fixed"}]
-        cases += [{"index_source": "fixed", "index": index} for index in (None, True, False, "0", -1, 0.5, float("nan"), float("inf"), [], {})]
+        cases += [{"index_source": "fixed", "index": index} for index in (None, True, False, "0", 0.5, -0.5, float("nan"), float("inf"), [], {})]
         for arguments in cases:
             with self.subTest(arguments=arguments):
                 workflow = fixture()

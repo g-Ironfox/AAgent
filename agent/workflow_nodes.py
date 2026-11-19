@@ -474,12 +474,14 @@ def workflow_list_get(current_id: int, workflow_map: WorkflowMap) -> int:
         raise ValueError(f"list_get input must be a list: node {node.get('id')}")
     if not has_index:
         raise ValueError(f"list_get index input is missing: node {node.get('id')}")
-    if not is_number_value(index) or index < 0 or (isinstance(index, float) and not index.is_integer()):
-        raise ValueError(f"list_get index must be a non-negative integer: node {node.get('id')}")
-    if index >= len(input_list):
-        raise ValueError(f"list_get index out of range: node {node.get('id')}, index {index}, length {len(input_list)}")
+    if not is_number_value(index) or (isinstance(index, float) and not index.is_integer()):
+        raise ValueError(f"list_get index must be an integer: node {node.get('id')}")
+    try:
+        item = input_list[int(index)]
+    except IndexError as exc:
+        raise ValueError(f"list_get index out of range: node {node.get('id')}, index {index}, length {len(input_list)}") from exc
     validate_value(node_argument(node, "value_type"), input_list, _struct_defs(node))
-    propagate_workflow_output(workflow_map, node, "item-out", input_list[int(index)])
+    propagate_workflow_output(workflow_map, node, "item-out", item)
     return next_successor(node)
 
 

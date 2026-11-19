@@ -246,7 +246,7 @@ export function portsForNode(node) {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '按下标获取列表元素', multiple: false },
       { id: 'list-in', direction: 'input', type: node.value_type, color: structColor(node, node.value_type), label: '列表', title: node.value_type, multiple: false },
-      ...(node.index_source === 'fixed' ? [] : [{ id: 'index-in', direction: 'input', type: 'number', label: '下标', title: '从 0 开始的非负整数', multiple: false }]),
+      ...(node.index_source === 'fixed' ? [] : [{ id: 'index-in', direction: 'input', type: 'number', label: '下标', title: '整数下标，负数从末尾倒数（-1 为最后一个）', multiple: false }]),
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '下一步', multiple: false },
       { id: 'item-out', direction: 'output', type: itemType, color: structColor(node, itemType), label: '元素', title: itemType, multiple: true },
     ];

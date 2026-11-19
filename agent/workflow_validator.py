@@ -508,8 +508,8 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
                 raise WorkflowValidationError("list_get index_source must be 'fixed' or 'port'")
             index = node_argument(node, "index")
             if source == "fixed" or "index" in node.get("arguments", {}):
-                if not is_number_value(index) or index < 0 or (isinstance(index, float) and not index.is_integer()):
-                    raise WorkflowValidationError("list_get index must be a non-negative integer")
+                if not is_number_value(index) or (isinstance(index, float) and not index.is_integer()):
+                    raise WorkflowValidationError("list_get index must be an integer")
     elif node_type == "list_append":
         if not _valid_item_type(node_argument(node, "item_type"), structs):
             raise WorkflowValidationError(

@@ -70,7 +70,7 @@ test('all typed lookup snapshots survive reload and both backends validate and e
     valid.push(saved);
   }
   for (const valueType of ['list-content', 'list-message', 'list-struct:task']) {
-    for (const index of [0, 1]) {
+    for (const index of [0, 1, -1, -2]) {
       const workflow = fixture(valueType);
       workflow.nodes.find((node) => node.id === 'get').arguments = { value_type: valueType, index_source: 'fixed', index };
       workflow.connections = workflow.connections.filter((edge) => edge.toPortId !== 'index-in');
@@ -103,7 +103,7 @@ test('all typed lookup snapshots survive reload and both backends validate and e
     assert.equal(loadSnapshot(workflow), false);
     invalid.push(workflow);
   }
-  for (const index of [null, true, false, '', '0', -1, 0.5, [], {}]) {
+  for (const index of [null, true, false, '', '0', 0.5, -0.5, [], {}]) {
     const workflow = fixture();
     Object.assign(workflow.nodes.find((node) => node.id === 'get').arguments, { index_source: 'fixed', index });
     assert.equal(loadSnapshot(workflow), false);
@@ -132,7 +132,7 @@ for workflow in cases["valid"]:
     arguments = next(node for node in workflow["nodes"] if node["type"] == "list_get")["arguments"]
     value_type = arguments["value_type"]
     values = ["first", "last"] if value_type == "list-content" else [{"role":"user","content":"first"}, {"role":"assistant","content":"last"}] if value_type == "list-message" else [{"name":"first"}, {"name":"last"}]
-    for index in (0, 1, 1.0):
+    for index in (0, 1, 1.0, -1, -2, -1.0):
         graph = parse_workflow(workflow)
         payload = json.dumps(values) if value_type.startswith("list-struct:") else values
         propagate_workflow_output(graph, graph[0], "workflow:items", payload)
@@ -202,7 +202,8 @@ test('the library and inspector expose typed lookup without silently fixing the 
   assert.match(template, /data-field="index_source"/);
   assert.match(template, /value="fixed"/);
   assert.match(template, /value="port"/);
-  assert.match(template, /data-field="index"[^>]*type="number"[^>]*min="0"[^>]*step="1"/);
+  assert.match(template, /data-field="index"[^>]*type="number"[^>]*step="1"/);
+  assert.doesNotMatch(template, /data-field="index"[^>]*min=/);
   assert.doesNotMatch(template, /<p\b[^>]*class="field-hint"/);
 });
 
@@ -250,13 +251,18 @@ test('index source switching updates ports, removes only the old index edge, and
     assert.equal(node.index, 1);
     assert.equal(typeof node.index, 'number');
     assert.equal(workflowSnapshot().nodes.find((node) => node.id === 'get').arguments.index, 1);
-    for (const invalid of ['', '-1', '0.5', 'NaN', 'Infinity']) {
+    index.value = '-1';
+    index.handlers.input();
+    assert.equal(node.index, -1);
+    assert.equal(index.validationMessage, '');
+    assert.equal(workflowSnapshot().nodes.find((node) => node.id === 'get').arguments.index, -1);
+    for (const invalid of ['', '0.5', '-0.5', 'NaN', 'Infinity']) {
       index.value = invalid;
       index.handlers.input();
       assert.notEqual(index.validationMessage, '');
-      assert.equal(node.index, 1);
+      assert.equal(node.index, -1);
       index.handlers.change();
-      assert.equal(Number(index.value), 1);
+      assert.equal(Number(index.value), -1);
     }
     index.value = '0';
     index.handlers.input();

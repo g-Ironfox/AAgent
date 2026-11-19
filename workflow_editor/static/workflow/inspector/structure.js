@@ -318,8 +318,8 @@ function bindListGet(node, context) {
   });
   indexField.addEventListener('input', () => {
     const index = indexField.value.trim() === '' ? NaN : Number(indexField.value);
-    indexField.setCustomValidity(Number.isInteger(index) && index >= 0 ? '' : '请输入非负整数');
-    if (Number.isInteger(index) && index >= 0) {
+    indexField.setCustomValidity(Number.isInteger(index) ? '' : '请输入整数');
+    if (Number.isInteger(index)) {
       node.index = index;
       commitStructureChange(node, context, false);
     }

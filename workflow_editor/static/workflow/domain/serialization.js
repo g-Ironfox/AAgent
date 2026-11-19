@@ -377,10 +377,10 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
   }
   if (node.type === 'list_get') {
     if (node.index_source !== undefined && !['fixed', 'port'].includes(node.index_source)) return null;
-    if (node.index !== undefined && (!Number.isInteger(node.index) || node.index < 0)) return null;
+    if (node.index !== undefined && !Number.isInteger(node.index)) return null;
     normalized.index_source = node.index_source ?? 'port';
     if (normalized.index_source === 'fixed') {
-      if (!Number.isInteger(node.index) || node.index < 0) return null;
+      if (!Number.isInteger(node.index)) return null;
       normalized.index = node.index;
     }
   }
