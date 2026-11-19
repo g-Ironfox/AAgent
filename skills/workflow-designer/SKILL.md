@@ -65,7 +65,9 @@ ready 表示图和完整依赖符合静态设计契约；实际执行仍要求�
 - spawn_and_wait_subprocess 节点必须带 input_ports/output_ports，等于被调用目标文件根接口的完整数组，并按顺序一致；不得带 workflowPorts。
 - dataInputPorts 表示动态输入端口 ID 数组，顺序依节点配置/字段声明顺序，不能包含控制端口；仅在本文件指定的节点写入，完整列出其动态端口。Struct 节点某些固定输入也必须列入，见节点表。不要给普通固定端口节点发明额外输入。
 
-每条连接恰含 fromId、fromPortId、toId、toPortId、type，可选 id。例：
+新建节点 ID 使用 `<节点名称>_<单调递增数字>`，在单个 Workflow 中按创建顺序分配后缀。修改已有文件时保留原节点 ID 及其引用。函数 ID 与显示名称独立，编辑器允许修改两者，并在应用时同步更新函数边界和调用引用。
+
+每条连接只输出 fromId、fromPortId、toId、toPortId、type；连线 id 由编辑器导入时自动补齐，导出时省略。兼容读取旧文件的 id。例：
 
 ```json
 {"fromId":"input","fromPortId":"control-out","toId":"make_message","toPortId":"control-in","type":"control"}

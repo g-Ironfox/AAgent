@@ -4,7 +4,7 @@ import { createWorkflowEditor } from './workflow/editor.js';
 import { createInspector } from './workflow/inspector/inspector.js';
 import { setRuntimeStyles } from './workflow/domain/runtime-styles.js';
 import { prepareStructDefinitions, remapStructReferences } from './workflow/domain/struct-editing.js';
-import { bindNodeFunctions, validateFunctions } from './workflow/domain/functions.js';
+import { prepareFunctionEdit } from './workflow/domain/functions.js';
 import {
   addNode,
   loadSnapshot,
@@ -63,7 +63,7 @@ let hasUnsavedChanges = false;
 const undoHistory = [];
 let lastUndoSnapshot = null;
 
-function resetUndoHistory(snapshot = workflowSnapshot()) {
+function resetUndoHistory(snapshot = workflowSnapshot({ includeConnectionIds: true })) {
   undoHistory.length = 0;
   lastUndoSnapshot = structuredClone(snapshot);
 }
@@ -74,7 +74,7 @@ function markChanged() {
     undoHistory.push(lastUndoSnapshot);
     if (undoHistory.length > 100) undoHistory.shift();
   }
-  lastUndoSnapshot = workflowSnapshot();
+  lastUndoSnapshot = workflowSnapshot({ includeConnectionIds: true });
   renderFunctionLibrary();
   hasUnsavedChanges = true;
   elements.workflowState.textContent = '未保存';
@@ -212,7 +212,7 @@ document.addEventListener('keydown', (event) => {
   if (!snapshot || !loadSnapshot(snapshot)) return;
   undoHistory.pop();
   event.preventDefault();
-  lastUndoSnapshot = workflowSnapshot();
+  lastUndoSnapshot = workflowSnapshot({ includeConnectionIds: true });
   hasUnsavedChanges = true;
   elements.workflowState.textContent = '未保存';
   elements.workflowState.classList.remove('saved');
@@ -315,20 +315,27 @@ function renderMetadataDialog() {
 function createFunctionRow(fn = { id: '', name: '', input_ports: [], output_ports: [] }) {
   const row = createSubprocessWorkflowFileRow({ ...fn, name: fn.id });
   row.classList.add('function-metadata-row');
+  row.dataset.previousFunctionId = fn.id;
   const idInput = row.querySelector('[data-subprocess-workflow-file-name]');
+  idInput.parentElement.classList.add('function-id-field');
   idInput.parentElement.firstChild.textContent = '函数 ID';
+  idInput.setAttribute('aria-label', '函数 ID');
   idInput.placeholder = 'function_1';
   idInput.pattern = '[A-Za-z_][A-Za-z0-9_]*';
-  idInput.readOnly = Boolean(fn.id);
   const nameLabel = document.createElement('label');
+  nameLabel.className = 'function-name-field';
   nameLabel.textContent = '名称';
   const nameInput = document.createElement('input');
   nameInput.dataset.functionName = '';
   nameInput.required = true;
+  nameInput.placeholder = '函数名称';
+  nameInput.setAttribute('aria-label', '函数名称');
   nameInput.value = fn.name;
   nameLabel.append(nameInput);
   row.querySelector('header').insertBefore(nameLabel, row.querySelector('header button'));
-  row.querySelector('[data-remove-subprocess-workflow-file]').title = '删除函数';
+  const removeButton = row.querySelector('[data-remove-subprocess-workflow-file]');
+  removeButton.title = '删除函数';
+  removeButton.setAttribute('aria-label', '删除函数');
   for (const select of row.querySelectorAll('[data-metadata-port-type]')) addFunctionStructOptions(select);
   for (const button of row.querySelectorAll('[data-add-interface-port]')) button.addEventListener('click', () => {
     for (const select of row.querySelectorAll('[data-metadata-port-type]')) addFunctionStructOptions(select);
@@ -346,6 +353,7 @@ function addFunctionStructOptions(select) {
 
 function readFunctions() {
   return [...document.querySelectorAll('#functionList .function-metadata-row')].map((row) => ({
+    previous_id: row.dataset.previousFunctionId,
     id: row.querySelector('[data-subprocess-workflow-file-name]').value.trim(),
     name: row.querySelector('[data-function-name]').value.trim(),
     input_ports: readPortsFromList(row.querySelector('[data-interface-port-list="input_ports"]')),
@@ -815,13 +823,13 @@ elements.metadataForm.addEventListener('submit', (event) => {
   let structs;
   let structIdMap;
   let functions;
+  let functionNodes;
   try {
     ({ structs, idMap: structIdMap } = prepareStructDefinitions(structDraft));
     functions = readFunctions();
     const functionDraft = { metadata: { functions: structuredClone(functions) } };
     remapStructReferences(functionDraft, structIdMap);
-    validateFunctions(functionDraft.metadata.functions, structs);
-    bindNodeFunctions(structuredClone(state.nodes), functions);
+    ({ functions, nodes: functionNodes } = prepareFunctionEdit(functionDraft.metadata.functions, state.nodes, structs));
     elements.structDefinitionsError.textContent = '';
   } catch (error) {
     elements.structDefinitionsError.textContent = error.message;
@@ -875,7 +883,8 @@ elements.metadataForm.addEventListener('submit', (event) => {
     elements.resourceState.textContent = `“${invalidAsyncTool.tool}”被异步节点使用，必须保持为 Remote Tool`;
     return;
   }
-  const previousSnapshot = workflowSnapshot();
+  const previousSnapshot = workflowSnapshot({ includeConnectionIds: true });
+  state.nodes = functionNodes;
   syncSubprocessWorkflowFileNodes(subprocessWorkflowFiles);
   syncRemoteToolNodes(remoteTools);
   state.description = elements.workflowDescription.value.trim();
@@ -885,7 +894,7 @@ elements.metadataForm.addEventListener('submit', (event) => {
   state.subprocess_workflow_files = subprocessWorkflowFiles.map(({ previous_name, ...workflow }) => workflow);
   state.metadata.tools = remoteTools.map(({ previous_name, ...tool }) => tool);
   remapStructReferences(state, structIdMap);
-  const snapshot = workflowSnapshot();
+  const snapshot = workflowSnapshot({ includeConnectionIds: true });
   if (!loadSnapshot(snapshot)) {
     loadSnapshot(previousSnapshot);
     elements.structDefinitionsError.textContent = '元数据修改与当前节点或连接不兼容';

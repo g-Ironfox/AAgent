@@ -85,7 +85,7 @@ test('valid imported connections without IDs receive unique IDs and survive save
     assert.deepEqual(document, original, 'import must not mutate the source document');
 
     const saved = workflowSnapshot();
-    assert.deepEqual(saved.connections.map((connection) => connection.id), ids);
+    assert.ok(saved.connections.every((connection) => !Object.hasOwn(connection, 'id')));
     assert.equal(loadSnapshot(saved), true);
     assert.deepEqual(workflowSnapshot().connections, saved.connections);
   }

@@ -29,7 +29,7 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 | `subprocess_workflow_files` | 否 | subprocessWorkflowFile[] | 子进程 Workflow 文件名及接口快照 |
 | `remote_tools` | 否 | toolContract[] | 旧格式 Remote Tool 名称及接口快照（兼容读取） |
 
-端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name`、所属函数 `function_id` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
+端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name`、函数边界标识 `function_id` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
 
 规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata`、`subprocess_workflow_files` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。Workflow 根对象和 metadata 均不包含 `name`；文件名由工作区文件记录提供。旧文件的名称字段在兼容读取时移除，保存和导出不再生成。`description` 最大长度 2000。`metadata` 允许 `structs`、`tools`、`functions` 三个属性，均缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`subprocess_workflow_files` 最多 50 项；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
 
@@ -94,6 +94,8 @@ Struct 定义可引用其他已声明 Struct 或其列表，但定义之间不�
 Struct 节点都是普通控制流节点：每个节点有 `control-in` 和 `control-out`，并按节点配置提供下列数据端口。`dataInputPorts` 用于声明动态输入端口，必须与参数推导出的端口集合一致；例外是 Struct 操作节点的 `struct-in` 固定输入也必须列入该数组（Struct 各节点精确数组见下文）。端口数据类型由 Struct 声明及参数推导，不允许在节点上另行覆盖。节点类别颜色固定；`metadata.structs[].color` 仅用于相应 Struct 数据类型及其列表的画布类型显示。
 
 节点创建与 `metadata.structs` 编辑互相独立。编辑器可以放置尚未绑定 Struct 的节点草稿，草稿的 `struct_id` 或 `value_type` 可为空字符串，创建时不打开 metadata 编辑窗。此类草稿不满足可执行 Workflow 的语义校验；保存或执行前必须绑定已声明的类型并配置有效参数与动态端口。
+
+编辑器新建节点的 ID 使用 `<节点名称>_<递增序号>`，例如 `构造 Content 1_3`。序号在当前编辑会话中单调递增，删除和撤销不会复用旧序号；导入时读取已有数字后缀并提高序号下限。导入文件的原节点 ID 保持不变，修改显示名称也不自动改写已有 ID 和连线端点。连线 ID 只用于编辑器内部的选择、拖线和撤销；导入时自动补齐缺失或重复的 ID，复制、导出时省略连接对象的 `id`，仅保留端点、端口及类型。旧文件携带的连线 ID 仍可读取。
 
 | 节点类型 | 参数（位于 `arguments`） | 数据输入端口 | 数据输出端口 | 行为 |
 | --- | --- | --- | --- | --- |
@@ -429,6 +431,6 @@ Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KE
 
 进程持久化保存活动图及 `function_stack` 中的每层图实例和位置，因此等待终端消息、等待子进程以及后续调度均保留调用关系。函数调用不创建新进程或新终端，累计执行时间仍计入当前进程；Context / Session 沿用现有进程归属、访问及清理规则，不因函数压栈产生新的 Context 所有者。既有 running 进程崩溃后自动重领的限制仍适用。节点日志中的 `function_id`、`function_depth` 标识实际执行的函数层。
 
-编辑器 metadata 提供函数声明及接口编辑；节点库提供函数输入、函数输出、函数调用。普通节点通过控制连线自动确定归属，无需手动选择；检查器可调整调用目标。生命周期编译为每个函数显示独立根作用域，并报告跨函数连线或共享节点。导入导出保留函数定义、边界标识及调用目标，普通节点归属和内部派生端口不写回文件。Schema 版本继续为 `2.0`；新增函数文件需使用支持函数的 Agent 和编辑器。
+编辑器 metadata 提供函数声明及接口编辑；函数 ID 和显示名称独立且均可编辑。应用 ID 修改时，按原 ID 一次性更新函数输入、输出和调用节点的引用，支持同时交换 ID；重复或非法 ID、删除仍在使用的函数会阻止应用，保留原图。节点库提供函数输入、函数输出、函数调用。普通节点通过控制连线自动确定归属，无需手动选择；检查器可调整调用目标。生命周期编译为每个函数显示独立根作用域，并报告跨函数连线或共享节点。导入导出保留函数定义、边界标识及调用目标，普通节点归属和内部派生端口不写回文件。Schema 版本继续为 `2.0`；新增函数文件需使用支持函数的 Agent 和编辑器。
 
 可运行的嵌套示例见 `../examples/workflow-functions.flow`：主流程调用 A，A 调用 B，原样返回 `text`。

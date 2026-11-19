@@ -43,6 +43,7 @@ export const NODE_TYPES = new Set([
 ]);
 
 let idSequence = 0;
+let nodeIdSequence = 0;
 
 export function createWorkflowId(prefix) {
   idSequence += 1;
@@ -443,58 +444,72 @@ function nextNodePosition(nodes, viewport) {
 }
 
 export function createNode(type, nodes, configuration = null, viewport = null) {
+  const node = createNodeDefinition(type, nodes, configuration, viewport);
+  if (!node) return null;
+  reserveNodeIds(nodes);
+  const usedIds = new Set(nodes.map((existing) => existing.id));
+  do { node.id = `${node.name}_${++nodeIdSequence}`; } while (usedIds.has(node.id));
+  return node;
+}
+
+export function reserveNodeIds(nodes) {
+  for (const existing of nodes) {
+    const suffix = /_(\d+)$/.exec(existing.id)?.[1];
+    if (suffix && Number.isSafeInteger(Number(suffix))) nodeIdSequence = Math.max(nodeIdSequence, Number(suffix));
+  }
+}
+
+function createNodeDefinition(type, nodes, configuration = null, viewport = null) {
   if (!NODE_TYPES.has(type) || type === 'input') return null;
   const number = nodes.filter((node) => node.type === type).length + 1;
   const position = nextNodePosition(nodes, viewport);
-  if (type === 'router') return { id: createWorkflowId('router'), type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position };
+  if (type === 'router') return { type, name: `Router ${number}`, branches: [{ id: createWorkflowId('branch'), name: '分支 1' }, { id: createWorkflowId('branch'), name: '分支 2' }], ...position };
   if (['function_input', 'function_output', 'function_call'].includes(type)) {
     const label = { function_input: '函数输入', function_output: '函数输出', function_call: '调用函数' }[type];
-    return { id: createWorkflowId(type), type, name: `${label} ${configuration?.name || ''}`, ...position,
+    return { type, name: `${label} ${configuration?.name || ''}`, ...position,
       ...(type === 'function_call' ? { callee_id: configuration?.id } : { function_id: configuration?.id }) };
   }
-  if (type === 'output') return { id: createWorkflowId('output'), type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
-  if (type === 'construct_message') return { id: createWorkflowId('construct-message'), type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
-  if (type === 'construct_content') return { id: createWorkflowId('construct-content'), type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
-  if (type === 'construct_map_content') return { id: createWorkflowId('construct-map-content'), type, name: `构造 Map ${number}`, mappings: [{ key: 'key1', value: '' }], dataInputPorts: [], ...position };
+  if (type === 'output') return { type, name: `Output ${number}`, workflowPorts: boundaryPorts(configuration?.output_ports), ...position };
+  if (type === 'construct_message') return { type, name: `构造 Message ${number}`, role_source: 'fixed', role: 'user', ...position };
+  if (type === 'construct_content') return { type, name: `构造 Content ${number}`, append_items: [{ type: 'fixed', value: '' }], dataInputPorts: [], ...position };
+  if (type === 'construct_map_content') return { type, name: `构造 Map ${number}`, mappings: [{ key: 'key1', value: '' }], dataInputPorts: [], ...position };
   if (['construct_struct', 'struct_get', 'struct_update'].includes(type)) {
-    const prefix = type.replaceAll('_', '-');
     const label = type === 'construct_struct' ? '构造 Struct' : type === 'struct_get' ? '读取 Struct 字段' : '更新 Struct';
-    const node = { id: createWorkflowId(prefix), type, name: `${label} ${number}`, struct_id: '', ...position };
+    const node = { type, name: `${label} ${number}`, struct_id: '', ...position };
     if (type === 'construct_struct') node.dataInputPorts = [];
     if (type === 'struct_get') Object.assign(node, { field: '', missing: 'error', has_fallback: false, dataInputPorts: [] });
     if (type === 'struct_update') Object.assign(node, { updates: [], remove_fields: [], dataInputPorts: [] });
     return node;
   }
   if (type === 'struct_to_json' || type === 'json_to_struct') {
-    return { id: createWorkflowId(type.replaceAll('_', '-')), type, name: type === 'struct_to_json' ? `Struct 转 JSON ${number}` : `JSON 转 Struct ${number}`, value_type: '', ...position };
+    return { type, name: type === 'struct_to_json' ? `Struct 转 JSON ${number}` : `JSON 转 Struct ${number}`, value_type: '', ...position };
   }
-  if (type === 'map_content_get') return { id: createWorkflowId('map-content-get'), type, name: `Map 查找 ${number}`, ...position };
-  if (type === 'deserialize_json') return { id: createWorkflowId('deserialize-json'), type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
-  if (type === 'read_terminal_input') return { id: createWorkflowId('read-terminal-input'), type, name: `读取终端输入 ${number}`, ...position };
-  if (type === 'wait_terminal_event') return { id: createWorkflowId('wait-terminal-event'), type, name: `等待终端事件 ${number}`, ...position };
-  if (type === 'output_to_terminal') return { id: createWorkflowId('output-to-terminal'), type, name: `输出到终端 ${number}`, ...position };
-  if (type === 'construct_list') return { id: createWorkflowId('construct-list'), type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
-  if (type === 'list_get') return { id: createWorkflowId('list-get'), type, name: `按下标取元素 ${number}`, value_type: 'list-content', index_source: 'port', ...position };
-  if (type === 'list_length') return { id: createWorkflowId('list-length'), type, name: `列表长度 ${number}`, value_type: 'list-content', ...position };
-  if (type === 'list_slice') return { id: createWorkflowId('list-slice'), type, name: `列表切片 ${number}`, value_type: 'list-content', ...position };
-  if (type === 'list_append') return { id: createWorkflowId('list-append'), type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
-  if (type === 'while_pop') return { id: createWorkflowId('while-pop'), type, name: `弹出 Context 列表 ${number}`, value_type: 'list-content', position: 'end', context_id_source: 'port', ...position };
-  if (type === 'foreach') return { id: createWorkflowId('foreach'), type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
-  if (type === 'context_create') return { id: createWorkflowId('context-create'), type, name: `创建 Context ${number}`, value_type: 'content', ...position };
-  if (type === 'context_read') return { id: createWorkflowId('context-read'), type, name: `读取 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
-  if (type === 'context_write') return { id: createWorkflowId('context-write'), type, name: `修改 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
-  if (type === 'session_create') return { id: createWorkflowId('session-create'), type, name: `创建 Session ${number}`, value_type: 'content', ...position };
-  if (type === 'session_read') return { id: createWorkflowId('session-read'), type, name: `读取 Session ${number}`, value_type: 'content', ...position };
-  if (type === 'session_write') return { id: createWorkflowId('session-write'), type, name: `修改 Session ${number}`, value_type: 'content', ...position };
-  if (type === 'llm') return { id: createWorkflowId('llm'), type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
-  if (type === 'tool') return { id: createWorkflowId('tool'), type, name: `Tool ${number}`, tool: '', parameters: [], outputs: [], mode: 'sync', timeout_ms: 10000, callback: null, ...position };
-  if (type === 'local_tool') return { id: createWorkflowId('local-tool'), type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
-  if (type === 'remote_sync_tool') return { id: createWorkflowId('remote-sync-tool'), type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
-  if (type === 'remote_async_tool') return { id: createWorkflowId('remote-async-tool'), type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };
-  if (type === 'json_tool') return { id: createWorkflowId('json-tool'), type, name: 'JSON Tool ' + number, ...position };
+  if (type === 'map_content_get') return { type, name: `Map 查找 ${number}`, ...position };
+  if (type === 'deserialize_json') return { type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
+  if (type === 'read_terminal_input') return { type, name: `读取终端输入 ${number}`, ...position };
+  if (type === 'wait_terminal_event') return { type, name: `等待终端事件 ${number}`, ...position };
+  if (type === 'output_to_terminal') return { type, name: `输出到终端 ${number}`, ...position };
+  if (type === 'construct_list') return { type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
+  if (type === 'list_get') return { type, name: `按下标取元素 ${number}`, value_type: 'list-content', index_source: 'port', ...position };
+  if (type === 'list_length') return { type, name: `列表长度 ${number}`, value_type: 'list-content', ...position };
+  if (type === 'list_slice') return { type, name: `列表切片 ${number}`, value_type: 'list-content', ...position };
+  if (type === 'list_append') return { type, name: `List 追加 ${number}`, item_type: 'content', position: 'end', ...position };
+  if (type === 'while_pop') return { type, name: `弹出 Context 列表 ${number}`, value_type: 'list-content', position: 'end', context_id_source: 'port', ...position };
+  if (type === 'foreach') return { type, name: `遍历列表 ${number}`, item_type: 'content', ...position };
+  if (type === 'context_create') return { type, name: `创建 Context ${number}`, value_type: 'content', ...position };
+  if (type === 'context_read') return { type, name: `读取 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
+  if (type === 'context_write') return { type, name: `修改 Context ${number}`, value_type: 'content', context_id_source: 'port', ...position };
+  if (type === 'session_create') return { type, name: `创建 Session ${number}`, value_type: 'content', ...position };
+  if (type === 'session_read') return { type, name: `读取 Session ${number}`, value_type: 'content', ...position };
+  if (type === 'session_write') return { type, name: `修改 Session ${number}`, value_type: 'content', ...position };
+  if (type === 'llm') return { type, name: `LLM ${number}`, model: '', tools: [], think: false, tool_calls: false, ...position };
+  if (type === 'tool') return { type, name: `Tool ${number}`, tool: '', parameters: [], outputs: [], mode: 'sync', timeout_ms: 10000, callback: null, ...position };
+  if (type === 'local_tool') return { type, name: `Local Tool ${number}`, tool: '', parameters: [], ...position };
+  if (type === 'remote_sync_tool') return { type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
+  if (type === 'remote_async_tool') return { type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };
+  if (type === 'json_tool') return { type, name: 'JSON Tool ' + number, ...position };
   if (type === "spawn_and_wait_subprocess" && configuration) {
     return {
-      id: createWorkflowId('spawn_and_wait_subprocess'),
       type,
       name: `拉起并等待子进程 ${number}`,
       workflow_file: configuration.name,

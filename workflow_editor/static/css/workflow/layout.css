@@ -131,6 +131,13 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .metadata-resource-row > header { padding:10px 12px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:end; gap:8px; border-bottom:1px solid var(--line); background:#fafbf9; }
 .metadata-resource-row > header label { display:grid; gap:5px; color:var(--muted); font-size:10px; }
 .metadata-resource-row > header input { width:100%; min-width:0; height:32px; padding:0 7px; border:1px solid var(--line); background:#fff; }
+.function-metadata-section > .section-help { margin:0; padding:12px 14px 0; color:var(--muted); font-size:11px; line-height:1.65; }
+.function-metadata-row > header { grid-template-columns:minmax(0,1fr) minmax(0,2fr) 30px; grid-template-areas:"id name remove"; }
+.function-metadata-row > header label { min-width:0; }
+.function-metadata-row .function-id-field { grid-area:id; }
+.function-metadata-row .function-name-field { grid-area:name; }
+.function-metadata-row > header > button { grid-area:remove; }
+.function-metadata-row .function-id-field input { font-family:Consolas,monospace; }
 .remote-tool-name-field { position:relative; min-width:0; }
 .remote-tool-suggestions { position:absolute; z-index:20; top:calc(100% + 4px); right:0; left:0; max-height:240px; overflow-y:auto; border:1px solid var(--line); background:var(--surface); box-shadow:0 10px 24px rgba(23,32,29,.16); }
 .remote-tool-suggestions[hidden] { display:none; }
@@ -158,3 +165,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 .output_to_terminal-symbol { background:#13775a; }
 .wait_terminal_event-symbol { background:#13775a; }
 .read_terminal_input-symbol { background:#13775a; }
+
+@media (max-width:560px) {
+  .function-metadata-row > header { grid-template-columns:minmax(0,1fr) 30px; grid-template-areas:"id remove" "name name"; }
+}

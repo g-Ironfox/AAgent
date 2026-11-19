@@ -1,15 +1,15 @@
-import { boundaryPorts, createNode, DATA_TYPES, NODE_TYPES, setNodeStructs } from './node-contract.js';
+import { boundaryPorts, createNode, DATA_TYPES, NODE_TYPES, reserveNodeIds, setNodeStructs } from './node-contract.js';
 import { filterValidConnections } from './connection-rules.js';
 import { bindNodeFunctions, validateFunctions } from './functions.js';
 
 export const WORKFLOW_SCHEMA_VERSION = '2.0';
 
 const initialNodes = [
-  { id: 'input', type: 'input', name: 'Input', x: 52, y: 238 },
-  { id: 'output', type: 'output', name: 'Output', x: 310, y: 238 },
+  { id: 'Input_1', type: 'input', name: 'Input', x: 52, y: 238 },
+  { id: 'Output_2', type: 'output', name: 'Output', x: 310, y: 238 },
 ];
 const initialConnections = [
-  { id: 'control-input-output', fromId: 'input', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
+  { id: 'control-input-output', fromId: 'Input_1', fromPortId: 'control-out', toId: 'Output_2', toPortId: 'control-in', type: 'control' },
 ];
 
 const NODE_BASE_FIELDS = new Set(['id', 'type', 'name', 'x', 'y', 'arguments', 'function_id']);
@@ -167,7 +167,7 @@ export function deleteNode(id) {
   return true;
 }
 
-export function workflowSnapshot() {
+export function workflowSnapshot({ includeConnectionIds = false } = {}) {
   state.metadata = { ...state.metadata, structs: validateStructDefinitions(state.metadata?.structs ?? []) };
   setNodeStructs(state.nodes, state.metadata.structs);
   const functions = validateFunctions(state.metadata.functions || [], state.metadata.structs);
@@ -180,7 +180,7 @@ export function workflowSnapshot() {
     output_ports: state.output_ports,
     subprocess_workflow_files: state.subprocess_workflow_files,
     nodes: state.nodes.map(compactNodeArguments),
-    connections: state.connections,
+    connections: includeConnectionIds ? state.connections : state.connections.map(({ id, ...connection }) => connection),
   });
 }
 
@@ -631,6 +631,7 @@ export function loadSnapshot(saved, metadata = null) {
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
     state.subprocess_workflow_files = workflowNodes;
     state.nodes = nodes;
+    reserveNodeIds(nodes);
     state.connections = filterValidConnections(Array.isArray(saved?.connections) ? saved.connections : initialConnections, nodes);
     return true;
   } catch (error) {

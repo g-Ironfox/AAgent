@@ -6,7 +6,7 @@ import { addNode, loadSnapshot, state, workflowSnapshot } from './static/workflo
 import { portsForNode } from './static/workflow/domain/node-contract.js';
 import { compileLifecycles } from './static/workflow/domain/lifecycle.js';
 import { isValidConnection } from './static/workflow/domain/connection-rules.js';
-import { bindNodeFunctions, validateFunctions } from './static/workflow/domain/functions.js';
+import { bindNodeFunctions, prepareFunctionEdit, validateFunctions } from './static/workflow/domain/functions.js';
 import { prepareStructDefinitions, remapStructReferences } from './static/workflow/domain/struct-editing.js';
 
 function fixture() {
@@ -108,4 +108,34 @@ test('invalid declarations and stale snapshots do not replace the current docume
   source.nodes.find((n) => n.id === 'callA').input_ports = [{ name: 'stale', type: 'content' }];
   assert.equal(loadSnapshot(source), false);
   assert.deepEqual(workflowSnapshot(), before);
+});
+
+test('function ID and display name edits update references atomically, including swaps', () => {
+  assert.equal(loadSnapshot(fixture()), true);
+  const before = structuredClone(state.nodes);
+  const draft = state.metadata.functions.map((fn) => ({ ...fn, previous_id: fn.id,
+    id: fn.id === 'A' ? 'B' : 'A', name: `Renamed ${fn.name}` }));
+  const edited = prepareFunctionEdit(draft, state.nodes);
+  assert.deepEqual(state.nodes, before);
+  assert.equal(edited.nodes.find((n) => n.id === 'Ain').function_id, 'B');
+  assert.equal(edited.nodes.find((n) => n.id === 'Bout').function_id, 'A');
+  assert.equal(edited.nodes.find((n) => n.id === 'callA').callee_id, 'B');
+  assert.equal(edited.nodes.find((n) => n.id === 'callB').callee_id, 'A');
+  assert.ok(edited.functions.every((fn) => !Object.hasOwn(fn, 'previous_id')));
+  state.nodes = edited.nodes;
+  state.metadata.functions = edited.functions;
+  const snapshot = workflowSnapshot();
+  assert.deepEqual(compileLifecycles(snapshot).errors, []);
+  assert.equal(loadSnapshot(snapshot), true);
+  assert.deepEqual(workflowSnapshot(), snapshot);
+});
+
+test('invalid or removed function declarations leave live nodes unchanged', () => {
+  assert.equal(loadSnapshot(fixture()), true);
+  const before = structuredClone(state.nodes);
+  const draft = state.metadata.functions.map((fn) => ({ ...fn, previous_id: fn.id }));
+  assert.throws(() => prepareFunctionEdit(draft.map((fn) => ({ ...fn, id: 'same' })), state.nodes), /重复/);
+  assert.throws(() => prepareFunctionEdit(draft.slice(0, 1), state.nodes), /不能删除/);
+  assert.throws(() => prepareFunctionEdit([{ ...draft[0], id: 'B' }], state.nodes), /不能删除/);
+  assert.deepEqual(state.nodes, before);
 });

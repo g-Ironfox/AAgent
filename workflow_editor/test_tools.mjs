@@ -64,7 +64,7 @@ test('sync Tool and remote async Tool round-trip through both backends', () => {
     const snapshot = workflowSnapshot();
     assert.equal(snapshot.remote_tools, undefined);
     assert.deepEqual(snapshot.metadata.tools, workflow.metadata.tools);
-    assert.deepEqual(snapshot.connections, workflow.connections);
+    assert.deepEqual(snapshot.connections, workflow.connections.map(({ id, ...connection }) => connection));
     assert.equal(snapshot.nodes[1].type, mode === 'async' ? 'remote_async_tool' : 'tool');
     assert.equal(portsForNode(state.nodes[1]).find((item) => item.direction === 'output' && item.type !== 'control').id,
       mode === 'async' ? 'task_id' : kind === 'local' ? 'output' : 'result');
@@ -108,7 +108,7 @@ test('legacy tool nodes migrate without losing connections or async callbacks', 
     assert.equal(loadSnapshot(workflow), true);
     const migrated = workflowSnapshot();
     assert.equal(migrated.nodes[1].type, mode === 'async' ? 'remote_async_tool' : 'tool');
-    assert.deepEqual(migrated.connections, workflow.connections);
+    assert.deepEqual(migrated.connections, workflow.connections.map(({ id, ...connection }) => connection));
     assert.deepEqual(migrated.metadata.tools, [declaration]);
     workflows.push(migrated);
   }
@@ -148,7 +148,7 @@ test('former unified async nodes migrate to remote async without losing callback
   assert.equal(saved.nodes[1].type, 'remote_async_tool');
   assert.equal(saved.nodes[1].arguments.mode, undefined);
   assert.deepEqual(saved.nodes[1].arguments.callback, node.arguments.callback);
-  assert.deepEqual(saved.connections, workflow.connections);
+  assert.deepEqual(saved.connections, workflow.connections.map(({ id, ...connection }) => connection));
   verifyBackends([saved]);
 });
 

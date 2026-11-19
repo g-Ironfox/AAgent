@@ -142,7 +142,7 @@ test('Struct get and update snapshots retain port contracts accepted by both bac
           `${original.name}: ${id}`,
         );
       }
-      assert.deepEqual(snapshot.connections, original.connections);
+      assert.deepEqual(snapshot.connections, original.connections.map(({ id, ...connection }) => connection));
       assert.equal(loadSnapshot(snapshot), true);
       assert.deepEqual(workflowSnapshot(), snapshot);
       workflows.push(original, snapshot);

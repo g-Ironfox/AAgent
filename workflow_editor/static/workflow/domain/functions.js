@@ -52,3 +52,29 @@ export function bindNodeFunctions(nodes, functions = []) {
     node._function_outputs = outputs;
   }
 }
+
+// Remap once from original IDs so simultaneous renames (including swaps)
+// cannot accidentally rewrite the same reference twice.
+export function prepareFunctionEdit(draft, nodes, structs = []) {
+  const functions = validateFunctions(draft.map(({ previous_id, ...fn }) => fn), structs);
+  const idMap = new Map(draft.filter((fn) => fn.previous_id).map((fn) => [fn.previous_id, fn.id]));
+  const updatedNodes = structuredClone(nodes);
+  for (const node of updatedNodes) {
+    const reference = ['function_input', 'function_output'].includes(node.type) ? node.function_id
+      : node.type === 'function_call' ? node.callee_id ?? node.arguments?.function_id : null;
+    if (reference != null && !idMap.has(reference)) {
+      throw new Error(`函数 ${reference} 仍被节点引用，不能删除`);
+    }
+    if (['function_input', 'function_output'].includes(node.type) && idMap.has(node.function_id)) {
+      node.function_id = idMap.get(node.function_id);
+    }
+    if (node.type === 'function_call') {
+      if (node.arguments && idMap.has(node.arguments.function_id)) {
+        node.arguments.function_id = idMap.get(node.arguments.function_id);
+      }
+      if (idMap.has(node.callee_id)) node.callee_id = idMap.get(node.callee_id);
+    }
+  }
+  bindNodeFunctions(updatedNodes, functions);
+  return { functions, nodes: updatedNodes };
+}
