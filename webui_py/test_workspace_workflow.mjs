@@ -9,16 +9,12 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const workflow = () => ({
   schema_version: '2.0', description: 'description', version: 3,
   input_ports: [{ name: 'question', type: 'content' }], output_ports: [],
-  subprocess_workflow_files: [
-    { name: 'child-a', input_ports: [{ name: 'question', type: 'content' }], output_ports: [], extra: 'keep' },
-    { name: 'child-b', input_ports: [], output_ports: [] },
-  ],
   remote_tools: [{ name: 'remote', input_ports: [], output_ports: [{ name: 'answer', type: 'content' }] }],
   metadata: { structs: [{ id: 'profile', name: 'Profile', color: '#3A7D68', fields: [] }] },
   nodes: [
     { id: 'in', name: 'Input', type: 'input', x: 0, y: 0 },
-    { id: 'a', name: 'A', type: "spawn_and_wait_subprocess", x: 250, y: 0, arguments: { workflow_file: 'child-a', keep: 1 } },
-    { id: 'b', type: "spawn_and_wait_subprocess", arguments: { workflow_file: 'child-b' } },
+    { id: 'a', name: 'A', type: "spawn_and_wait_subprocess", x: 250, y: 0, arguments: {} },
+    { id: 'b', type: "spawn_and_wait_subprocess", arguments: {} },
     { id: 'other', type: 'local_tool', arguments: { workflow_file: 'child-a' } },
   ],
   connections: [{ fromId: 'in', fromPortId: 'control-out', toId: 'a', toPortId: 'control-in', type: 'control' }],
@@ -36,39 +32,34 @@ test('detect workflow content independently of filename and reject unrelated/mal
     JSON.stringify({ ...workflow(), nodes: [null] }),
     JSON.stringify({ ...workflow(), description: { invalid: true } }),
     JSON.stringify({ ...workflow(), input_ports: [null] }),
-    JSON.stringify({ ...workflow(), subprocess_workflow_files: [null] }),
+    JSON.stringify({ ...workflow(), remote_tools: [null] }),
   ]) assert.equal(parseWorkflowFile(content), null);
 });
 
-test('dependency swaps update only Workflow references and preserve contracts, metadata and node settings', () => {
+test('metadata edits preserve node inputs, connections and other document fields', () => {
   const source = workflow();
   const before = clone(source);
-  const updated = editWorkflowMetadata(source, { name: 'renamed', description: 'new', subprocessFiles: ['child-b', 'child-a'] });
-  assert.equal(updated.nodes[1].arguments.workflow_file, 'child-b');
-  assert.equal(updated.nodes[2].arguments.workflow_file, 'child-a');
-  assert.equal(updated.nodes[3].arguments.workflow_file, 'child-a');
-  assert.equal(updated.nodes[1].arguments.keep, 1);
-  for (const key of ['input_ports', 'output_ports', 'connections', 'metadata', 'remote_tools', 'custom']) {
+  const updated = editWorkflowMetadata(source, { description: 'new' });
+  assert.equal(updated.description, 'new');
+  for (const key of ['nodes', 'input_ports', 'output_ports', 'connections', 'metadata', 'remote_tools', 'custom']) {
     assert.deepEqual(updated[key], source[key]);
   }
-  assert.deepEqual(updated.subprocess_workflow_files[0].input_ports, source.subprocess_workflow_files[0].input_ports);
-  assert.equal(updated.subprocess_workflow_files[0].extra, 'keep');
+  assert.equal('subprocess_workflow_files' in updated, false);
   assert.deepEqual(source, before);
 });
 
-test('legacy dependency keys and absent optional fields survive edits', () => {
+test('metadata edits remove obsolete declarations and keep optional description absent', () => {
   const source = { ...workflow(), subprocess_workflow_files: [{ workflow_name: 'child-a' }] };
   delete source.description;
-  const updated = editWorkflowMetadata(source, { name: source.name, description: '', subprocessFiles: ['new-child'] });
-  assert.deepEqual(updated.subprocess_workflow_files, [{ name: 'new-child' }]);
+  const updated = editWorkflowMetadata(source, { description: '' });
+  assert.equal('subprocess_workflow_files' in updated, false);
   assert.equal('description' in updated, false);
-  assert.equal(updated.nodes[1].arguments.workflow_file, 'new-child');
+  assert.deepEqual(updated.nodes, source.nodes);
 });
 
-test('metadata accepts nameless workflows and rejects invalid subprocess filenames', () => {
+test('metadata accepts nameless workflows and validates description text', () => {
   assert.doesNotThrow(() => validateWorkflowMetadata(workflow()));
-  assert.throws(() => validateWorkflowMetadata({ ...workflow(), subprocess_workflow_files: [{ name: ' ' }] }), /文件名不能为空/);
-  assert.throws(() => validateWorkflowMetadata({ ...workflow(), subprocess_workflow_files: [{ name: 'same' }, { name: 'same' }] }), /不能重复/);
+  assert.throws(() => validateWorkflowMetadata({ ...workflow(), description: {} }), /描述必须是文本/);
 });
 
 test('standalone WebUI canvas escapes filenames and renders control connections', () => {
@@ -155,8 +146,7 @@ async function harness(items = [file('flow')]) {
     const element = typeof target === 'string' ? get(target) : target;
     element.value = value; await fire(element, 'input');
   };
-  const dependency = (index) => get('subprocessWorkflowFiles').children[index].children[0].children[0].children[1];
-  return { get, fire, input, dependency, settings, calls, stored, downloads, blobs, documentListeners };
+  return { get, fire, input, settings, calls, stored, downloads, blobs, documentListeners };
 }
 
 test('view switching preserves exact text, renders ports and strips inline SVG styles for CSP', async () => {
@@ -183,10 +173,9 @@ test('metadata edits round-trip through raw JSON and save using the file revisio
   const h = await harness();
   await h.fire('workflowButton'); await h.fire('editButton');
   await h.input('workflowDescription', 'new description');
-  await h.input(h.dependency(0), 'new-child');
   await h.fire('workflowButton');
   const draft = JSON.parse(h.get('fileContent').value);
-  assert.equal(draft.nodes[1].arguments.workflow_file, 'new-child');
+  assert.deepEqual(draft.nodes[1].arguments, {});
   await h.input('fileContent', JSON.stringify({ ...draft, description: 'raw edit' }));
   await h.fire('workflowButton');
   assert.equal(h.get('workflowDescription').value, 'raw edit');
@@ -208,22 +197,20 @@ test('cancel restores metadata and the exact original JSON; reverting all fields
   await h.input('workflowDescription', 'changed'); await h.input('workflowDescription', 'description');
   assert.equal(h.get('fileContent').value, content);
   assert.equal(h.get('editButton').disabled, true);
-  await h.input(h.dependency(0), 'new-child'); await h.fire('cancelButton');
+  await h.input('workflowDescription', 'draft'); await h.fire('cancelButton');
   assert.equal(h.get('fileContent').value, content);
   assert.equal(h.get('workflowDescription').value, 'description');
-  assert.equal(h.dependency(0).value, 'child-a');
+  assert.equal(h.get('subprocessWorkflowFiles'), undefined);
   assert.equal(h.calls.length, 0);
 });
 
-test('validation and revision conflict keep the draft and editor available', async () => {
+test('revision conflict keeps the draft and editor available', async () => {
   const h = await harness();
   await h.fire('workflowButton'); await h.fire('editButton');
-  await h.input('workflowDescription', 'renamed'); await h.input(h.dependency(0), 'child-b'); await h.fire('editButton');
-  assert.equal(h.calls.length, 0); assert.match(h.get('saveStatus').textContent, /不能重复/);
-  await h.input(h.dependency(0), 'new-child');
+  await h.input('workflowDescription', 'renamed');
+
   h.settings.saveError = 'revision conflict'; await h.fire('editButton');
   assert.equal(h.get('workflowDescription').value, 'renamed');
-  assert.equal(h.dependency(0).value, 'new-child');
   assert.equal(h.get('workflowDescription').disabled, false);
   assert.match(h.get('saveStatus').textContent, /revision conflict/);
   h.settings.saveError = null; await h.fire('editButton');

@@ -19,7 +19,6 @@ def legacy_workflow():
     document = empty_workflow()
     node = add_child_call(document)
     node["type"] = "workflow"
-    node["arguments"] = {"workflow_name": "Child.flow"}
     document["workflow_nodes"] = [{"name": "Child.flow", "input_ports": [], "output_ports": []}]
     return document
 
@@ -47,31 +46,32 @@ class WorkflowFormatMigrationTest(unittest.TestCase):
         validate_workflow(original)
         compiled = parse_workflow(original)
         self.assertEqual(compiled[1]["type"], "spawn_and_wait_subprocess")
-        self.assertEqual(compiled[1]["arguments"], {"workflow_file": "Child.flow"})
+        self.assertEqual(compiled[1]["arguments"], {})
         canonical = migrate_subprocess_workflow_format(original)
         self.assertNotIn("workflow_nodes", canonical)
-        self.assertEqual(canonical["subprocess_workflow_files"], before["workflow_nodes"])
+        self.assertNotIn("subprocess_workflow_files", canonical)
         self.assertEqual(original, before)
         self.assertEqual(migrate_subprocess_workflow_format(canonical), canonical)
 
-    def test_conflicting_root_and_target_fields_are_rejected(self):
-        for field in ("root", "node"):
-            with self.subTest(field=field):
-                original = legacy_workflow()
-                if field == "root":
-                    original["subprocess_workflow_files"] = []
-                else:
-                    original["nodes"][1]["arguments"]["workflow_file"] = "Different.flow"
-                with self.assertRaisesRegex(WorkflowValidationError, "conflicting"):
-                    validate_workflow(original)
+    def test_removed_declarations_are_discarded_even_when_they_differ(self):
+        original = legacy_workflow()
+        original["subprocess_workflow_files"] = []
+        canonical = migrate_subprocess_workflow_format(original)
+        self.assertNotIn("workflow_nodes", canonical)
+        self.assertNotIn("subprocess_workflow_files", canonical)
+        validate_workflow(canonical)
 
-    def test_malformed_fields_still_report_validation_errors(self):
-        for field in ("nodes", "subprocess_workflow_files"):
-            with self.subTest(field=field):
-                document = empty_workflow()
-                document[field] = None
-                with self.assertRaises(WorkflowValidationError):
-                    validate_workflow(document)
+    def test_legacy_fixed_call_requires_explicit_json_port_conversion(self):
+        original = legacy_workflow()
+        original["nodes"][1]["arguments"] = {"workflow_name": "Child.flow"}
+        with self.assertRaisesRegex(WorkflowValidationError, "unsupported fields: workflow_file"):
+            validate_workflow(original)
+
+    def test_malformed_nodes_report_validation_errors(self):
+        document = empty_workflow()
+        document["nodes"] = None
+        with self.assertRaises(WorkflowValidationError):
+            validate_workflow(document)
 
     def test_batch_migration_is_idempotent_and_preserves_other_files(self):
         with tempfile.TemporaryDirectory() as folder:

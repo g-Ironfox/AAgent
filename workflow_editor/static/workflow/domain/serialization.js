@@ -55,7 +55,7 @@ const NODE_ARGUMENT_FIELDS_BY_TYPE = {
   session_create: new Set(['value_type']),
   session_read: new Set(['value_type']),
   session_write: new Set(['value_type']),
-  spawn_and_wait_subprocess: new Set(['workflow_file']),
+  spawn_and_wait_subprocess: new Set(),
 };
 const NODE_ARGUMENT_FIELDS = new Set(Object.values(NODE_ARGUMENT_FIELDS_BY_TYPE).flatMap((fields) => [...fields]));
 
@@ -146,7 +146,6 @@ export const state = {
   connections: structuredClone(initialConnections),
   input_ports: [],
   output_ports: [],
-  subprocess_workflow_files: [],
 };
 
 export function nodeById(id) {
@@ -180,7 +179,6 @@ export function workflowSnapshot({ includeConnectionIds = false } = {}) {
     metadata: state.metadata,
     input_ports: state.input_ports,
     output_ports: state.output_ports,
-    subprocess_workflow_files: state.subprocess_workflow_files,
     nodes: state.nodes.map(compactNodeArguments),
     connections: includeConnectionIds ? state.connections : state.connections.map(({ id, ...connection }) => connection),
   });
@@ -193,26 +191,8 @@ export function resetWorkflow() {
     metadata: { structs: [], tools: [] },
     input_ports: [],
     output_ports: [],
-    subprocess_workflow_files: [],
     nodes: initialNodes,
     connections: initialConnections,
-  });
-}
-
-function subprocessWorkflowFileMetadata(saved) {
-  const declarations = Array.isArray(saved?.subprocess_workflow_files) ? saved.subprocess_workflow_files : [];
-  const names = new Set();
-  return declarations.flatMap((workflow) => {
-    const name = typeof workflow?.name === 'string' && workflow.name.trim()
-      ? workflow.name.trim()
-      : '';
-    if (!name || names.has(name)) return [];
-    names.add(name);
-    return [{
-      name,
-      input_ports: boundaryPorts(workflow.input_ports).map(({ id, ...port }) => port),
-      output_ports: boundaryPorts(workflow.output_ports).map(({ id, ...port }) => port),
-    }];
   });
 }
 
@@ -234,7 +214,7 @@ function remoteToolMetadata(saved) {
   });
 }
 
-function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, remoteTools, structs) {
+function normalizeNode(node, inputPorts, outputPorts, remoteTools, structs) {
   node = expandNodeArguments(node);
   // Migrate the former unified async configuration without changing its ports.
   if (node.type === 'tool' && node.mode === 'async') {
@@ -534,16 +514,8 @@ function normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, r
       }
     }
   }
-  if (node.type === "spawn_and_wait_subprocess") {
-    const workflowName = typeof node.workflow_file === 'string' && node.workflow_file.trim()
-      ? node.workflow_file.trim()
-      : '';
-    if (!workflowName) return null;
-    const declaration = subprocessWorkflowFiles.get(workflowName);
-    normalized.workflow_file = declaration?.name || workflowName;
-    normalized.input_ports = structuredClone(declaration?.input_ports || boundaryPorts(node.input_ports).map(({ id, ...port }) => port));
-    normalized.output_ports = structuredClone(declaration?.output_ports || boundaryPorts(node.output_ports).map(({ id, ...port }) => port));
-  }
+  if (node.type === 'spawn_and_wait_subprocess'
+    && (node.input_ports !== undefined || node.output_ports !== undefined)) return null;
   return normalized;
 }
 
@@ -571,7 +543,7 @@ export function loadSnapshot(saved, metadata = null) {
     const outputPorts = boundaryPorts(metadata?.output_ports ?? saved?.output_ports);
     if (inputPorts.length !== (metadata?.input_ports ?? saved?.input_ports ?? []).length
       || outputPorts.length !== (metadata?.output_ports ?? saved?.output_ports ?? []).length) return false;
-    for (const item of [...(saved.subprocess_workflow_files || []), ...(saved.remote_tools || []), ...savedNodes]) {
+    for (const item of [...(saved.remote_tools || []), ...savedNodes]) {
       for (const field of ['input_ports', 'output_ports', 'workflowPorts']) {
         if (item.type === 'function_call' && field !== 'workflowPorts') continue;
         if (item[field] !== undefined && (!Array.isArray(item[field])
@@ -583,8 +555,6 @@ export function loadSnapshot(saved, metadata = null) {
       && !/^(?:list-)?struct:[A-Za-z_][A-Za-z0-9_]*$/.test(connection.type || ''))) return false;
     const structDefinitions = validateStructDefinitions(saved?.metadata?.structs ?? []);
     const functions = validateFunctions(saved?.metadata?.functions || [], structDefinitions);
-    const workflowNodes = subprocessWorkflowFileMetadata(saved);
-    const subprocessWorkflowFiles = new Map(workflowNodes.map((workflow) => [workflow.name, workflow]));
     const remoteTools = remoteToolMetadata(saved).map((tool) => ({ ...tool, kind: 'remote' }));
     const declaredTools = saved?.metadata?.tools ?? [];
     if (!Array.isArray(declaredTools)) return false;
@@ -630,7 +600,7 @@ export function loadSnapshot(saved, metadata = null) {
               || p.name !== fn[side][i].name || p.type !== fn[side][i].type))) return false;
         }
       }
-      const normalized = normalizeNode(node, inputPorts, outputPorts, subprocessWorkflowFiles, remoteToolsByName, structDefinitions);
+      const normalized = normalizeNode(node, inputPorts, outputPorts, remoteToolsByName, structDefinitions);
       if (!normalized) return false;
       if (['local_tool', 'remote_sync_tool'].includes(normalized.type)) {
         const declaration = remoteToolsByName.get(normalized.tool);
@@ -655,7 +625,6 @@ export function loadSnapshot(saved, metadata = null) {
     setNodeStructs(nodes, state.metadata.structs);
     state.input_ports = inputPorts.map(({ id, ...port }) => port);
     state.output_ports = outputPorts.map(({ id, ...port }) => port);
-    state.subprocess_workflow_files = workflowNodes;
     state.nodes = nodes;
     reserveNodeIds(nodes);
     state.connections = filterValidConnections(Array.isArray(saved?.connections) ? saved.connections : initialConnections, nodes);
@@ -673,9 +642,6 @@ export function normalizeImportedWorkflow(imported) {
   if (!main) throw new Error('Workflow 集合为空');
   return {
     ...imported.workflows[main],
-    subprocess_workflow_files: entries
-      .filter(([name]) => name !== main)
-      .map(([name, file]) => ({ name, input_ports: file.input_ports || [], output_ports: file.output_ports || [] })),
     remote_tools: imported.workflows[main].remote_tools || [],
   };
 }
@@ -699,23 +665,8 @@ export function migrateSubprocessWorkflowFormat(workflow) {
   const next = structuredClone(workflow);
   delete next.name;
   if (next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata)) delete next.metadata.name;
-  const stable = (value) => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
-    ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-  if (Object.hasOwn(next, 'workflow_nodes')) {
-    if (Object.hasOwn(next, 'subprocess_workflow_files')
-      && stable(next.subprocess_workflow_files) !== stable(next.workflow_nodes)) {
-      throw new Error('Conflicting workflow_nodes and subprocess_workflow_files');
-    }
-    next.subprocess_workflow_files = next.workflow_nodes;
-    delete next.workflow_nodes;
-  }
-  for (const ref of next.subprocess_workflow_files || []) {
-    if (ref && typeof ref === 'object' && Object.hasOwn(ref, 'workflow_name')) {
-      if (Object.hasOwn(ref, 'name') && ref.name !== ref.workflow_name) throw new Error('Conflicting subprocess file names');
-      ref.name = ref.workflow_name;
-      delete ref.workflow_name;
-    }
-  }
+  delete next.workflow_nodes;
+  delete next.subprocess_workflow_files;
   for (const node of next.nodes || []) {
     if (!node || !['workflow', 'spawn_and_wait_subprocess'].includes(node.type)) continue;
     node.type = 'spawn_and_wait_subprocess';

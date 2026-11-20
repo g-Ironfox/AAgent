@@ -29,7 +29,6 @@ const elements = {
   inspectorContent: document.querySelector('#inspectorContent'),
   nodeCount: document.querySelector('#nodeCount'),
   connectionCount: document.querySelector('#connectionCount'),
-  subprocessNodeLibrary: document.querySelector('#subprocessNodeLibrary'),
   workflowState: document.querySelector('#workflowState'),
   importButton: document.querySelector('#importButton'),
   importFileInput: document.querySelector('#importFileInput'),
@@ -52,8 +51,6 @@ const elements = {
   structDefinitionsError: document.querySelector('#structDefinitionsError'),
   addStructButton: document.querySelector('#addStructButton'),
   canvasLegend: document.querySelector('#canvasLegend'),
-  subprocessWorkflowFileList: document.querySelector('#subprocessWorkflowFileList'),
-  addSubprocessWorkflowFileButton: document.querySelector('#addSubprocessWorkflowFileButton'),
   remoteToolList: document.querySelector('#remoteToolList'),
   addRemoteToolButton: document.querySelector('#addRemoteToolButton'),
   resourceState: document.querySelector('#resourceState'),
@@ -129,7 +126,6 @@ function importWorkflowText(text, source = '已导入', fileName = 'workflow.flo
   const workflow = parseWorkflowText(text);
   if (!loadSnapshot(workflow)) throw new Error('内容不是有效的 Workflow JSON');
   workflowFileName = fileName;
-  inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
   inspector.setMetadataTools(metadataToolReferences());
   resetUndoHistory();
@@ -144,7 +140,6 @@ function isPristineEditor() {
     && state.description === ''
     && state.input_ports.length === 0
     && state.output_ports.length === 0
-    && state.subprocess_workflow_files.length === 0
     && state.metadata.tools.length === 0
     && state.nodes.length === 2
     && state.connections.length === 1;
@@ -166,14 +161,6 @@ async function writeClipboardText(text) {
   if (!copied) throw new Error('浏览器不允许访问剪贴板');
 }
 
-function subprocessWorkflowFileReferences() {
-  return state.subprocess_workflow_files.map((workflow) => ({
-      name: workflow.name,
-      input_ports: workflow.input_ports || [],
-      output_ports: workflow.output_ports || [],
-    }));
-}
-
 function remoteToolReferences() {
   return state.metadata.tools.map((tool) => ({
     name: tool.name,
@@ -193,7 +180,6 @@ function metadataToolReferences() {
 }
 
 loadSnapshot(workflowSnapshot());
-inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
 inspector.setRemoteToolReferences(remoteToolReferences());
 inspector.setMetadataTools(metadataToolReferences());
 resetUndoHistory();
@@ -213,7 +199,6 @@ document.addEventListener('keydown', (event) => {
   hasUnsavedChanges = true;
   elements.workflowState.textContent = '未保存';
   elements.workflowState.classList.remove('saved');
-  inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
   inspector.setMetadataTools(metadataToolReferences());
   editor.ensureSelection();
@@ -314,38 +299,26 @@ function renderMetadataDialog() {
   for (const definition of structDraft) definition.list_color ||= definition.color;
   renderStructDefinitions();
   elements.structDefinitionsError.textContent = '';
-  renderSubprocessWorkflowFileList();
   renderRemoteToolList();
   document.querySelector('#functionList').replaceChildren(...(state.metadata.functions || []).map(createFunctionRow));
 }
 
 function createFunctionRow(fn = { id: '', name: '', input_ports: [], output_ports: [] }) {
-  const row = createSubprocessWorkflowFileRow({ ...fn, name: fn.id });
-  row.classList.add('function-metadata-row');
+  const row = document.querySelector('#functionMetadataTemplate').content.firstElementChild.cloneNode(true);
   row.dataset.previousFunctionId = fn.id;
-  const idInput = row.querySelector('[data-subprocess-workflow-file-name]');
-  idInput.parentElement.classList.add('function-id-field');
-  idInput.parentElement.firstChild.textContent = '函数 ID';
-  idInput.setAttribute('aria-label', '函数 ID');
-  idInput.placeholder = 'function_1';
-  idInput.pattern = '[A-Za-z_][A-Za-z0-9_]*';
-  const nameLabel = document.createElement('label');
-  nameLabel.className = 'function-name-field';
-  nameLabel.textContent = '名称';
-  const nameInput = document.createElement('input');
-  nameInput.dataset.functionName = '';
-  nameInput.required = true;
-  nameInput.placeholder = '函数名称';
-  nameInput.setAttribute('aria-label', '函数名称');
-  nameInput.value = fn.name;
-  nameLabel.append(nameInput);
-  row.querySelector('header').insertBefore(nameLabel, row.querySelector('header button'));
-  const removeButton = row.querySelector('[data-remove-subprocess-workflow-file]');
-  removeButton.title = '删除函数';
-  removeButton.setAttribute('aria-label', '删除函数');
+  row.querySelector('[data-function-id]').value = fn.id;
+  row.querySelector('[data-function-name]').value = fn.name;
+  row.querySelector('[data-remove-function]').addEventListener('click', () => row.remove());
+  renderInterfacePortList(row, 'input_ports', fn.input_ports || []);
+  renderInterfacePortList(row, 'output_ports', fn.output_ports || []);
   for (const select of row.querySelectorAll('[data-metadata-port-type]')) addFunctionStructOptions(select);
   for (const button of row.querySelectorAll('[data-add-interface-port]')) button.addEventListener('click', () => {
-    for (const select of row.querySelectorAll('[data-metadata-port-type]')) addFunctionStructOptions(select);
+    const list = row.querySelector(`[data-interface-port-list="${button.dataset.addInterfacePort}"]`);
+    list.querySelector('.metadata-empty')?.remove();
+    const portRow = createMetadataPortRow();
+    list.append(portRow);
+    addFunctionStructOptions(portRow.querySelector('[data-metadata-port-type]'));
+    portRow.querySelector('input').focus();
   });
   return row;
 }
@@ -361,7 +334,7 @@ function addFunctionStructOptions(select) {
 function readFunctions() {
   return [...document.querySelectorAll('#functionList .function-metadata-row')].map((row) => ({
     previous_id: row.dataset.previousFunctionId,
-    id: row.querySelector('[data-subprocess-workflow-file-name]').value.trim(),
+    id: row.querySelector('[data-function-id]').value.trim(),
     name: row.querySelector('[data-function-name]').value.trim(),
     input_ports: readPortsFromList(row.querySelector('[data-interface-port-list="input_ports"]')),
     output_ports: readPortsFromList(row.querySelector('[data-interface-port-list="output_ports"]')),
@@ -609,44 +582,6 @@ function renderInterfacePortList(row, collection, ports) {
   }
 }
 
-function createSubprocessWorkflowFileRow(workflow = { name: '', input_ports: [], output_ports: [] }) {
-  const row = document.querySelector('#subprocessWorkflowFileTemplate').content.firstElementChild.cloneNode(true);
-  row.dataset.previousName = workflow.name || '';
-  row.querySelector('[data-subprocess-workflow-file-name]').value = workflow.name || '';
-  renderInterfacePortList(row, 'input_ports', workflow.input_ports || []);
-  renderInterfacePortList(row, 'output_ports', workflow.output_ports || []);
-  row.querySelector('[data-remove-subprocess-workflow-file]').addEventListener('click', () => row.remove());
-  for (const button of row.querySelectorAll('[data-add-interface-port]')) {
-    button.addEventListener('click', () => {
-      const list = row.querySelector(`[data-interface-port-list="${button.dataset.addInterfacePort}"]`);
-      list.querySelector('.metadata-empty')?.remove();
-      const portRow = createMetadataPortRow();
-      list.append(portRow);
-      portRow.querySelector('input').focus();
-    });
-  }
-  return row;
-}
-
-function renderSubprocessWorkflowFileList() {
-  elements.subprocessWorkflowFileList.replaceChildren(...state.subprocess_workflow_files.map(createSubprocessWorkflowFileRow));
-  if (!state.subprocess_workflow_files.length) {
-    const empty = document.createElement('p');
-    empty.className = 'metadata-empty';
-    empty.textContent = '暂无子进程 Workflow 文件';
-    elements.subprocessWorkflowFileList.append(empty);
-  }
-}
-
-function readSubprocessWorkflowFiles() {
-  return [...elements.subprocessWorkflowFileList.querySelectorAll('.metadata-resource-row')].map((row) => ({
-    previous_name: row.dataset.previousName,
-    name: row.querySelector('[data-subprocess-workflow-file-name]').value.trim(),
-    input_ports: readPortsFromList(row.querySelector('[data-interface-port-list="input_ports"]')),
-    output_ports: readPortsFromList(row.querySelector('[data-interface-port-list="output_ports"]')),
-  }));
-}
-
 function toolCatalog() {
   return [...localToolSchemas, ...remoteToolSchemas];
 }
@@ -765,18 +700,6 @@ function readPortsFromList(list) {
   }));
 }
 
-function syncSubprocessWorkflowFileNodes(nextWorkflows) {
-  const nextByPreviousName = new Map(nextWorkflows.map((workflow) => [workflow.previous_name || workflow.name, workflow]));
-  for (const node of state.nodes) {
-    if (node.type !== "spawn_and_wait_subprocess") continue;
-    const workflow = nextByPreviousName.get(node.workflow_file);
-    if (!workflow) continue;
-    node.workflow_file = workflow.name;
-    node.input_ports = structuredClone(workflow.input_ports);
-    node.output_ports = structuredClone(workflow.output_ports);
-  }
-}
-
 function syncRemoteToolNodes(nextTools) {
   const nextByPreviousName = new Map(nextTools.map((tool) => [tool.previous_name || tool.name, tool]));
   for (const node of state.nodes) {
@@ -796,20 +719,12 @@ elements.clearButton.addEventListener('click', () => {
   if (hasUnsavedChanges && !window.confirm('清空会覆盖当前未保存的 Workflow，确定继续吗？')) return;
   if (!resetWorkflow()) return;
   workflowFileName = 'workflow.flow';
-  inspector.setSubprocessWorkflowFiles([]);
   inspector.setRemoteToolReferences([]);
   inspector.setMetadataTools([]);
   hasUnsavedChanges = true;
   renderWorkflow();
   elements.workflowState.textContent = '已清空';
   elements.workflowState.classList.remove('saved');
-});
-
-elements.addSubprocessWorkflowFileButton.addEventListener('click', () => {
-  elements.subprocessWorkflowFileList.querySelector('.metadata-empty')?.remove();
-  const row = createSubprocessWorkflowFileRow();
-  elements.subprocessWorkflowFileList.append(row);
-  row.querySelector('input').focus();
 });
 
 elements.addRemoteToolButton.addEventListener('click', () => {
@@ -852,38 +767,18 @@ elements.metadataForm.addEventListener('submit', (event) => {
   }
   const inputPorts = readMetadataPorts('input_ports');
   const outputPorts = readMetadataPorts('output_ports');
-  const subprocessWorkflowFiles = readSubprocessWorkflowFiles();
   const remoteTools = readRemoteTools();
   if (remoteTools.some((tool) => tool.kind === 'local' && tool.input_ports.some((port) => !['content', 'number'].includes(port.type)))) {
     elements.resourceState.textContent = 'Local Tool 的输入必须为 content 或 number';
     return;
   }
-  const allPortLists = [inputPorts, outputPorts, ...subprocessWorkflowFiles.flatMap((workflow) => [workflow.input_ports, workflow.output_ports]), ...remoteTools.flatMap((tool) => [tool.input_ports, tool.output_ports])];
+  const allPortLists = [inputPorts, outputPorts, ...remoteTools.flatMap((tool) => [tool.input_ports, tool.output_ports])];
   if (allPortLists.some((ports) => new Set(ports.map((port) => port.name.toLocaleLowerCase())).size !== ports.length)) {
     elements.resourceState.textContent = '同一侧接口名称不能重复';
     return;
   }
-  if (subprocessWorkflowFiles.some((workflow) => workflow.name.length > 200)) {
-    elements.resourceState.textContent = '子进程 Workflow 文件名不能超过 200 个字符';
-    return;
-  }
-  if (state.nodes.some((node) => node.type === "spawn_and_wait_subprocess"
-    && typeof node.workflow_file === 'string' && node.workflow_file.length > 200)) {
-    elements.resourceState.textContent = 'Subprocess Workflow references cannot exceed 200 characters';
-    return;
-  }
-  if (new Set(subprocessWorkflowFiles.map((workflow) => workflow.name)).size !== subprocessWorkflowFiles.length) {
-    elements.resourceState.textContent = '子进程 Workflow 文件名不能重复';
-    return;
-  }
   if (new Set(remoteTools.map((tool) => tool.name.toLocaleLowerCase())).size !== remoteTools.length) {
     elements.resourceState.textContent = 'Tool 名称不能重复';
-    return;
-  }
-  const retainedNames = new Set(subprocessWorkflowFiles.map((workflow) => workflow.previous_name || workflow.name));
-  const removedInUse = state.nodes.find((node) => node.type === "spawn_and_wait_subprocess" && !retainedNames.has(node.workflow_file));
-  if (removedInUse) {
-    elements.resourceState.textContent = `“${removedInUse.workflow_file}”仍被画布节点调用`;
     return;
   }
   const retainedToolNames = new Set(remoteTools.map((tool) => tool.previous_name || tool.name));
@@ -900,13 +795,11 @@ elements.metadataForm.addEventListener('submit', (event) => {
   }
   const previousSnapshot = workflowSnapshot({ includeConnectionIds: true });
   state.nodes = functionNodes;
-  syncSubprocessWorkflowFileNodes(subprocessWorkflowFiles);
   syncRemoteToolNodes(remoteTools);
   state.description = elements.workflowDescription.value.trim();
   state.metadata = { ...(state.metadata || {}), structs, functions };
   state.input_ports = inputPorts;
   state.output_ports = outputPorts;
-  state.subprocess_workflow_files = subprocessWorkflowFiles.map(({ previous_name, ...workflow }) => workflow);
   state.metadata.tools = remoteTools.map(({ previous_name, ...tool }) => tool);
   remapStructReferences(state, structIdMap);
   const snapshot = workflowSnapshot({ includeConnectionIds: true });
@@ -921,23 +814,11 @@ elements.metadataForm.addEventListener('submit', (event) => {
     loadSnapshot(previousSnapshot);
     return;
   }
-  inspector.setSubprocessWorkflowFiles(subprocessWorkflowFileReferences());
   inspector.setRemoteToolReferences(remoteToolReferences());
   inspector.setMetadataTools(metadataToolReferences());
   markChanged();
   renderWorkflow();
   elements.metadataDialog.close();
-});
-
-document.querySelector('#subprocessNodeLibrary').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-add-subprocess-node]');
-  if (!button) return;
-  const reference = subprocessWorkflowFileReferences().find((workflow) => workflow.name === button.dataset.addSubprocessNode);
-  if (!reference) return;
-  const node = addNode('spawn_and_wait_subprocess', reference, currentCanvasViewport());
-  if (!node) return;
-  markChanged();
-  editor.selectNode(node.id);
 });
 
 for (const button of document.querySelectorAll('[data-add-node]')) {

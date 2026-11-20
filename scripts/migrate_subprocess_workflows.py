@@ -1,4 +1,6 @@
-"""Migrate saved Workflow files and service records to subprocess file contracts."""
+"""Remove obsolete subprocess declarations and normalize legacy node names.
+
+Fixed per-port subprocess calls still require explicit JSON rewiring."""
 from __future__ import annotations
 
 import argparse

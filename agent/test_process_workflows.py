@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from test_support import MemoryRedis
+from test_support import MemoryRedis, json_subprocess_fixture
 
 import main
 import process_repository as r
@@ -47,9 +47,9 @@ def document(name, child=None, wait=False, output_terminal=False):
         previous = "term"
     nodes.append({"id": "out", "type": "output", "workflowPorts": [{"id": "workflow:text", **PORTS[0]}]})
     connections += [edge(previous, "out"), edge(data_source, "out", "workflow:text", "workflow:text", "content")]
-    return {"schema_version": "2.0", "input_ports": PORTS, "output_ports": PORTS,
+    return json_subprocess_fixture({"schema_version": "2.0", "input_ports": PORTS, "output_ports": PORTS,
             "nodes": nodes, "connections": connections, "metadata": {"structs": []},
-            "subprocess_workflow_files": [{"name": child, "input_ports": PORTS, "output_ports": PORTS}] if child else []}
+            "subprocess_workflow_files": [{"name": child, "input_ports": PORTS, "output_ports": PORTS}] if child else []})
 
 
 class ProcessWorkflowTest(unittest.TestCase):
@@ -470,6 +470,58 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual([item["event"] for item in committed["events"]].count("blocked"), 1)
         self.assertEqual(main.read_process(root["process_id"])["events"], committed["events"])
 
+    def test_pending_call_resumes_after_target_is_modified(self):
+        self.assert_pending_call_resumes_after_target_changes("modify")
+
+    def test_pending_call_resumes_after_target_is_deleted(self):
+        self.assert_pending_call_resumes_after_target_changes("delete")
+
+    def assert_pending_call_resumes_after_target_changes(self, change):
+        text = '中文 "quoted"\nnext line'
+        self.documents["Child.flow"] = document("Child", wait=True)
+        root = self.start(document("Root", "Child.flow"), text=text)
+        self.drain()
+        child = next(item for item in self.workflows()
+                     if item.get("parent_process_id") == root["process_id"])
+        previous_count = len(self.workflows())
+        if change == "modify":
+            replacement = document("Child")
+            replacement["output_ports"][0]["type"] = "number"
+            replacement["nodes"][-1]["workflowPorts"][0]["type"] = "number"
+            self.documents["Child.flow"] = replacement
+        else:
+            del self.documents["Child.flow"]
+        with patch("workflow_parser._read_workspace_workflow_by_name",
+                   side_effect=AssertionError("resume must not reload target")):
+            self.send(child)
+            self.drain()
+        restored = main.read_process(root["process_id"])
+        self.assertEqual(restored["status"], "completed")
+        self.assertEqual(restored["result"], {"text": text})
+        self.assertIsNone(restored["pending_call"])
+        self.assertEqual(len(self.workflows()), previous_count)
+
+    def test_pending_call_rejects_result_that_violates_child_snapshot(self):
+        self.documents["Child.flow"] = document("Child", wait=True)
+        root = self.start(document("Root", "Child.flow"))
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        self.send(child)
+        for _ in range(100):
+            main.schedule_once(timeout=1)
+            completed = main.read_process(child["process_id"])
+            if completed["status"] == "completed":
+                break
+        else:
+            self.fail("child did not complete")
+        completed["result"] = {"text": 123}
+        main.write_process(completed)
+        with self.assertLogs("main", level="ERROR"):
+            self.drain()
+        restored = main.read_process(root["process_id"])
+        self.assertEqual(restored["status"], "failed")
+        self.assertEqual(len(self.workflows()), 2)
+
     def test_legacy_pending_node_resumes_without_spawning_a_second_child(self):
         self.documents = {"Child.flow": document("Child", wait=True)}
         root = self.start(document("Root", "Child.flow"))
@@ -478,7 +530,6 @@ class ProcessWorkflowTest(unittest.TestCase):
         compiled = json.loads(parent["workflow"])
         pending_node = compiled[parent["pending_call"]["node_index"]]
         pending_node["type"] = "workflow"
-        pending_node["arguments"]["workflow_name"] = pending_node["arguments"].pop("workflow_file")
         parent["workflow"] = json.dumps(compiled)
         self.redis.hset(r.PROCESSTABLE, root["process_id"], json.dumps(parent))
         child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
@@ -490,7 +541,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(len(self.workflows()), 2)
         migrated_node = next(node for node in json.loads(restored["workflow"]) if node["id"] == "call")
         self.assertEqual(migrated_node["type"], "spawn_and_wait_subprocess")
-        self.assertNotIn("workflow_name", migrated_node["arguments"])
+        self.assertNotIn("workflow_name", migrated_node.get("arguments", {}))
 
     def test_child_failure_propagates_through_all_ancestors(self):
         self.documents = {"Middle.flow": document("Middle", "Leaf.flow"),

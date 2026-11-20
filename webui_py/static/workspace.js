@@ -18,8 +18,8 @@ const el = Object.fromEntries([
   'fileContent', 'filePreview', 'fileEmpty', 'fileId', 'updatedAt',
   'pinButton', 'downloadButton', 'deleteButton', 'cancelButton', 'editButton',
   'saveStatus', 'characterCount', 'workflowButton', 'workflowPanel', 'workflowVersion', 'workflowDescription',
-  'workflowCanvasPreview', 'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts', 'subprocessWorkflowFiles',
-  'subprocessFileCount', 'remoteTools', 'remoteToolCount',
+  'workflowCanvasPreview', 'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts',
+  'remoteTools', 'remoteToolCount',
 ].map((id) => [id, document.getElementById(id)]));
 el.name = el.fileName;
 const workflowPanel = createWorkflowPanel({

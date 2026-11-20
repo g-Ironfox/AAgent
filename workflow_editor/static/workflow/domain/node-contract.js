@@ -419,9 +419,10 @@ export function portsForNode(node) {
   if (node.type === "spawn_and_wait_subprocess") {
     return [
       { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '拉起并等待子进程', multiple: false },
-      ...(node.input_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'input', type: port.type, label: port.name, title: port.name, multiple: false })),
-      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '子进程退出后继续', multiple: false },
-      ...(node.output_ports || []).map((port) => ({ id: `workflow:${port.name}`, direction: 'output', type: port.type, label: port.name, title: port.name, multiple: true })),
+      { id: 'workflow-file', direction: 'input', type: 'content', label: 'Workflow 文件名', title: '工作区精确文件名，含扩展名', multiple: false },
+      { id: 'arguments-json', direction: 'input', type: 'content', label: '参数 JSON', title: '键名对应目标 Workflow 的输入接口', multiple: false },
+      { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '结果回填后继续', multiple: false },
+      { id: 'result-json', direction: 'output', type: 'content', label: '结果 JSON', title: '子进程输出组成的 JSON 对象', multiple: true },
     ];
   }
   const ports = [
@@ -532,15 +533,6 @@ function createNodeDefinition(type, nodes, configuration = null, viewport = null
   if (type === 'remote_sync_tool') return { type, name: `Remote Sync Tool ${number}`, tool: '', parameters: [], outputs: [], timeout_ms: 10000, ...position };
   if (type === 'remote_async_tool') return { type, name: `Remote Async Tool ${number}`, tool: '', parameters: [], timeout_ms: 600000, callback: null, ...position };
   if (type === 'json_tool') return { type, name: 'JSON Tool ' + number, ...position };
-  if (type === "spawn_and_wait_subprocess" && configuration) {
-    return {
-      type,
-      name: `拉起并等待子进程 ${number}`,
-      workflow_file: configuration.name,
-      input_ports: structuredClone(configuration.input_ports || []),
-      output_ports: structuredClone(configuration.output_ports || []),
-      ...position,
-    };
-  }
+  if (type === 'spawn_and_wait_subprocess') return { type, name: '拉起并等待子进程 ' + number, ...position };
   return null;
 }

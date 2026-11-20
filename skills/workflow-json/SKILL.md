@@ -9,7 +9,7 @@ Generate complete executable Workflow 2.0 JSON. Assume only this skill and user 
 
 ## Missing external facts
 
-Infer ordinary choices conservatively. Ask only when missing information blocks execution or materially changes behavior. Never invent registered Tool names/contracts, required model identifiers, child-workflow filenames/interfaces, or user approval policy. `metadata.tools` declares an expected contract; it does not register/install a Tool. Ask for missing facts or avoid that dependency. Never claim testing or registration without evidence.
+Infer ordinary choices conservatively. Ask only when missing information blocks execution or materially changes behavior. Never invent registered Tool names/contracts, required model identifiers, existing child-workflow filenames/contracts, or user approval policy. A dynamic child filename may be supplied at runtime; do not require a static declaration. When creating both parent and child, choose explicit filenames and use them consistently. `metadata.tools` declares an expected contract; it does not register/install a Tool. Ask for missing facts or avoid that dependency. Never claim testing or registration without evidence.
 
 ## Process runtime model
 
@@ -19,7 +19,8 @@ A Workflow run is a durable process. A scheduler executes one node at a time fro
 - `wait_terminal_event` blocks for a **new** user-message event on this process terminal. Earlier messages do not satisfy it. Assistant output does not wake it. It has no data output and does not consume the message.
 - `read_terminal_input`, after wake, returns all saved user message bodies in chronological order as `list-content`, not just the waking message.
 - `output_to_terminal` appends non-empty text and continues; it does not wake a waiter. Emit a prompt before waiting when appropriate.
-- `spawn_and_wait_subprocess` creates a distinct child process and terminal, copies inputs, blocks the parent until child exit, then resumes on success. Child failure/termination fails the parent. This is not a function call.
+- `spawn_and_wait_subprocess` reads a filename and JSON arguments from data inputs, creates a distinct child process and terminal, and blocks the parent until child exit. On success it emits the full result object as JSON text and continues through control-out. Child failure/termination fails the parent.
+- The scheduler persists a pending child call. Resume validates results against the child's saved compiled output interface, fills result-json, and advances to the successor without executing the spawn node again or reloading the target file. Do not add a manual restart, polling loop, or Context handoff to return the result. Worker-crash side-effect guarantees remain separate.
 - Parent/child may share a public terminal but have separate internal process identities. Never serialize process IDs, wait conditions, scheduler status, compiled graphs, logs, or checkpoints.
 - Context is durable cross-node/process state. A process owns Context it creates; a child may access ancestor Context, but parent cannot access a child's Context. Context is cleaned with process termination. Session has separate semantics.
 - Active execution timeout excludes blocked/queued time. Do not model human waits as long-running LLM/Tool calls or assume side effects are exactly-once after worker crash.
@@ -34,12 +35,11 @@ A Workflow run is a durable process. A scheduler executes one node at a time fro
   "input_ports": [],
   "output_ports": [],
   "nodes": [],
-  "connections": [],
-  "subprocess_workflow_files": []
+  "connections": []
 }
 ```
 
-- Required keys: `schema_version`, `input_ports`, `output_ports`, `nodes`, `connections`. Version is string `"2.0"`. Always include `connections`, even empty. Prefer description/metadata/dependency arrays. No root `name`; filename is external.
+- Required keys: `schema_version`, `input_ports`, `output_ports`, `nodes`, `connections`. Version is string `"2.0"`. Always include `connections`, even empty. Include description and metadata when useful. Do not emit subprocess_workflow_files or workflow_nodes at root or under metadata. No root `name`; filename is external.
 - Port is exactly `{ "name":"...", "type":"..." }`; names non-empty and unique per side after trim/case-fold.
 - Types: `content` (string), `number` (finite JSON number, not boolean), `list-content` (string array), `map-content` (string-to-string object), `struct:<Id>`, `list-struct:<Id>`. Struct IDs match `[A-Za-z_][A-Za-z0-9_]*` and must be declared in `metadata.structs`.
 - Struct is forbidden on root, Tool, and child interfaces. Convert to JSON `content` at those boundaries.
@@ -107,7 +107,7 @@ Unless noted, nodes use ordinary control ports. Data port names below include ty
 | `session_create` | `value_type` | `initial-value:<type>` -> `session-id:content` |
 | `session_read` | `value_type` | `session-id:content` -> `value-out:<type>` |
 | `session_write` | `value_type` | `session-id:content`,`value-in:<type>` -> `session-id:content`,`value-out:<type>` |
-| `spawn_and_wait_subprocess` | `workflow_file` | child process; exact filename/interfaces declared in `subprocess_workflow_files`; ports are `workflow:<name>` |
+| `spawn_and_wait_subprocess` | none | `workflow-file:content`, `arguments-json:content` -> `result-json:content`; normal control ports; creates and waits for a child process |
 
 ## Contracts and composition
 
@@ -120,14 +120,22 @@ Unless noted, nodes use ordinary control ports. Data port names below include ty
 - For a tool result, use `construct_message(role="tool")` with result text on `content-in` and the original assistant call ID on `tool-call-id-in`. Always supply this ID for native tool results. Optional message fields are role-specific; passing reasoning/calls to a non-assistant, or a tool-call ID to a non-tool, fails. Existing role/content-only messages remain supported.
 - LLM tools may come from `metadata.tools` (`tools_source:"declared"`, the default) or complete function definitions supplied as JSON strings in `tools-in:list-content` (`tools_source:"definitions"`). The latter does not require pre-registration when merely offered to the model. To execute a model-selected call, explicitly route/parse and invoke a Tool node or `json_tool`; `llm.tool_calls` alone only returns call descriptions. `json_tool` success/error control branches are separate scopes, so never pass data from one branch into the other or out to a parent scope.
 - Local functions are not processes. Declare `metadata.functions` entries `{id,name,input_ports,output_ports}`. Each has exactly one `function_input` and at least one `function_output`, with top-level `function_id` matching declaration. Control goes entry-to-return. Call with `function_call` and `arguments.function_id`; data ports `function:<name>`. Each invocation has isolated state; return only via function outputs. No recursive calls; each node belongs to one main/function region.
-- Child format: root `subprocess_workflow_files:[{"name":"Child.flow","input_ports":[...],"output_ports":[...]}]`; node `type:"spawn_and_wait_subprocess"`, `arguments:{"workflow_file":"Child.flow"}`, exact input/output snapshots on node. Filename includes extension and is exact workspace filename. Never invent it. Do not use legacy `workflow_nodes`, `type:"workflow"`, or `workflow_name`.
+## Child workflows and terminal interaction
+
+- Use one node: `{"id":"call-child","type":"spawn_and_wait_subprocess","arguments":{}}` (empty arguments may be omitted). Connect normal control-in/control-out. It has no configuration fields, child declarations, or input_ports/output_ports snapshots. Old workflow_file/workflow_name arguments and per-port calls require explicit JSON rewiring; removing old declarations alone does not convert them.
+- Connect `workflow-file:content` to an exact workspace filename including its extension (nonblank, at most 200 characters). Preserve the exact string; do not substitute a repository path. Supply it from a parent input or a construct_content node with a fixed filename. Runtime loading checks the target and rejects recursive calls.
+- Connect `arguments-json:content` to JSON **object text**, for example `{"name":"小明"}`. Keys match the target's root input_ports names; unknown keys or non-null values of the wrong type fail. Missing/null values count as unprovided. With dynamic targets, validation uses the interface loaded at call time, not an author-time snapshot. An empty input interface still needs `{}` text.
+- `result-json:content` contains the full child output object as JSON text, for example `{"reply":"你好，小明！"}`. The child receives values through Input and returns through Output. To extract reply, use deserialize_json with `arguments:{"outputs":[{"key":"reply","type":"content"}]}`, connect result-json to content-in, and use its reply output. Forward result-json directly when the full object is wanted.
+- For dynamic JSON parameters, build a declared Struct and serialize with struct_to_json, or use an already serialized object input. Do not concatenate arbitrary user strings into JSON; quotes and newlines need correct escaping. Struct values must be serialized before crossing the process interface. Context remains available for explicit shared state; result-json already handles the return value.
+- When the requested workflow is interactive, connect terminal nodes explicitly. A runnable one-message pattern is: prompt via output_to_terminal → wait_terminal_event → read_terminal_input → list_get with `arguments:{"value_type":"list-content","index_source":"fixed","index":-1}` → spawn_and_wait_subprocess → deserialize_json → output_to_terminal → Output. Connect the terminal reader's list-out to list-in, the selected item-out to arguments-json, and a filename producer to workflow-file. The prompt should ask for a JSON object such as `{"name":"小明"}`; print the decoded reply in the parent terminal. This handles one message and ends; do not imply it is a continuing chat loop. Prompt and filename text need actual producers and control edges.
+- Terminal I/O serves user interaction; child Input/Output serves process parameters and results. A child does not need to reread terminal history to receive arguments, and printing to its terminal does not return a value to the parent. Keep Input and Output boundary nodes even for terminal-driven workflows, using empty root input_ports when creation-time inputs are unnecessary.
 
 ## Design and validation
 
 1. Extract purpose, inputs, outputs, dependencies, side effects, interaction, failure, repetition, and stop conditions.
 2. Resolve only necessary external facts; make other reasonable choices.
 3. Choose the smallest structure: ordinary nodes, Router, finite Foreach, Context, terminal wait+read, or a real subprocess.
-4. Declare ports, Structs, Tool contracts, functions, child snapshots before nodes.
+4. Declare ports, Structs, Tool contracts, and local functions before nodes. Child calls use fixed JSON ports and runtime filename/argument producers; do not declare child snapshots.
 5. Sketch control tree first; independently terminate branches. Add loop-backs, then typed data edges.
 6. Check node arguments/ports/types, persistence over waits, and behavior on every path.
 7. Without validator/runtime, say the result is statically reasoned, not executed.
@@ -143,7 +151,8 @@ Final checklist:
 - [ ] Runtime-required values exist on all paths and match JSON types.
 - [ ] Terminal wait has an appropriate prompt and explicit read after wake.
 - [ ] Context/Session types and ID modes correct; loop results use Context as needed.
-- [ ] Dependencies user-provided/confirmed; declarations match; no fabricated registration claims.
+- [ ] External dependencies supplied or resolved at runtime; Tool/function declarations match; no fabricated registration claims.
+- [ ] Child calls have workflow-file and JSON object text on arguments-json, consume result-json, and contain no legacy declarations, filename arguments, or interface snapshots.
 - [ ] Output, empty-input, branch, and failure behavior meet request.
 
 If a blocking external fact is missing, ask a focused question instead of fabricating an executable workflow. Add a concise note for assumptions or unverified dependencies.

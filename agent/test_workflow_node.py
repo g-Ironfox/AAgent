@@ -34,9 +34,7 @@ def callable_workflow_fixture() -> dict:
                 "id": "call-summary",
                 "type": "spawn_and_wait_subprocess",
                 "name": "Summary",
-                "arguments": {"workflow_file": "Summary"},
-                "input_ports": [{"name": "query", "type": "content"}],
-                "output_ports": [{"name": "result", "type": "content"}],
+                "arguments": {},
             },
             {
                 "id": "output",
@@ -48,8 +46,8 @@ def callable_workflow_fixture() -> dict:
         "connections": [
             {"id": "control-input-call", "fromId": "input", "fromPortId": "control-out", "toId": "call-summary", "toPortId": "control-in", "type": "control"},
             {"id": "control-call-output", "fromId": "call-summary", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
-            {"id": "query-input-call", "fromId": "input", "fromPortId": "workflow:query", "toId": "call-summary", "toPortId": "workflow:query", "type": "content"},
-            {"id": "result-call-output", "fromId": "call-summary", "fromPortId": "workflow:result", "toId": "output", "toPortId": "workflow:result", "type": "content"},
+            {"id": "query-input-call", "fromId": "input", "fromPortId": "workflow:query", "toId": "call-summary", "toPortId": "arguments-json", "type": "content"},
+            {"id": "result-call-output", "fromId": "call-summary", "fromPortId": "result-json", "toId": "output", "toPortId": "workflow:result", "type": "content"},
         ],
     }
 
@@ -543,7 +541,7 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
 
     def test_validator_rejects_shared_fields_inside_arguments(self):
         workflow = callable_workflow_fixture()
-        workflow["nodes"][1]["arguments"]["input_ports"] = workflow["nodes"][1].pop("input_ports")
+        workflow["nodes"][1]["arguments"]["input_ports"] = []
 
         with self.assertRaisesRegex(WorkflowValidationError, "shared fields must be top-level"):
             validate_workflow(workflow)
@@ -554,31 +552,13 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
         validate_workflow(workflow)
         parsed = parse_workflow(workflow)
 
-        self.assertEqual(
-            parsed[1]["data_inputs"]["workflow:query"],
-            [0, "workflow:query", None],
-        )
-        self.assertEqual(parsed[1]["data_outputs"]["workflow:result"], [[2, "workflow:result"]])
-        self.assertEqual(parsed[1]["arguments"]["workflow_file"], "Summary")
-        self.assertEqual(
-            parsed[1]["input_ports"],
-            [{"name": "query", "type": "content"}],
-        )
-        self.assertEqual(
-            parsed[1]["output_ports"],
-            [{"name": "result", "type": "content"}],
-        )
-        self.assertNotIn("input_ports", parsed[1]["arguments"])
-        self.assertNotIn("output_ports", parsed[1]["arguments"])
-        self.assertNotIn("workflow_id", parsed[1])
-        self.assertEqual(
-            parsed[0]["workflowPorts"],
-            [{"id": "workflow:query", "name": "query", "type": "content"}],
-        )
-        self.assertEqual(
-            parsed[2]["workflowPorts"],
-            [{"id": "workflow:result", "name": "result", "type": "content"}],
-        )
+        self.assertEqual(parsed[1]["data_inputs"]["arguments-json"], [0, "workflow:query", None])
+        self.assertEqual(parsed[1]["data_outputs"]["result-json"], [[2, "workflow:result"]])
+        self.assertEqual(parsed[1]["arguments"], {})
+        self.assertNotIn("input_ports", parsed[1])
+        self.assertNotIn("output_ports", parsed[1])
+        self.assertEqual(parsed[0]["workflowPorts"], [{"id": "workflow:query", "name": "query", "type": "content"}])
+        self.assertEqual(parsed[2]["workflowPorts"], [{"id": "workflow:result", "name": "result", "type": "content"}])
 
     def test_validator_rejects_wrong_callable_workflow_port_type(self):
         workflow = callable_workflow_fixture()
@@ -650,25 +630,19 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowValidationError, "exactly one input"):
             validate_workflow(workflow)
 
-    def test_validator_rejects_duplicate_callable_input_port_names(self):
+    def test_validator_rejects_removed_subprocess_interface_snapshots(self):
+        for field in ("input_ports", "output_ports"):
+            with self.subTest(field=field):
+                workflow = callable_workflow_fixture()
+                workflow["nodes"][1][field] = []
+                with self.assertRaisesRegex(WorkflowValidationError, "snapshots are no longer supported"):
+                    validate_workflow(workflow)
+
+    def test_validator_allows_same_name_on_boundary_input_and_output(self):
         workflow = callable_workflow_fixture()
-        workflow["nodes"][1]["input_ports"].append({"name": " Query ", "type": "content"})
-
-        with self.assertRaisesRegex(WorkflowValidationError, "input_ports contains duplicate names"):
-            validate_workflow(workflow)
-
-    def test_validator_rejects_duplicate_callable_output_port_names(self):
-        workflow = callable_workflow_fixture()
-        workflow["nodes"][1]["output_ports"].append({"name": "RESULT", "type": "content"})
-
-        with self.assertRaisesRegex(WorkflowValidationError, "output_ports contains duplicate names"):
-            validate_workflow(workflow)
-
-    def test_validator_allows_same_name_on_input_and_output(self):
-        workflow = callable_workflow_fixture()
-        workflow["nodes"][1]["output_ports"] = [{"name": "query", "type": "content"}]
-        workflow["connections"][3]["fromPortId"] = "workflow:query"
-
+        workflow["output_ports"] = [{"name": "query", "type": "content"}]
+        workflow["nodes"][2]["workflowPorts"] = [{"id": "workflow:query", "name": "query", "type": "content"}]
+        workflow["connections"][3]["toPortId"] = "workflow:query"
         validate_workflow(workflow)
 
 
@@ -1175,11 +1149,9 @@ class WorkflowExecutionTest(unittest.TestCase):
             {
                 "id": "child-call",
                 "type": "spawn_and_wait_subprocess",
-                "arguments": {"workflow_file": "Child"},
-                "input_ports": [],
-                "output_ports": [],
+                "arguments": {},
                 "successors": {"next": 2},
-                "data_inputs": {},
+                "data_inputs": {"workflow-file": [None, None, "Child"], "arguments-json": [None, None, "{}"]},
                 "data_outputs": {},
             },
             {

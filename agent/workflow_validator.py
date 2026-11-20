@@ -69,10 +69,6 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
             raise WorkflowValidationError(f"workflow.{label} cannot expose Struct types; use JSON content")
     remote_tools = _validate_remote_tool_metadata(workflow)
     tools = _validate_tool_metadata(workflow)
-    for reference in workflow.get("subprocess_workflow_files", []):
-        for port in reference.get("input_ports", []) + reference.get("output_ports", []):
-            if port.get("type", "").startswith(("struct:", "list-struct:")):
-                raise WorkflowValidationError("subprocess Workflow file interfaces cannot expose Struct types")
     for tool in workflow.get("remote_tools", []):
         for port in tool.get("input_ports", []) + tool.get("output_ports", []):
             if port.get("type", "").startswith(("struct:", "list-struct:")):
@@ -314,40 +310,6 @@ def _infer_function_groups(workflow, node_by_id):
         owners[nid] = None
         groups[None][nid] = node_by_id[nid]
     return groups, owners
-
-
-def validate_subprocess_workflow_files(workflow: dict[str, Any], file_name: str = "<workflow file>") -> None:
-    """Ensure subprocess file interface snapshots still match their targets."""
-    workflow = migrate_subprocess_workflow_format(workflow)
-    from workflow_parser import _read_workspace_workflow_by_name
-
-    references: dict[str, list[tuple[str, dict[str, Any]]]] = {}
-    for index, reference in enumerate(workflow.get("subprocess_workflow_files", [])):
-        name = reference.get("name")
-        if isinstance(name, str) and name:
-            references.setdefault(name, []).append((f"subprocess_workflow_files[{index}]", reference))
-    for node in workflow.get("nodes", []):
-        if node.get("type") != "spawn_and_wait_subprocess":
-            continue
-        name = node.get("arguments", {}).get("workflow_file")
-        if isinstance(name, str) and name:
-            references.setdefault(name, []).append((node.get("id", "spawn_and_wait_subprocess node"), node))
-
-    if not references:
-        return
-
-    for name, snapshots in references.items():
-        target = _read_workspace_workflow_by_name(name)
-        for source, snapshot in snapshots:
-            for field in ("input_ports", "output_ports"):
-                saved = snapshot.get(field, [])
-                actual = target.get(field, [])
-                if saved != actual:
-                    raise WorkflowValidationError(
-                        f"workflow {file_name} subprocess Workflow file {name} at {source} "
-                        f"has stale {field}: saved={saved!r}, actual={actual!r}; "
-                        "refresh the subprocess Workflow file metadata"
-                    )
 
 
 def _validate_lifecycles(
@@ -804,13 +766,8 @@ def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None)
             ):
                 raise WorkflowValidationError("remote async tool callback must be a valid Redis callback")
     elif node_type == "spawn_and_wait_subprocess":
-        workflow_file = node_argument(node, "workflow_file")
-        if not isinstance(workflow_file, str) or not workflow_file:
-            raise WorkflowValidationError("spawn_and_wait_subprocess node workflow_file must be a non-empty string")
-        if len(workflow_file) > 200:
-            raise WorkflowValidationError("spawn_and_wait_subprocess node workflow_file cannot exceed 200 characters")
-        _validate_interface_ports(node, "input_ports")
-        _validate_interface_ports(node, "output_ports")
+        if "input_ports" in node or "output_ports" in node:
+            raise WorkflowValidationError("subprocess interface snapshots are no longer supported; connect workflow-file and arguments-json")
 
 
 def _validate_boundary_metadata(

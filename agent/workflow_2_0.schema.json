@@ -100,12 +100,6 @@
     "output_ports": {
       "$ref": "#/$defs/ports"
     },
-    "subprocess_workflow_files": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/subprocessWorkflowFile"
-      }
-    },
     "remote_tools": {
       "type": "array",
       "items": {
@@ -1104,28 +1098,6 @@
         },
         "additionalProperties": false
       }
-    },
-    "subprocessWorkflowFile": {
-      "type": "object",
-      "required": [
-        "name",
-        "input_ports",
-        "output_ports"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "input_ports": {
-          "$ref": "#/$defs/ports"
-        },
-        "output_ports": {
-          "$ref": "#/$defs/ports"
-        }
-      },
-      "additionalProperties": false
     },
     "function": {
       "type": "object",

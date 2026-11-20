@@ -113,21 +113,6 @@ export function createInspector(elements, editor, markChanged, { reloadModels } 
     mount.replaceChildren(component);
   }
 
-  function setSubprocessWorkflowFiles(references) {
-    const workflowNodes = references.filter((reference) => typeof reference.name === 'string' && reference.name);
-    elements.subprocessNodeLibrary.hidden = workflowNodes.length === 0;
-    elements.subprocessNodeLibrary.replaceChildren(...workflowNodes.map((reference) => {
-      const button = document.createElement('button');
-      button.className = 'library-item subprocess-library-item';
-      button.type = 'button';
-      button.dataset.addSubprocessNode = reference.name;
-      button.innerHTML = '<span class="node-symbol spawn_and_wait_subprocess-symbol" aria-hidden="true">WF</span><div><strong></strong><small></small></div><span class="add-symbol" aria-hidden="true">+</span>';
-      button.querySelector('strong').textContent = '拉起并等待子进程';
-      button.querySelector('small').textContent = `${(reference.input_ports || []).length} 输入 / ${(reference.output_ports || []).length} 输出`;
-      return button;
-    }));
-  }
-
   function setRemoteToolReferences(references) {
     integrations.setRemoteToolReferences(references);
   }
@@ -141,6 +126,5 @@ export function createInspector(elements, editor, markChanged, { reloadModels } 
     setMetadataTools: integrations.setMetadataTools,
     setRemoteToolReferences,
     setRemoteToolSchemas: integrations.setRemoteToolSchemas,
-    setSubprocessWorkflowFiles,
   };
 }

@@ -237,3 +237,46 @@ def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=
     if saved["status"] not in TERMINAL_STATUSES:
         raise AssertionError(f"workflow did not complete: {saved['status']}, wait_for={saved.get('wait_for')}")
     return saved.get("result", {})
+
+
+def json_subprocess_fixture(document):
+    """Build real JSON call graphs around typed fixture inputs and outputs."""
+    document = copy.deepcopy(document)
+    document.pop("subprocess_workflow_files", None)
+    for node in list(document["nodes"]):
+        if node.get("type") != "spawn_and_wait_subprocess" or "workflow_file" not in node.get("arguments", {}):
+            continue
+        nid = node["id"]
+        filename = node.pop("arguments")["workflow_file"]
+        inputs, outputs = node.pop("input_ports", []), node.pop("output_ports", [])
+        sid = nid.replace("-", "_") + "_args"
+        document.setdefault("metadata", {}).setdefault("structs", []).append({
+            "id": sid, "name": sid, "color": "#3976A8",
+            "fields": [{**port, "required": False} for port in inputs],
+        })
+        file_id, pack_id, json_id, result_id = [nid + suffix for suffix in ("_file", "_pack", "_json", "_result")]
+        document["nodes"] += [
+            {"id": file_id, "type": "construct_content", "arguments": {"append_items": [{"type": "fixed", "value": filename}]}},
+            {"id": pack_id, "type": "construct_struct", "arguments": {"struct_id": sid}, "dataInputPorts": [p["name"] for p in inputs]},
+            {"id": json_id, "type": "struct_to_json", "arguments": {"value_type": "struct:" + sid}},
+            {"id": result_id, "type": "deserialize_json", "arguments": {"outputs": [{"key": p["name"], "type": p["type"]} for p in outputs]}},
+        ]
+        for connection in document["connections"]:
+            if connection["toId"] == nid:
+                connection["toId"] = file_id if connection["type"] == "control" else pack_id
+                if connection["type"] != "control":
+                    connection["toPortId"] = connection["toPortId"].removeprefix("workflow:")
+            if connection["fromId"] == nid:
+                connection["fromId"] = result_id
+                if connection["type"] != "control":
+                    connection["fromPortId"] = connection["fromPortId"].removeprefix("workflow:")
+        def link(source, target, output="control-out", input_port="control-in", kind="control"):
+            return {"fromId": source, "toId": target, "fromPortId": output, "toPortId": input_port, "type": kind}
+        document["connections"] += [
+            link(file_id, pack_id), link(pack_id, json_id), link(json_id, nid), link(nid, result_id),
+            link(file_id, nid, "content-out", "workflow-file", "content"),
+            link(pack_id, json_id, "struct-out", "value-in", "struct:" + sid),
+            link(json_id, nid, "content-out", "arguments-json", "content"),
+            link(nid, result_id, "result-json", "content-in", "content"),
+        ]
+    return document

@@ -46,7 +46,8 @@ def function_document(nested=False, wait=False, subprocess=False):
                 source = previous
         doc['connections'] += [edge(previous, fid + 'out'), edge(source, fid + 'out',
                                 'workflow:text' if subprocess and source.endswith('wait') else 'function:text', 'function:text', 'content')]
-    return copy.deepcopy(doc)
+    from test_support import json_subprocess_fixture
+    return json_subprocess_fixture(doc)
 
 
 class FunctionContractsTest(unittest.TestCase):

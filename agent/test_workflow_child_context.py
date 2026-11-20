@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from workflow_context_repository import WorkflowContextError
-from test_support import run_scheduled_workflow
+from test_support import run_scheduled_workflow, json_subprocess_fixture
 from workflow_nodes import propagate_workflow_output
 from workflow_parser import parse_workflow
 from workflow_validator import validate_workflow
@@ -33,7 +33,7 @@ def call_node(name):
 
 
 def graph(name, body, connections):
-    return {
+    return json_subprocess_fixture({
         "schema_version": "2.0", "name": name, "input_ports": INPUTS, "output_ports": OUTPUTS,
         "nodes": [
             {"id": "input", "type": "input", "workflowPorts": [{"id": "workflow:" + p["name"], **p} for p in INPUTS]},
@@ -41,7 +41,7 @@ def graph(name, body, connections):
             {"id": "output", "type": "output", "workflowPorts": [{"id": "workflow:" + p["name"], **p} for p in OUTPUTS]},
         ],
         "connections": connections,
-    }
+    })
 
 
 def wrapper(name, child):

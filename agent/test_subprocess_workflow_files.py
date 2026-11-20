@@ -1,175 +1,94 @@
+"""Dynamic JSON subprocess contracts and deferred execution."""
 import copy
 import json
 import unittest
-from unittest.mock import call, patch
+from unittest.mock import patch
 
+from workflow_contract import migrate_subprocess_workflow_format
 from workflow_nodes import WorkflowStep, current_workflow_process, workflow_spawn_and_wait_subprocess
 from workflow_parser import WorkflowParseError, parse_workflow
-from workflow_validator import (
-    WorkflowValidationError,
-    validate_workflow,
-    validate_subprocess_workflow_files,
-)
+from workflow_validator import WorkflowValidationError, validate_workflow
 
 
 def empty_workflow(name="Parent"):
     return {
-        "schema_version": "2.0",
-        "name": name,
-        "input_ports": [],
-        "output_ports": [],
-        "nodes": [
-            {"id": "in", "type": "input", "workflowPorts": []},
-            {"id": "out", "type": "output", "workflowPorts": []},
-        ],
-        "connections": [{
-            "fromId": "in", "fromPortId": "control-out",
-            "toId": "out", "toPortId": "control-in", "type": "control",
-        }],
+        "schema_version": "2.0", "name": name, "input_ports": [], "output_ports": [],
+        "nodes": [{"id": "in", "type": "input", "workflowPorts": []}, {"id": "out", "type": "output", "workflowPorts": []}],
+        "connections": [{"fromId": "in", "fromPortId": "control-out", "toId": "out", "toPortId": "control-in", "type": "control"}],
     }
 
 
 def add_child_call(workflow, name="Child.flow"):
-    node = {
-        "id": "call-child", "type": "spawn_and_wait_subprocess",
-        "arguments": {"workflow_file": name},
-        "input_ports": [], "output_ports": [],
-    }
+    node = {"id": "call-child", "type": "spawn_and_wait_subprocess", "arguments": {}}
     workflow["nodes"].insert(1, node)
+    workflow["input_ports"] = [{"name": name, "type": "content"} for name in ("file", "arguments")]
+    workflow["output_ports"] = [{"name": "result", "type": "content"}]
+    workflow["nodes"][0]["workflowPorts"] = [{"id": "workflow:" + p["name"], **p} for p in workflow["input_ports"]]
+    workflow["nodes"][-1]["workflowPorts"] = [{"id": "workflow:" + p["name"], **p} for p in workflow["output_ports"]]
     workflow["connections"][0]["toId"] = node["id"]
-    workflow["connections"].append({
-        "fromId": node["id"], "fromPortId": "control-out",
-        "toId": "out", "toPortId": "control-in", "type": "control",
-    })
+    for source, output, target, input_port, kind in [
+        (node["id"], "control-out", "out", "control-in", "control"),
+        ("in", "workflow:file", node["id"], "workflow-file", "content"),
+        ("in", "workflow:arguments", node["id"], "arguments-json", "content"),
+        (node["id"], "result-json", "out", "workflow:result", "content"),
+    ]:
+        workflow["connections"].append({"fromId": source, "fromPortId": output, "toId": target, "toPortId": input_port, "type": kind})
     return node
 
 
-class SubprocessWorkflowFileValidationTest(unittest.TestCase):
-    def setUp(self):
-        loader = patch("workflow_parser._read_workspace_workflow_by_name")
-        self.read = loader.start()
-        self.addCleanup(loader.stop)
-        self.child = empty_workflow("Child title differs from filename")
-        self.read.return_value = self.child
-        self.workflow = empty_workflow()
-        self.workflow["subprocess_workflow_files"] = [{
-            "name": "Child.flow", "input_ports": [], "output_ports": [],
-        }]
-
-    def test_matching_declaration_and_multiple_nodes_read_target_once(self):
-        node = add_child_call(self.workflow)
-        self.workflow["nodes"].append({**node, "id": "another-call"})
-        validate_subprocess_workflow_files(self.workflow)
-        self.read.assert_called_once_with("Child.flow")
-
-    def test_declaration_and_node_mismatches_report_source_and_values(self):
-        original = [
-            {"name": "first", "type": "content"},
-            {"name": "second", "type": "content"},
-        ]
-        changed = [
-            [{"name": "renamed", "type": "content"}, original[1]],
-            [{"name": "first", "type": "number"}, original[1]],
-            original[:1],
-            [*original, {"name": "third", "type": "content"}],
-            list(reversed(original)),
-        ]
-        for source in ("declaration", "node"):
-            for field in ("input_ports", "output_ports"):
-                for ports in changed:
-                    with self.subTest(source=source, field=field, ports=ports):
-                        workflow = empty_workflow()
-                        if source == "declaration":
-                            snapshot = {"name": "Child.flow", "input_ports": [], "output_ports": []}
-                            workflow["subprocess_workflow_files"] = [snapshot]
-                        else:
-                            snapshot = add_child_call(workflow)
-                        snapshot[field] = copy.deepcopy(original)
-                        child = empty_workflow("Child")
-                        child[field] = copy.deepcopy(ports)
-                        self.read.return_value = child
-                        with self.assertRaises(WorkflowValidationError) as caught:
-                            validate_subprocess_workflow_files(workflow, "Parent.flow")
-                        message = str(caught.exception)
-                        for detail in ("Parent", "Child.flow", field, "saved=", "actual=", "refresh"):
-                            self.assertIn(detail, message)
-                        self.assertIn("subprocess_workflow_files[0]" if source == "declaration" else "call-child", message)
-
-    def test_current_declaration_does_not_hide_stale_node_snapshot(self):
-        node = add_child_call(self.workflow)
-        node["output_ports"] = [{"name": "removed", "type": "content"}]
-        with self.assertRaisesRegex(WorkflowValidationError, "call-child.*output_ports"):
-            validate_subprocess_workflow_files(self.workflow)
-
-    def test_nodes_without_declarations_are_checked(self):
-        self.workflow.pop("subprocess_workflow_files")
-        add_child_call(self.workflow)
-        validate_subprocess_workflow_files(self.workflow)
-        self.child["input_ports"] = [{"name": "new", "type": "content"}]
-        with self.assertRaisesRegex(WorkflowValidationError, "call-child.*input_ports"):
-            validate_subprocess_workflow_files(self.workflow)
-
-    def test_each_execution_reads_current_interfaces(self):
-        validate_subprocess_workflow_files(self.workflow)
-        self.child["output_ports"] = [{"name": "added", "type": "content"}]
-        with self.assertRaisesRegex(WorkflowValidationError, "output_ports"):
-            validate_subprocess_workflow_files(self.workflow)
-        self.assertEqual(self.read.call_count, 2)
-
-    def test_missing_or_unreadable_dependency_fails(self):
-        for message in ("workflow file not found: Child.flow", "failed to read workspace workflow file"):
-            with self.subTest(message=message):
-                self.read.side_effect = WorkflowParseError(message)
-                with self.assertRaisesRegex(WorkflowParseError, message):
-                    validate_subprocess_workflow_files(self.workflow)
-
-    def test_workflow_without_dependencies_and_static_validation_do_not_read(self):
-        validate_subprocess_workflow_files(empty_workflow())
-        add_child_call(self.workflow)
-        validate_workflow(self.workflow)
-        self.read.assert_not_called()
-
-    def test_subprocess_filename_limit_matches_workspace_file_limit(self):
-        workflow = empty_workflow()
-        node = add_child_call(workflow, "a" * 200)
-        validate_workflow(workflow)
-
-        node["arguments"]["workflow_file"] = "a" * 201
-        with self.assertRaisesRegex(WorkflowValidationError, "cannot exceed 200 characters"):
-            validate_workflow(workflow)
-
-
-class WorkflowDependencyExecutionTest(unittest.TestCase):
+class SubprocessWorkflowTest(unittest.TestCase):
     def setUp(self):
         token = current_workflow_process.set({"process_id": "parent", "invocation_id": "parent"})
         self.addCleanup(current_workflow_process.reset, token)
+        self.parent = empty_workflow()
+        add_child_call(self.parent)
+        self.graph = parse_workflow(self.parent)
+        self.graph[1]["_workflow_call_stack"] = ["Parent.flow"]
+        self.set_inputs()
+        loader = patch("workflow_parser._read_workspace_workflow_by_name", return_value=empty_workflow("Child"))
+        self.read = loader.start()
+        self.addCleanup(loader.stop)
 
-    def test_missing_scheduler_fails_before_loading_or_parsing_child(self):
-        parent = empty_workflow()
-        add_child_call(parent)
-        graph = parse_workflow(parent)
-        token = current_workflow_process.set(None)
-        try:
-            with patch("workflow_parser._read_workspace_workflow_by_name") as read, patch(
-                "workflow_parser.parse_workflow"
-            ) as parse:
-                with self.assertRaisesRegex(ValueError, "requires the process scheduler"):
-                    workflow_spawn_and_wait_subprocess(1, graph)
-                read.assert_not_called()
-                parse.assert_not_called()
-        finally:
-            current_workflow_process.reset(token)
+    def set_inputs(self, filename="Child.flow", arguments="{}"):
+        self.graph[1]["data_inputs"]["workflow-file"][2] = filename
+        self.graph[1]["data_inputs"]["arguments-json"][2] = arguments
 
-    def test_child_execution_is_deferred_to_scheduler(self):
-        parent = empty_workflow()
-        add_child_call(parent)
-        graph = parse_workflow(parent)
-        graph[1]["_workflow_call_stack"] = ["Parent.flow"]
-        with patch("workflow_parser._read_workspace_workflow_by_name", return_value=empty_workflow()) as read, patch(
-            "workflow_nodes.execute_node"
-        ) as execute:
-            step = workflow_spawn_and_wait_subprocess(1, graph)
-        read.assert_called_once_with("Child.flow")
+    def execute(self):
+        child = self.read.return_value
+        for node in child["nodes"]:
+            if node["type"] in {"input", "output"}:
+                node["workflowPorts"] = [{"id": "workflow:" + p["name"], **p} for p in child[node["type"] + "_ports"]]
+        return workflow_spawn_and_wait_subprocess(1, self.graph)
+
+    def test_static_validation_needs_no_declarations_or_workspace_reads(self):
+        validate_workflow(self.parent)
+        self.read.assert_not_called()
+        self.assertEqual(set(self.graph[1]["data_inputs"]), {"workflow-file", "arguments-json"})
+        self.assertEqual(set(self.graph[1]["data_outputs"]), {"result-json"})
+
+    def test_removed_declarations_are_discarded_without_mutation(self):
+        source = copy.deepcopy(self.parent)
+        source["subprocess_workflow_files"] = [{"name": "obsolete.flow"}]
+        source["workflow_nodes"] = [{"name": "another.flow"}]
+        before = copy.deepcopy(source)
+        canonical = migrate_subprocess_workflow_format(source)
+        self.assertNotIn("subprocess_workflow_files", canonical)
+        self.assertNotIn("workflow_nodes", canonical)
+        self.assertEqual(source, before)
+        validate_workflow(canonical)
+
+    def test_old_fixed_arguments_and_interface_snapshots_are_rejected(self):
+        for field, value in (("arguments", {"workflow_file": "Child.flow"}), ("input_ports", []), ("output_ports", [])):
+            with self.subTest(field=field):
+                doc = copy.deepcopy(self.parent)
+                doc["nodes"][1][field] = value
+                with self.assertRaises(WorkflowValidationError):
+                    validate_workflow(doc)
+
+    def test_child_execution_is_deferred_and_tracks_ancestry(self):
+        with patch("workflow_nodes.execute_node") as execute:
+            step = self.execute()
+        self.read.assert_called_once_with("Child.flow")
         execute.assert_not_called()
         self.assertIsInstance(step, WorkflowStep)
         child = step.child_process
@@ -178,39 +97,59 @@ class WorkflowDependencyExecutionTest(unittest.TestCase):
         self.assertEqual(child["ancestor_invocation_ids"], ["parent"])
         self.assertEqual(child["call_stack"], ["Parent.flow", "Child.flow"])
         self.assertEqual(child["current_node_id"], -1)
-        self.assertEqual([node["type"] for node in json.loads(child["workflow"])], ["input", "output"])
-        self.assertNotIn("_workflow_result", graph[1])
 
-    def test_child_checks_own_dependencies_before_parsing_or_running(self):
-        parent = empty_workflow()
-        add_child_call(parent)
-        child = empty_workflow("Child")
-        child["subprocess_workflow_files"] = [{
-            "name": "Grandchild.flow", "input_ports": [], "output_ports": [],
-        }]
-        grandchild = empty_workflow("Grandchild")
-        grandchild["input_ports"] = [{"name": "added", "type": "content"}]
-        with patch(
-            "workflow_parser._read_workspace_workflow_by_name", side_effect=[child, grandchild]
-        ) as read, patch("workflow_parser.parse_workflow") as parse:
-            with self.assertRaisesRegex(WorkflowValidationError, "Child.flow.*Grandchild.flow.*input_ports"):
-                workflow_spawn_and_wait_subprocess(1, parse_workflow(parent))
-            read.assert_has_calls([call("Child.flow"), call("Grandchild.flow")])
-            parse.assert_not_called()
+    def test_filename_is_dynamic_and_keeps_exact_workspace_identity(self):
+        self.set_inputs("其他文件.flow")
+        self.assertEqual(self.execute().child_process["workflow_file"], "其他文件.flow")
+        self.read.assert_called_once_with("其他文件.flow")
 
-    def test_child_interface_is_rechecked_at_call_time(self):
-        parent = empty_workflow()
-        add_child_call(parent)
-        child = empty_workflow("Child")
-        with patch("workflow_parser._read_workspace_workflow_by_name", return_value=child):
-            validate_subprocess_workflow_files(parent)
-            child["output_ports"] = [{"name": "added", "type": "content"}]
-            child["nodes"][-1]["workflowPorts"] = [
-                {"id": "workflow:added", "name": "added", "type": "content"},
-            ]
-            with self.assertRaisesRegex(WorkflowValidationError, "call-child.*output_ports"):
-                workflow_spawn_and_wait_subprocess(1, parse_workflow(parent))
+    def test_arguments_are_validated_against_current_target_and_copied_to_input(self):
+        ports = [{"name": "items", "type": "list-content"}, {"name": "limit", "type": "number"}]
+        self.read.return_value["input_ports"] = ports
+        self.set_inputs(arguments=json.dumps({"items": ['引号"', "换行\n"], "limit": 3}))
+        child = self.execute().child_process
+        self.assertEqual(child["input"], {"items": ['引号"', "换行\n"], "limit": 3})
+        self.assertEqual(self.graph[1]["data_inputs"]["arguments-json"][2], json.dumps(child["input"]))
 
+    def test_unknown_argument_and_wrong_types_fail_before_child_creation(self):
+        self.read.return_value["input_ports"] = [{"name": "count", "type": "number"}]
+        for arguments in ('{"other": 1}', '{"count": "bad"}', '{"count": true}', '{"count": NaN}'):
+            with self.subTest(arguments=arguments):
+                self.set_inputs(arguments=arguments)
+                with self.assertRaises(ValueError):
+                    self.execute()
+
+    def test_missing_optional_arguments_remain_unset(self):
+        self.read.return_value["input_ports"] = [{"name": "count", "type": "number"}]
+        self.assertEqual(self.execute().child_process["input"], {"count": None})
+
+    def test_invalid_call_inputs_fail_before_loading_target(self):
+        for filename, arguments in ((None, "{}"), (" ", "{}"), ("a" * 201, "{}"), ("Child.flow", None), ("Child.flow", "[]"), ("Child.flow", "null"), ("Child.flow", "bad")):
+            with self.subTest(filename=filename, arguments=arguments):
+                self.set_inputs(filename, arguments)
+                with self.assertRaises(ValueError):
+                    self.execute()
+        self.read.assert_not_called()
+
+    def test_recursion_is_rejected_before_loading_target(self):
+        self.set_inputs("Parent.flow")
+        with self.assertRaisesRegex(ValueError, "recursive workflow call"):
+            self.execute()
+        self.read.assert_not_called()
+
+    def test_missing_target_propagates_loader_error(self):
+        self.read.side_effect = WorkflowParseError("workflow file not found")
+        with self.assertRaisesRegex(WorkflowParseError, "file not found"):
+            self.execute()
+
+    def test_missing_scheduler_fails_before_loading_target(self):
+        token = current_workflow_process.set(None)
+        try:
+            with self.assertRaisesRegex(ValueError, "requires the process scheduler"):
+                self.execute()
+        finally:
+            current_workflow_process.reset(token)
+        self.read.assert_not_called()
 
 
 if __name__ == "__main__":

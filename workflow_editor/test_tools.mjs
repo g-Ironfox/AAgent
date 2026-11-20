@@ -241,7 +241,8 @@ test('an unbound Tool can be created and saved as an editor draft', () => {
 
 test('tool library is unified and retains Workflow integration mounts and metadata controls', () => {
   const html = readFileSync(new URL('./static/workflow_edit.html', import.meta.url), 'utf8');
-  assert.match(html, /id="subprocessNodeLibrary"/);
+  assert.match(html, /data-add-node="spawn_and_wait_subprocess"/);
+  assert.doesNotMatch(html, /id="subprocessNodeLibrary"|subprocessWorkflowFileList/);
   assert.match(html, /data-add-node="tool"/);
   assert.match(html, /data-add-node="json_tool"/);
   assert.match(html, /id="json_toolInspectorTemplate"/);

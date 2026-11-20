@@ -164,12 +164,10 @@ function contractPortIds(node, direction, workflow) {
     if (node.type === 'remote_sync_tool') return ['control-out', ...(Array.isArray(args.outputs) ? args.outputs.map((output) => output.name) : [])];
     return ['control-out', node.type === 'remote_async_tool' ? 'task_id' : 'output'];
   }
-  if (node.type === "spawn_and_wait_subprocess") {
-    const reference = (Array.isArray(workflow?.subprocess_workflow_files) ? workflow.subprocess_workflow_files : [])
-      .find((item) => item.name === args.workflow_file);
+  if (node.type === 'spawn_and_wait_subprocess') {
     return direction === 'input'
-      ? ['control-in', ...workflowPortIds(reference?.input_ports)]
-      : ['control-out', ...workflowPortIds(reference?.output_ports)];
+      ? ['control-in', 'workflow-file', 'arguments-json']
+      : ['control-out', 'result-json'];
   }
   if (node.type === 'llm') {
     return direction === 'input'

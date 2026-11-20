@@ -11,7 +11,7 @@ export function parseWorkflowFile(content) {
       || !ports(workflow.input_ports) || !ports(workflow.output_ports)
       || !Array.isArray(workflow.nodes) || !workflow.nodes.every((node) => object(node) && typeof node.id === 'string')
       || !Array.isArray(workflow.connections) || !workflow.connections.every(object)) return null;
-    for (const key of ['subprocess_workflow_files', 'remote_tools']) {
+    for (const key of ['remote_tools']) {
       if (workflow[key] !== undefined && (!Array.isArray(workflow[key]) || !workflow[key].every((ref) => object(ref)
         && typeof ref.name === 'string'
         && (ref.input_ports === undefined || ports(ref.input_ports))
@@ -23,33 +23,14 @@ export function parseWorkflowFile(content) {
   }
 }
 
-// Build from the original document so swaps/overlapping names are remapped atomically.
-export function editWorkflowMetadata(workflow, { description, subprocessFiles }) {
-  workflow = migrateSubprocessWorkflowFormat(workflow);
-  const next = { ...workflow };
-  if (description !== (workflow.description || '')) next.description = description;
-  const references = workflow.subprocess_workflow_files || [];
-  const replacements = new Map();
-  if (references.some((ref, index) => ref.name !== subprocessFiles[index])) {
-    next.subprocess_workflow_files = references.map((ref, index) => {
-      const previous = ref.name;
-      const name = subprocessFiles[index];
-      replacements.set(previous, name);
-      return { ...ref, name };
-    });
-    next.nodes = workflow.nodes.map((node) => {
-      const previous = node.arguments?.workflow_file;
-      if (node.type !== "spawn_and_wait_subprocess" || !replacements.has(previous)) return node;
-      return { ...node, arguments: { ...node.arguments, workflow_file: replacements.get(previous) } };
-    });
-  }
+export function editWorkflowMetadata(workflow, { description }) {
+  const next = migrateSubprocessWorkflowFormat(workflow);
+  if (description !== (next.description || '')) next.description = description;
   return next;
 }
 
 export function validateWorkflowMetadata(workflow) {
-  const names = (workflow.subprocess_workflow_files || []).map((ref) => ref.name);
-  if (names.some((name) => !name.trim())) throw new Error('子进程 Workflow 文件名不能为空');
-  if (new Set(names).size !== names.length) throw new Error('子进程 Workflow 文件名不能重复');
+  if (workflow.description !== undefined && typeof workflow.description !== 'string') throw new Error('Workflow 描述必须是文本');
 }
 
 export function migrateSubprocessWorkflowFormat(workflow) {
@@ -57,23 +38,8 @@ export function migrateSubprocessWorkflowFormat(workflow) {
   const next = structuredClone(workflow);
   delete next.name;
   if (next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata)) delete next.metadata.name;
-  const stable = (value) => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
-    ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-  if (Object.hasOwn(next, 'workflow_nodes')) {
-    if (Object.hasOwn(next, 'subprocess_workflow_files')
-      && stable(next.subprocess_workflow_files) !== stable(next.workflow_nodes)) {
-      throw new Error('Conflicting workflow_nodes and subprocess_workflow_files');
-    }
-    next.subprocess_workflow_files = next.workflow_nodes;
-    delete next.workflow_nodes;
-  }
-  for (const ref of next.subprocess_workflow_files || []) {
-    if (ref && typeof ref === 'object' && Object.hasOwn(ref, 'workflow_name')) {
-      if (Object.hasOwn(ref, 'name') && ref.name !== ref.workflow_name) throw new Error('Conflicting subprocess file names');
-      ref.name = ref.workflow_name;
-      delete ref.workflow_name;
-    }
-  }
+  delete next.workflow_nodes;
+  delete next.subprocess_workflow_files;
   for (const node of next.nodes || []) {
     if (!node || !['workflow', 'spawn_and_wait_subprocess'].includes(node.type)) continue;
     node.type = 'spawn_and_wait_subprocess';

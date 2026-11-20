@@ -203,6 +203,5 @@
       }
     ]
   },
-  "subprocess_workflow_files": [],
   "description": "Nested local functions: main -> A -> B; returns the text input unchanged."
 }

@@ -421,16 +421,19 @@ def _resume_subprocess(process: dict, workflow_map: list[dict]) -> None:
     node = workflow_map[pending['node_index']]
     if node.get('id') != pending['node_id'] or node.get('type') != "spawn_and_wait_subprocess":
         raise ValueError('pending child call does not match spawn_and_wait_subprocess node')
-    from workflow_structs import validate_value
     result = child.get('result', {})
     if not isinstance(result, dict):
         raise ValueError('subprocess result must be an object')
-    ports = {port['name']: port for port in node.get('output_ports', [])}
+    from workflow_structs import validate_value
+    child_map = json.loads(child['workflow'])
+    output_node = next(node for node in child_map if node.get('type') == 'output')
+    ports = {port['name']: port for port in output_node.get('workflowPorts', [])}
     if result.keys() - ports.keys():
         raise ValueError('subprocess returned undeclared output')
     for name, value in result.items():
-        validate_value(ports[name]['type'], value, node.get('_struct_definitions', {}))
-        propagate_workflow_output(workflow_map, node, f'workflow:{name}', value)
+        validate_value(ports[name]['type'], value, {})
+    result_json = json.dumps(result, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+    propagate_workflow_output(workflow_map, node, 'result-json', result_json)
     _finish_call_trace(process, 'completed')
     process['current_node_id'] = pending['node_index']
     process['control_port'] = 'next'

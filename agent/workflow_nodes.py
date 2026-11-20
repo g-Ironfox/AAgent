@@ -982,14 +982,21 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
         raise ValueError("spawn_and_wait_subprocess requires the process scheduler")
 
     from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
-    from workflow_validator import (
-        WorkflowValidationError,
-        validate_workflow,
-        validate_subprocess_workflow_files,
-    )
+    from workflow_validator import validate_workflow
+    from workflow_structs import validate_value
 
     parent_node = workflow_map[current_id]
-    workflow_file = node_argument(parent_node, "workflow_file")
+    has_file, workflow_file = read_workflow_input(parent_node, "workflow-file")
+    if not has_file or not isinstance(workflow_file, str) or not workflow_file.strip():
+        raise ValueError("subprocess workflow-file must be a non-empty filename")
+    if len(workflow_file) > 200:
+        raise ValueError("subprocess workflow-file cannot exceed 200 characters")
+    has_arguments, arguments_json = read_workflow_input(parent_node, "arguments-json")
+    if not has_arguments or not isinstance(arguments_json, str):
+        raise ValueError("subprocess arguments-json must be a JSON object string")
+    arguments = json.loads(arguments_json)
+    if not isinstance(arguments, dict):
+        raise ValueError("subprocess arguments-json must contain an object")
     call_stack = parent_node.get("_workflow_call_stack", [])
     if workflow_file in call_stack:
         chain = " -> ".join([*call_stack, workflow_file])
@@ -997,17 +1004,14 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
 
     workflow_document = _read_workspace_workflow_by_name(workflow_file)
     validate_workflow(workflow_document)
-    validate_subprocess_workflow_files(workflow_document, workflow_file)
-    for field in ("input_ports", "output_ports"):
-        saved = parent_node.get(field, [])
-        actual = workflow_document.get(field, [])
-        if saved != actual:
-            raise WorkflowValidationError(
-                f"workflow {call_stack[-1] if call_stack else workflow_file} "
-                f"subprocess Workflow file {workflow_file} at {parent_node.get('id', 'workflow node')} "
-                f"has stale {field}: saved={saved!r}, actual={actual!r}; "
-                "refresh the subprocess Workflow file metadata"
-            )
+    input_ports = workflow_document["input_ports"]
+    unknown = arguments.keys() - {port["name"] for port in input_ports}
+    if unknown:
+        raise ValueError("unknown subprocess input arguments: " + ", ".join(sorted(unknown)))
+    for port in input_ports:
+        value = arguments.get(port["name"])
+        if value is not None:
+            validate_value(port["type"], value, {})
 
     child_map = parse_workflow(workflow_document)
     child_input_id = next(
@@ -1023,12 +1027,9 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
     child_input = child_map[child_input_id]
     child_inputs: dict[str, Any] = {}
     for port in child_input.get("workflowPorts", []):
-        has_value, value = read_workflow_input(
-            parent_node, f"workflow:{port['name']}"
-        )
-        child_inputs[port["name"]] = value if has_value else None
-        if has_value:
-            propagate_workflow_output(child_map, child_input, port["id"], value)
+        value = arguments.get(port["name"])
+        child_inputs[port["name"]] = copy.deepcopy(value)
+        propagate_workflow_output(child_map, child_input, port["id"], value)
 
     child_id = uuid4().hex
     child = {

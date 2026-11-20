@@ -197,7 +197,11 @@
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <div id="functionNodeLibrary" class="subprocess-node-library" hidden></div>
-          <div id="subprocessNodeLibrary" class="subprocess-node-library" hidden></div>
+          <button class="library-item" type="button" data-add-node="spawn_and_wait_subprocess">
+            <span class="node-symbol spawn_and_wait_subprocess-symbol" aria-hidden="true">WF</span>
+            <div><strong>拉起并等待子进程</strong><small>文件名 + 参数 JSON → 结果 JSON</small></div>
+            <span class="add-symbol" aria-hidden="true">+</span>
+          </button>
         </div>
         <footer class="library-footer"><span>基础节点 + 子进程</span><span id="nodeCount">4 个实例</span></footer>
       </aside>
@@ -288,14 +292,6 @@
           <p class="section-help">声明函数及输入、输出接口，再从节点库添加入口、返回或调用节点。</p>
           <div id="functionList" class="metadata-resource-list"></div>
         </section>
-        <section class="metadata-resource-section subprocess-workflow-section">
-          <header>
-            <div><span class="metadata-port-mark workflow">WF</span><h3>子进程 Workflow 文件</h3></div>
-            <button id="addSubprocessWorkflowFileButton" type="button" title="添加子进程 Workflow 文件" aria-label="添加子进程 Workflow 文件">+</button>
-          </header>
-          <p class="section-help">填写工作区中的完整文件名（含扩展名），例如 <code>child.flow</code>。调用时拉起子进程，等待退出后继续。</p>
-          <div id="subprocessWorkflowFileList" class="metadata-resource-list"></div>
-        </section>
         <section class="metadata-resource-section">
           <header>
             <div><span class="metadata-port-mark remote-tool">T</span><h3>Tools</h3></div>
@@ -316,19 +312,20 @@
     </div>
   </template>
 
-  <template id="subprocessWorkflowFileTemplate">
-    <article class="metadata-resource-row">
+  <template id="functionMetadataTemplate">
+    <article class="metadata-resource-row function-metadata-row">
       <header>
-        <label>文件名<input data-subprocess-workflow-file-name maxlength="200" required placeholder="child.flow"></label>
-        <button type="button" data-remove-subprocess-workflow-file title="删除子进程 Workflow 文件" aria-label="删除子进程 Workflow 文件">×</button>
+        <label class="function-id-field">函数 ID<input data-function-id required pattern="[A-Za-z_][A-Za-z0-9_]*" placeholder="function_1" aria-label="函数 ID"></label>
+        <label class="function-name-field">名称<input data-function-name required placeholder="函数名称" aria-label="函数名称"></label>
+        <button type="button" data-remove-function title="删除函数" aria-label="删除函数">×</button>
       </header>
       <div class="interface-contract-columns">
         <section>
-          <div class="interface-contract-heading"><strong>输入契约</strong><button type="button" data-add-interface-port="input_ports" title="添加输入接口">+</button></div>
+          <div class="interface-contract-heading"><strong>输入接口</strong><button type="button" data-add-interface-port="input_ports" title="添加输入接口">+</button></div>
           <div class="metadata-port-list" data-interface-port-list="input_ports"></div>
         </section>
         <section>
-          <div class="interface-contract-heading"><strong>输出契约</strong><button type="button" data-add-interface-port="output_ports" title="添加输出接口">+</button></div>
+          <div class="interface-contract-heading"><strong>输出接口</strong><button type="button" data-add-interface-port="output_ports" title="添加输出接口">+</button></div>
           <div class="metadata-port-list" data-interface-port-list="output_ports"></div>
         </section>
       </div>
@@ -745,8 +742,7 @@
     <div data-interface-contract data-contract-title="拉起并等待子进程" data-contract-status="只读契约"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <label>子进程 Workflow 文件<input data-workflow-file readonly></label>
-      <p class="node-help">按精确工作区文件名拉起独立子进程和终端。当前进程等待子进程退出，接收输出后继续；子进程失败或被终止时向当前进程传播错误。</p>
+      <p class="node-help">连接 Workflow 文件名和参数 JSON。参数对象的键对应目标输入接口，子进程退出后将完整输出对象传到结果 JSON，再继续下一步；失败或终止会传播给父进程。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
