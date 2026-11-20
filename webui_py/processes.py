@@ -50,6 +50,10 @@ def _workflow_option(file: dict[str, Any]) -> dict[str, Any]:
         "workflow_name": file["name"],
         "input_ports": document["input_ports"],
         "output_ports": document["output_ports"],
+        "permissions": file.get("permissions", {
+            "runtime": {"read": 0, "write": 0},
+            "required": {"read": 0, "write": 0},
+        }),
     }
 
 
@@ -82,6 +86,10 @@ def create_processes_router(redis_client, store) -> APIRouter:
                 "workflow_content": file["content"],
                 "workflow_file_id": request.workflow_file_id,
                 "workflow_name": file["name"],
+                "workflow_permissions": file.get("permissions", {
+                    "runtime": {"read": 0, "write": 0},
+                    "required": {"read": 0, "write": 0},
+                }),
                 "inputs": request.inputs,
                 "terminal_id": request.terminal_id,
             }, ensure_ascii=False, allow_nan=False)

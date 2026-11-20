@@ -47,7 +47,11 @@
 .file-empty[hidden] { display:none; }
 .file-empty strong { color:var(--ink); font:700 19px Georgia,"Microsoft YaHei",serif; }
 .file-empty span { font-size:11px; }
-.editor-actions { min-height:60px; padding:11px 18px; display:flex; align-items:center; gap:9px; border-top:1px solid var(--line); background:#fff; }
+.editor-actions { min-height:60px; padding:11px 18px; display:flex; flex-wrap:wrap; align-items:center; gap:9px; border-top:1px solid var(--line); background:#fff; }
+.permission-controls { width:100%; display:flex; flex-wrap:wrap; gap:6px; margin-right:10px; }
+.permission-controls label { display:grid; gap:3px; color:var(--muted); font-size:9px; }
+.permission-controls input { width:48px; height:26px; padding:0 4px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:11px; }
+.permission-controls input:disabled { opacity:.65; }
 .save-status { margin-right:auto; color:var(--muted); font-size:10px; }
 .save-status.success { color:var(--green); }
 .save-status.error { color:var(--red); }

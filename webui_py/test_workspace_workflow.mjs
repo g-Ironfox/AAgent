@@ -73,6 +73,7 @@ class Element {
   constructor(tag = '') {
     this.tag = tag; this.children = []; this.listeners = {}; this.attributes = {};
     this.value = ''; this.textContent = ''; this.disabled = false; this.hidden = false;
+    this.validity = { valid: true };
   }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = []; this.append(...children); }
@@ -119,10 +120,10 @@ async function harness(items = [file('flow')]) {
     parseWorkflowFile, editWorkflowMetadata, validateWorkflowMetadata, workflowCanvasFilename, workflowCanvasSvg,
     fetchFiles: async () => ({ items: [...stored.values()].map(clone) }),
     fetchFile: async (id) => clone(stored.get(id)),
-    updateFile: async (id, name, content, revision) => {
-      calls.push({ id, name, content, revision });
+    updateFile: async (id, name, content, revision, permissions) => {
+      calls.push({ id, name, content, revision, permissions: clone(permissions) });
       if (settings.saveError) throw new Error(settings.saveError);
-      const saved = { ...stored.get(id), name, content, revision: revision + 1 };
+      const saved = { ...stored.get(id), name, content, permissions: clone(permissions), revision: revision + 1 };
       stored.set(id, saved); return clone(saved);
     },
     createFile: async (name) => { const created = { ...file('new', ''), name }; stored.set('new', created); return created; },
@@ -300,4 +301,35 @@ test('saving a legacy Workflow in text view removes obsolete names without chang
   assert.equal(Object.hasOwn(saved, 'name'), false);
   assert.equal(Object.hasOwn(saved.metadata, 'name'), false);
   assert.deepEqual(saved.nodes, old.nodes);
+});
+
+test('permission-only edits save all four levels and cancel restores the saved levels', async () => {
+  const permissions = { runtime: { read: 3, write: 2 }, required: { read: 1, write: 2 } };
+  const h = await harness([{ ...file('flow'), permissions }]);
+  assert.equal(h.get('runtimeRead').value, 3);
+  assert.equal(h.get('runtimeRead').disabled, true);
+  await h.fire('editButton');
+  await h.input('runtimeRead', '5');
+  await h.input('requiredWrite', '4');
+  assert.equal(h.get('editButton').disabled, false);
+  await h.fire('editButton');
+  const expected = { runtime: { read: 5, write: 2 }, required: { read: 1, write: 4 } };
+  assert.deepEqual(h.calls[0].permissions, expected);
+  assert.deepEqual(h.stored.get('flow').permissions, expected);
+  await h.fire('editButton');
+  await h.input('runtimeWrite', '9');
+  await h.fire('cancelButton');
+  assert.equal(h.get('runtimeWrite').value, 2);
+  assert.equal(h.get('runtimeRead').value, 5);
+  assert.equal(h.calls.length, 1);
+});
+
+test('invalid permission input prevents saving', async () => {
+  const h = await harness();
+  await h.fire('editButton');
+  await h.input('runtimeRead', '-1');
+  h.get('runtimeRead').validity.valid = false;
+  await h.fire('editButton');
+  assert.equal(h.calls.length, 0);
+  assert.ok(h.get('saveStatus').textContent);
 });

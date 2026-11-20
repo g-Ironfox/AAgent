@@ -45,7 +45,9 @@ class SubprocessWorkflowTest(unittest.TestCase):
         self.graph = parse_workflow(self.parent)
         self.graph[1]["_workflow_call_stack"] = ["Parent.flow"]
         self.set_inputs()
-        loader = patch("workflow_parser._read_workspace_workflow_by_name", return_value=empty_workflow("Child"))
+        loader = patch("workflow_parser._read_workspace_workflow_record_by_name", return_value=(
+            empty_workflow("Child"), {"runtime": {"read": 0, "write": 0}},
+        ))
         self.read = loader.start()
         self.addCleanup(loader.stop)
 
@@ -54,7 +56,7 @@ class SubprocessWorkflowTest(unittest.TestCase):
         self.graph[1]["data_inputs"]["arguments-json"][2] = arguments
 
     def execute(self):
-        child = self.read.return_value
+        child = self.read.return_value[0]
         for node in child["nodes"]:
             if node["type"] in {"input", "output"}:
                 node["workflowPorts"] = [{"id": "workflow:" + p["name"], **p} for p in child[node["type"] + "_ports"]]
@@ -63,6 +65,22 @@ class SubprocessWorkflowTest(unittest.TestCase):
     def test_static_validation_needs_no_declarations_or_workspace_reads(self):
         validate_workflow(self.parent)
         self.read.assert_not_called()
+
+    def test_child_process_uses_target_workflow_permissions_without_parent_cap(self):
+        current_workflow_process.get()["permissions"] = {
+            "runtime": {"read": 1, "write": 0},
+        }
+        target_permissions = {
+            "runtime": {"read": 4, "write": 3},
+            "required": {"read": 1, "write": 2},
+        }
+        self.read.return_value = (empty_workflow("Child"), target_permissions)
+
+        child = self.execute().child_process
+
+        self.assertEqual(child["permissions"], {"runtime": target_permissions["runtime"]})
+        self.assertNotEqual(child["permissions"]["runtime"], current_workflow_process.get()["permissions"]["runtime"])
+        self.assertTrue(child["_workspace_token"])
         self.assertEqual(set(self.graph[1]["data_inputs"]), {"workflow-file", "arguments-json"})
         self.assertEqual(set(self.graph[1]["data_outputs"]), {"result-json", "error-json"})
 
@@ -150,14 +168,14 @@ class SubprocessWorkflowTest(unittest.TestCase):
 
     def test_arguments_are_validated_against_current_target_and_copied_to_input(self):
         ports = [{"name": "items", "type": "list-content"}, {"name": "limit", "type": "number"}]
-        self.read.return_value["input_ports"] = ports
+        self.read.return_value[0]["input_ports"] = ports
         self.set_inputs(arguments=json.dumps({"items": ['引号"', "换行\n"], "limit": 3}))
         child = self.execute().child_process
         self.assertEqual(child["input"], {"items": ['引号"', "换行\n"], "limit": 3})
         self.assertEqual(self.graph[1]["data_inputs"]["arguments-json"][2], json.dumps(child["input"]))
 
     def test_unknown_argument_and_wrong_types_fail_before_child_creation(self):
-        self.read.return_value["input_ports"] = [{"name": "count", "type": "number"}]
+        self.read.return_value[0]["input_ports"] = [{"name": "count", "type": "number"}]
         for arguments in ('{"other": 1}', '{"count": "bad"}', '{"count": true}', '{"count": NaN}'):
             with self.subTest(arguments=arguments):
                 self.set_inputs(arguments=arguments)
@@ -165,7 +183,7 @@ class SubprocessWorkflowTest(unittest.TestCase):
                     self.execute()
 
     def test_missing_optional_arguments_remain_unset(self):
-        self.read.return_value["input_ports"] = [{"name": "count", "type": "number"}]
+        self.read.return_value[0]["input_ports"] = [{"name": "count", "type": "number"}]
         self.assertEqual(self.execute().child_process["input"], {"count": None})
 
     def test_invalid_call_inputs_fail_before_loading_target(self):
@@ -211,7 +229,7 @@ class SubprocessWorkflowTest(unittest.TestCase):
         self.read.assert_not_called()
 
     def test_interface_mismatch_enters_error_branch_without_creating_child(self):
-        self.read.return_value["input_ports"] = [{"name": "count", "type": "number"}]
+        self.read.return_value[0]["input_ports"] = [{"name": "count", "type": "number"}]
         for arguments in ('{"other": 1}', '{"count": "bad"}', '{"count": true}', '{"count": NaN}'):
             with self.subTest(arguments=arguments):
                 self.graph = parse_workflow(self.branched_parent())

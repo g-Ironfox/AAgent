@@ -127,6 +127,10 @@ class SchedulerTest(unittest.TestCase):
             'workflow_content': '{"schema_version":"2.0"}',
             'workflow_file_id': 'file-1',
             'workflow_name': 'root.flow',
+            'workflow_permissions': {
+                'runtime': {'read': 2, 'write': 1},
+                'required': {'read': 0, 'write': 0},
+            },
             'inputs': {'prompt': 'hello'},
             'terminal_id': 'public-terminal',
         }
@@ -135,7 +139,7 @@ class SchedulerTest(unittest.TestCase):
 
         build_process.assert_called_once_with(
             {'schema_version': '2.0'}, {'prompt': 'hello'}, 'file-1', 'root.flow',
-            'public-terminal',
+            'public-terminal', event['workflow_permissions'],
         )
         create_process.assert_called_once_with(process)
 

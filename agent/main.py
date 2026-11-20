@@ -197,6 +197,7 @@ def handle_external_event(client, raw_event: str) -> None:
                 event["workflow_file_id"],
                 event["workflow_name"],
                 event["terminal_id"],
+                event.get("workflow_permissions"),
             )
             create_process(process)
             return

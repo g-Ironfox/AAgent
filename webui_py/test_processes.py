@@ -56,6 +56,10 @@ class ProcessCreationApiTest(unittest.TestCase):
             "workflow_content": content,
             "workflow_file_id": "file1",
             "workflow_name": "demo.flow",
+            "workflow_permissions": {
+                "runtime": {"read": 0, "write": 0},
+                "required": {"read": 0, "write": 0},
+            },
             "inputs": {"text": "hello"},
             "terminal_id": "frontend-terminal",
         })

@@ -130,9 +130,9 @@ class ChildContextTest(unittest.TestCase):
             return propagate_workflow_output(current, source, port, value)
         def read_document(name):
             self.assertIn("workflow-context:root-list", store)
-            return copy.deepcopy(documents[name])
+            return copy.deepcopy(documents[name]), {"runtime": {"read": 0, "write": 0}}
         with patch("workflow_context_repository.get_connection", return_value=client), \
-             patch("workflow_parser._read_workspace_workflow_by_name", side_effect=read_document), \
+             patch("workflow_parser._read_workspace_workflow_record_by_name", side_effect=read_document), \
              patch("workflow_nodes.propagate_workflow_output", side_effect=propagate), \
              patch("workflow_run_repository.record_process_workflow_run") as record:
             try:

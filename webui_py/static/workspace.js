@@ -16,6 +16,7 @@ const state = { view: 'text', items: [], current: null, saved: null, mode: 'prev
 const el = Object.fromEntries([
   'createButton', 'checkpointButton', 'restoreButton', 'searchInput', 'fileList', 'fileCount', 'name', 'fileName',
   'fileContent', 'filePreview', 'fileEmpty', 'fileId', 'updatedAt',
+  'runtimeRead', 'runtimeWrite', 'requiredRead', 'requiredWrite',
   'pinButton', 'downloadButton', 'deleteButton', 'cancelButton', 'editButton',
   'saveStatus', 'characterCount', 'workflowButton', 'workflowPanel', 'workflowVersion', 'workflowDescription',
   'workflowCanvasPreview', 'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts',
@@ -38,8 +39,17 @@ function refreshWorkflowPanel() {
 }
 
 function changed() {
+  const permissions = readPermissions();
   return Boolean(state.current && state.saved)
-    && (el.name.value.trim() !== state.saved.name || el.fileContent.value !== state.saved.content);
+    && (el.name.value.trim() !== state.saved.name || el.fileContent.value !== state.saved.content
+      || JSON.stringify(permissions) !== JSON.stringify(state.saved.permissions));
+}
+
+function readPermissions() {
+  return {
+    runtime: { read: Number(el.runtimeRead.value), write: Number(el.runtimeWrite.value) },
+    required: { read: Number(el.requiredRead.value), write: Number(el.requiredWrite.value) },
+  };
 }
 
 function setStatus(text, kind = '') {
@@ -53,6 +63,9 @@ function updateControls() {
   const dirty = changed();
   el.name.disabled = !active || busy || state.mode !== 'edit';
   el.fileContent.disabled = !active || busy || state.mode !== 'edit';
+  for (const input of [el.runtimeRead, el.runtimeWrite, el.requiredRead, el.requiredWrite]) {
+    input.disabled = !active || busy || state.mode !== 'edit';
+  }
   el.createButton.disabled = busy;
   el.checkpointButton.disabled = busy;
   el.restoreButton.disabled = busy;
@@ -116,7 +129,14 @@ function formatDate(value) {
 
 function applyFile(item) {
   state.current = item;
-  state.saved = { name: item.name, content: item.content };
+  const permissions = item.permissions || {
+    runtime: { read: 0, write: 0 }, required: { read: 0, write: 0 },
+  };
+  state.saved = { name: item.name, content: item.content, permissions };
+  el.runtimeRead.value = permissions.runtime.read;
+  el.runtimeWrite.value = permissions.runtime.write;
+  el.requiredRead.value = permissions.required.read;
+  el.requiredWrite.value = permissions.required.write;
   el.name.value = item.name;
   el.fileContent.value = item.content;
   el.filePreview.textContent = item.content;
@@ -267,6 +287,10 @@ async function restoreWorkspaceCheckpoint() {
 
 async function saveCurrent() {
   if (!state.current || state.busy || !changed() || !el.name.value.trim()) return;
+  if ([el.runtimeRead, el.runtimeWrite, el.requiredRead, el.requiredWrite].some((input) => !input.validity.valid)) {
+    setStatus('权限等级必须是非负整数', 'error');
+    return;
+  }
   if (state.view === 'workflow') {
     try { workflowPanel.validate(); }
     catch (error) { setStatus(error.message, 'error'); return; }
@@ -280,7 +304,7 @@ async function saveCurrent() {
   setStatus('正在保存…');
   updateControls();
   try {
-    const saved = await updateFile(state.current.file_id, el.name.value.trim(), el.fileContent.value, state.current.revision);
+    const saved = await updateFile(state.current.file_id, el.name.value.trim(), el.fileContent.value, state.current.revision, readPermissions());
     state.mode = 'preview';
     const index = state.items.findIndex((item) => item.file_id === saved.file_id);
     if (index >= 0) state.items[index] = saved;
@@ -357,6 +381,10 @@ el.cancelButton.addEventListener('click', () => {
   el.name.value = state.saved.name;
   el.fileContent.value = state.saved.content;
   el.filePreview.textContent = state.saved.content;
+  el.runtimeRead.value = state.saved.permissions.runtime.read;
+  el.runtimeWrite.value = state.saved.permissions.runtime.write;
+  el.requiredRead.value = state.saved.permissions.required.read;
+  el.requiredWrite.value = state.saved.permissions.required.write;
   refreshWorkflowPanel();
   state.mode = 'preview';
   setStatus('');
@@ -384,6 +412,9 @@ el.fileContent.addEventListener('input', () => {
   setStatus('');
   updateControls();
 });
+for (const input of [el.runtimeRead, el.runtimeWrite, el.requiredRead, el.requiredWrite]) {
+  input.addEventListener('input', () => { setStatus(''); updateControls(); });
+}
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && state.mode === 'edit') {
     event.preventDefault();

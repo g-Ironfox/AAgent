@@ -1,7 +1,7 @@
 import json
 import os
 import unittest
-from unittest.mock import call, patch
+from unittest.mock import Mock, call, patch
 
 from pymongo.errors import PyMongoError
 
@@ -9,7 +9,9 @@ from workflow_parser import (
     WorkflowParseError,
     _read_workspace_workflow,
     _read_workspace_workflow_by_name,
+    _read_workspace_workflow_record_by_name,
 )
+from workflow_nodes import current_workflow_process
 
 
 def echo_workflow():
@@ -110,6 +112,35 @@ class WorkspaceWorkflowTest(unittest.TestCase):
         self.workspace.find_one.side_effect = PyMongoError("down")
         with self.assertRaisesRegex(WorkflowParseError, "failed to read workspace"):
             _read_workspace_workflow("file-1")
+
+    def test_permission_aware_reader_uses_process_credential_and_file_id(self):
+        process = {"process_id": "p1", "_workspace_token": "secret"}
+        context_token = current_workflow_process.set(process)
+        self.addCleanup(current_workflow_process.reset, context_token)
+        workflow = echo_workflow()
+        permissions = {
+            "runtime": {"read": 4, "write": 2},
+            "required": {"read": 1, "write": 1},
+        }
+        listing = Mock()
+        listing.status_code = 200
+        listing.json.return_value = {"items": [{"file_id": "child-id", "name": "Child.flow"}]}
+        listing.raise_for_status.return_value = None
+        content = Mock()
+        content.status_code = 200
+        content.json.return_value = {
+            "content": json.dumps(workflow), "permissions": permissions,
+        }
+        content.raise_for_status.return_value = None
+        with patch("workflow_parser.requests.get", side_effect=[listing, content]) as request:
+            loaded, loaded_permissions = _read_workspace_workflow_record_by_name("Child.flow")
+
+        self.assertEqual(loaded, workflow)
+        self.assertEqual(loaded_permissions, permissions)
+        self.assertEqual(request.call_args_list[0].kwargs["headers"], {
+            "X-AAgent-Process-ID": "p1:secret",
+        })
+        self.assertIn("/api/files/child-id", request.call_args_list[1].args[0])
 
 if __name__ == "__main__":
     unittest.main()

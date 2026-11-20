@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import time
@@ -41,6 +42,7 @@ def redis_address() -> str:
 
 REDIS_ADDRESS = redis_address()
 REDIS_DB = int(env("REDIS_DB", "0"))
+REDIS_KERNEL_DB = int(env("REDIS_KERNEL_DB", "1"))
 MONGO_HOST = env("MONGO_HOST", "mongodb")
 MONGO_PORT = int(env("MONGO_PORT", "27017"))
 MONGO_DATABASE = env("MONGO_DATABASE", "agent")
@@ -52,6 +54,13 @@ MONGO_WORKSPACE_FILE_COLLECTION = env("MONGO_WORKSPACE_FILE_COLLECTION", "worksp
 
 redis_client = redis.Redis.from_url(
     f"redis://{REDIS_ADDRESS}/{REDIS_DB}",
+    password=os.getenv("REDIS_PASSWORD") or None,
+    decode_responses=True,
+    socket_connect_timeout=5,
+    socket_timeout=5,
+)
+kernel_redis_client = redis.Redis.from_url(
+    f"redis://{REDIS_ADDRESS}/{REDIS_KERNEL_DB}",
     password=os.getenv("REDIS_PASSWORD") or None,
     decode_responses=True,
     socket_connect_timeout=5,
@@ -172,7 +181,14 @@ app.include_router(create_processes_router(redis_client, file_store))
 app.include_router(create_workflow_logs_router(workflow_logs))
 app.include_router(create_process_logs_router(process_logs))
 app.include_router(create_scheduler_router(process_logs, redis_client))
-app.include_router(create_files_router(file_store))
+
+
+def lookup_process(process_id: str):
+    raw = kernel_redis_client.hget(env("ProcessTable", "processtable"), process_id)
+    return None if raw is None else json.loads(raw)
+
+
+app.include_router(create_files_router(file_store, lookup_process))
 
 static_directory = Path(__file__).parent / "static"
 

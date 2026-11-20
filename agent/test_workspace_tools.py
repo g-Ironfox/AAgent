@@ -193,6 +193,19 @@ class WorkspaceToolsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "read the file again"):
                 workspace_tools.update_workspace_file("file-1", "note", "new", 2)
 
+    def test_workflow_requests_automatically_carry_process_credentials(self):
+        from workflow_nodes import current_workflow_process
+
+        token = current_workflow_process.set({"process_id": "p1", "_workspace_token": "secret"})
+        self.addCleanup(current_workflow_process.reset, token)
+        with patch.object(workspace_tools.requests, "request") as request:
+            request.return_value = self.response({"error": "file read permission denied"}, status_code=403)
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                workspace_tools.get_workspace_file("private")
+
+        self.assertEqual(request.call_args.kwargs["headers"], {"X-AAgent-Process-ID": "p1:secret"})
+        self.assertNotIn("_workspace_token", schemas["workspace.get_file"]["parameters"]["properties"])
+
     def test_missing_file_is_reported(self):
         with patch.object(workspace_tools.requests, "request") as request:
             request.return_value = self.response({"error": "missing"}, status_code=404)

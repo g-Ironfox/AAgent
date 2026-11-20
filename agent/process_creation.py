@@ -1,5 +1,6 @@
 """Runtime workflow compilation and process/terminal initialization."""
 import json
+import secrets
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -55,6 +56,7 @@ def build_workflow_process(
     file_id: str,
     file_name: str,
     terminal_id: str,
+    permissions: dict | None = None,
 ) -> dict:
     from workflow_nodes import propagate_workflow_output
     from workflow_parser import parse_workflow
@@ -62,6 +64,18 @@ def build_workflow_process(
     from workflow_validator import validate_workflow
 
     from workflow_contract import migrate_subprocess_workflow_format
+
+    permissions = permissions or {
+        "runtime": {"read": 0, "write": 0},
+        "required": {"read": 0, "write": 0},
+    }
+    runtime_permissions = permissions.get("runtime", {})
+    process_permissions = {
+        "runtime": {
+            "read": runtime_permissions.get("read", 0),
+            "write": runtime_permissions.get("write", 0),
+        }
+    }
 
     if not isinstance(file_name, str) or not file_name.strip():
         raise ValueError("工作流文件名不能为空")
@@ -93,6 +107,8 @@ def build_workflow_process(
         "process_id": uuid4().hex,
         "parent_process_id": "user_interface",
         "workflow_file_id": file_id,
+        "permissions": process_permissions,
+        "_workspace_token": secrets.token_urlsafe(32),
         "workflow_name": file_name,
         "workflow_file": file_name,
         "call_stack": [file_name],

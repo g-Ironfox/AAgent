@@ -43,8 +43,8 @@ export const fetchFile = (id) => request('/api/files/' + encodeURIComponent(id))
 export const createFile = (name, content = '') => request('/api/files', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content }),
 });
-export const updateFile = (id, name, content, revision) => request('/api/files/' + encodeURIComponent(id), {
-  method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content, revision }),
+export const updateFile = (id, name, content, revision, permissions) => request('/api/files/' + encodeURIComponent(id), {
+  method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content, revision, permissions }),
 });
 export const updateFilePin = (id, pinned, revision) => request('/api/files/' + encodeURIComponent(id) + '/pin', {
   method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pinned, revision }),

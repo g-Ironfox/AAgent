@@ -7,7 +7,9 @@ import json
 import os
 import sys
 from typing import Any
+from urllib.parse import quote
 
+import requests
 from pymongo import MongoClient
 from pymongo.collation import Collation
 from pymongo.errors import PyMongoError
@@ -183,10 +185,65 @@ def _read_workflow(workflow_name: str, *, by_id: bool = False) -> dict[str, Any]
     return migrate_subprocess_workflow_format(workflow)
 
 
+def _read_workspace_workflow_record(
+    selector: str, value: str, identifier: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load workflow content and permission metadata through the guarded API."""
+    base_url = os.getenv("WORKSPACE_API_URL", "http://webui_py:8081").rstrip("/")
+    headers = {}
+    try:
+        from workflow_nodes import current_workflow_process
+
+        process = current_workflow_process.get()
+    except ImportError:
+        process = None
+    if process and process.get("process_id"):
+        headers["X-AAgent-Process-ID"] = (
+            f"{process['process_id']}:{process['_workspace_token']}"
+        )
+    try:
+        if selector == "name":
+            response = requests.get(f"{base_url}/api/files", headers=headers, timeout=(3, 15))
+            response.raise_for_status()
+            matches = [item for item in response.json().get("items", []) if item.get("name") == value]
+            if len(matches) > 1:
+                raise WorkflowParseError(f"workflow filename is ambiguous: {identifier}")
+            if not matches:
+                raise WorkflowParseError(f"workflow file not found or unreadable: {identifier}")
+            file_id = matches[0]["file_id"]
+        else:
+            file_id = value
+        response = requests.get(
+            f"{base_url}/api/files/{quote(file_id, safe='')}",
+            headers=headers,
+            timeout=(3, 15),
+        )
+        if response.status_code == 403:
+            raise WorkflowParseError(f"workflow file read permission denied: {identifier}")
+        if response.status_code == 404:
+            raise WorkflowParseError(f"workflow file not found: {identifier}")
+        response.raise_for_status()
+        file = response.json()
+    except requests.RequestException as error:
+        raise WorkflowParseError("failed to read workspace workflow file") from error
+    try:
+        workflow = json.loads(file.get("content", ""))
+    except (ValueError, TypeError) as error:
+        raise WorkflowParseError(f"invalid workflow JSON in workspace file: {identifier}") from error
+    if not isinstance(workflow, dict):
+        raise WorkflowParseError(f"workflow file must contain a JSON object: {identifier}")
+    return (
+        migrate_subprocess_workflow_format(workflow),
+        file.get("permissions", {
+            "runtime": {"read": 0, "write": 0},
+            "required": {"read": 0, "write": 0},
+        }),
+    )
+
+
 def _read_workspace_workflow_file(
     selector: str, value: str, identifier: str
 ) -> dict[str, Any]:
-    """Load a live workflow file from the current workspace generation."""
     mongo_kwargs: dict[str, Any] = {
         "host": os.getenv("MONGO_HOST", "mongodb"),
         "port": int(os.getenv("MONGO_PORT", "27017")),
@@ -207,8 +264,7 @@ def _read_workspace_workflow_file(
             if meta is None or "generation" not in meta:
                 raise WorkflowParseError("workspace is not initialized")
             generation = meta["generation"]
-            selector_value = f"{generation}:{value}" if selector == "_id" else value
-            query = {selector: selector_value, "generation": generation}
+            query = {selector: f"{generation}:{value}" if selector == "_id" else value, "generation": generation}
             if selector == "name":
                 matches = list(workspace.find(
                     query, {"content": 1}, collation=Collation(locale="simple")
@@ -238,6 +294,10 @@ def _read_workspace_workflow(file_id: str) -> dict[str, Any]:
 def _read_workspace_workflow_by_name(file_name: str) -> dict[str, Any]:
     """Resolve a callable workflow by its exact workspace filename."""
     return _read_workspace_workflow_file("name", file_name, file_name)
+
+
+def _read_workspace_workflow_record_by_name(file_name: str):
+    return _read_workspace_workflow_record("name", file_name, file_name)
 
 
 if __name__ =="__main__":

@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import secrets
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -188,6 +189,11 @@ def claim_process(client, process_id: str) -> tuple[dict, bool]:
                 process = _read_process_record(pipe, process_id)
                 if process.get("status") != "ready" or process.get("process_type") == "terminal":
                     return process, False
+                if process.get("process_type") == "workflow":
+                    process.setdefault("permissions", {
+                        "runtime": {"read": 0, "write": 0},
+                    })
+                    process.setdefault("_workspace_token", secrets.token_urlsafe(32))
                 process["status"] = "running"
                 process["execution_id"] = uuid4().hex
                 if not any(item["event"] == "started" for item in process.get("events", [])):

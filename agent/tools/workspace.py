@@ -13,11 +13,23 @@ from tools.tool import tool
 
 def _request(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
     base_url = os.getenv("WORKSPACE_API_URL", "http://webui_py:8081").rstrip("/")
+    headers = dict(kwargs.pop("headers", {}))
+    try:
+        from workflow_nodes import current_workflow_process
+
+        process = current_workflow_process.get()
+    except ImportError:
+        process = None
+    if process and process.get("process_id"):
+        headers["X-AAgent-Process-ID"] = (
+            f"{process['process_id']}:{process['_workspace_token']}"
+        )
     try:
         response = requests.request(
             method,
             f"{base_url}/api/files{path}",
             timeout=(3, 15),
+            headers=headers,
             **kwargs,
         )
     except requests.RequestException as error:

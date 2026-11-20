@@ -16,6 +16,7 @@ services:
     environment:
       REDIS_DB: ${REDIS_DB:-0}
       REDIS_KERNEL_DB: ${REDIS_KERNEL_DB:-1}
+      ProcessTable: ${ProcessTable:-processtable}
       PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       TOOL_SERVER_URL: ${TOOL_SERVER_URL:-http://tool_server:8083}
@@ -45,6 +46,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: ${REDIS_DB:-0}
+      REDIS_KERNEL_DB: ${REDIS_KERNEL_DB:-1}
+      ProcessTable: ${ProcessTable:-processtable}
       PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       MONGO_HOST: mongodb

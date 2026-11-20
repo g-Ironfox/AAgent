@@ -71,7 +71,9 @@ class ProcessWorkflowTest(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
         for target, kwargs in [
-            ("workflow_parser._read_workspace_workflow_by_name", {"side_effect": lambda name: copy.deepcopy(self.documents[name])}),
+            ("workflow_parser._read_workspace_workflow_record_by_name", {"side_effect": lambda name: (
+                copy.deepcopy(self.documents[name]), {"runtime": {"read": 0, "write": 0}},
+            )}),
             ("terminal_repository.append_terminal_output", {"side_effect": self.output}),
         ]:
             patcher = patch(target, **kwargs)
@@ -91,6 +93,18 @@ class ProcessWorkflowTest(unittest.TestCase):
             "terminal-root",
         )
         return main.create_process(process)
+
+    def test_root_process_takes_workflow_runtime_levels(self):
+        workflow_permissions = {
+            "runtime": {"read": 3, "write": 2},
+            "required": {"read": 1, "write": 1},
+        }
+        process = build_workflow_process(
+            document("Root"), {"text": "hello"}, "root-file", "Root.flow",
+            "terminal-root", workflow_permissions,
+        )
+        self.assertEqual(process["permissions"], {"runtime": workflow_permissions["runtime"]})
+        self.assertTrue(process["_workspace_token"])
 
     def drain(self):
         results = []
@@ -491,7 +505,7 @@ class ProcessWorkflowTest(unittest.TestCase):
             self.documents["Child.flow"] = replacement
         else:
             del self.documents["Child.flow"]
-        with patch("workflow_parser._read_workspace_workflow_by_name",
+        with patch("workflow_parser._read_workspace_workflow_record_by_name",
                    side_effect=AssertionError("resume must not reload target")):
             self.send(child)
             self.drain()
@@ -684,7 +698,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         from workflow_parser import WorkflowParseError
 
         doc = self.parent_with_child_error_handler("Missing.flow")
-        with patch("workflow_parser._read_workspace_workflow_by_name",
+        with patch("workflow_parser._read_workspace_workflow_record_by_name",
                    side_effect=WorkflowParseError("Workflow file not found: Missing.flow")):
             self.assert_handled_pre_spawn_error(doc, "file not found: Missing.flow", "Missing.flow")
 
@@ -704,7 +718,7 @@ class ProcessWorkflowTest(unittest.TestCase):
                 self.assertIsNone(saved["pending_call"])
                 self.assertEqual(len(self.workflows()), previous_count + 1)
         root = self.start(document("Root", "Missing.flow"))
-        with patch("workflow_parser._read_workspace_workflow_by_name",
+        with patch("workflow_parser._read_workspace_workflow_record_by_name",
                    side_effect=WorkflowParseError("Workflow file not found: Missing.flow")):
             with self.assertLogs("main", level="ERROR"):
                 self.drain()

@@ -1094,7 +1094,7 @@ class WorkflowExecutionTest(unittest.TestCase):
                 run_scheduled_workflow(workflow_map, 0)
 
     @patch("workflow_parser.parse_workflow")
-    @patch("workflow_parser._read_workspace_workflow_by_name")
+    @patch("workflow_parser._read_workspace_workflow_record_by_name")
     @patch("workflow_validator.validate_workflow")
     @patch("workflow_context_repository.delete_contexts")
     @patch("workflow_context_repository.create_context")
@@ -1110,7 +1110,7 @@ class WorkflowExecutionTest(unittest.TestCase):
     ):
         create_context.side_effect = ["ctx-parent", "ctx-child"]
         child_document = {"input_ports": [], "output_ports": []}
-        read_workflow.return_value = child_document
+        read_workflow.return_value = (child_document, {"runtime": {"read": 0, "write": 0}})
         parse_workflow.return_value = [
             {
                 "id": "child-input",

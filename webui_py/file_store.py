@@ -9,6 +9,8 @@ from pymongo.collation import Collation
 from pymongo.collection import Collection
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
+from permissions import normalize_permissions
+
 
 class FileConflictError(Exception):
     pass
@@ -53,7 +55,7 @@ class FileStore:
     def list_files(self) -> list[dict[str, Any]]:
         with self._lock:
             self._ensure_loaded()
-            items = self._current_files(include_content=False)
+            items = [self._copy(file, include_content=False) for file in self._current_files(include_content=False)]
             return sorted(items, key=lambda item: (item["updated_at"], item["file_id"]), reverse=True)
 
     def get_file(self, file_id: str) -> dict[str, Any]:
@@ -108,7 +110,9 @@ class FileStore:
                 self._load_error = error
                 raise FileStoreUnavailableError("workspace file event store is unavailable") from error
 
-    def create_file(self, name: str, content: str = "") -> dict[str, Any]:
+    def create_file(
+        self, name: str, content: str = "", permissions: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         file_id = uuid.uuid4().hex
         with self._lock:
             self._ensure_loaded()
@@ -116,6 +120,7 @@ class FileStore:
             timestamp = self._now()
             file = {
                 "file_id": file_id, "name": name, "content": content, "pinned": False,
+                "permissions": normalize_permissions(permissions),
                 "created_at": timestamp, "updated_at": timestamp,
                 "revision": self._next_file_revision(),
             }
@@ -125,7 +130,10 @@ class FileStore:
             )
             return self._copy(file)
 
-    def update_file(self, file_id: str, name: str, content: str, expected_revision: int) -> dict[str, Any]:
+    def update_file(
+        self, file_id: str, name: str, content: str, expected_revision: int,
+        permissions: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
             self._ensure_loaded()
             current = self._require_file(file_id)
@@ -133,6 +141,9 @@ class FileStore:
             self._check_unique_file_name(name, exclude_file_id=file_id)
             updated = self._copy(current)
             updated.update({"name": name, "content": content, "updated_at": self._now()})
+            updated["permissions"] = normalize_permissions(
+                permissions if permissions is not None else updated.get("permissions")
+            )
             updated["revision"] = self._next_file_revision()
             self._workspace_write(
                 lambda: self.workspace.replace_one(
@@ -302,8 +313,9 @@ class FileStore:
             old, new = before.get(file_id), after.get(file_id)
             old_content = (old or {}).get("content", "")
             new_content = (new or {}).get("content", "")
-            old_meta = None if old is None else {key: old.get(key) for key in ("name", "pinned", "created_at")}
-            new_meta = None if new is None else {key: new.get(key) for key in ("name", "pinned", "created_at")}
+            metadata_fields = ("name", "pinned", "created_at", "permissions")
+            old_meta = None if old is None else {key: old.get(key) for key in metadata_fields}
+            new_meta = None if new is None else {key: new.get(key) for key in metadata_fields}
             old_lines = old_content.splitlines(keepends=True)
             new_lines = new_content.splitlines(keepends=True)
             patches = [
@@ -343,6 +355,8 @@ class FileStore:
             "file_id": change["file_id"], "status": status,
             "before_name": before and before.get("name"),
             "after_name": after and after.get("name"),
+            "before_permissions": before and before.get("permissions"),
+            "after_permissions": after and after.get("permissions"),
             "diff": "".join(lines),
             "before_content": before_file and before_file.get("content", ""),
             "after_content": after_file and after_file.get("content", ""),
@@ -558,6 +572,7 @@ class FileStore:
     @staticmethod
     def _copy(file: dict[str, Any], include_content: bool = True) -> dict[str, Any]:
         result = dict(file)
+        result["permissions"] = normalize_permissions(result.get("permissions"))
         if not include_content:
             result.pop("content", None)
         return result

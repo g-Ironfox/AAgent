@@ -6,6 +6,7 @@ import json
 import copy
 import logging
 import os
+import secrets
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -1003,7 +1004,7 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
 
 
 def _prepare_subprocess_call(process: dict[str, Any], parent_node: dict[str, Any]) -> WorkflowStep:
-    from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
+    from workflow_parser import _read_workspace_workflow_record_by_name, parse_workflow
     from workflow_validator import validate_workflow
     from workflow_structs import validate_value
 
@@ -1023,7 +1024,7 @@ def _prepare_subprocess_call(process: dict[str, Any], parent_node: dict[str, Any
         chain = " -> ".join([*call_stack, workflow_file])
         raise ValueError(f"recursive workflow call detected: {chain}")
 
-    workflow_document = _read_workspace_workflow_by_name(workflow_file)
+    workflow_document, workflow_permissions = _read_workspace_workflow_record_by_name(workflow_file)
     validate_workflow(workflow_document)
     input_ports = workflow_document["input_ports"]
     unknown = arguments.keys() - {port["name"] for port in input_ports}
@@ -1060,6 +1061,10 @@ def _prepare_subprocess_call(process: dict[str, Any], parent_node: dict[str, Any
         "terminal_id": process.get("terminal_id"),
         "workflow_name": workflow_file,
         "workflow_file": workflow_file,
+        "permissions": {
+            "runtime": dict(workflow_permissions.get("runtime", {"read": 0, "write": 0})),
+        },
+        "_workspace_token": secrets.token_urlsafe(32),
         "call_stack": next_call_stack,
         "ancestor_invocation_ids": [
             *process.get("ancestor_invocation_ids", []),
