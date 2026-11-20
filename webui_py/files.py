@@ -7,7 +7,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from file_store import FileConflictError, FileMissingError, FileNameConflictError, FileStore
-from permissions import can_access, normalize_permissions, process_levels
+from permissions import (
+    can_access, can_access_checkpoint, normalize_checkpoint_permissions, normalize_permissions, process_levels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +33,20 @@ class PermissionLevels(BaseModel):
     write: int = Field(ge=0)
 
 
+class CheckpointPermissions(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    read: bool = False
+    create: bool = False
+    restore: bool = False
+
+
 class FilePermissions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     runtime: PermissionLevels
     required: PermissionLevels
+    checkpoints: CheckpointPermissions = Field(default_factory=CheckpointPermissions)
 
 
 class FilePinRequest(BaseModel):
@@ -86,6 +97,23 @@ def create_files_router(
         if process is not None:
             return JSONResponse(status_code=403, content={"error": "workspace history is admin-only"})
         return None
+
+    def checkpoint_access(process, operation):
+        if not can_access_checkpoint(process, operation):
+            return JSONResponse(status_code=403, content={"error": f"checkpoint {operation} permission denied"})
+        return None
+
+    def readable_change(process, change):
+        if process is None:
+            return True
+        for side in ("before_permissions", "after_permissions"):
+            if not can_access(process, {"permissions": change.get(side)}, "read"):
+                return False
+        try:
+            current = store.get_file(change["file_id"])
+        except FileMissingError:
+            return True
+        return can_access(process, current, "read")
 
     def denied(operation: str):
         return JSONResponse(status_code=403, content={"error": f"file {operation} permission denied"})
@@ -138,7 +166,7 @@ def create_files_router(
         process, error = principal(process_id)
         if error:
             return error
-        if response := admin_only(process):
+        if response := checkpoint_access(process, "read"):
             return response
         items = store.list_checkpoints(before_seq=before_seq, limit=limit + 1, file_id=file_id)
         has_more = len(items) > limit
@@ -154,7 +182,7 @@ def create_files_router(
         process, error = principal(process_id)
         if error:
             return error
-        if response := admin_only(process):
+        if response := checkpoint_access(process, "read"):
             return response
         return store.checkpoint_tree()
 
@@ -163,10 +191,12 @@ def create_files_router(
         process, error = principal(process_id)
         if error:
             return error
-        if response := admin_only(process):
+        if response := checkpoint_access(process, "read"):
             return response
         try:
-            return store.checkpoint_diff(seq)
+            result = store.checkpoint_diff(seq)
+            result["changes"] = [change for change in result["changes"] if readable_change(process, change)]
+            return result
         except FileMissingError:
             return JSONResponse(status_code=404, content={"error": "Checkpoint not found"})
 
@@ -175,19 +205,22 @@ def create_files_router(
         process, error = principal(process_id)
         if error:
             return error
-        if response := admin_only(process):
+        if response := checkpoint_access(process, "create"):
             return response
         name = payload.name.strip()
         if not name:
             return JSONResponse(status_code=400, content={"error": "Checkpoint name cannot be empty"})
-        return store.create_checkpoint(name)
+        event = store.create_checkpoint(name)
+        if process is not None:
+            event["data"] = {key: value for key, value in event["data"].items() if key not in {"files", "changes"}}
+        return event
 
     @router.post("/checkpoints/{seq}/restore")
     def restore_checkpoint(seq: int = Path(ge=0), process_id: str | None = Header(default=None, alias="X-AAgent-Process-ID")):
         process, error = principal(process_id)
         if error:
             return error
-        if response := admin_only(process):
+        if response := checkpoint_access(process, "restore"):
             return response
         try:
             return store.restore_checkpoint(seq)
@@ -215,7 +248,10 @@ def create_files_router(
             if payload.permissions is not None:
                 return denied("permission metadata update")
             levels = process_levels(process)
-            permissions = {"runtime": dict(levels), "required": dict(levels)}
+            permissions = {
+                "runtime": dict(levels), "required": dict(levels),
+                "checkpoints": normalize_checkpoint_permissions(process.get("permissions", {}).get("checkpoints")),
+            }
         try:
             return store.create_file(name, payload.content, permissions)
         except FileNameConflictError:

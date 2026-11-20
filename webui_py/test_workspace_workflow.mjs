@@ -72,7 +72,7 @@ test('standalone WebUI canvas escapes filenames and renders control connections'
 class Element {
   constructor(tag = '') {
     this.tag = tag; this.children = []; this.listeners = {}; this.attributes = {};
-    this.value = ''; this.textContent = ''; this.disabled = false; this.hidden = false;
+    this.value = ''; this.textContent = ''; this.disabled = false; this.hidden = false; this.checked = false;
     this.validity = { valid: true };
   }
   append(...children) { this.children.push(...children); }
@@ -313,7 +313,8 @@ test('permission-only edits save all four levels and cancel restores the saved l
   await h.input('requiredWrite', '4');
   assert.equal(h.get('editButton').disabled, false);
   await h.fire('editButton');
-  const expected = { runtime: { read: 5, write: 2 }, required: { read: 1, write: 4 } };
+  const expected = { runtime: { read: 5, write: 2 }, required: { read: 1, write: 4 },
+    checkpoints: { read: false, create: false, restore: false } };
   assert.deepEqual(h.calls[0].permissions, expected);
   assert.deepEqual(h.stored.get('flow').permissions, expected);
   await h.fire('editButton');
@@ -332,4 +333,29 @@ test('invalid permission input prevents saving', async () => {
   await h.fire('editButton');
   assert.equal(h.calls.length, 0);
   assert.ok(h.get('saveStatus').textContent);
+});
+
+
+test('checkpoint permission checkboxes save independently and cancel restores saved flags', async () => {
+  const h = await harness([file('flow')]);
+  for (const id of ['checkpointRead', 'checkpointCreate', 'checkpointRestore']) {
+    assert.equal(h.get(id).checked, false);
+    assert.equal(h.get(id).disabled, true);
+  }
+  await h.fire('editButton');
+  h.get('checkpointRead').checked = true;
+  await h.fire('checkpointRead', 'input');
+  h.get('checkpointRestore').checked = true;
+  await h.fire('checkpointRestore', 'input');
+  await h.fire('editButton');
+  assert.deepEqual(h.calls[0].permissions.checkpoints, { read: true, create: false, restore: true });
+  await h.fire('editButton');
+  h.get('checkpointCreate').checked = true;
+  await h.fire('checkpointCreate', 'input');
+  h.get('checkpointRestore').checked = false;
+  await h.fire('checkpointRestore', 'input');
+  await h.fire('cancelButton');
+  assert.equal(h.get('checkpointCreate').checked, false);
+  assert.equal(h.get('checkpointRestore').checked, true);
+  assert.equal(h.calls.length, 1);
 });

@@ -103,8 +103,24 @@ class ProcessWorkflowTest(unittest.TestCase):
             document("Root"), {"text": "hello"}, "root-file", "Root.flow",
             "terminal-root", workflow_permissions,
         )
-        self.assertEqual(process["permissions"], {"runtime": workflow_permissions["runtime"]})
+        self.assertEqual(process["permissions"], {
+            "runtime": workflow_permissions["runtime"],
+            "checkpoints": {"read": False, "create": False, "restore": False},
+        })
         self.assertTrue(process["_workspace_token"])
+
+    def test_root_checkpoint_permissions_are_snapshotted_and_preserved_when_claimed(self):
+        flags = {"read": True, "create": False, "restore": True}
+        process = build_workflow_process(
+            document("Root"), {"text": "hello"}, "root-file", "Root.flow",
+            "terminal-root", {"checkpoints": flags},
+        )
+        flags["restore"] = False
+        self.assertEqual(process["permissions"]["checkpoints"], {"read": True, "create": False, "restore": True})
+        root = main.create_process(process)
+        claimed, acquired = r.claim_process(self.redis, root["process_id"])
+        self.assertTrue(acquired)
+        self.assertEqual(claimed["permissions"], process["permissions"])
 
     def drain(self):
         results = []

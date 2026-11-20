@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from process_repository import record_process_event
+from process_permissions import snapshot_process_permissions
 
 
 def initialize_process_pair(process: dict) -> dict:
@@ -65,17 +66,7 @@ def build_workflow_process(
 
     from workflow_contract import migrate_subprocess_workflow_format
 
-    permissions = permissions or {
-        "runtime": {"read": 0, "write": 0},
-        "required": {"read": 0, "write": 0},
-    }
-    runtime_permissions = permissions.get("runtime", {})
-    process_permissions = {
-        "runtime": {
-            "read": runtime_permissions.get("read", 0),
-            "write": runtime_permissions.get("write", 0),
-        }
-    }
+    process_permissions = snapshot_process_permissions(permissions)
 
     if not isinstance(file_name, str) or not file_name.strip():
         raise ValueError("工作流文件名不能为空")

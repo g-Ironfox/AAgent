@@ -49,10 +49,10 @@
           </div>
           <section class="workflow-subprocess-files"><header><div><p>TOOLS</p><h3>Tool 依赖</h3></div><span id="remoteToolCount" class="reference-count"></span></header><div id="remoteTools" class="workflow-reference-list"></div></section>
         </section><div id="fileEmpty" class="file-empty"><strong>选择一个文件</strong><span>或新建一个文件开始记录</span></div></div>
-        <footer class="editor-actions"><div class="permission-controls" aria-label="文件权限"><label>运行读<input id="runtimeRead" type="number" min="0" step="1" value="0" disabled></label><label>运行写<input id="runtimeWrite" type="number" min="0" step="1" value="0" disabled></label><label>读取门槛<input id="requiredRead" type="number" min="0" step="1" value="0" disabled></label><label>写入门槛<input id="requiredWrite" type="number" min="0" step="1" value="0" disabled></label></div><span id="saveStatus" class="save-status" role="status"></span><span id="characterCount" class="file-count">0 字</span><button id="cancelButton" class="tool-button" type="button" disabled hidden>取消</button><button id="editButton" class="primary-button" type="button" disabled>编辑</button></footer>
+        <footer class="editor-actions"><div class="permission-controls" aria-label="文件权限"><label>运行读<input id="runtimeRead" type="number" min="0" step="1" value="0" disabled></label><label>运行写<input id="runtimeWrite" type="number" min="0" step="1" value="0" disabled></label><label>读取门槛<input id="requiredRead" type="number" min="0" step="1" value="0" disabled></label><label>写入门槛<input id="requiredWrite" type="number" min="0" step="1" value="0" disabled></label><label class="permission-toggle"><input id="checkpointRead" type="checkbox" disabled>Checkpoint 读取</label><label class="permission-toggle"><input id="checkpointCreate" type="checkbox" disabled>Checkpoint 创建</label><label class="permission-toggle"><input id="checkpointRestore" type="checkbox" disabled>Checkpoint 回滚</label></div><span id="saveStatus" class="save-status" role="status"></span><span id="characterCount" class="file-count">0 字</span><button id="cancelButton" class="tool-button" type="button" disabled hidden>取消</button><button id="editButton" class="primary-button" type="button" disabled>编辑</button></footer>
       </section>
     </section>
   </main>
-  <script type="module" src="/workspace.js?v=6"></script>
+  <script type="module" src="/workspace.js?v=7"></script>
 </body>
 </html>

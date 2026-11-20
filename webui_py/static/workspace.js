@@ -17,6 +17,7 @@ const el = Object.fromEntries([
   'createButton', 'checkpointButton', 'restoreButton', 'searchInput', 'fileList', 'fileCount', 'name', 'fileName',
   'fileContent', 'filePreview', 'fileEmpty', 'fileId', 'updatedAt',
   'runtimeRead', 'runtimeWrite', 'requiredRead', 'requiredWrite',
+  'checkpointRead', 'checkpointCreate', 'checkpointRestore',
   'pinButton', 'downloadButton', 'deleteButton', 'cancelButton', 'editButton',
   'saveStatus', 'characterCount', 'workflowButton', 'workflowPanel', 'workflowVersion', 'workflowDescription',
   'workflowCanvasPreview', 'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts',
@@ -49,6 +50,7 @@ function readPermissions() {
   return {
     runtime: { read: Number(el.runtimeRead.value), write: Number(el.runtimeWrite.value) },
     required: { read: Number(el.requiredRead.value), write: Number(el.requiredWrite.value) },
+    checkpoints: { read: el.checkpointRead.checked, create: el.checkpointCreate.checked, restore: el.checkpointRestore.checked },
   };
 }
 
@@ -63,7 +65,8 @@ function updateControls() {
   const dirty = changed();
   el.name.disabled = !active || busy || state.mode !== 'edit';
   el.fileContent.disabled = !active || busy || state.mode !== 'edit';
-  for (const input of [el.runtimeRead, el.runtimeWrite, el.requiredRead, el.requiredWrite]) {
+  for (const input of [el.runtimeRead, el.runtimeWrite, el.requiredRead, el.requiredWrite,
+    el.checkpointRead, el.checkpointCreate, el.checkpointRestore]) {
     input.disabled = !active || busy || state.mode !== 'edit';
   }
   el.createButton.disabled = busy;
@@ -129,14 +132,19 @@ function formatDate(value) {
 
 function applyFile(item) {
   state.current = item;
-  const permissions = item.permissions || {
+  const permissions = {
     runtime: { read: 0, write: 0 }, required: { read: 0, write: 0 },
+    ...item.permissions,
+    checkpoints: { read: false, create: false, restore: false, ...item.permissions?.checkpoints },
   };
   state.saved = { name: item.name, content: item.content, permissions };
   el.runtimeRead.value = permissions.runtime.read;
   el.runtimeWrite.value = permissions.runtime.write;
   el.requiredRead.value = permissions.required.read;
   el.requiredWrite.value = permissions.required.write;
+  el.checkpointRead.checked = permissions.checkpoints.read;
+  el.checkpointCreate.checked = permissions.checkpoints.create;
+  el.checkpointRestore.checked = permissions.checkpoints.restore;
   el.name.value = item.name;
   el.fileContent.value = item.content;
   el.filePreview.textContent = item.content;
@@ -385,6 +393,9 @@ el.cancelButton.addEventListener('click', () => {
   el.runtimeWrite.value = state.saved.permissions.runtime.write;
   el.requiredRead.value = state.saved.permissions.required.read;
   el.requiredWrite.value = state.saved.permissions.required.write;
+  el.checkpointRead.checked = state.saved.permissions.checkpoints.read;
+  el.checkpointCreate.checked = state.saved.permissions.checkpoints.create;
+  el.checkpointRestore.checked = state.saved.permissions.checkpoints.restore;
   refreshWorkflowPanel();
   state.mode = 'preview';
   setStatus('');
@@ -412,7 +423,8 @@ el.fileContent.addEventListener('input', () => {
   setStatus('');
   updateControls();
 });
-for (const input of [el.runtimeRead, el.runtimeWrite, el.requiredRead, el.requiredWrite]) {
+for (const input of [el.runtimeRead, el.runtimeWrite, el.requiredRead, el.requiredWrite,
+    el.checkpointRead, el.checkpointCreate, el.checkpointRestore]) {
   input.addEventListener('input', () => { setStatus(''); updateControls(); });
 }
 document.addEventListener('keydown', (event) => {

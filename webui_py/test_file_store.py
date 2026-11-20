@@ -3,6 +3,7 @@ import unittest
 from pymongo.errors import DuplicateKeyError, ServerSelectionTimeoutError
 
 from files import CheckpointRequest, FilePinRequest, FileRequest, create_files_router
+from permissions import normalize_permissions
 from file_store import (
     FileConflictError, FileMissingError, FileNameConflictError, FileStore, FileStoreUnavailableError,
 )
@@ -208,8 +209,8 @@ class FileStoreTests(unittest.TestCase):
         updated = self.store.update_file(
             created["file_id"], created["name"], "changed", created["revision"]
         )
-        self.assertEqual(created["permissions"], permissions)
-        self.assertEqual(updated["permissions"], permissions)
+        self.assertEqual(created["permissions"], normalize_permissions(permissions))
+        self.assertEqual(updated["permissions"], normalize_permissions(permissions))
         self.assertEqual(FileStore(self.collection, self.workspace).get_file(created["file_id"]), updated)
 
     def test_invalid_file_permission_levels_are_rejected(self):
@@ -231,10 +232,10 @@ class FileStoreTests(unittest.TestCase):
         diff = self.store.checkpoint_diff(after["seq"])["changes"]
         self.assertEqual(len(diff), 1)
         self.assertEqual(diff[0]["status"], "modified")
-        self.assertEqual(diff[0]["before_permissions"], original)
-        self.assertEqual(diff[0]["after_permissions"], changed)
+        self.assertEqual(diff[0]["before_permissions"], normalize_permissions(original))
+        self.assertEqual(diff[0]["after_permissions"], normalize_permissions(changed))
         self.store.restore_checkpoint(before["seq"])
-        self.assertEqual(self.store.get_file(file["file_id"])["permissions"], original)
+        self.assertEqual(self.store.get_file(file["file_id"])["permissions"], normalize_permissions(original))
 
     def test_file_name_index_is_unique_and_uses_simple_collation(self):
         keys, options = self.workspace.indexes[0]
@@ -326,7 +327,7 @@ class FileStoreTests(unittest.TestCase):
         router = create_files_router(self.store, lambda _process_id: process)
         create = next(route.endpoint for route in router.routes if route.path == "/api/files" and "POST" in route.methods)
         created = create(FileRequest(name="child"), "p1:secret")
-        self.assertEqual(created["permissions"], {"runtime": levels, "required": levels})
+        self.assertEqual(created["permissions"], normalize_permissions({"runtime": levels, "required": levels}))
 
     def test_write_permission_does_not_grant_read_access_through_pin_response(self):
         process = {
@@ -360,6 +361,125 @@ class FileStoreTests(unittest.TestCase):
                     kwargs["payload"] = CheckpointRequest(name="restricted")
                 response = route.endpoint(**kwargs)
                 self.assertEqual(response.status_code, 403)
+
+    def test_checkpoint_permissions_are_independent_for_all_combinations(self):
+        from itertools import product
+        self.store.create_file("task", "initial")
+        checkpoint = self.store.create_checkpoint("base")
+        for read, create, restore in product((False, True), repeat=3):
+            flags = {"read": read, "create": create, "restore": restore}
+            with self.subTest(flags=flags):
+                process = {
+                    "process_id": "p1", "process_type": "workflow", "_workspace_token": "secret",
+                    "status": "running", "permissions": {"runtime": {"read": 0, "write": 0}, "checkpoints": flags},
+                }
+                router = create_files_router(self.store, lambda _: process)
+                def endpoint(path, method="GET"):
+                    return next(route.endpoint for route in router.routes
+                                if route.path == "/api/files" + path and method in route.methods)
+                calls = [
+                    ("read", lambda: endpoint("/checkpoints")(before_seq=None, limit=50, file_id=None, process_id="p1:secret")),
+                    ("read", lambda: endpoint("/checkpoints/tree")("p1:secret")),
+                    ("read", lambda: endpoint("/checkpoints/{seq}/diff")(checkpoint["seq"], "p1:secret")),
+                    ("create", lambda: endpoint("/checkpoints", "POST")(CheckpointRequest(name="new"), "p1:secret")),
+                    ("restore", lambda: endpoint("/checkpoints/{seq}/restore", "POST")(checkpoint["seq"], "p1:secret")),
+                ]
+                for operation, call in calls:
+                    result = call()
+                    if flags[operation]:
+                        self.assertIsInstance(result, dict)
+                        if operation == "create":
+                            self.assertNotIn("files", result["data"])
+                            self.assertNotIn("changes", result["data"])
+                    else:
+                        self.assertEqual(result.status_code, 403)
+                events = endpoint("/events")(before_seq=None, limit=50, file_id=None, process_id="p1:secret")
+                self.assertEqual(events.status_code, 403)
+
+    def test_restore_flag_grants_global_restore_without_file_write_or_checkpoint_read(self):
+        protected = {"runtime": {"read": 3, "write": 3}, "required": {"read": 3, "write": 3}}
+        file = self.store.create_file("protected", "stable", protected)
+        checkpoint = self.store.create_checkpoint("stable")
+        self.store.update_file(file["file_id"], "protected", "changed", file["revision"])
+        added = self.store.create_file("new task output", "new")
+        process = {
+            "process_id": "p1", "process_type": "workflow", "_workspace_token": "secret", "status": "running",
+            "permissions": {"runtime": {"read": 0, "write": 0}, "checkpoints": {"restore": True}},
+        }
+        router = create_files_router(self.store, lambda _: process)
+        restore = next(route.endpoint for route in router.routes if route.path.endswith("/{seq}/restore"))
+        restore(checkpoint["seq"], "p1:secret")
+        self.assertEqual(self.store.get_file(file["file_id"])["content"], "stable")
+        self.assertEqual(self.store.get_file(file["file_id"])["permissions"], normalize_permissions(protected))
+        with self.assertRaises(FileMissingError):
+            self.store.get_file(added["file_id"])
+        restore(0, "p1:secret")
+        self.assertEqual(self.store.list_files(), [])
+        self.assertEqual(self.store.list_checkpoints()[0]["seq"], checkpoint["seq"])
+
+    def test_checkpoint_diff_checks_both_historical_and_current_file_read_permissions(self):
+        hidden = {"runtime": {"read": 0, "write": 0}, "required": {"read": 5, "write": 0}}
+        public = normalize_permissions()
+        secret = self.store.create_file("secret", "secret before", hidden)
+        visible = self.store.create_file("visible", "public before")
+        tightened = self.store.create_file("tightened", "formerly public")
+        deleted = self.store.create_file("deleted", "deleted secret", hidden)
+        self.store.create_checkpoint("before")
+        secret = self.store.update_file(secret["file_id"], "secret", "secret after", secret["revision"], public)
+        visible = self.store.update_file(visible["file_id"], "visible", "public after", visible["revision"])
+        tightened = self.store.update_file(tightened["file_id"], "tightened", "changed", tightened["revision"])
+        self.store.delete_file(deleted["file_id"], deleted["revision"])
+        after = self.store.create_checkpoint("after")
+        self.store.update_file(tightened["file_id"], "tightened", "private now", tightened["revision"], hidden)
+        process = {
+            "process_id": "p1", "process_type": "workflow", "_workspace_token": "secret", "status": "running",
+            "permissions": {"runtime": {"read": 0, "write": 0}, "checkpoints": {"read": True}},
+        }
+        router = create_files_router(self.store, lambda _: process)
+        diff = next(route.endpoint for route in router.routes if route.path.endswith("/{seq}/diff"))
+        result = diff(after["seq"], "p1:secret")
+        self.assertEqual([change["file_id"] for change in result["changes"]], [visible["file_id"]])
+        self.assertEqual(len(diff(after["seq"], None)["changes"]), 4)
+
+    def test_checkpoint_boolean_validation_defaults_and_inheritance(self):
+        from pydantic import ValidationError
+        levels = {"runtime": {"read": 1, "write": 1}, "required": {"read": 1, "write": 1}}
+        self.assertEqual(normalize_permissions(levels)["checkpoints"], {"read": False, "create": False, "restore": False})
+        for value in (1, 0, "true", None):
+            with self.subTest(value=value):
+                invalid = {**levels, "checkpoints": {"read": value}}
+                with self.assertRaises(ValueError):
+                    normalize_permissions(invalid)
+                with self.assertRaises(ValidationError):
+                    FileRequest(name="invalid", permissions=invalid)
+        with self.assertRaises(ValueError):
+            normalize_permissions({**levels, "checkpoints": {"delete": True}})
+        flags = {"read": True, "create": False, "restore": True}
+        process = {
+            "process_id": "p1", "process_type": "workflow", "_workspace_token": "secret", "status": "running",
+            "permissions": {"runtime": levels["runtime"], "checkpoints": flags},
+        }
+        router = create_files_router(self.store, lambda _: process)
+        create = next(route.endpoint for route in router.routes if route.path == "/api/files" and "POST" in route.methods)
+        created = create(FileRequest(name="inherited"), "p1:secret")
+        self.assertEqual(created["permissions"]["checkpoints"], flags)
+        denied = create(FileRequest(name="forged", permissions={**levels, "checkpoints": flags}), "p1:secret")
+        self.assertEqual(denied.status_code, 403)
+
+    def test_checkpoint_flags_persist_in_diff_and_restore(self):
+        base = normalize_permissions()
+        changed = {**base, "checkpoints": {"read": True, "create": False, "restore": True}}
+        file = self.store.create_file("workflow", "{}", base)
+        before = self.store.create_checkpoint("before")
+        self.store.update_file(file["file_id"], "workflow", "{}", file["revision"], changed)
+        after = self.store.create_checkpoint("after")
+        change = self.store.checkpoint_diff(after["seq"])["changes"][0]
+        self.assertEqual(change["before_permissions"], base)
+        self.assertEqual(change["after_permissions"], changed)
+        self.store.restore_checkpoint(before["seq"])
+        self.assertEqual(self.store.get_file(file["file_id"])["permissions"], base)
+        self.store.restore_checkpoint(after["seq"])
+        self.assertEqual(self.store.get_file(file["file_id"])["permissions"], changed)
 
     def test_finished_processes_and_non_ascii_forged_tokens_are_rejected(self):
         process = {

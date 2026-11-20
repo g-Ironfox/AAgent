@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from uuid import uuid4
 
+from process_permissions import snapshot_process_permissions
 from workflow_contract import is_number_value, node_argument, tool_parameter_names, tool_parameter_type
 
 
@@ -1061,9 +1062,7 @@ def _prepare_subprocess_call(process: dict[str, Any], parent_node: dict[str, Any
         "terminal_id": process.get("terminal_id"),
         "workflow_name": workflow_file,
         "workflow_file": workflow_file,
-        "permissions": {
-            "runtime": dict(workflow_permissions.get("runtime", {"read": 0, "write": 0})),
-        },
+        "permissions": snapshot_process_permissions(workflow_permissions),
         "_workspace_token": secrets.token_urlsafe(32),
         "call_stack": next_call_stack,
         "ancestor_invocation_ids": [

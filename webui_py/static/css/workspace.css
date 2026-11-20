@@ -52,6 +52,8 @@
 .permission-controls label { display:grid; gap:3px; color:var(--muted); font-size:9px; }
 .permission-controls input { width:48px; height:26px; padding:0 4px; color:var(--ink); border:1px solid var(--line); background:#fff; font-size:11px; }
 .permission-controls input:disabled { opacity:.65; }
+.permission-controls .permission-toggle { display:flex; align-items:center; gap:5px; align-self:end; min-height:26px; }
+.permission-controls input[type="checkbox"] { width:14px; height:14px; margin:0; accent-color:var(--green); }
 .save-status { margin-right:auto; color:var(--muted); font-size:10px; }
 .save-status.success { color:var(--green); }
 .save-status.error { color:var(--red); }

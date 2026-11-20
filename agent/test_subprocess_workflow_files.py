@@ -78,11 +78,25 @@ class SubprocessWorkflowTest(unittest.TestCase):
 
         child = self.execute().child_process
 
-        self.assertEqual(child["permissions"], {"runtime": target_permissions["runtime"]})
+        self.assertEqual(child["permissions"], {
+            "runtime": target_permissions["runtime"],
+            "checkpoints": {"read": False, "create": False, "restore": False},
+        })
         self.assertNotEqual(child["permissions"]["runtime"], current_workflow_process.get()["permissions"]["runtime"])
         self.assertTrue(child["_workspace_token"])
         self.assertEqual(set(self.graph[1]["data_inputs"]), {"workflow-file", "arguments-json"})
         self.assertEqual(set(self.graph[1]["data_outputs"]), {"result-json", "error-json"})
+
+    def test_checkpoint_permissions_come_from_child_file_not_parent(self):
+        parent_flags = {"read": False, "create": True, "restore": False}
+        target_flags = {"read": True, "create": False, "restore": True}
+        current_workflow_process.get()["permissions"] = {"checkpoints": parent_flags}
+        self.read.return_value = (empty_workflow("Child"), {"checkpoints": target_flags})
+        child = self.execute().child_process
+        self.assertEqual(child["permissions"]["checkpoints"], target_flags)
+        target_flags["restore"] = False
+        self.assertTrue(child["permissions"]["checkpoints"]["restore"])
+        self.assertFalse(parent_flags["restore"])
 
     def branched_parent(self):
         doc = copy.deepcopy(self.parent)

@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import redis
 
+from process_permissions import snapshot_process_permissions
 from redis_client import REDIS_KERNEL_DB, REDIS_PUBLIC_DB
 from scheduler_projection import queue_public_process_updates
 
@@ -190,9 +191,7 @@ def claim_process(client, process_id: str) -> tuple[dict, bool]:
                 if process.get("status") != "ready" or process.get("process_type") == "terminal":
                     return process, False
                 if process.get("process_type") == "workflow":
-                    process.setdefault("permissions", {
-                        "runtime": {"read": 0, "write": 0},
-                    })
+                    process["permissions"] = snapshot_process_permissions(process.get("permissions"))
                     process.setdefault("_workspace_token", secrets.token_urlsafe(32))
                 process["status"] = "running"
                 process["execution_id"] = uuid4().hex
