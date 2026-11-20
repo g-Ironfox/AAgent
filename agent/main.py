@@ -412,15 +412,30 @@ def _resume_subprocess(process: dict, workflow_map: list[dict]) -> None:
     child = read_process(pending['child_process_id'])
     if child.get('parent_process_id') != process['process_id']:
         raise ValueError('child process has an invalid parent link')
-    status = child.get('status')
-    if status != 'completed':
-        raise ValueError(
-            f"subprocess {child.get('workflow_name')} ({child['process_id']}) "
-            f"{status}: {child.get('error', 'child did not complete successfully')}"
-        )
     node = workflow_map[pending['node_index']]
     if node.get('id') != pending['node_id'] or node.get('type') != "spawn_and_wait_subprocess":
         raise ValueError('pending child call does not match spawn_and_wait_subprocess node')
+    status = child.get('status')
+    if status != 'completed':
+        error = child.get('error') or (
+            'child was terminated' if status == 'terminated' else 'child did not complete successfully'
+        )
+        message = f"subprocess {child.get('workflow_name')} ({child['process_id']}) {status}: {error}"
+        if status not in {'failed', 'terminated'} or 'error' not in node.get('successors', {}):
+            raise ValueError(message)
+        details = {
+            'workflow_file': child.get('workflow_file') or child.get('workflow_name'),
+            'process_id': child['process_id'],
+            'status': status,
+            'error': error,
+        }
+        error_json = json.dumps(details, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+        propagate_workflow_output(workflow_map, node, 'error-json', error_json)
+        _finish_call_trace(process, 'failed', message)
+        process['current_node_id'] = pending['node_index']
+        process['control_port'] = 'error'
+        process['pending_call'] = None
+        return
     result = child.get('result', {})
     if not isinstance(result, dict):
         raise ValueError('subprocess result must be an object')
@@ -593,6 +608,9 @@ def Executor(process_id: str) -> dict:
             process.get('terminal_id'),
         ):
             outcome = execute_node(current_id, workflow_map)
+        handled_error = node.pop('_handled_subprocess_error', None)
+        if handled_error is not None:
+            trace.update(status='failed', error=handled_error)
         elapsed_ms = (time.perf_counter() - started) * 1000
         if process['active_duration_ms'] + elapsed_ms > WORKFLOW_TIMEOUT_SECONDS * 1000:
             raise TimeoutError(f'workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds of active execution')
@@ -649,6 +667,7 @@ def Executor(process_id: str) -> dict:
                 node.pop('_workflow_ancestor_invocation_ids', None)
                 node.pop('_workflow_context_ids', None)
                 node.pop('_selected_control_port', None)
+                node.pop('_handled_subprocess_error', None)
         current_workflow_process.reset(process_token)
         current_persistent_invocation_id.reset(context_token)
     if isinstance(workflow_map, list):

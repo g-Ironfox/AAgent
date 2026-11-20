@@ -121,7 +121,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _successor_key(node: dict[str, Any], port_id: str) -> str:
-    if node.get("type") == "json_tool" and port_id == "error-out":
+    if node.get("type") in {"json_tool", "spawn_and_wait_subprocess"} and port_id == "error-out":
         return "error"
     if node.get("type") == "router":
         if port_id == "branch$others":

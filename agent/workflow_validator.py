@@ -247,7 +247,7 @@ def validate_workflow(workflow: dict[str, Any]) -> None:
         required_inputs, required_outputs = control_ports_for_node(node)
         missing_inputs = required_inputs - connected_control_inputs[node_id]
         missing_outputs = required_outputs - connected_control_outputs[node_id]
-        if node_type == "json_tool":
+        if node_type in {"json_tool", "spawn_and_wait_subprocess"}:
             missing_outputs.discard("error-out")
         if missing_inputs or missing_outputs:
             missing = [
@@ -350,7 +350,13 @@ def _validate_lifecycles(
         node = nodes_by_id[node_id]
         node_type = node["type"]
         _, control_outputs = control_ports_for_node(node)
-        if loop_id and (node_type == "router" or len(control_outputs) > 1):
+        branching_outputs = control_outputs
+        if node_type == "spawn_and_wait_subprocess" and not any(
+            edge["fromPortId"] == "error-out" for edge in outgoing[node_id]
+        ):
+            # An unconnected optional error exit preserves existing linear loop bodies.
+            branching_outputs = control_outputs - {"error-out"}
+        if loop_id and (node_type == "router" or len(branching_outputs) > 1):
             raise WorkflowValidationError(
                 f"branching control flow is not allowed inside {nodes_by_id[loop_id]['type']}: node {node_id}"
             )
@@ -370,7 +376,7 @@ def _validate_lifecycles(
                 output_scopes[(node_id, "item-out")] = child_scope
             elif node_type not in {"foreach", "while_pop"} and (node_type == "router" or len(control_outputs) > 1):
                 child_scope = (*scope, (node_id, port))
-                if node_type == "json_tool":
+                if node_type in {"json_tool", "spawn_and_wait_subprocess"}:
                     data_port = "error-json" if port == "error-out" else "result-json"
                     output_scopes[(node_id, data_port)] = child_scope
             child_scopes[port] = child_scope

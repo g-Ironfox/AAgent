@@ -976,16 +976,37 @@ def workflow_session_write(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 
 
-def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMap) -> WorkflowStep:
+def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
     process = current_workflow_process.get()
     if process is None:
         raise ValueError("spawn_and_wait_subprocess requires the process scheduler")
 
+    node = workflow_map[current_id]
+    try:
+        step = _prepare_subprocess_call(process, node)
+    except Exception as error:
+        if not isinstance(node.get("successors", {}).get("error"), int):
+            raise
+        _, workflow_file = read_workflow_input(node, "workflow-file")
+        details = {
+            "workflow_file": workflow_file,
+            "process_id": None,
+            "status": "failed",
+            "error": str(error),
+        }
+        error_json = json.dumps(details, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        propagate_workflow_output(workflow_map, node, "error-json", error_json)
+        node["_handled_subprocess_error"] = str(error)
+        return next_successor(node, "error")
+    next_successor(node)
+    return step
+
+
+def _prepare_subprocess_call(process: dict[str, Any], parent_node: dict[str, Any]) -> WorkflowStep:
     from workflow_parser import _read_workspace_workflow_by_name, parse_workflow
     from workflow_validator import validate_workflow
     from workflow_structs import validate_value
 
-    parent_node = workflow_map[current_id]
     has_file, workflow_file = read_workflow_input(parent_node, "workflow-file")
     if not has_file or not isinstance(workflow_file, str) or not workflow_file.strip():
         raise ValueError("subprocess workflow-file must be a non-empty filename")
@@ -1011,7 +1032,7 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
     for port in input_ports:
         value = arguments.get(port["name"])
         if value is not None:
-            validate_value(port["type"], value, {})
+            validate_value(port["type"], value, {}, path=f"$.{port['name']}")
 
     child_map = parse_workflow(workflow_document)
     child_input_id = next(
@@ -1049,7 +1070,6 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
         "control_port": None,
         "input": child_inputs,
     }
-    next_successor(parent_node)
     return WorkflowStep(
         {"kind": "process_exit", "process_id": child_id},
         child,

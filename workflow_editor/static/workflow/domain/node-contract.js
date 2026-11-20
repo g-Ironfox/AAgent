@@ -422,7 +422,9 @@ export function portsForNode(node) {
       { id: 'workflow-file', direction: 'input', type: 'content', label: 'Workflow 文件名', title: '工作区精确文件名，含扩展名', multiple: false },
       { id: 'arguments-json', direction: 'input', type: 'content', label: '参数 JSON', title: '键名对应目标 Workflow 的输入接口', multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '结果回填后继续', multiple: false },
+      { id: 'error-out', direction: 'output', type: 'control', label: '错误', title: '子进程失败或终止后继续；可选连接', multiple: false },
       { id: 'result-json', direction: 'output', type: 'content', label: '结果 JSON', title: '子进程输出组成的 JSON 对象', multiple: true },
+      { id: 'error-json', direction: 'output', type: 'content', label: '错误 JSON', title: '子进程文件名、进程 ID、状态和错误文本', multiple: true },
     ];
   }
   const ports = [

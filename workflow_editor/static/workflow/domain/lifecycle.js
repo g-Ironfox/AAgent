@@ -80,7 +80,10 @@ export function compileLifecycles(workflow) {
     const controls = ports(node).filter((port) => port.direction === 'output');
     const edges = outgoing.get(nodeId);
     // Match the existing rule: no branching node (including nested foreach) in a loop body.
-    if (loopId && (controls.length > 1 || node.type === 'router')) {
+    const branchingControls = node.type === 'spawn_and_wait_subprocess'
+      ? controls.filter((port) => port.id !== 'error-out' || edges.some((edge) => edge.fromPortId === 'error-out'))
+      : controls;
+    if (loopId && (branchingControls.length > 1 || node.type === 'router')) {
       fail(`循环体内不允许多分支节点「${name(node)}」。`, nodeId);
     }
     if (loopId && ['output', 'function_output'].includes(node.type)) {
@@ -101,14 +104,14 @@ export function compileLifecycles(workflow) {
         childLoop = nodeId;
       } else if (!['foreach', 'while_pop'].includes(node.type) && (node.type === 'router' || controls.length > 1)) {
         childScope = addScope(scopeId, 'branch', `${name(node)} / ${port.label}`, nodeId, port.id);
-        if (node.type === 'json_tool') {
+        if (['json_tool', 'spawn_and_wait_subprocess'].includes(node.type)) {
           const dataPort = port.id === 'error-out' ? 'error-json' : 'result-json';
           outputScopes.set(nodeId, { ...outputScopes.get(nodeId), [dataPort]: childScope });
         }
       }
       const edge = successors.get(port.id);
       if (!edge) {
-        if (!(node.type === 'json_tool' && port.id === 'error-out')) {
+        if (!(['json_tool', 'spawn_and_wait_subprocess'].includes(node.type) && port.id === 'error-out')) {
           fail(`「${name(node)}」的控制出口 ${port.label} 未连接。`, nodeId);
         }
         continue;

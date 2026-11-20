@@ -132,7 +132,7 @@ docker compose logs -f agent webui_py
 
 启动后 Agent WebUI 在 `http://localhost:8081`,管理 WebUI 在 `http://localhost:8084`。
 
-在 Agent WebUI 工作区保存 Workflow 2.0 文件后，打开终端页创建进程并选择该工作流。创建请求直接携带 workflow_file_id 和输入值；调度器从 Redis 就绪列表执行进程。`spawn_and_wait_subprocess` 节点从 `workflow-file` 和 `arguments-json` 输入接收精确工作区文件名与 JSON 参数，等待子进程退出后从 `result-json` 返回 JSON 对象；无需声明子 Workflow metadata。
+在 Agent WebUI 工作区保存 Workflow 2.0 文件后，打开终端页创建进程并选择该工作流。创建请求直接携带 workflow_file_id 和输入值；调度器从 Redis 就绪列表执行进程。`spawn_and_wait_subprocess` 节点从 `workflow-file` 和 `arguments-json` 输入接收精确工作区文件名与 JSON 参数，等待子进程退出后从 `result-json` 返回 JSON 对象；无需声明子 Workflow metadata。连接可选的 `error-out` 分支后，子进程失败或终止会唤醒父进程并通过 `error-json` 返回错误内容；参数 JSON 无效、参数不符合子流程接口、目标 Workflow 文件不存在等调用前错误也进入同一分支，此时 `process_id` 为 `null`，不会创建子进程；未连接时继续传播失败。
 
 工作区 checkpoint API 同时注册为 Local Tool，可在工具目录中选择：
 

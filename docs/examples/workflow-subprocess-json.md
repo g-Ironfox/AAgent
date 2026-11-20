@@ -69,3 +69,29 @@ reply 是解析出的字段，child_result_json 是子流程返回的完整 JSON
 目标文件名是工作区中的精确文件名，不填写本仓库的 docs/examples/ 路径。参数 JSON 的键必须对应子流程声明的输入接口。调用节点使用空 arguments，无需任何子 workflow metadata 声明。
 
 父流程等待时保存 pending_call；子流程结束后写入结果并从调用节点的后继继续，不会重新执行调用节点。若不需要拆解返回对象，可以省略 deserialize_json，直接使用 result-json。
+
+## 子进程报错后由父进程处理
+
+将 [workflow-subprocess-error-parent.flow](workflow-subprocess-error-parent.flow) 和 [workflow-subprocess-error-child.flow](workflow-subprocess-error-child.flow) 保存到工作区，保留文件名。创建父流程进程，无需创建时参数；终端出现提示后发送：
+
+- `{"name":"小明"}`：子流程打印 name 并返回问候语，父终端打印 `你好，小明！`。
+- `{"name":""}`：子流程的 output_to_terminal 拒绝空文本并报错退出。父流程被唤醒，从 error-out 继续，提取 error-json 中的 error 字段并在父终端打印；父流程处理后可以正常完成。
+- `not json` 或 `[]`：参数不是有效 JSON 对象，父流程直接打印错误，不创建子进程。
+- `{"name":123}` 或 `{"unknown":"小明"}`：参数类型或名称不符合子流程输入接口，直接进入错误分支。
+- 将父流程中“子流程文件名”的固定文本临时改成工作区不存在的 `Missing.flow`：文件加载失败也会进入错误分支。
+
+每次运行处理一条消息。失败时 error-json 的结构为：
+
+```json
+{"workflow_file":"workflow-subprocess-error-child.flow","process_id":"<child-id>","status":"failed","error":"output_to_terminal content-in requires non-empty text"}
+```
+
+error-json 和 result-json 都是 content 文本，分别只在错误和成功分支提供。本例用独立 Output 结束各分支；child_result_json 在成功时保留结果 JSON，错误时保留错误 JSON，reply 则保留问候语或错误文本。若不连接 error-out，调用前错误或子进程失败仍会使父进程失败。子进程被终止时也可进入错误分支，status 为 terminated。
+
+调用前错误沿用相同结构，process_id 为 null，status 为 failed。例如参数类型不匹配：
+
+```json
+{"workflow_file":"workflow-subprocess-error-child.flow","process_id":null,"status":"failed","error":"$.name: expected content"}
+```
+
+调用前错误直接选择错误后继，不创建子进程或 pending_call。已创建的子进程退出时，恢复过程清除 pending_call 并执行选定后继，不会重复创建子进程。

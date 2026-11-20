@@ -64,7 +64,52 @@ class SubprocessWorkflowTest(unittest.TestCase):
         validate_workflow(self.parent)
         self.read.assert_not_called()
         self.assertEqual(set(self.graph[1]["data_inputs"]), {"workflow-file", "arguments-json"})
-        self.assertEqual(set(self.graph[1]["data_outputs"]), {"result-json"})
+        self.assertEqual(set(self.graph[1]["data_outputs"]), {"result-json", "error-json"})
+
+    def branched_parent(self):
+        doc = copy.deepcopy(self.parent)
+        doc["nodes"].append({"id": "error-out", "type": "output", "workflowPorts": [
+            {"id": "workflow:result", "name": "result", "type": "content"}
+        ]})
+        doc["connections"] += [
+            {"fromId": "call-child", "fromPortId": "error-out", "toId": "error-out", "toPortId": "control-in", "type": "control"},
+            {"fromId": "call-child", "fromPortId": "error-json", "toId": "error-out", "toPortId": "workflow:result", "type": "content"},
+        ]
+        return doc
+
+    def test_error_branch_compiles_and_keeps_outputs_in_separate_scopes(self):
+        doc = self.branched_parent()
+        validate_workflow(doc)
+        graph = parse_workflow(doc)
+        self.assertEqual(graph[1]["successors"], {"next": 2, "error": 3})
+        for source, target in (("error-json", "out"), ("result-json", "error-out")):
+            bad = copy.deepcopy(doc)
+            target_edge = next(edge for edge in bad["connections"]
+                               if edge["toId"] == target and edge["type"] == "content")
+            target_edge["fromPortId"] = source
+            with self.assertRaisesRegex(WorkflowValidationError, "crosses lifecycle boundary"):
+                validate_workflow(bad)
+
+    def test_unhandled_subprocess_call_remains_valid_in_linear_loop_body(self):
+        doc = copy.deepcopy(self.parent)
+        doc["input_ports"].append({"name": "items", "type": "list-content"})
+        doc["nodes"][0]["workflowPorts"].append({"id": "workflow:items", "name": "items", "type": "list-content"})
+        doc["nodes"].append({"id": "loop", "type": "foreach", "arguments": {"item_type": "content"}})
+        doc["connections"] = [edge for edge in doc["connections"]
+                              if edge["type"] != "control" and edge["fromPortId"] != "result-json"]
+        for source, output, target, port, kind in [
+            ("in", "control-out", "loop", "control-in", "control"),
+            ("loop", "loop-out", "call-child", "control-in", "control"),
+            ("call-child", "control-out", "loop", "loop-in", "control"),
+            ("loop", "control-out", "out", "control-in", "control"),
+            ("in", "workflow:items", "loop", "list-in", "list-content"),
+        ]:
+            doc["connections"].append({"fromId": source, "fromPortId": output, "toId": target, "toPortId": port, "type": kind})
+        validate_workflow(doc)
+        doc["nodes"].append({"id": "error-out", "type": "output", "workflowPorts": doc["nodes"][2]["workflowPorts"]})
+        doc["connections"].append({"fromId": "call-child", "fromPortId": "error-out", "toId": "error-out", "toPortId": "control-in", "type": "control"})
+        with self.assertRaisesRegex(WorkflowValidationError, "branching control flow"):
+            validate_workflow(doc)
 
     def test_removed_declarations_are_discarded_without_mutation(self):
         source = copy.deepcopy(self.parent)
@@ -141,6 +186,44 @@ class SubprocessWorkflowTest(unittest.TestCase):
         self.read.side_effect = WorkflowParseError("workflow file not found")
         with self.assertRaisesRegex(WorkflowParseError, "file not found"):
             self.execute()
+
+    def assert_call_error(self, expected):
+        outcome = self.execute()
+        self.assertEqual(outcome, 3)
+        self.assertEqual(self.graph[1]["_selected_control_port"], "error")
+        details = json.loads(self.graph[3]["data_inputs"]["workflow:result"][2])
+        self.assertEqual(set(details), {"workflow_file", "process_id", "status", "error"})
+        self.assertEqual(details["workflow_file"], self.graph[1]["data_inputs"]["workflow-file"][2])
+        self.assertIsNone(details["process_id"])
+        self.assertEqual(details["status"], "failed")
+        self.assertIn(expected, details["error"])
+        self.assertIsNone(self.graph[2]["data_inputs"]["workflow:result"][2])
+        self.assertEqual(self.graph[1]["_handled_subprocess_error"], details["error"])
+
+    def test_invalid_json_and_non_object_arguments_enter_error_branch_without_loading_child(self):
+        for arguments, expected in (("bad", "Expecting value"), ("[]", "must contain an object"),
+                                    ("null", "must contain an object"), ('"text"', "must contain an object"),
+                                    (None, "must be a JSON object string")):
+            with self.subTest(arguments=arguments):
+                self.graph = parse_workflow(self.branched_parent())
+                self.set_inputs(arguments=arguments)
+                self.assert_call_error(expected)
+        self.read.assert_not_called()
+
+    def test_interface_mismatch_enters_error_branch_without_creating_child(self):
+        self.read.return_value["input_ports"] = [{"name": "count", "type": "number"}]
+        for arguments in ('{"other": 1}', '{"count": "bad"}', '{"count": true}', '{"count": NaN}'):
+            with self.subTest(arguments=arguments):
+                self.graph = parse_workflow(self.branched_parent())
+                self.set_inputs(arguments=arguments)
+                self.assert_call_error("unknown subprocess input" if "other" in arguments else "$")
+
+    def test_missing_target_enters_error_branch(self):
+        self.graph = parse_workflow(self.branched_parent())
+        self.set_inputs("Missing.flow")
+        self.read.side_effect = WorkflowParseError("workflow file not found: Missing.flow")
+        self.assert_call_error("workflow file not found: Missing.flow")
+        self.read.assert_called_once_with("Missing.flow")
 
     def test_missing_scheduler_fails_before_loading_target(self):
         token = current_workflow_process.set(None)

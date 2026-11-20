@@ -306,7 +306,7 @@ def data_ports_for_node(
         id_inputs = {id_port} if node_type == "session_write" or node_argument(node, "context_id_source", "port") == "port" else set()
         return id_inputs | {"value-in"}, {id_port, "value-out"}
     if node_type == "spawn_and_wait_subprocess":
-        return {"workflow-file", "arguments-json"}, {"result-json"}
+        return {"workflow-file", "arguments-json"}, {"result-json", "error-json"}
     return declared_inputs, set()
 
 
@@ -382,7 +382,7 @@ def control_ports_for_node(node: dict[str, Any]) -> tuple[set[str], set[str]]:
         return {"control-in"}, {
             branch["id"] for branch in node_argument(node, "branches", [])
         } | {"branch$others"}
-    if node_type == "json_tool":
+    if node_type in {"json_tool", "spawn_and_wait_subprocess"}:
         return {"control-in"}, {"control-out", "error-out"}
     if node_type in {"foreach", "while_pop"}:
         return {"control-in", "loop-in"}, {"control-out", "loop-out"}

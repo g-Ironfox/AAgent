@@ -240,7 +240,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `session_create` | `value_type` | `initial-value: value_type` | `session-id: content` |
 | `session_read` | `value_type` | `session-id: content` | `value-out: value_type` |
 | `session_write` | `value_type` | `session-id: content`、`value-in: value_type` | `session-id: content`、`value-out: value_type` |
-| `spawn_and_wait_subprocess` | 无 | `workflow-file`、`arguments-json`（均 content） | `result-json`（content） |
+| `spawn_and_wait_subprocess` | 无 | `workflow-file`、`arguments-json`（均 content） | `result-json`、`error-json`（均 content）；可选 `error-out` 控制出口 |
 
 参数必需性和缺省值如下。节点 `arguments` 若省略，等价于空对象；必需参数未提供的节点无效。除列明字段外，节点不得携带其他 arguments 属性。
 
@@ -310,7 +310,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 连线对象必须含非空字符串 `fromId`、`fromPortId`、`toId`、`toPortId`、`type`，可选字符串 `id`。端点节点及端口必须存在。type 为 `control` 或本规范定义的数据类型，包括当前 Workflow 的 Struct 类型。控制连线只能连接合法控制端口；数据连线类型必须同时等于源输出和目标输入端口推导类型。每个 control 输出最多一个后继；控制流不允许汇合，每个 control 输入最多一个来源；Foreach 和 While Pop 的 control-in 与 loop-in 是两个独立入口。每个数据输入最多一个来源。
 
-Input 的 control-out、普通执行节点的 control-in/control-out、Output 的 control-in 必须连接。Router 的每个分支输出必须连接。Foreach 和 While Pop 的 control-in、loop-in、loop-out、control-out 必须连接。控制流必须从唯一 Input 构成可达的树；只允许 Foreach 或 While Pop 循环体返回所属循环节点的 loop-in 形成回边，不允许其他环、分支汇合或共享节点（包括共用 Output）。除 Struct 必需输入和 While Pop 的端口模式 `context-id` 等显式必需输入外，数据输入可以不连；运行时读取必要值而无值时失败。运行时 `None` 视为未提供。
+Input 的 control-out、普通执行节点的 control-in/control-out、Output 的 control-in 必须连接。Router 的每个分支输出必须连接。`spawn_and_wait_subprocess` 的 `error-out` 为可选错误后继，不连接时调用校验错误或子进程失败会传播到父进程。Foreach 和 While Pop 的 control-in、loop-in、loop-out、control-out 必须连接。控制流必须从唯一 Input 构成可达的树；只允许 Foreach 或 While Pop 循环体返回所属循环节点的 loop-in 形成回边，不允许其他环、分支汇合或共享节点（包括共用 Output）。除 Struct 必需输入和 While Pop 的端口模式 `context-id` 等显式必需输入外，数据输入可以不连；运行时读取必要值而无值时失败。运行时 `None` 视为未提供。
 
 ### 10.2 Router
 
@@ -324,15 +324,15 @@ Input 的 control-out、普通执行节点的 control-in/control-out、Output �
 
 Foreach 每轮从 list-in 取一个值，经 loop-out 控制端口进入循环体；循环体以 loop-in 回到 Foreach。所有元素处理完后走 control-out；空数组直接走 control-out。list-in 类型必须是 arguments.item_type 对应的 list 类型。
 
-Agent 和管理端在基本端口、类型及连接基数校验后执行静态生命周期校验；编辑器的“编译生命周期”使用相同的作用域规则。所有节点必须从 Input 可达，分支不得汇合；除 Foreach 循环体到所属 loop-in 的回边外，控制图不得有环。Foreach 循环体内禁止多控制出口节点及 Router（包括只有兜底出口的 Router），循环体必须返回所属 Foreach，不得直接以 Output 结束。
+Agent 和管理端在基本端口、类型及连接基数校验后执行静态生命周期校验；编辑器的“编译生命周期”使用相同的作用域规则。所有节点必须从 Input 可达，分支不得汇合；除 Foreach 循环体到所属 loop-in 的回边外，控制图不得有环。Foreach 循环体内禁止多控制出口节点及 Router（包括只有兜底出口的 Router），循环体必须返回所属 Foreach，不得直接以 Output 结束。为兼容已有线性循环体，未连接 `error-out` 的子进程调用仍可在线性循环体执行；同时连接成功和错误出口时，应将分支处理封装到本地函数后从循环体调用。
 
-生命周期按父子路径划分：工作流拥有根空间；Router 的每个控制出口各创建一个子空间；Foreach 的 loop-out 创建循环体子空间，control-out 延续父空间；JSON Tool 的成功与错误控制出口分别创建子空间。普通节点继承控制路径上的空间。Router 的数据输入和 Foreach 的 list-in 属于边界节点所在的父空间；Foreach 的 item-out 属于循环体空间。JSON Tool 的 result-json 属于成功分支，error-json 属于错误分支，工具名及参数输入属于父空间。
+生命周期按父子路径划分：工作流拥有根空间；Router 的每个控制出口各创建一个子空间；Foreach 的 loop-out 创建循环体子空间，control-out 延续父空间；JSON Tool 及子进程调用的成功与错误控制出口分别创建子空间。普通节点继承控制路径上的空间。Router 的数据输入和 Foreach 的 list-in 属于边界节点所在的父空间；Foreach 的 item-out 属于循环体空间。JSON Tool 与子进程调用的 result-json 属于成功分支，error-json 属于错误分支；各自的工具名或文件名及参数输入属于父空间。
 
 数据边的源空间必须等于目标空间或为其祖先；兄弟分支、不同循环体之间，以及子空间向父空间的数据连线均非法。Foreach 的 item-out 直接连接到循环外也非法。循环结果须通过 Context 显式写入并在外层读取；Context 节点的普通输出仍按节点空间校验，不能用 Context 写入节点的输出绕过循环边界。生命周期标签仅作为静态校验及编辑器预览状态，不写入 Workflow JSON。生命周期校验不额外证明同一空间内部的生产者执行顺序，也不改变运行时槽位的存储方式。
 
-Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失、运行值类型不符、子进程参数 JSON 不符合目标接口或递归调用均使执行失败。
+Agent 校验后将持久化的 nodes/connections 编译为内部执行图。控制连接决定执行顺序，数据连接在输出时传播值；编译图及运行状态不属于持久化 JSON。执行从唯一 Input 开始，Input 根据调用方提供的值填充接口输出并进入 control-out；Output 收集已提供且非 None 的接口输入作为结果并结束当前图。必要控制后继缺失、必要输入缺失或运行值类型不符会使执行失败；子进程调用的目标加载、参数校验和递归检查错误可通过调用节点的错误分支处理。
 
-`spawn_and_wait_subprocess`（拉起并等待子进程）从 `workflow-file` 输入读取包含扩展名的精确工作区文件名（非空，最多 200 字符），从 `arguments-json` 输入读取 JSON 对象文本，创建独立进程和终端，并阻塞父进程直到子进程退出。参数对象的键对应目标 Workflow 的根输入接口；未知参数和非空值的类型不匹配会使调用失败，缺省或 null 参数按原接口语义视为未提供。无需在 metadata 或根字段中声明目标文件，也不保存调用方接口快照。子进程 Output 收集结果后，父进程按子进程编译图中的输出接口校验结果，并将整个对象序列化到 `result-json`，再沿 control-out 继续。JSON 文本端口的连线类型均为 `content`，可用 `deserialize_json` 拆解结果。进程调用链中重复的文件引用会触发递归检查。Struct 不能跨进程接口传递，须显式转换为 JSON。该节点必须在进程调度上下文中执行；缺少上下文立即报错。子进程失败或被终止时，父进程失败并传播错误。
+`spawn_and_wait_subprocess`（拉起并等待子进程）从 `workflow-file` 输入读取包含扩展名的精确工作区文件名（非空，最多 200 字符），从 `arguments-json` 输入读取 JSON 对象文本，创建独立进程和终端，并阻塞父进程直到子进程退出。参数对象的键对应目标 Workflow 的根输入接口；未知参数和非空值的类型不匹配会使调用失败，缺省或 null 参数按原接口语义视为未提供。无需在 metadata 或根字段中声明目标文件，也不保存调用方接口快照。子进程 Output 收集结果后，父进程按子进程编译图中的输出接口校验结果，并将整个对象序列化到 `result-json`，再沿 control-out 继续。JSON 文本端口的连线类型均为 `content`，可用 `deserialize_json` 拆解结果。进程调用链中重复的文件引用会触发递归检查。Struct 不能跨进程接口传递，须显式转换为 JSON。该节点必须在进程调度上下文中执行；缺少上下文立即报错。子进程失败或被终止时，退出事件唤醒父进程；若连接了 `error-out`，父进程将错误对象序列化到 `error-json` 并沿错误分支继续，否则父进程失败并传播错误。错误对象包含 `workflow_file`、`process_id`、`status`（`failed` / `terminated`）和字符串 `error`。成功时只沿 `control-out` 返回 `result-json`。两个分支的数据作用域独立，不得跨分支读取或汇合。参数不是有效 JSON 对象、参数键或类型不符合目标输入接口、目标 Workflow 文件不存在等调用准备错误也按同一错误分支处理，此时 `process_id` 为 `null`、`status` 为 `failed`，父进程直接沿 `error-out` 继续，不创建子进程或进入阻塞；未连接错误分支则父进程失败。错误文本包含具体原因，类型错误包含参数路径。调用节点的轨迹保留失败及错误内容，父进程处理后仍可正常完成。缺省或 null 参数仍视为未提供，不额外要求所有输入必填。子进程成功返回后的结果契约校验失败仍会直接使当前进程失败。
 
 
 ### 10.4 While Pop
@@ -362,7 +362,7 @@ While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out`
 
 ### 10.5 父子进程调度
 
-在进程调度器中，每次 `spawn_and_wait_subprocess` 节点调用创建一个普通 workflow 子进程及独立终端。执行目标文件和递归校验，按目标当前输入接口校验参数 JSON，再将参数值复制到子进程。父图保存 `pending_call`（调用节点 ID、索引、子进程 ID、日志索引），进入 `blocked`，等待 `{"kind":"process_exit","process_id":"<child>"}`。父进程保存、子进程及终端创建、子进程入队在同一 Redis 事务提交。
+在进程调度器中，每次 `spawn_and_wait_subprocess` 节点调用创建一个普通 workflow 子进程及独立终端。执行目标文件和递归校验，按目标当前输入接口校验参数 JSON，再将参数值复制到子进程。父图保存 `pending_call`（调用节点 ID、索引、子进程 ID、日志索引），进入 `blocked`，等待 `{"kind":"process_exit","process_id":"<child>"}`。父进程保存、子进程及终端创建、子进程入队在同一 Redis 事务提交。子进程报错或终止同样触发退出唤醒；有错误后继时恢复节点回填 `error-json` 并选择内部 `error` 后继，清除 `pending_call`，调用日志保留失败及错误文本，父进程可继续执行。没有错误后继时按原行为失败。恢复不重复执行拉起节点。
 
 Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KERNEL_DB`（默认 1），配置要求两个编号不同。进程表、ready 队列、blocked 集合、内部终端索引和 Workflow Context 全部存于内核库；外部事件队列 `external_events`、公共终端状态 `terminal_sessions` 和工具注册存于公共库。WebUI 只连接公共库。
 
@@ -386,7 +386,7 @@ Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KE
 
 ### 10.6 独立 JSON 子进程节点与旧格式
 
-当前只使用独立的 `spawn_and_wait_subprocess` 节点，不再声明子 Workflow 文件。`subprocess_workflow_files` 和旧 `workflow_nodes` 字段在兼容读取时被移除，保存和导出不再生成。节点无需 arguments 配置：
+当前只使用独立的 `spawn_and_wait_subprocess` 节点，不再声明子 Workflow 文件。成功出口为 `control-out` + `result-json`；可选错误出口为 `error-out` + `error-json`。`subprocess_workflow_files` 和旧 `workflow_nodes` 字段在兼容读取时被移除，保存和导出不再生成。节点无需 arguments 配置：
 
 ```json
 {"id":"call-child","type":"spawn_and_wait_subprocess","arguments":{}}

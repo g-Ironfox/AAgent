@@ -742,7 +742,7 @@
     <div data-interface-contract data-contract-title="拉起并等待子进程" data-contract-status="只读契约"></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <p class="node-help">连接 Workflow 文件名和参数 JSON。参数对象的键对应目标输入接口，子进程退出后将完整输出对象传到结果 JSON，再继续下一步；失败或终止会传播给父进程。</p>
+      <p class="node-help">连接 Workflow 文件名和参数 JSON。参数对象的键对应目标输入接口，子进程成功后将完整输出对象传到结果 JSON，再继续下一步。连接错误出口可处理参数 JSON 无效、参数不符合目标接口、Workflow 文件不存在，以及子进程失败或终止，接收错误 JSON 后继续；调用前错误的 process_id 为 null，未连接错误出口时父进程失败。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

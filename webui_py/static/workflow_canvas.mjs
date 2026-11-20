@@ -167,7 +167,7 @@ function contractPortIds(node, direction, workflow) {
   if (node.type === 'spawn_and_wait_subprocess') {
     return direction === 'input'
       ? ['control-in', 'workflow-file', 'arguments-json']
-      : ['control-out', 'result-json'];
+      : ['control-out', 'error-out', 'result-json', 'error-json'];
   }
   if (node.type === 'llm') {
     return direction === 'input'

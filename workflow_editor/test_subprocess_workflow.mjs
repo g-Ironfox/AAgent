@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { compileLifecycles } from './static/workflow/domain/lifecycle.js';
 import { createNode, NODE_TYPES, portsForNode } from './static/workflow/domain/node-contract.js';
 import { loadSnapshot, parseWorkflowText, workflowSnapshot, migrateSubprocessWorkflowFormat } from './static/workflow/domain/serialization.js';
 import { parseWorkflowFile, editWorkflowMetadata, migrateSubprocessWorkflowFormat as migrateWorkspace } from '../webui_py/static/workflow-file.mjs';
@@ -29,7 +30,8 @@ test('standalone subprocess node needs no declaration or configuration', () => {
   assert.equal('workflow_file' in node, false);
   assert.deepEqual(portsForNode(node).map(({ id, direction, type }) => [id, direction, type]), [
     ['control-in', 'input', 'control'], ['workflow-file', 'input', 'content'], ['arguments-json', 'input', 'content'],
-    ['control-out', 'output', 'control'], ['result-json', 'output', 'content'],
+    ['control-out', 'output', 'control'], ['error-out', 'output', 'control'],
+    ['result-json', 'output', 'content'], ['error-json', 'output', 'content'],
   ]);
 });
 
@@ -85,4 +87,52 @@ test('editor has one standalone library button and no subprocess metadata contro
   const html = await readFile(new URL('./static/workflow_edit.html', import.meta.url), 'utf8');
   assert.match(html, /data-add-node="spawn_and_wait_subprocess"/);
   assert.doesNotMatch(html, /subprocessWorkflowFileList|subprocessWorkflowFileTemplate|addSubprocessWorkflowFileButton|data-workflow-file/);
+});
+
+function errorBranchWorkflow() {
+  const doc = workflow();
+  doc.nodes.push({ id: 'error-output', type: 'output' });
+  doc.connections.push(
+    { fromId: 'call', fromPortId: 'error-out', toId: 'error-output', toPortId: 'control-in', type: 'control' },
+    { fromId: 'call', fromPortId: 'error-json', toId: 'error-output', toPortId: 'workflow:result', type: 'content' },
+  );
+  return doc;
+}
+
+test('child error branches round-trip and isolate success and error data', () => {
+  const doc = errorBranchWorkflow();
+  assert.equal(loadSnapshot(doc), true);
+  const saved = workflowSnapshot();
+  assert.equal(saved.connections.length, doc.connections.length);
+  const scopes = compileLifecycles(saved);
+  assert.deepEqual(scopes.errors, []);
+  assert.notEqual(scopes.nodeScopes.get('output'), scopes.nodeScopes.get('error-output'));
+  for (const [target, port] of [['output', 'error-json'], ['error-output', 'result-json']]) {
+    const bad = structuredClone(saved);
+    bad.connections.find((edge) => edge.toId === target && edge.type === 'content').fromPortId = port;
+    assert.ok(compileLifecycles(bad).errors.some((error) => error.message.includes('数据越界')));
+  }
+  const svg = workflowCanvasSvg(saved, 'parent.flow');
+  assert.ok(svg.includes('error-out'));
+  assert.ok(svg.includes('error-json'));
+});
+
+test('unhandled calls keep existing linear loop bodies valid', () => {
+  const doc = workflow();
+  doc.input_ports.push({ name: 'items', type: 'list-content' });
+  doc.nodes.push({ id: 'loop', type: 'foreach', arguments: { item_type: 'content' } });
+  doc.connections = doc.connections.filter((edge) => edge.type !== 'control' && edge.fromPortId !== 'result-json');
+  doc.connections.push(
+    { fromId: 'input', fromPortId: 'control-out', toId: 'loop', toPortId: 'control-in', type: 'control' },
+    { fromId: 'input', fromPortId: 'workflow:items', toId: 'loop', toPortId: 'list-in', type: 'list-content' },
+    { fromId: 'loop', fromPortId: 'loop-out', toId: 'call', toPortId: 'control-in', type: 'control' },
+    { fromId: 'call', fromPortId: 'control-out', toId: 'loop', toPortId: 'loop-in', type: 'control' },
+    { fromId: 'loop', fromPortId: 'control-out', toId: 'output', toPortId: 'control-in', type: 'control' },
+  );
+  assert.equal(loadSnapshot(doc), true);
+  assert.deepEqual(compileLifecycles(workflowSnapshot()).errors, []);
+  doc.nodes.push({ id: 'error-output', type: 'output' });
+  doc.connections.push({ fromId: 'call', fromPortId: 'error-out', toId: 'error-output', toPortId: 'control-in', type: 'control' });
+  assert.equal(loadSnapshot(doc), true);
+  assert.ok(compileLifecycles(workflowSnapshot()).errors.some((error) => error.message.includes('循环体内不允许多分支')));
 });

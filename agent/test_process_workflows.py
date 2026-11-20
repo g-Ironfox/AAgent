@@ -543,6 +543,201 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(migrated_node["type"], "spawn_and_wait_subprocess")
         self.assertNotIn("workflow_name", migrated_node.get("arguments", {}))
 
+    def parent_with_child_error_handler(self, target="Child.flow"):
+        doc = document("Root", target)
+        doc["nodes"] += [
+            {"id": "print-error", "type": "output_to_terminal"},
+            {"id": "error-output", "type": "output", "workflowPorts": [{"id": "workflow:text", **PORTS[0]}]},
+        ]
+        doc["connections"] += [
+            edge("call", "print-error", "error-out"), edge("print-error", "error-output"),
+            edge("call", "print-error", "error-json", "content-in", "content"),
+            edge("call", "error-output", "error-json", "workflow:text", "content"),
+        ]
+        return doc
+
+    def assert_handled_child_exit(self, root, child, expected_status):
+        restored = main.read_process(root["process_id"])
+        self.assertEqual(restored["status"], "completed")
+        self.assertIsNone(restored["pending_call"])
+        self.assertNotIn("error", restored)
+        details = json.loads(restored["result"]["text"])
+        self.assertEqual(details["workflow_file"], child["workflow_file"])
+        self.assertEqual(details["process_id"], child["process_id"])
+        self.assertEqual(details["status"], expected_status)
+        self.assertTrue(details["error"])
+        self.output.assert_called_once_with(
+            restored["result"]["text"], terminal_id=root["terminal_id"],
+            terminal_process_id=root["terminal_process_id"],
+        )
+        trace = next(entry for entry in restored["node_trace"] if entry["node_id"] == "call")
+        self.assertEqual(trace["status"], "failed")
+        self.assertIn(details["error"], trace["error"])
+        self.assertEqual(sum(entry["node_id"] == "call" for entry in restored["node_trace"]), 1)
+        return details
+
+    def test_child_failure_returns_error_and_parent_prints_it_without_respawning(self):
+        self.documents = {"Child.flow": document("Child", wait=True, output_terminal=True)}
+        root = self.start(self.parent_with_child_error_handler(), text=" ")
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        self.send(child)
+        with self.assertLogs("main", level="ERROR"):
+            self.drain()
+        details = self.assert_handled_child_exit(root, child, "failed")
+        self.assertIn("non-empty text", details["error"])
+        self.assertEqual(len(self.workflows()), 2)
+        self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
+        before = main.read_process(root["process_id"])
+        self.redis.lpush(r.READY_PROCESSES, root["process_id"])
+        self.drain()
+        self.assertEqual(main.read_process(root["process_id"]), before)
+        self.assertEqual(len(self.workflows()), 2)
+
+    def test_parent_can_wait_for_another_terminal_message_after_handling_child_failure(self):
+        self.documents = {"Child.flow": document("Child", wait=True, output_terminal=True)}
+        doc = self.parent_with_child_error_handler()
+        doc["nodes"].append({"id": "wait-after-error", "type": "wait_terminal_event"})
+        next(connection for connection in doc["connections"]
+             if connection["fromId"] == "print-error" and connection["type"] == "control")["toId"] = "wait-after-error"
+        doc["connections"].append(edge("wait-after-error", "error-output"))
+        root = self.start(doc, text=" ")
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        self.send(child)
+        with self.assertLogs("main", level="ERROR"):
+            self.drain()
+        waiting = main.read_process(root["process_id"])
+        self.assertEqual(waiting["status"], "blocked")
+        self.assertIsNone(waiting["pending_call"])
+        self.assertEqual(waiting["wait_for"], {"kind": "terminal_message", "process_id": root["terminal_process_id"]})
+        self.assertEqual(self.terminal_session(root)["status"], "open")
+        self.send(root, text="continue after error")
+        self.drain()
+        self.assert_handled_child_exit(root, child, "failed")
+        self.assertEqual(len(self.workflows()), 2)
+
+    def test_child_termination_returns_error_to_parent_handler(self):
+        self.documents = {"Child.flow": document("Child", wait=True)}
+        root = self.start(self.parent_with_child_error_handler())
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        main.terminate_process(child["process_id"])
+        self.assertEqual(main.read_process(root["process_id"])["status"], "ready")
+        self.drain()
+        self.assert_handled_child_exit(root, child, "terminated")
+        self.assertEqual(len(self.workflows()), 2)
+
+    def parent_with_call_arguments(self, arguments, *, handle_error=True):
+        doc = self.parent_with_child_error_handler() if handle_error else document("Root", "Child.flow")
+        serializer = next(node for node in doc["nodes"] if node["id"] == "call_json")
+        serializer.update(type="construct_content", arguments={"append_items": [{"type": "fixed", "value": arguments}]})
+        doc["connections"] = [connection for connection in doc["connections"]
+                              if not (connection["toId"] == "call_json" and connection["type"] != "control")]
+        return doc
+
+    def assert_handled_pre_spawn_error(self, doc, expected, filename="Child.flow"):
+        previous_count = len(self.workflows())
+        self.output.reset_mock()
+        root = self.start(doc)
+        steps = self.drain()
+        saved = main.read_process(root["process_id"])
+        self.assertEqual(saved["status"], "completed")
+        self.assertIsNone(saved["pending_call"])
+        self.assertIsNone(saved["wait_for"])
+        self.assertNotIn("error", saved)
+        details = json.loads(saved["result"]["text"])
+        self.assertEqual(set(details), {"workflow_file", "process_id", "status", "error"})
+        self.assertEqual(details["workflow_file"], filename)
+        self.assertIsNone(details["process_id"])
+        self.assertEqual(details["status"], "failed")
+        self.assertIn(expected, details["error"])
+        self.assertEqual(len(self.workflows()), previous_count + 1)
+        self.assertTrue(all(item["status"] != "blocked" for item in steps))
+        self.output.assert_called_once_with(
+            saved["result"]["text"], terminal_id=root["terminal_id"],
+            terminal_process_id=root["terminal_process_id"],
+        )
+        calls = [entry for entry in saved["node_trace"] if entry["node_id"] == "call"]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["status"], "failed")
+        self.assertEqual(calls[0]["error"], details["error"])
+        self.assertTrue(calls[0]["finished_at"])
+        self.assertNotIn("call_result", [entry["node_id"] for entry in saved["node_trace"]])
+        self.assertTrue(all("_handled_subprocess_error" not in node for node in json.loads(saved["workflow"])))
+        self.assertIsNone(main.schedule_once(timeout=1))
+
+    def test_pre_spawn_invalid_json_returns_error_to_parent_handler(self):
+        self.documents = {"Child.flow": document("Child")}
+        for arguments, expected in (("not json", "Expecting value"), ("[]", "must contain an object")):
+            with self.subTest(arguments=arguments):
+                self.assert_handled_pre_spawn_error(self.parent_with_call_arguments(arguments), expected)
+
+    def test_pre_spawn_interface_mismatch_returns_error_to_parent_handler(self):
+        self.documents = {"Child.flow": document("Child")}
+        for arguments, expected in (('{"other": 1}', "unknown subprocess input arguments: other"),
+                                    ('{"text": 123}', "$.text: expected content")):
+            with self.subTest(arguments=arguments):
+                self.assert_handled_pre_spawn_error(self.parent_with_call_arguments(arguments), expected)
+
+    def test_pre_spawn_missing_file_returns_error_to_parent_handler(self):
+        from workflow_parser import WorkflowParseError
+
+        doc = self.parent_with_child_error_handler("Missing.flow")
+        with patch("workflow_parser._read_workspace_workflow_by_name",
+                   side_effect=WorkflowParseError("Workflow file not found: Missing.flow")):
+            self.assert_handled_pre_spawn_error(doc, "file not found: Missing.flow", "Missing.flow")
+
+    def test_pre_spawn_errors_without_handler_still_fail_parent(self):
+        from workflow_parser import WorkflowParseError
+
+        self.documents = {"Child.flow": document("Child")}
+        for arguments, expected in (("not json", "Expecting value"), ('{"text": 123}', "expected content")):
+            with self.subTest(arguments=arguments):
+                previous_count = len(self.workflows())
+                root = self.start(self.parent_with_call_arguments(arguments, handle_error=False))
+                with self.assertLogs("main", level="ERROR"):
+                    self.drain()
+                saved = main.read_process(root["process_id"])
+                self.assertEqual(saved["status"], "failed")
+                self.assertIn(expected, saved["error"])
+                self.assertIsNone(saved["pending_call"])
+                self.assertEqual(len(self.workflows()), previous_count + 1)
+        root = self.start(document("Root", "Missing.flow"))
+        with patch("workflow_parser._read_workspace_workflow_by_name",
+                   side_effect=WorkflowParseError("Workflow file not found: Missing.flow")):
+            with self.assertLogs("main", level="ERROR"):
+                self.drain()
+        self.assertEqual(main.read_process(root["process_id"])["status"], "failed")
+        self.assertIn("file not found", main.read_process(root["process_id"])["error"])
+        self.output.assert_not_called()
+
+    def test_successful_child_ignores_connected_error_branch(self):
+        self.documents = {"Child.flow": document("Child")}
+        root = self.start(self.parent_with_child_error_handler())
+        self.drain()
+        saved = main.read_process(root["process_id"])
+        self.assertEqual(saved["status"], "completed")
+        self.assertEqual(saved["result"], {"text": "hello"})
+        self.output.assert_not_called()
+        self.assertNotIn("print-error", [entry["node_id"] for entry in saved["node_trace"]])
+        self.assertEqual(len(self.workflows()), 2)
+
+    def test_ancestor_can_handle_nested_child_failure(self):
+        self.documents = {"Middle.flow": document("Middle", "Leaf.flow"),
+                          "Leaf.flow": document("Leaf", wait=True, output_terminal=True)}
+        root = self.start(self.parent_with_child_error_handler("Middle.flow"), text=" ")
+        self.drain()
+        leaf = next(item for item in self.workflows() if item["workflow_name"] == "Leaf.flow")
+        self.send(leaf)
+        with self.assertLogs("main", level="ERROR"):
+            self.drain()
+        middle = next(item for item in self.workflows() if item["workflow_name"] == "Middle.flow")
+        self.assertEqual(middle["status"], "failed")
+        details = self.assert_handled_child_exit(root, middle, "failed")
+        self.assertIn(leaf["process_id"], details["error"])
+        self.assertEqual(len(self.workflows()), 3)
+
     def test_child_failure_propagates_through_all_ancestors(self):
         self.documents = {"Middle.flow": document("Middle", "Leaf.flow"),
                           "Leaf.flow": document("Leaf", wait=True, output_terminal=True)}
