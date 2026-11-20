@@ -11,7 +11,7 @@
 
 1. 将两个文件保存到 Agent WebUI 工作区，子流程文件名保留为 workflow-subprocess-child.flow。
 2. 创建 workflow-subprocess-terminal.flow 的进程，创建时无需传入接口参数。
-3. 父终端显示输入提示并进入等待后，发送一条消息：
+3. 向父终端发送一条消息（提前发送也会缓冲）：
 
 ```json
 {"name":"小明"}
@@ -19,7 +19,7 @@
 
 4. 父终端打印 `你好，小明！`，随后流程结束。每次运行处理一条消息。
 
-父流程先输出提示，再通过 wait_terminal_event 等待消息。read_terminal_input 返回当前终端的全部用户输入，list_get 使用固定索引 -1 取得最后一条消息，接到调用节点的 arguments-json。固定子流程文件名由 construct_content 输出到 workflow-file。
+父流程先输出提示，再通过 read_terminal_queue 消费当前终端进程的未读消息；队列为空时挂起，收到消息后重试读取。list_get 使用固定索引 -1 取得本批次最后一条消息，接到调用节点的 arguments-json。固定子流程文件名由 construct_content 输出到 workflow-file。
 
 子流程仍通过 Input 接收 name、通过 Output 返回 reply。父流程用 deserialize_json 取出 reply，再通过 output_to_terminal 打印到父终端，同时保留进程结果。终端消息用于用户交互，父子进程之间通过调用节点的 JSON 端口传递参数和结果。
 

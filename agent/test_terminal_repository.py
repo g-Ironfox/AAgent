@@ -1,11 +1,10 @@
 import unittest
 from datetime import timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from pymongo.errors import ServerSelectionTimeoutError
 
-from terminal_repository import append_terminal_output, get_terminal_collection, read_terminal_input, terminal_process_context
-from workflow_nodes import nodes_map
+from terminal_repository import append_terminal_output, get_terminal_collection
 
 
 class TerminalRepositoryTest(unittest.TestCase):
@@ -20,34 +19,6 @@ class TerminalRepositoryTest(unittest.TestCase):
         self.assertNotIn("event_type", document)
         self.assertEqual(document["terminal_id"], "terminal-1")
         self.assertEqual(result, collection.insert_one.return_value.inserted_id)
-
-    @patch("terminal_repository.get_terminal_collection")
-    def test_reads_all_user_input_in_database_order_without_consuming(self, get_collection):
-        cursor = get_collection.return_value.find.return_value
-        cursor.sort.return_value = [{"content": "first"}, {"content": "second\nline"}]
-        self.assertEqual(read_terminal_input("terminal-1"), ["first", "second\nline"])
-        get_collection.return_value.find.assert_called_once_with(
-            {"terminal_id": "terminal-1", "role": "user"}, {"content": 1}
-        )
-        cursor.sort.assert_called_once_with([("created_at", 1), ("_id", 1)])
-
-    @patch("terminal_repository.get_terminal_collection")
-    def test_terminal_input_requires_valid_terminal_id(self, get_collection):
-        for terminal_id in (None, "", "  ", 42):
-            with self.subTest(terminal_id=terminal_id), self.assertRaises(ValueError):
-                read_terminal_input(terminal_id)
-        get_collection.assert_not_called()
-
-    @patch("terminal_repository.read_terminal_input", return_value=["one", "two"])
-    def test_read_terminal_input_node_emits_list_content(self, read_input):
-        node = {"id": "read", "type": "read_terminal_input",
-                "successors": {"next": 1},
-                "data_outputs": {"list-out": [[1, "list-in"]]}}
-        target = {"data_inputs": {"list-in": [None, "list-content", None]}}
-        with terminal_process_context("internal-terminal-1", "public-terminal-1"):
-            self.assertEqual(nodes_map["read_terminal_input"](0, [node, target]), 1)
-        read_input.assert_called_once_with("public-terminal-1")
-        self.assertEqual(target["data_inputs"]["list-in"][2], ["one", "two"])
 
     @patch("terminal_repository.get_terminal_collection")
     def test_empty_or_non_string_output_is_rejected(self, get_collection):

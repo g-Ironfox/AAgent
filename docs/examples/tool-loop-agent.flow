@@ -783,27 +783,10 @@
       "dataInputPorts": []
     },
     {
-      "id": "human_inputs_before",
-      "type": "read_terminal_input",
-      "name": "human inputs before",
-      "x": 5540,
-      "y": 3100
-    },
-    {
-      "id": "human_cursor",
-      "type": "list_length",
-      "name": "human cursor",
-      "x": 5800,
-      "y": 3100,
-      "arguments": {
-        "value_type": "list-content"
-      }
-    },
-    {
       "id": "human_prompt",
       "type": "construct_content",
       "name": "human prompt",
-      "x": 6060,
+      "x": 5540,
       "y": 3100,
       "arguments": {
         "append_items": [
@@ -829,42 +812,21 @@
       "id": "show_human_prompt",
       "type": "output_to_terminal",
       "name": "show human prompt",
-      "x": 6320,
-      "y": 3100
-    },
-    {
-      "id": "wait_for_human",
-      "type": "wait_terminal_event",
-      "name": "wait for human",
-      "x": 6580,
+      "x": 5800,
       "y": 3100
     },
     {
       "id": "human_inputs_after",
-      "type": "read_terminal_input",
+      "type": "read_terminal_queue",
       "name": "human inputs after",
-      "x": 6840,
+      "x": 6060,
       "y": 3100
-    },
-    {
-      "id": "human_new_inputs",
-      "type": "list_slice",
-      "name": "human new inputs",
-      "x": 7100,
-      "y": 3100,
-      "arguments": {
-        "value_type": "list-content",
-        "start_source": "port",
-        "stop_source": "fixed",
-        "step_source": "fixed",
-        "step": 1
-      }
     },
     {
       "id": "human_reply_value",
       "type": "construct_struct",
       "name": "human reply value",
-      "x": 7360,
+      "x": 6320,
       "y": 3100,
       "arguments": {
         "struct_id": "HumanReply"
@@ -877,7 +839,7 @@
       "id": "human_reply_json",
       "type": "struct_to_json",
       "name": "human reply json",
-      "x": 7620,
+      "x": 6580,
       "y": 3100,
       "arguments": {
         "value_type": "struct:HumanReply"
@@ -887,7 +849,7 @@
       "id": "save_human_reply",
       "type": "function_call",
       "name": "save human reply",
-      "x": 7880,
+      "x": 6840,
       "y": 3100,
       "arguments": {
         "function_id": "record_tool_result"
@@ -897,7 +859,7 @@
       "id": "human_reply_return",
       "type": "function_output",
       "name": "human reply return",
-      "x": 8140,
+      "x": 7100,
       "y": 3100,
       "function_id": "run_one_tool"
     },
@@ -1854,13 +1816,6 @@
       "type": "content"
     },
     {
-      "fromId": "human_inputs_before",
-      "fromPortId": "list-out",
-      "toId": "human_cursor",
-      "toPortId": "list-in",
-      "type": "list-content"
-    },
-    {
       "fromId": "ask_question",
       "fromPortId": "value-out",
       "toId": "human_prompt",
@@ -1876,20 +1831,6 @@
     },
     {
       "fromId": "human_inputs_after",
-      "fromPortId": "list-out",
-      "toId": "human_new_inputs",
-      "toPortId": "list-in",
-      "type": "list-content"
-    },
-    {
-      "fromId": "human_cursor",
-      "fromPortId": "length-out",
-      "toId": "human_new_inputs",
-      "toPortId": "start-in",
-      "type": "number"
-    },
-    {
-      "fromId": "human_new_inputs",
       "fromPortId": "list-out",
       "toId": "human_reply_value",
       "toPortId": "replies",
@@ -1954,20 +1895,6 @@
     {
       "fromId": "batch_stop_true",
       "fromPortId": "control-out",
-      "toId": "human_inputs_before",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "human_inputs_before",
-      "fromPortId": "control-out",
-      "toId": "human_cursor",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "human_cursor",
-      "fromPortId": "control-out",
       "toId": "human_prompt",
       "toPortId": "control-in",
       "type": "control"
@@ -1982,26 +1909,12 @@
     {
       "fromId": "show_human_prompt",
       "fromPortId": "control-out",
-      "toId": "wait_for_human",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "wait_for_human",
-      "fromPortId": "control-out",
       "toId": "human_inputs_after",
       "toPortId": "control-in",
       "type": "control"
     },
     {
       "fromId": "human_inputs_after",
-      "fromPortId": "control-out",
-      "toId": "human_new_inputs",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "human_new_inputs",
       "fromPortId": "control-out",
       "toId": "human_reply_value",
       "toPortId": "control-in",

@@ -44,16 +44,9 @@
       "y": 100
     },
     {
-      "id": "wait",
-      "type": "wait_terminal_event",
-      "name": "等待终端输入",
-      "x": 880,
-      "y": 100
-    },
-    {
       "id": "read-input",
-      "type": "read_terminal_input",
-      "name": "读取终端历史",
+      "type": "read_terminal_queue",
+      "name": "读取终端消息缓冲区",
       "x": 880,
       "y": 440
     },
@@ -151,13 +144,6 @@
     },
     {
       "fromId": "show-prompt",
-      "fromPortId": "control-out",
-      "toId": "wait",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "wait",
       "fromPortId": "control-out",
       "toId": "read-input",
       "toPortId": "control-in",

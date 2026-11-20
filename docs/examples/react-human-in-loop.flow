@@ -735,24 +735,17 @@
       "y": 3700
     },
     {
-      "id": "review_wait",
-      "type": "wait_terminal_event",
-      "name": "review wait",
-      "x": 3460,
-      "y": 3700
-    },
-    {
       "id": "review_inputs",
-      "type": "read_terminal_input",
+      "type": "read_terminal_queue",
       "name": "review inputs",
-      "x": 3720,
+      "x": 3460,
       "y": 3700
     },
     {
       "id": "review_latest",
       "type": "list_get",
       "name": "review latest",
-      "x": 3980,
+      "x": 3720,
       "y": 3700,
       "arguments": {
         "value_type": "list-content",
@@ -764,7 +757,7 @@
       "id": "review_decision",
       "type": "router",
       "name": "review decision",
-      "x": 4240,
+      "x": 3980,
       "y": 3700,
       "arguments": {
         "branches": [
@@ -783,7 +776,7 @@
       "id": "review_execute",
       "type": "function_call",
       "name": "review execute",
-      "x": 4500,
+      "x": 4240,
       "y": 3700,
       "arguments": {
         "function_id": "execute_reviewed_tool"
@@ -793,14 +786,14 @@
       "id": "review_show_result",
       "type": "output_to_terminal",
       "name": "review show result",
-      "x": 4760,
+      "x": 4500,
       "y": 3700
     },
     {
       "id": "review_approved_save",
       "type": "function_call",
       "name": "review approved save",
-      "x": 5020,
+      "x": 4760,
       "y": 3700,
       "arguments": {
         "function_id": "record_tool_result"
@@ -810,7 +803,7 @@
       "id": "review_approved_return",
       "type": "function_output",
       "name": "review approved return",
-      "x": 5280,
+      "x": 5020,
       "y": 3700,
       "function_id": "review_tool"
     },
@@ -818,7 +811,7 @@
       "id": "review_done",
       "type": "construct_content",
       "name": "review done",
-      "x": 5540,
+      "x": 5280,
       "y": 3700,
       "arguments": {
         "append_items": [
@@ -834,7 +827,7 @@
       "id": "review_set_stop",
       "type": "context_write",
       "name": "review set stop",
-      "x": 5800,
+      "x": 5540,
       "y": 3700,
       "arguments": {
         "value_type": "content"
@@ -844,7 +837,7 @@
       "id": "review_cancelled",
       "type": "construct_content",
       "name": "review cancelled",
-      "x": 6060,
+      "x": 5800,
       "y": 3700,
       "arguments": {
         "append_items": [
@@ -860,7 +853,7 @@
       "id": "review_cancel_save",
       "type": "function_call",
       "name": "review cancel save",
-      "x": 6320,
+      "x": 6060,
       "y": 3700,
       "arguments": {
         "function_id": "record_tool_result"
@@ -870,7 +863,7 @@
       "id": "review_cancel_return",
       "type": "function_output",
       "name": "review cancel return",
-      "x": 6580,
+      "x": 6320,
       "y": 3700,
       "function_id": "review_tool"
     },
@@ -878,7 +871,7 @@
       "id": "review_rejected",
       "type": "construct_content",
       "name": "review rejected",
-      "x": 6840,
+      "x": 6580,
       "y": 3700,
       "arguments": {
         "append_items": [
@@ -904,7 +897,7 @@
       "id": "review_reject_save",
       "type": "function_call",
       "name": "review reject save",
-      "x": 7100,
+      "x": 6840,
       "y": 3700,
       "arguments": {
         "function_id": "record_tool_result"
@@ -914,7 +907,7 @@
       "id": "review_reject_return",
       "type": "function_output",
       "name": "review reject return",
-      "x": 7360,
+      "x": 7100,
       "y": 3700,
       "function_id": "review_tool"
     },
@@ -1069,24 +1062,17 @@
       "y": 4300
     },
     {
-      "id": "wait_for_human",
-      "type": "wait_terminal_event",
-      "name": "wait for human",
-      "x": 3200,
-      "y": 4300
-    },
-    {
       "id": "read_human",
-      "type": "read_terminal_input",
+      "type": "read_terminal_queue",
       "name": "read human",
-      "x": 3460,
+      "x": 3200,
       "y": 4300
     },
     {
       "id": "latest_human",
       "type": "list_get",
       "name": "latest human",
-      "x": 3720,
+      "x": 3460,
       "y": 4300,
       "arguments": {
         "value_type": "list-content",
@@ -1098,7 +1084,7 @@
       "id": "done_gate",
       "type": "router",
       "name": "done gate",
-      "x": 3980,
+      "x": 3720,
       "y": 4300,
       "arguments": {
         "branches": [
@@ -1113,7 +1099,7 @@
       "id": "turn_done",
       "type": "function_output",
       "name": "turn done",
-      "x": 4240,
+      "x": 3980,
       "y": 4300,
       "function_id": "react_turn"
     },
@@ -1121,7 +1107,7 @@
       "id": "observation_message",
       "type": "construct_message",
       "name": "observation message",
-      "x": 4500,
+      "x": 4240,
       "y": 4300,
       "arguments": {
         "role": "user"
@@ -1131,7 +1117,7 @@
       "id": "save_observation",
       "type": "function_call",
       "name": "save observation",
-      "x": 4760,
+      "x": 4500,
       "y": 4300,
       "arguments": {
         "function_id": "append_history"
@@ -1141,7 +1127,7 @@
       "id": "queue_after_text",
       "type": "function_call",
       "name": "queue after text",
-      "x": 5020,
+      "x": 4760,
       "y": 4300,
       "arguments": {
         "function_id": "queue_turn"
@@ -1151,7 +1137,7 @@
       "id": "turn_continue",
       "type": "function_output",
       "name": "turn continue",
-      "x": 5280,
+      "x": 5020,
       "y": 4300,
       "function_id": "react_turn"
     },
@@ -1159,7 +1145,7 @@
       "id": "turn_stop_initial",
       "type": "construct_content",
       "name": "turn stop initial",
-      "x": 5540,
+      "x": 5280,
       "y": 4300,
       "arguments": {
         "append_items": [
@@ -1175,7 +1161,7 @@
       "id": "turn_stop_context",
       "type": "context_create",
       "name": "turn stop context",
-      "x": 5800,
+      "x": 5540,
       "y": 4300,
       "arguments": {
         "value_type": "content"
@@ -1185,7 +1171,7 @@
       "id": "turn_calls",
       "type": "foreach",
       "name": "turn calls",
-      "x": 6060,
+      "x": 5800,
       "y": 4300,
       "arguments": {
         "item_type": "content"
@@ -1195,7 +1181,7 @@
       "id": "review_each_tool",
       "type": "function_call",
       "name": "review each tool",
-      "x": 6320,
+      "x": 6060,
       "y": 4300,
       "arguments": {
         "function_id": "review_tool"
@@ -1205,7 +1191,7 @@
       "id": "turn_stop_read",
       "type": "context_read",
       "name": "turn stop read",
-      "x": 6580,
+      "x": 6320,
       "y": 4300,
       "arguments": {
         "value_type": "content"
@@ -1215,7 +1201,7 @@
       "id": "turn_stop_route",
       "type": "router",
       "name": "turn stop route",
-      "x": 6840,
+      "x": 6580,
       "y": 4300,
       "arguments": {
         "branches": [
@@ -1230,7 +1216,7 @@
       "id": "turn_tools_done",
       "type": "function_output",
       "name": "turn tools done",
-      "x": 7100,
+      "x": 6840,
       "y": 4300,
       "function_id": "react_turn"
     },
@@ -1238,7 +1224,7 @@
       "id": "queue_after_tools",
       "type": "function_call",
       "name": "queue after tools",
-      "x": 7360,
+      "x": 7100,
       "y": 4300,
       "arguments": {
         "function_id": "queue_turn"
@@ -1248,7 +1234,7 @@
       "id": "turn_tools_continue",
       "type": "function_output",
       "name": "turn tools continue",
-      "x": 7620,
+      "x": 7360,
       "y": 4300,
       "function_id": "react_turn"
     }
@@ -1866,13 +1852,6 @@
     {
       "fromId": "review_show",
       "fromPortId": "control-out",
-      "toId": "review_wait",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "review_wait",
-      "fromPortId": "control-out",
       "toId": "review_inputs",
       "toPortId": "control-in",
       "type": "control"
@@ -2306,13 +2285,6 @@
     },
     {
       "fromId": "show_proposal",
-      "fromPortId": "control-out",
-      "toId": "wait_for_human",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "wait_for_human",
       "fromPortId": "control-out",
       "toId": "read_human",
       "toPortId": "control-in",

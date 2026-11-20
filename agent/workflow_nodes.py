@@ -205,28 +205,24 @@ def workflow_output_to_terminal(current_id: int, workflow_map: WorkflowMap) -> i
     return next_successor(node)
 
 
-def workflow_read_terminal_input(current_id: int, workflow_map: WorkflowMap) -> int:
-    from terminal_repository import current_terminal_id, read_terminal_input
-
-    terminal_id = current_terminal_id.get()
-    if not terminal_id:
-        raise ValueError("read_terminal_input requires a process terminal")
-    node = workflow_map[current_id]
-    contents = read_terminal_input(terminal_id)
-    propagate_workflow_output(workflow_map, node, "list-out", contents)
-    return next_successor(node)
-
-
-def workflow_wait_terminal_event(current_id: int, workflow_map: WorkflowMap) -> WorkflowStep:
+def workflow_read_terminal_queue(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
+    from process_repository import read_terminal_input_queue
+    from redis_client import get_connection
     from terminal_repository import current_terminal_process_id
 
     terminal_process_id = current_terminal_process_id.get()
-    if not terminal_process_id:
-        raise ValueError("wait_terminal_event requires a process terminal")
-    next_successor(workflow_map[current_id])
-    return WorkflowStep(
-        {"kind": "terminal_message", "process_id": terminal_process_id},
-    )
+    process = current_workflow_process.get()
+    if not terminal_process_id or process is None:
+        raise ValueError("read_terminal_queue requires a process terminal")
+    node = workflow_map[current_id]
+    successor = next_successor(node)
+    contents = read_terminal_input_queue(get_connection(), terminal_process_id)
+    if not contents:
+        return WorkflowStep({"kind": "terminal_message", "process_id": terminal_process_id})
+    # Acknowledge only when the output and workflow progress are durably saved.
+    process["_terminal_input_batch"] = contents
+    propagate_workflow_output(workflow_map, node, "list-out", contents)
+    return successor
 
 
 def workflow_output(current_id: int, workflow_map: WorkflowMap) -> int:
@@ -1099,8 +1095,7 @@ nodes_map: dict[str, NodeHandler] = {
     "map_content_get": workflow_map_content_get,
     "number_to_content": workflow_number_to_content,
     "output_to_terminal": workflow_output_to_terminal,
-    "wait_terminal_event": workflow_wait_terminal_event,
-    "read_terminal_input": workflow_read_terminal_input,
+    "read_terminal_queue": workflow_read_terminal_queue,
     "deserialize_json": workflow_deserialize_json,
     "construct_list": workflow_construct_list,
     "list_append": workflow_list_append,

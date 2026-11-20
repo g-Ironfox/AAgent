@@ -251,22 +251,14 @@ def build_workflow():
     d(*p(fi, "batch_stop_id"), "batch_stop_true", "context-id")
     g.const("batch_stopped", "true")
     d("batch_stopped", "content-out", "batch_stop_true", "value-in")
-    n("human_inputs_before", "read_terminal_input")
-    n("human_cursor", "list_length", arguments={"value_type": "list-content"})
-    d("human_inputs_before", "list-out", "human_cursor", "list-in", "list-content")
     g.text("human_prompt", "The agent asks: ", "\nReply in the process terminal.")
     d("ask_question", "value-out", "human_prompt", "value")
     n("show_human_prompt", "output_to_terminal")
     d("human_prompt", "content-out", "show_human_prompt", "content-in")
-    n("wait_for_human", "wait_terminal_event")
-    n("human_inputs_after", "read_terminal_input")
-    n("human_new_inputs", "list_slice", arguments={"value_type": "list-content",
-        "start_source": "port", "stop_source": "fixed", "step_source": "fixed", "step": 1})
-    d("human_inputs_after", "list-out", "human_new_inputs", "list-in", "list-content")
-    d("human_cursor", "length-out", "human_new_inputs", "start-in", "number")
-    # Keep every reply since the cursor, including consecutive user messages.
+    n("human_inputs_after", "read_terminal_queue")
+    # Consume every pending reply in arrival order, without a history cursor.
     g.make_struct("human_reply_value", "HumanReply", {
-        "replies": ("human_new_inputs", "list-out", "list-content"),
+        "replies": ("human_inputs_after", "list-out", "list-content"),
     })
     n("human_reply_json", "struct_to_json", arguments={"value_type": "struct:HumanReply"})
     d("human_reply_value", "struct-out", "human_reply_json", "value-in", "struct:HumanReply")
@@ -276,9 +268,9 @@ def build_workflow():
     })
     g.ret("human_reply_return", "run_one_tool")
     g.control("call_kind_route", "ask_args_parse", "human")
-    g.chain("ask_args_parse", "ask_question", "batch_stopped", "batch_stop_true", "human_inputs_before", "human_cursor",
-            "human_prompt", "show_human_prompt", "wait_for_human", "human_inputs_after",
-            "human_new_inputs", "human_reply_value", "human_reply_json", "save_human_reply", "human_reply_return")
+    g.chain("ask_args_parse", "ask_question", "batch_stopped", "batch_stop_true",
+            "human_prompt", "show_human_prompt", "human_inputs_after",
+            "human_reply_value", "human_reply_json", "save_human_reply", "human_reply_return")
 
     fi = g.function("tool_loop_turn", [("history_id", "content"), ("tokens_id", "content")])
     g.ctx("read_for_llm", "read"); d(*p(fi, "history_id"), "read_for_llm", "context-id")

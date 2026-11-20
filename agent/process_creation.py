@@ -44,6 +44,7 @@ def initialize_process_pair(process: dict) -> dict:
         'start_time': now,
         'status': 'waiting_for_input',
         'wait_for': {'kind': 'terminal_message'},
+        'input_queue': [],
     }
 
     record_process_event(process, 'created')

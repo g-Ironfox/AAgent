@@ -28,7 +28,7 @@ test('new node IDs use their names and a monotonic suffix across deletion and im
 test('connection IDs stay internal and survive undo snapshots while exports omit them', () => {
   const doc = {
     schema_version: '2.0', metadata: {}, input_ports: [], output_ports: [],
-    nodes: [{ id: 'in', type: 'input' }, { id: 'wait', type: 'wait_terminal_event' }, { id: 'out', type: 'output' }],
+    nodes: [{ id: 'in', type: 'input' }, { id: 'wait', type: 'read_terminal_queue' }, { id: 'out', type: 'output' }],
     connections: [
       { fromId: 'in', fromPortId: 'control-out', toId: 'wait', toPortId: 'control-in', type: 'control' },
       { fromId: 'wait', fromPortId: 'control-out', toId: 'out', toPortId: 'control-in', type: 'control' },

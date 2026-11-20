@@ -12,7 +12,7 @@ import main
 import process_repository as r
 import scheduler_projection as projection
 from process_creation import build_workflow_process
-from workflow_nodes import WorkflowStep, workflow_wait_terminal_event
+from workflow_nodes import WorkflowStep, workflow_read_terminal_queue
 from terminal_repository import terminal_process_context
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "webui_py"))
@@ -38,7 +38,7 @@ def document(name, child=None, wait=False, output_terminal=False):
         connections += [edge(previous, "call"), edge("in", "call", "workflow:text", "workflow:text", "content")]
         previous = data_source = "call"
     if wait:
-        nodes.append({"id": "wait", "type": "wait_terminal_event"})
+        nodes.append({"id": "wait", "type": "read_terminal_queue"})
         connections.append(edge(previous, "wait"))
         previous = "wait"
     if output_terminal:
@@ -62,6 +62,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.output = MagicMock()
         for target, value in [
             ("main.get_connection", self.redis),
+            ("redis_client.get_connection", self.redis),
             ("main.get_event_connection", self.public_redis),
             ("workflow_context_repository.get_connection", self.redis),
             ("main._get_process_log_collection", self.logs),
@@ -268,7 +269,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(len(processes), 3)
         self.assertTrue(all(item["status"] == "blocked" for item in processes.values()))
         leaf = processes["Leaf.flow"]
-        self.assertEqual(leaf["current_node_id"], 1)
+        self.assertEqual(leaf["current_node_id"], 0)
         self.assertEqual(leaf["control_port"], "next")
         self.assertNotIn("next_node_id", leaf)
         self.assertEqual(leaf["root_process_id"], root["process_id"])
@@ -287,7 +288,9 @@ class ProcessWorkflowTest(unittest.TestCase):
             self.assertEqual(process["result"], {"text": "hello"})
             self.assertIsNone(process["pending_call"])
             self.assertEqual(main.read_process(process["terminal_process_id"])["status"], "terminated")
-            self.assertTrue(all(entry["status"] == "completed" for entry in process["node_trace"]))
+            self.assertTrue(all(entry["status"] == "completed" or
+                                (entry["node_type"] == "read_terminal_queue" and entry["status"] == "waiting")
+                                for entry in process["node_trace"]))
         self.assertEqual(len(self.workflows()), 3)
         self.output.assert_called_once_with(
             "hello",
@@ -324,7 +327,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(completed["output"], {"text": "hello"})
         self.assertEqual([event["event"] for event in completed["events"]],
-                         ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "completed"])
+                         ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "yielded", "resumed", "completed"])
         self.assertTrue(all(event["timestamp"] for event in completed["events"]))
         self.assertEqual(self.latest_log(root["terminal_process_id"])["status"], "terminated")
         self.assertEqual(self.latest_log(root["terminal_process_id"])["events"][-1]["event"], "terminated")
@@ -487,7 +490,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         saved = main.read_process(root["process_id"])
         self.assertEqual(saved["status"], "completed")
         self.assertEqual([item["event"] for item in saved["events"]],
-                         ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "completed"])
+                         ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "yielded", "resumed", "completed"])
 
     def test_commit_retry_does_not_duplicate_suspend_events(self):
         root = self.start(document("Root", wait=True))
@@ -627,7 +630,7 @@ class ProcessWorkflowTest(unittest.TestCase):
     def test_parent_can_wait_for_another_terminal_message_after_handling_child_failure(self):
         self.documents = {"Child.flow": document("Child", wait=True, output_terminal=True)}
         doc = self.parent_with_child_error_handler()
-        doc["nodes"].append({"id": "wait-after-error", "type": "wait_terminal_event"})
+        doc["nodes"].append({"id": "wait-after-error", "type": "read_terminal_queue"})
         next(connection for connection in doc["connections"]
              if connection["fromId"] == "print-error" and connection["type"] == "control")["toId"] = "wait-after-error"
         doc["connections"].append(edge("wait-after-error", "error-output"))
@@ -774,7 +777,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         root = self.start(document("Root", "Middle.flow"), text=" ")
         self.drain()
         leaf = next(item for item in self.workflows() if item["workflow_name"] == "Leaf.flow")
-        self.assertEqual(leaf["current_node_id"], 1)
+        self.assertEqual(leaf["current_node_id"], 0)
         self.assertEqual(leaf["control_port"], "next")
         self.send(leaf)
         with self.assertLogs("main", level="ERROR"):
@@ -859,7 +862,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         from test_workflow_child_context import root, wrapper, leaf
         leaf_doc = leaf()
         # Suspend after the child has created its own Context.
-        leaf_doc["nodes"].insert(-1, {"id": "wait", "type": "wait_terminal_event"})
+        leaf_doc["nodes"].insert(-1, {"id": "wait", "type": "read_terminal_queue"})
         for connection in leaf_doc["connections"]:
             if connection["fromId"] == "local" and connection["type"] == "control":
                 connection["toId"] = "wait"
@@ -905,11 +908,14 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertNotIn("next_node_id", process)
 
     def test_wait_node_requires_scheduler_and_process_terminal(self):
-        node = {"id": "wait", "type": "wait_terminal_event", "successors": {"next": 1}}
+        node = {"id": "wait", "type": "read_terminal_queue", "successors": {"next": 1}}
         with self.assertRaisesRegex(ValueError, "process terminal"):
-            workflow_wait_terminal_event(0, [node])
-        with terminal_process_context("internal-terminal", "public-terminal"):
-            outcome = workflow_wait_terminal_event(0, [node])
+            workflow_read_terminal_queue(0, [node])
+        with terminal_process_context("internal-terminal", "public-terminal"), \
+                patch("workflow_nodes.current_workflow_process") as current, \
+                patch("process_repository.read_terminal_input_queue", return_value=[]):
+            current.get.return_value = {}
+            outcome = workflow_read_terminal_queue(0, [node])
             self.assertIsInstance(outcome, WorkflowStep)
             self.assertEqual(
                 outcome.wait_for,

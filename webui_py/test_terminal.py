@@ -78,7 +78,7 @@ class TerminalApiTest(unittest.TestCase):
         queue_name, raw_event = self.redis.lpush.call_args.args
         self.assertEqual(queue_name, "external_events")
         self.assertEqual(json.loads(raw_event), {
-            "type": "terminal_message", "terminal_id": "public-terminal"
+            "type": "terminal_message", "terminal_id": "public-terminal", "content": "hello"
         })
         self.assertEqual(result["message"]["id"], str(document["_id"]))
         self.assertNotIn("process_id", result)

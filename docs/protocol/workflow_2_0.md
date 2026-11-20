@@ -219,8 +219,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 | `construct_map_content` | `mappings` | 每个 port 条目对应一个 content 输入 | `map-out: map-content` |
 | `map_content_get` | 无 | `map-in: map-content`、`key-in: content` | `content-out: content` |
 | `output_to_terminal` | 无 | `content-in: content` | 无 |
-| `wait_terminal_event` | 无 | 无 | 无；仅 `control-in` / `control-out` |
-| `read_terminal_input` | 无 | 无 | `list-out: list-content` |
+| `read_terminal_queue` | 无 | 无 | `list-out: list-content`；消费当前终端进程的未读消息，队列为空时挂起 |
 | `deserialize_json` | `outputs: [{key,type}]` | `content-in: content`，内容为 JSON object 文本 | 每个 key 一个对应 type 的端口 |
 | `construct_list` | `item_type`、`initial_value_count` | `<item_type>-in-0` 至 `<item_type>-in-(count-1)` | `list-out: list-<item_type>` |
 | `list_slice` | `value_type`（`list-content` 或已声明的 `list-struct:<id>`），可选 `start_source/start`、`stop_source/stop`、`step_source/step` | `list-in: value_type`；可选 `start-in` / `stop-in` / `step-in: number` | `list-out: value_type`，与输入类型相同 |
@@ -246,7 +245,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 
 | 节点类型 | 必需参数 | 可选参数（缺省值） |
 | --- | --- | --- |
-| `input`、`output`、`number_to_content`、`map_content_get`、`output_to_terminal`、`wait_terminal_event` | 无 | 无 |
+| `input`、`output`、`number_to_content`、`map_content_get`、`output_to_terminal`、`read_terminal_queue` | 无 | 无 |
 | `router` | `branches` | 无 |
 | `construct_message` | 无 | `role` (`user`)、`role_source` (`fixed`) |
 | `construct_content` | `append_items` | 无 |
@@ -279,7 +278,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `construct_content.append_items` 必须为非空数组。每项是 object，`type` 必须为 `fixed` 或 `port`。固定项恰含 `type`、`value`，且 value 为字符串；端口项恰含 `type`、`port_id`，且 port_id 为非空字符串。端口 ID 不重复，且端口项 ID 集合与 `dataInputPorts` 一致。按条目顺序拼接；运行时缺失的端口值跳过，非字符串值转换为字符串。
 - `construct_map_content.mappings` 必须为非空数组。每项必须包含非空字符串 `key` 且 key 唯一。固定值项含 `key`、`value`，可以附 `value_source` 且其值必须为 `fixed`；value 为字符串。端口项恰含 `key`、`value_source`、`port_id`，其中 value_source 固定为 `port`，port_id 非空且唯一，不得为控制端口，并与 `dataInputPorts` 一致。端口运行值必须为已提供的字符串；输出保留条目顺序。
 - `map_content_get` 按 key 查值；查不到时执行失败。
-- `wait_terminal_event` 执行后保存工作流数据，将自身记录为最近完成节点并把进程设为 `blocked`，`wait_for` 指向关联终端的 `terminal_message`。终端输入成功保存后，仅唤醒来源和事件类型均匹配的进程，清除等待条件并重新入就绪队列，从下一节点继续。该节点无参数、无数据端口，不消费或输出消息正文；进入等待前的消息不缓存为待唤醒事件，终端输出也不唤醒。`read_terminal_input` 将当前进程终端所有已保存的 `role=user` 消息正文按时间升序读取为 `list-content`；不含助手输出、不删除记录，无消息时输出空列表。重复发送不会重复入队。根工作流和子进程均通过进程调度器执行，均支持该节点。
+- `read_terminal_queue` 从当前终端进程的 Redis `input_queue` 缓冲区读取全部未消费消息，按到达顺序输出到 `list-out: list-content`。消费队列与保存节点输出、推进工作流进度在同一 Redis 事务中提交；读取期间新追加的消息留给下次读取。队列为空时保留当前节点为待执行节点，将进程设为 `blocked`，`wait_for` 指向关联终端进程的 `terminal_message`。终端事件必须携带 `terminal_id` 和文本 `content`；内核原子追加正文并唤醒等待者，唤醒后重试本节点。有消息在检查队列与挂起提交之间到达时，提交会发现队列非空并保持进程就绪。就绪、运行或等待子进程退出期间到达的输入也会保存在被路由到的终端进程中。MongoDB 终端历史仅供 WebUI 展示，不参与内核消费。终端输出不进入输入缓冲区。进程完成、失败或终止时清空其终端缓冲区。
 - `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为四种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
 - `construct_list.item_type` 允许 `content` 或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content` 或 `list-struct:<id>`。
@@ -372,7 +371,7 @@ Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KE
 
 子进程执行到 `output` 时收集结果到进程的 `result`；保存终态、关闭自身终端、唤醒等待该子进程退出的父进程在同一事务提交。进程表中的 `current_node_id` 表示最近完成节点；`control_port` 保存已选控制端口，调度时由其与该节点的 `successors` 解析下一节点，不持久化 `next_node_id`。首次执行使用 `current_node_id: -1` 和 `control_port: null`，从 input 节点开始。父进程下次被调度时先处理 `pending_call`，校验父子关系、状态与输出类型，从原调用节点的数据输出向下游传播，将调用节点记为最近完成节点并保存其控制端口，再清除 pending；后继节点从该节点的控制端口按需解析；不会重新执行调用节点或再次创建子进程。`failed` 和 `terminated` 同样唤醒父进程，父进程失败并保留子进程标识和错误，逐层传播。
 
-前端为每个终端会话生成公共 `terminal_id`；Agent runtime 为工作流及其终端独立生成内部 `process_id` 和 `terminal_process_id`，内部字段不出现在 WebUI API。父子 workflow 可以共享同一个公共 `terminal_id`，runtime 通过内部终端索引将消息路由到当前活跃的等待者。终端列表只展示公共终端编号、工作流名称和等待状态。`wait_terminal_event` 仅负责唤醒，无消息数据输出；需要输入内容时，后续使用 `read_terminal_input` 查询该公共终端的完整用户输入列表。
+前端为每个终端会话生成公共 `terminal_id`；Agent runtime 为工作流及其终端独立生成内部 `process_id` 和 `terminal_process_id`，内部字段不出现在 WebUI API。父子 workflow 可以共享同一个公共 `terminal_id`，runtime 通过内部终端索引将消息路由到当前活跃的终端进程。每个终端进程维护独立的 Redis `input_queue`，父进程此前积累的输入不会被子进程读走。终端列表只展示公共终端编号、工作流名称和等待状态。`read_terminal_queue` 统一负责消费未读消息与空队列等待；原 `wait_terminal_event`、`read_terminal_input` 已移除。现有已保存流程可运行 `python scripts/migrate_terminal_queue_workflows.py <目录或文件> --apply` 转换相邻的等待/读取节点；其他历史游标和切片逻辑需按消费语义调整，运行中的旧进程快照不在转换范围内。
 
 公共终端会话由 runtime 独占维护在 Redis `terminal_sessions` hash（环境变量 `TerminalSessions`）中，以 `terminal_id` 为键，保存 `status`（`open` / `closed`）、根会话 `start_time`、`closed_at` 及当前工作流名称和等待状态，不保存内部进程 ID。根进程创建时在同一事务中写入 `open`；只有根进程完成、失败或被终止时才原子写入 `closed` 并移除终端路由。子进程退出只切换内部路由和公开的活动信息，不关闭公共终端。WebUI 会话列表只读取此公共 hash，不读取进程表或内部终端索引。
 

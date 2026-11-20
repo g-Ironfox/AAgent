@@ -73,10 +73,7 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         )})
         tools.start()
         self.addCleanup(tools.stop)
-        self.human_inputs = []
-        reader = patch("terminal_repository.read_terminal_input", side_effect=lambda _: list(self.human_inputs))
-        reader.start()
-        self.addCleanup(reader.stop)
+
         model = patch("llm.chat_with_model", side_effect=[
             ("Proposal 1", "", []), ("Proposal 2", "", []), ("Proposal 3", "", []),
         ])
@@ -100,7 +97,6 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         return waiting
 
     def reply(self, waiting, text):
-        self.human_inputs.append(text)
         self.send(waiting, text=text)
         self.drain()
 

@@ -33,7 +33,7 @@ def function_document(nested=False, wait=False, subprocess=False):
             doc['connections'] += [edge(previous, 'callB'), edge(source, 'callB', 'function:text', 'function:text', 'content')]
             previous = source = 'callB'
         elif wait or subprocess:
-            kind = 'spawn_and_wait_subprocess' if subprocess else 'wait_terminal_event'
+            kind = 'spawn_and_wait_subprocess' if subprocess else 'read_terminal_queue'
             n = {'id': fid + 'wait', 'type': kind}
             if subprocess:
                 n.update(arguments={'workflow_file': 'child.flow'}, input_ports=PORTS, output_ports=PORTS)

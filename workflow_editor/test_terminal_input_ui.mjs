@@ -8,8 +8,8 @@ import { state } from './static/workflow/domain/serialization.js';
 test('terminal input symbols have a visible background in the library and canvas', () => {
   const css = readFileSync(new URL('./static/css/workflow/layout.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./static/workflow_edit.html', import.meta.url), 'utf8');
-  assert.match(css, /\.read_terminal_input-symbol\s*\{[^}]*background:\s*#13775a\s*;/);
-  assert.match(html, /class="node-symbol read_terminal_input-symbol"/);
+  assert.match(css, /\.read_terminal_queue-symbol\s*\{[^}]*background:\s*#13775a\s*;/);
+  assert.match(html, /class="node-symbol read_terminal_queue-symbol"/);
 });
 
 test('compact terminal input card leaves equal clearance above and below its ports', () => {
@@ -56,7 +56,7 @@ test('compact terminal input card leaves equal clearance above and below its por
   };
   globalThis.requestAnimationFrame = () => {};
   try {
-    const node = createNode('read_terminal_input', [], { x: 100, y: 100 });
+    const node = createNode('read_terminal_queue', [], { x: 100, y: 100 });
     state.nodes = [node];
     const nodeLayer = makeElement();
     const editor = createWorkflowEditor({ canvas: makeElement(), nodeLayer,
@@ -75,7 +75,7 @@ test('compact terminal input card leaves equal clearance above and below its por
     assert.equal(bottomInset, topInset);
     assert.deepEqual(body.children.map((port) => port.dataset.portId), ['control-in', 'control-out', 'list-out']);
     const css = readFileSync(new URL('./static/css/workflow/canvas.css', import.meta.url), 'utf8');
-    assert.match(css, /\.flow-node\.read_terminal_input\s*\{[^}]*min-height:\s*104px/);
+    assert.match(css, /\.flow-node\.read_terminal_queue\s*\{[^}]*min-height:\s*104px/);
   } finally {
     state.nodes = previousNodes;
     if (previousDocument === undefined) delete globalThis.document;

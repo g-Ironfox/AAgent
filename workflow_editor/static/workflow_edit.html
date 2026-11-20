@@ -96,14 +96,9 @@
             <div><strong>Map-Content 查找</strong><small>按键读取 Content</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
-          <button class="library-item" type="button" data-add-node="wait_terminal_event">
-            <span class="node-symbol wait_terminal_event-symbol" aria-hidden="true">WAIT</span>
-            <div><strong>等待终端事件</strong><small>挂起，收到当前终端消息后继续</small></div>
-            <span class="add-symbol" aria-hidden="true">+</span>
-          </button>
-          <button class="library-item" type="button" data-add-node="read_terminal_input">
-            <span class="node-symbol read_terminal_input-symbol" aria-hidden="true">T&lt;</span>
-            <div><strong>读取终端输入</strong><small>获取当前终端全部用户输入列表</small></div>
+          <button class="library-item" type="button" data-add-node="read_terminal_queue">
+            <span class="node-symbol read_terminal_queue-symbol" aria-hidden="true">T&lt;</span>
+            <div><strong>读取终端消息缓冲区</strong><small>消费未读消息，队列为空时挂起等待</small></div>
             <span class="add-symbol" aria-hidden="true">+</span>
           </button>
           <button class="library-item" type="button" data-add-node="output_to_terminal">
@@ -458,20 +453,11 @@
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>
 
-  <template id="wait_terminal_eventInspectorTemplate">
+  <template id="read_terminal_queueInspectorTemplate">
     <div data-interface-contract></div>
     <section class="inspector-section form-section">
       <label>节点名称<input data-field="name" maxlength="30"></label>
-      <p class="node-help">节点完成后挂起当前工作流进程；向关联终端发送一条消息后，从下一节点继续。使用“读取终端输入”获取用户输入，再由下游节点判断分支。子进程拥有独立终端，也支持等待。</p>
-    </section>
-    <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
-  </template>
-
-  <template id="read_terminal_inputInspectorTemplate">
-    <div data-interface-contract></div>
-    <section class="inspector-section form-section">
-      <label>节点名称<input data-field="name" maxlength="30"></label>
-      <p class="node-help">读取当前进程终端中全部已保存的用户输入正文，按时间从早到晚输出到 <code>list-out: list-content</code>。不包含助手输出，不删除历史；没有输入时返回空列表。可接在等待终端事件之后读取，再由下游节点判断分支。</p>
+      <p class="node-help">读取当前终端进程 Redis 缓冲区中的全部未消费消息，按到达顺序输出到 <code>list-out: list-content</code>，并与节点进度一起提交消费。队列为空时挂起；收到消息后重试本节点。不包含助手输出，不读取或删除 WebUI 的 MongoDB 历史。子进程的终端缓冲区相互独立。</p>
     </section>
     <button class="delete-node-button" type="button" data-delete-node>删除节点</button>
   </template>

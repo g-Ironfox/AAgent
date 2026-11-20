@@ -55,13 +55,6 @@ class ToolLoopWorkflowTest(unittest.TestCase):
         )})
         tools.start()
         self.addCleanup(tools.stop)
-        self.human_inputs = []
-        terminal_reader = patch(
-            "terminal_repository.read_terminal_input",
-            side_effect=lambda _: list(self.human_inputs),
-        )
-        terminal_reader.start()
-        self.addCleanup(terminal_reader.stop)
 
     def drain(self):
         for _ in range(1000):
@@ -182,7 +175,6 @@ class ToolLoopWorkflowTest(unittest.TestCase):
             self.assertEqual(model.call_count, 1)
             self.assertIn("Which file should I inspect?", self.output.call_args_list[-1].args[0])
 
-            self.human_inputs.append("src/settings.py")
             self.send(waiting, text="src/settings.py")
             self.drain()
 
@@ -195,8 +187,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
         self.assertEqual(json.loads(history[-2]["content"]), {"replies": ["src/settings.py"]})
         self.assertIn("Skipped because ask_human changed the plan", history[-1]["content"])
 
-    def test_repeated_questions_use_new_slices_and_allow_tools_in_next_batch(self):
-        self.human_inputs.extend(["old terminal input", "another old message"])
+    def test_repeated_questions_consume_new_batches_and_allow_tools_in_next_batch(self):
         with patch("llm.chat_with_model", side_effect=[
             (None, "", [tool_call("question-1", "ask_human", {"question": "Which file?"})]),
             (None, "", [tool_call("question-2", "ask_human", {"question": "Which details?"})]),
@@ -209,8 +200,8 @@ class ToolLoopWorkflowTest(unittest.TestCase):
             self.assertEqual(waiting["status"], "blocked", waiting.get("error"))
             self.assertEqual(model.call_count, 1)
             self.assertEqual(len(waiting["function_stack"]), 2)
-            self.human_inputs.extend(["file-a", "Please include its configuration"])
             self.send(waiting, text="file-a")
+            self.send(waiting, text="Please include its configuration")
             self.drain()
 
             waiting = main.read_process(process["process_id"])
@@ -222,7 +213,6 @@ class ToolLoopWorkflowTest(unittest.TestCase):
                 "replies": ["file-a", "Please include its configuration"],
             })
             self.execute.assert_not_called()
-            self.human_inputs.append("Only configuration")
             self.send(waiting, text="Only configuration")
             self.drain()
 

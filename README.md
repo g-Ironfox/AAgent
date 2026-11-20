@@ -10,7 +10,7 @@
 
 以 **进程调度与 Workflow 画布**为中心的个人 Agent 平台。用户通过 WebUI 创建工作流进程；Agent 调度器从 Redis 就绪列表读取可运行进程，并逐节点执行。Workflow 通过分布式 Tool Server 调用本地或远程工具。
 
-每个工作流进程创建时都会分配独立的终端进程。终端消息按终端 ID 保存在 MongoDB；进程记录和就绪/阻塞状态保存在 Redis。
+每个工作流进程创建时都会分配独立的终端进程。终端消息历史按终端 ID 保存在 MongoDB，供 WebUI 展示；内核在各终端进程的 Redis 状态中独立缓冲未消费输入。进程记录和就绪/阻塞状态也保存在 Redis。
 
 工作区文件支持独立的运行权限和访问权限；Workflow 进程从所执行的文件取得读写等级，新建文件继承创建进程的等级。配置与继承规则见 [进程与文件权限](docs/process-permissions.md)。
 
@@ -51,7 +51,7 @@
 
 ### 运行与调试
 
-终端消息保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），并按进程终端隔离。用户输入仅保存到选定终端；Workflow 执行 `output_to_terminal` 节点时，将 Agent 输出追加到对应终端。
+终端消息保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），并按进程终端隔离。用户输入保存历史后，通过携带正文的终端事件进入内核，再追加到当前活跃终端进程的 Redis `input_queue`。`read_terminal_queue` 按顺序消费全部未读消息，队列为空时挂起，唤醒后重试读取；消费和工作流进度原子提交。Workflow 执行 `output_to_terminal` 节点时，将 Agent 输出追加到对应终端。
 
 `webui_py` 的 `/logs` 页面按进程展示日志，数据来自 MongoDB 的 `process_logs` 集合（可通过 `MONGO_PROCESS_LOG_COLLECTION` 配置）。每个工作流进程和终端进程都有独立记录，可查看进程 ID、父子关系、当前状态、节点轨迹和进程事件。挂起与唤醒事件包含发生时间、等待原因及关联进程 ID，涵盖终端消息和子进程退出；页面支持按状态、进程类型和关键词筛选。新增事件从更新后的运行时开始记录，旧记录不会补造历史事件。
 
@@ -96,14 +96,17 @@ flowchart LR
     Redis --> Scheduler[Agent 调度器]
     Scheduler --> Executor[Workflow 执行器]
     Executor -->|等待终端输入| Blocked[阻塞进程集合]
-    Terminal[进程专属终端] --> Messages[(MongoDB 终端消息)]
+    Terminal[进程专属终端] --> Messages[(MongoDB 展示历史)]
+    Terminal -->|携带正文的输入事件| Scheduler
+    Scheduler --> Buffer[Redis 终端进程缓冲区]
+    Buffer -->|读取并消费，空时等待| Executor
     Executor -->|sync / async| ToolServer[tool_server]
     ToolServer --> Provider[tool_provider]
     Executor --> Logs[(MongoDB 进程运行日志)]
 ```
 
 - **进程表** 保存在 Redis；就绪进程由调度器逐个取出执行，阻塞进程等待其 wait_for 指定的进程结束或终端消息。
-- **终端** 是进程专属的被动进程。创建工作流进程时同时创建终端；用户从 WebUI 选择终端后可发送和查看消息。当前提交接口只保存消息，自动唤醒仍需单独接入。
+- **终端** 是进程专属的被动进程。创建工作流进程时同时创建终端；用户从 WebUI 选择终端后可发送和查看消息。消息正文由内核保存到终端进程缓冲区，并自动唤醒正在等待该终端的工作流。提前输入会保留到读取节点执行，父子终端进程的缓冲区独立。
 - **Workflow** 在进程上下文内执行，output_to_terminal 将输出写入当前进程关联的终端。
 - **tool_server** 管理工具注册、调用和异步任务状态。它的独立回调 outbox 不属于 Agent 进程调度队列。
 

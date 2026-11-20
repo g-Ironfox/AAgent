@@ -14,7 +14,7 @@ from redis_client import get_connection, get_event_connection
 from scheduler_projection import queue_public_process_updates, rebuild_public_scheduler
 from process_repository import (
     BLOCKED_PROCESSES, EXTERNAL_EVENTS, PROCESSTABLE, READY_PROCESSES,
-    TERMINAL_INDEX, record_process_event,
+    record_process_event, enqueue_terminal_input,
     claim_process, commit_process, publish_process_pair, terminate_process_tree,
     TERMINAL_STATUSES, wake_process as wake_process_record,
 )
@@ -202,30 +202,9 @@ def handle_external_event(client, raw_event: str) -> None:
             create_process(process)
             return
         if event_type == "terminal_message":
-            terminal_id = event["terminal_id"]
-            if not isinstance(terminal_id, str) or not terminal_id.strip():
-                raise ValueError("terminal_id must be a non-empty string")
-            terminal_process_id = client.hget(TERMINAL_INDEX, terminal_id)
-            if not terminal_process_id:
-                return
-            raw_terminal = client.hget(PROCESSTABLE, terminal_process_id)
-            if raw_terminal is None:
-                return
-            terminal = json.loads(raw_terminal)
-            if (
-                not isinstance(terminal, dict)
-                or terminal.get("process_type") != "terminal"
-                or terminal.get("process_id") != terminal_process_id
-                or terminal.get("terminal_id") != terminal_id
-                or terminal.get("status") in TERMINAL_STATUSES
-            ):
-                return
-            parent_process_id = terminal.get("parent_process_id")
-            if isinstance(parent_process_id, str) and parent_process_id:
-                awakened = wake_process_record(
-                    client, parent_process_id, terminal_process_id, "terminal_message"
-                )
-                _sync_process_observability(awakened)
+            owner = enqueue_terminal_input(client, event["terminal_id"], event["content"])
+            if owner is not None:
+                _sync_process_observability(owner)
             return
         raise ValueError(f"unsupported external event type: {event_type!r}")
     except (KeyError, TypeError, ValueError) as error:
@@ -304,6 +283,7 @@ def _terminate_terminal_process(parent_process: dict) -> None:
 
     terminal_process['status'] = 'terminated'
     terminal_process['wait_for'] = None
+    terminal_process['input_queue'] = []
     terminal_process['finished_at'] = datetime.now(timezone.utc).isoformat()
     write_process(terminal_process)
     client = get_connection()
@@ -632,9 +612,8 @@ def Executor(process_id: str) -> dict:
                 }
                 trace.update(status='waiting', child_process_id=child['process_id'])
             else:
-                # Waiting has no deferred output: this node completes before blocking.
-                process['current_node_id'] = current_id
-                process['control_port'] = node['_selected_control_port']
+                # Keep the previous completed node so wake-up retries this read.
+                trace['status'] = 'waiting'
         else:
             process['current_node_id'] = current_id
             process['control_port'] = node.get('_selected_control_port')

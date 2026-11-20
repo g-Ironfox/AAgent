@@ -76,6 +76,56 @@ def wake_process(client, process_id: str, source_process_id: str, event_kind: st
                 continue
 
 
+def enqueue_terminal_input(client, terminal_id: str, content: str) -> dict | None:
+    """Buffer input and wake its waiting owner in the same Redis transaction."""
+    if not isinstance(terminal_id, str) or not terminal_id.strip():
+        raise ValueError("terminal_id must be a non-empty string")
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("terminal message content must be non-empty text")
+    while True:
+        with client.pipeline() as pipe:
+            try:
+                pipe.watch(PROCESSTABLE, TERMINAL_INDEX)
+                terminal_process_id = pipe.hget(TERMINAL_INDEX, terminal_id)
+                if not terminal_process_id:
+                    return None
+                terminal = _read_process_record(pipe, terminal_process_id)
+                if (terminal.get("process_type") != "terminal"
+                        or terminal.get("terminal_id") != terminal_id
+                        or terminal.get("status") in TERMINAL_STATUSES):
+                    return None
+                owner = _read_process_record(pipe, terminal["parent_process_id"])
+                if owner.get("status") in TERMINAL_STATUSES:
+                    return None
+                existing = _read_terminal_scope(pipe, terminal)
+                terminal.setdefault("input_queue", []).append(content)
+                records = {terminal_process_id: terminal}
+                if (owner.get("status") == "blocked" and owner.get("wait_for") == {
+                        "kind": "terminal_message", "process_id": terminal_process_id}):
+                    _wake_record(owner)
+                    records[owner["process_id"]] = owner
+                pipe.multi()
+                pipe.hset(PROCESSTABLE, mapping={key: _encode_process(value)
+                                                for key, value in records.items()})
+                if owner["process_id"] in records:
+                    _index_process(pipe, owner)
+                _queue_public_updates(pipe, existing, records)
+                pipe.execute()
+                return owner
+            except redis.WatchError:
+                continue
+
+
+def read_terminal_input_queue(client, terminal_process_id: str) -> list[str]:
+    """Snapshot pending input; commit_process acknowledges it with node progress."""
+    if not isinstance(terminal_process_id, str) or not terminal_process_id.strip():
+        raise ValueError("terminal_process_id must be a non-empty string")
+    terminal = _read_process_record(client, terminal_process_id)
+    if terminal.get("process_type") != "terminal":
+        raise ValueError("terminal process required")
+    return list(terminal.get("input_queue", []))
+
+
 TERMINAL_STATUSES = {"completed", "failed", "terminated"}
 
 
@@ -228,13 +278,30 @@ def commit_process(client, process: dict, child: dict | None = None,
                         or saved.get("execution_id") != process.get("execution_id")):
                     return saved
                 candidate = copy.deepcopy(process)
+                batch = candidate.pop("_terminal_input_batch", None)
+                records = {process_id: candidate}
+                terminal_process_id = candidate.get("terminal_process_id")
+                terminal = existing.get(terminal_process_id)
+                if batch and candidate.get("status") == "ready":
+                    if terminal is None or terminal.get("parent_process_id") != process_id:
+                        raise ValueError("terminal input owner mismatch")
+                    queue = terminal.get("input_queue", [])
+                    if queue[:len(batch)] != batch:
+                        raise ValueError("terminal input queue changed before commit")
+                    terminal["input_queue"] = queue[len(batch):]
+                    records[terminal_process_id] = terminal
+                if (candidate.get("status") == "blocked"
+                        and candidate.get("wait_for") == {
+                            "kind": "terminal_message", "process_id": terminal_process_id}
+                        and terminal is not None and terminal.get("input_queue")):
+                    # Input may have arrived after the node observed an empty queue.
+                    candidate.update(status="ready", wait_for=None)
                 if candidate.get("status") == "ready":
                     record_process_event(candidate, "yielded")
                 elif candidate.get("status") == "blocked":
                     record_process_event(candidate, "blocked", wait_for=candidate.get("wait_for"))
                 elif candidate.get("status") in TERMINAL_STATUSES:
                     record_process_event(candidate, candidate["status"], error=candidate.get("error"))
-                records = {process_id: candidate}
                 if child is not None:
                     if child_terminal is None:
                         raise ValueError("child terminal is required")
@@ -249,7 +316,7 @@ def commit_process(client, process: dict, child: dict | None = None,
                         terminal = json.loads(raw_terminal)
                         if (terminal.get("process_type") == "terminal"
                                 and terminal.get("parent_process_id") == process_id):
-                            terminal.update(status="terminated", wait_for=None,
+                            terminal.update(status="terminated", wait_for=None, input_queue=[],
                                             finished_at=process["finished_at"])
                             record_process_event(terminal, "terminated")
                             records[terminal_process_id] = terminal
@@ -297,6 +364,8 @@ def terminate_process_tree(client, process_id: str) -> list[dict]:
                     record = records[key]
                     if record.get("status") not in TERMINAL_STATUSES:
                         record.update(status="terminated", wait_for=None, finished_at=now)
+                        if record.get("process_type") == "terminal":
+                            record["input_queue"] = []
                         record_process_event(record, "terminated")
                         changed.append(record)
                 parent_id = records[process_id].get("parent_process_id")

@@ -31,8 +31,7 @@ SUPPORTED_NODE_TYPES = {
     "map_content_get",
     "number_to_content",
     "output_to_terminal",
-    "wait_terminal_event",
-    "read_terminal_input",
+    "read_terminal_queue",
     "deserialize_json",
     "construct_list",
     "list_append",
@@ -83,8 +82,7 @@ NODE_ARGUMENT_FIELDS_BY_TYPE = {
     "map_content_get": set(),
     "number_to_content": set(),
     "output_to_terminal": set(),
-    "wait_terminal_event": set(),
-    "read_terminal_input": set(),
+    "read_terminal_queue": set(),
     "deserialize_json": {"outputs"},
     "construct_list": {"item_type", "initial_value_count"},
     "list_append": {"item_type", "position"},
@@ -254,10 +252,8 @@ def data_ports_for_node(
         return {"number-in"}, {"content-out"}
     if node_type == "map_content_get":
         return declared_inputs | {"map-in", "key-in"}, {"content-out"}
-    if node_type == "read_terminal_input":
+    if node_type == "read_terminal_queue":
         return set(), {"list-out"}
-    if node_type == "wait_terminal_event":
-        return set(), set()
     if node_type == "output_to_terminal":
         return declared_inputs | {"content-in"}, set()
     if node_type == "deserialize_json":
@@ -341,7 +337,7 @@ def data_type_for_port(
         return "content" if port_id == "content-in" else (value_type if port_id == "value-out" else None)
     if kind == "number_to_content":
         return {"number-in": "number", "content-out": "content"}.get(port_id)
-    if kind == "read_terminal_input":
+    if kind == "read_terminal_queue":
         return "list-content" if port_id == "list-out" else None
     if kind == "construct_list":
         return f"list-{node_argument(node, 'item_type')}" if port_id == "list-out" else node_argument(node, "item_type")

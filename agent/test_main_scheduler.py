@@ -144,31 +144,13 @@ class SchedulerTest(unittest.TestCase):
         create_process.assert_called_once_with(process)
 
     @patch('main._sync_process_observability')
-    @patch('main.wake_process_record')
-    def test_terminal_event_is_applied_by_runtime(self, wake, sync):
+    @patch('main.enqueue_terminal_input')
+    def test_terminal_event_buffers_its_content(self, enqueue, sync):
         client = Mock()
-        client.hget.return_value = json.dumps({
-            'process_id': 'terminal-1',
-            'process_type': 'terminal',
-            'parent_process_id': 'workflow-1',
-        })
-        client.hget.return_value = 'terminal-1'
-        event = {'type': 'terminal_message', 'terminal_id': 'public-terminal'}
-        client.hget.side_effect = [
-            'terminal-1',
-            json.dumps({
-                'process_id': 'terminal-1',
-                'process_type': 'terminal',
-                'terminal_id': 'public-terminal',
-                'parent_process_id': 'workflow-1',
-            }),
-        ]
-
+        event = {'type': 'terminal_message', 'terminal_id': 'public-terminal', 'content': 'hello'}
         main.handle_external_event(client, json.dumps(event))
-
-        wake.assert_called_once_with(
-            client, 'workflow-1', 'terminal-1', 'terminal_message'
-        )
+        enqueue.assert_called_once_with(client, 'public-terminal', 'hello')
+        sync.assert_called_once_with(enqueue.return_value)
 
     @patch('main.handle_external_event')
     @patch('main.Executor')

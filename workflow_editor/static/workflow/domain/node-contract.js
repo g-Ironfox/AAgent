@@ -20,8 +20,7 @@ export const NODE_TYPES = new Set([
   'number_to_content',
   'deserialize_json',
   'output_to_terminal',
-  'wait_terminal_event',
-  'read_terminal_input',
+  'read_terminal_queue',
   'construct_list',
   'list_append',
   'list_length',
@@ -231,17 +230,11 @@ export function portsForNode(node) {
       { id: 'content-out', direction: 'output', type: 'content', label: 'Content', title: '查找到的 Content', multiple: true },
     ];
   }
-  if (node.type === 'read_terminal_input') {
+  if (node.type === 'read_terminal_queue') {
     return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '读取终端用户输入', multiple: false },
+      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '读取并消费未读消息，队列为空时挂起', multiple: false },
       { id: 'control-out', direction: 'output', type: 'control', label: '下一步', title: '读取后继续', multiple: false },
-      { id: 'list-out', direction: 'output', type: 'list-content', label: '用户输入', title: '当前终端全部用户输入正文，按时间从早到晚', multiple: true },
-    ];
-  }
-  if (node.type === 'wait_terminal_event') {
-    return [
-      { id: 'control-in', direction: 'input', type: 'control', label: '触发', title: '等待终端事件', multiple: false },
-      { id: 'control-out', direction: 'output', type: 'control', label: '唤醒后继续', title: '收到当前终端消息后继续', multiple: false },
+      { id: 'list-out', direction: 'output', type: 'list-content', label: '未读消息', title: '当前终端进程的未消费消息，按到达顺序输出并消费', multiple: true },
     ];
   }
   if (node.type === 'output_to_terminal') {
@@ -513,8 +506,7 @@ function createNodeDefinition(type, nodes, configuration = null, viewport = null
   if (type === 'number_to_content') return { type, name: `数字转文本 ${number}`, ...position };
   if (type === 'map_content_get') return { type, name: `Map 查找 ${number}`, ...position };
   if (type === 'deserialize_json') return { type, name: `反序列化 JSON ${number}`, outputs: [{ key: 'value', type: 'content' }], ...position };
-  if (type === 'read_terminal_input') return { type, name: `读取终端输入 ${number}`, ...position };
-  if (type === 'wait_terminal_event') return { type, name: `等待终端事件 ${number}`, ...position };
+  if (type === 'read_terminal_queue') return { type, name: `读取终端消息缓冲区 ${number}`, ...position };
   if (type === 'output_to_terminal') return { type, name: `输出到终端 ${number}`, ...position };
   if (type === 'construct_list') return { type, name: `构造列表 ${number}`, item_type: 'content', initial_value_count: 1, dataInputPorts: ['content-in-0'], ...position };
   if (type === 'list_get') return { type, name: `按下标取元素 ${number}`, value_type: 'list-content', index_source: 'port', ...position };

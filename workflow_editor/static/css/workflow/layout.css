@@ -171,8 +171,7 @@ button.library-item:hover { border-color:var(--green); border-left-color:var(--g
 @media (max-width:560px) { .workflow-page .brand { display:none; } .workflow-page .page-nav { right:8px; left:8px; overflow-x:auto; transform:none; } .workflow-page .page-nav a { flex:none; } .workflow-page .top-actions { gap:8px; } .workflow-main { width:calc(100% - 16px); } .toolbar-action-group { gap:4px; } .toolbar-action-group.export-actions { padding-left:8px; } .toolbar-button { width:38px; padding:0; } .toolbar-button span { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; } .metadata-columns,.interface-contract-columns { grid-template-columns:1fr; } .metadata-port-section + .metadata-port-section,.interface-contract-columns > section + section { border-left:0; border-top:1px solid var(--line); } .metadata-basics { grid-template-columns:1fr; } .metadata-resource-row > header:has(.metadata-row-actions) { grid-template-columns:minmax(0,1fr); } .metadata-row-actions { justify-content:flex-end; } }
 
 .output_to_terminal-symbol { background:#13775a; }
-.wait_terminal_event-symbol { background:#13775a; }
-.read_terminal_input-symbol { background:#13775a; }
+.read_terminal_queue-symbol { background:#13775a; }
 
 @media (max-width:560px) {
   .function-metadata-row > header { grid-template-columns:minmax(0,1fr) 30px; grid-template-areas:"id remove" "name name"; }

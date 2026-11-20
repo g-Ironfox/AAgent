@@ -120,6 +120,7 @@ def create_terminal_router(redis_client: redis.Redis, messages: Collection) -> A
         try:
             redis_client.lpush(EXTERNAL_EVENTS, json.dumps({
                 "type": "terminal_message",
+                "content": content,
                 "terminal_id": payload.terminal_id,
             }, ensure_ascii=False))
         except redis.RedisError:
