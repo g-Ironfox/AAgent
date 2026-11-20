@@ -292,3 +292,33 @@ def create_workspace_checkpoint(name: str) -> dict[str, Any]:
 )
 def restore_workspace_checkpoint(seq: int) -> dict[str, Any]:
     return _request("POST", f"/checkpoints/{seq}/restore")
+
+
+@tool(
+    "读取指定文件的逐级恢复计划：沿 checkpoint 当前分支跳过重复版本，以固定 stable 文件为底线；只读取，不执行恢复",
+    {
+        "type": "object",
+        "properties": {
+            "file_id": {"type": "string", "minLength": 1},
+            "stable_file_id": {"type": "string", "minLength": 1},
+            "checkpoint_seq": {"type": "integer", "minimum": 0},
+        },
+        "required": ["file_id", "stable_file_id", "checkpoint_seq"],
+        "additionalProperties": False,
+    },
+    name="workspace.get_file_recovery_plan",
+    output_schema={
+        "type": "object",
+        "properties": {"versions": {"type": "array", "items": {
+            "type": "object", "properties": {
+                "content": {"type": "string"}, "checkpoint_seq": {"type": "integer", "minimum": 0},
+                "source": {"enum": ["checkpoint", "stable"]},
+            }, "required": ["content", "checkpoint_seq", "source"], "additionalProperties": False,
+        }}},
+        "required": ["versions"],
+    },
+)
+def get_file_recovery_plan(file_id: str, stable_file_id: str, checkpoint_seq: int) -> dict[str, Any]:
+    from workflow_recovery import build_file_recovery_plan
+
+    return build_file_recovery_plan(file_id, stable_file_id, checkpoint_seq, _request)

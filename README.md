@@ -14,6 +14,8 @@
 
 工作区文件支持独立的运行权限和访问权限；Workflow 进程从所执行的文件取得读写等级，新建文件继承创建进程的等级。配置与继承规则见 [进程与文件权限](docs/process-permissions.md)。
 
+固定的引导、任务主流程和经验迭代器示例，以及权限初始化安装脚本，见 [固定工作流与经验迭代](docs/examples/restricted-agent/README.md)。
+
 设计上强调:
 
 - **可扩展** — 进程输入、Workflow 节点与 Tool Provider 分别沿调度、编排和能力三个方向扩展。
@@ -144,6 +146,7 @@ docker compose logs -f agent webui_py
 | `workspace.checkpoint_tree` | 无 | 分支树和当前 `head_seq` |
 | `workspace.get_parent_checkpoint` | `seq?`（默认当前 head） | 返回 `seq` 和 `parent_seq`，按分支祖先查询回滚目标 |
 | `workspace.checkpoint_diff` | `seq` | 相对于父 checkpoint 的文件差异 |
+| `workspace.get_file_recovery_plan` | `file_id`、`stable_file_id`、`checkpoint_seq` | 只读查询当前分支上的不同文件旧版本，以 stable 为底线，返回有序恢复候选 |
 | `workspace.create_checkpoint` | `name` | 保存当前工作区快照 |
 | `workspace.restore_checkpoint` | `seq` | 恢复整个工作区并更新文件 revision |
 
