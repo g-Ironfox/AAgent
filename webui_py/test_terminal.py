@@ -1,10 +1,10 @@
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
-from pymongo import DESCENDING
+from pymongo import ASCENDING, DESCENDING
 from pymongo.errors import ServerSelectionTimeoutError
 from redis.exceptions import RedisError
 
@@ -18,6 +18,7 @@ class TerminalApiTest(unittest.TestCase):
         router = create_terminal_router(self.redis, self.messages)
         self.sessions = next(route.endpoint for route in router.routes if route.path == "/api/terminal/sessions")
         self.history = next(route.endpoint for route in router.routes if route.path.endswith("/history"))
+        self.output = next(route.endpoint for route in router.routes if route.path.endswith("/output"))
         self.submit = next(route.endpoint for route in router.routes if route.path == "/api/terminal")
 
     def test_history_reads_public_terminal_id(self):
@@ -108,10 +109,71 @@ class TerminalApiTest(unittest.TestCase):
         self.assertIn("event queueing failed", body["error"])
         self.assertEqual(body["message"]["content"], "hello")
 
+    def test_large_observation_is_saved_and_queued_without_truncation(self):
+        content = json.dumps({"type": "observation", "text": "observation " * 5000})
+        result = self.submit(TerminalRequest(content=content, terminal_id="terminal-1"))
+
+        self.assertEqual(result["message"]["content"], content)
+        self.assertEqual(self.messages.insert_one.call_args.args[0]["content"], content)
+        event = json.loads(self.redis.lpush.call_args.args[1])
+        self.assertEqual(event["content"], content)
+
+    def test_output_reads_oldest_assistant_messages_for_one_terminal(self):
+        now = datetime.now(timezone.utc)
+        documents = [
+            {"_id": ObjectId(), "role": "assistant", "content": action, "created_at": now}
+            for action in ("look", "inventory")
+        ]
+        self.messages.find.return_value.sort.return_value.limit.return_value = documents
+
+        result = self.output("terminal-1", 2)
+
+        self.messages.find.assert_called_once_with({"terminal_id": "terminal-1", "role": "assistant"})
+        self.messages.find.return_value.sort.assert_called_once_with([("_id", ASCENDING)])
+        self.messages.find.return_value.sort.return_value.limit.assert_called_once_with(2)
+        self.assertEqual([item["content"] for item in result["items"]], ["look", "inventory"])
+        self.assertEqual(result["next_cursor"], str(documents[-1]["_id"]))
+
+    def test_output_cursor_excludes_already_read_messages(self):
+        cursor = str(ObjectId())
+        document = {"_id": ObjectId(), "role": "assistant", "content": "look",
+                    "created_at": datetime.now(timezone.utc)}
+        self.messages.find.return_value.sort.return_value.limit.return_value = [document]
+
+        result = self.output("terminal-1", 150, cursor)
+
+        self.messages.find.assert_called_once_with({
+            "terminal_id": "terminal-1", "role": "assistant", "_id": {"$gt": ObjectId(cursor)},
+        })
+        self.assertEqual(result["next_cursor"], str(document["_id"]))
+
+    def test_empty_output_preserves_cursor_for_the_next_poll(self):
+        self.messages.find.return_value.sort.return_value.limit.return_value = []
+        for cursor in (None, str(ObjectId())):
+            with self.subTest(cursor=cursor):
+                result = self.output("terminal-1", 150, cursor)
+                self.assertEqual(result["items"], [])
+                self.assertEqual(result["next_cursor"], cursor)
+
+    def test_invalid_output_parameters_do_not_read_storage(self):
+        for cursor in ("", "not-an-id", "z" * 24):
+            with self.subTest(cursor=cursor):
+                self.assertEqual(self.output("terminal-1", 150, cursor).status_code, 400)
+        for limit in (0, 301):
+            self.assertEqual(self.output("terminal-1", limit).status_code, 400)
+        self.messages.find.assert_not_called()
+
+    def test_output_storage_failure_returns_unavailable(self):
+        self.messages.find.side_effect = ServerSelectionTimeoutError("offline")
+
+        result = self.output("terminal-1", 150)
+
+        self.assertEqual(result.status_code, 503)
+        self.assertEqual(json.loads(result.body)["error"], "terminal output unavailable")
+
     def test_invalid_inputs_are_rejected_before_storage(self):
         for payload in (
             TerminalRequest(content="  ", terminal_id="terminal-1"),
-            TerminalRequest(content="a" * 4001, terminal_id="terminal-1"),
             TerminalRequest(content="hello", files=["file"], terminal_id="terminal-1"),
         ):
             with self.subTest(payload=payload):
@@ -119,6 +181,32 @@ class TerminalApiTest(unittest.TestCase):
         for limit in (0, 301):
             self.assertEqual(self.history(limit, "terminal-1").status_code, 400)
         self.messages.insert_one.assert_not_called()
+
+
+class TerminalBodyLimitTest(unittest.IsolatedAsyncioTestCase):
+    async def test_terminal_entrypoint_accepts_large_requests_and_rejects_over_one_mib(self):
+        # Exercise the actual entrypoint guard; no external services are needed.
+        with patch("pymongo.MongoClient"), patch("redis.Redis.from_url"), patch("file_store.FileStore"):
+            from main import request_body_guard
+        from starlette.requests import Request
+        from starlette.responses import Response
+
+        for size, expected_status in ((60_000, 204), (1024 * 1024, 204), (1024 * 1024 + 1, 400)):
+            with self.subTest(size=size):
+                request = Request({
+                    "type": "http", "method": "POST", "path": "/api/terminal",
+                    "headers": [(b"content-length", str(size).encode("ascii"))],
+                })
+                call_next = AsyncMock(return_value=Response(status_code=204))
+
+                result = await request_body_guard(request, call_next)
+
+                self.assertEqual(result.status_code, expected_status)
+                if expected_status == 204:
+                    call_next.assert_awaited_once_with(request)
+                else:
+                    call_next.assert_not_awaited()
+                    self.assertIn("1 MiB", json.loads(result.body)["error"])
 
 
 if __name__ == "__main__":

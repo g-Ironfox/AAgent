@@ -10,13 +10,12 @@ from bson import ObjectId
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
-from pymongo import DESCENDING
+from pymongo import ASCENDING, DESCENDING
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
 from common import limit_error
 
-MAX_TERMINAL_RUNES = 4000
 TERMINAL_SESSIONS = os.getenv("TerminalSessions", "terminal_sessions")
 EXTERNAL_EVENTS = os.getenv("ExternalEvents", "external_events")
 logger = logging.getLogger(__name__)
@@ -95,13 +94,37 @@ def create_terminal_router(redis_client: redis.Redis, messages: Collection) -> A
             "items": [serialize_message(document) for document in reversed(documents)],
         }
 
+    @router.get("/api/terminal/output")
+    def terminal_output(
+        terminal_id: str = Query(..., min_length=1),
+        limit: int = Query(150),
+        cursor: str | None = None,
+    ):
+        error = limit_error(limit)
+        if error:
+            return error
+        query = {"terminal_id": terminal_id, "role": "assistant"}
+        if cursor is not None:
+            if not ObjectId.is_valid(cursor):
+                return JSONResponse(status_code=400, content={"error": "invalid output cursor"})
+            query["_id"] = {"$gt": ObjectId(cursor)}
+        try:
+            documents = list(
+                messages.find(query).sort([("_id", ASCENDING)]).limit(limit)
+            )
+        except PyMongoError:
+            return JSONResponse(status_code=503, content={"error": "terminal output unavailable"})
+        return {
+            "fetched_at": datetime.now(timezone.utc),
+            "items": [serialize_message(document) for document in documents],
+            "next_cursor": str(documents[-1]["_id"]) if documents else cursor,
+        }
+
     @router.post("/api/terminal", status_code=201)
     def submit_terminal(payload: TerminalRequest):
         content = payload.content.strip()
         if not content:
             return JSONResponse(status_code=400, content={"error": "message cannot be empty"})
-        if len(content) > MAX_TERMINAL_RUNES:
-            return JSONResponse(status_code=400, content={"error": "message exceeds 4000 characters"})
         if payload.files:
             return JSONResponse(status_code=400, content={"error": "file attachments are not supported"})
 

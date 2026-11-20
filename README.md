@@ -53,6 +53,8 @@
 
 终端消息保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），并按进程终端隔离。用户输入保存历史后，通过携带正文的终端事件进入内核，再追加到当前活跃终端进程的 Redis `input_queue`。`read_terminal_queue` 按顺序消费全部未读消息，队列为空时挂起，唤醒后重试读取；消费和工作流进度原子提交。Workflow 执行 `output_to_terminal` 节点时，将 Agent 输出追加到对应终端。
 
+ALFWorld 等外部适配器可以通过现有终端 HTTP 接口写入观察并按游标读取 Workflow 输出。终端输入已移除 4000 字符限制，请求体上限为 1 MiB；接口说明见 [终端 HTTP IO 接口](docs/terminal-io.md)。ALFWorld 评测已拆成 `benchmark_worker` 与 `benchmark_webui`，支持网页发布、Redis 分发、MongoDB 轨迹与结果可视化；启动和使用见 [Benchmark 控制台](benchmark_webui/README.md)，终端协议见 [ALFWorld 执行器](alfworld_runner/README.md)。
+
 `webui_py` 的 `/logs` 页面按进程展示日志，数据来自 MongoDB 的 `process_logs` 集合（可通过 `MONGO_PROCESS_LOG_COLLECTION` 配置）。每个工作流进程和终端进程都有独立记录，可查看进程 ID、父子关系、当前状态、节点轨迹和进程事件。挂起与唤醒事件包含发生时间、等待原因及关联进程 ID，涵盖终端消息和子进程退出；页面支持按状态、进程类型和关键词筛选。新增事件从更新后的运行时开始记录，旧记录不会补造历史事件。
 
 调度可视化位于 `/scheduler`（顶部「调度」导航），支持最近 5 分钟至 24 小时和不超过 7 天的自定义时间范围。甘特图按进程展示就绪、执行、挂起及等待输入区间，结束状态用菱形标记；当前进程表独立于历史时间范围，展示所有活跃进程的状态、父进程、等待对象、累计执行时间和快照时间，可按类型、状态或关键词筛选，默认每 2 秒刷新，顶部导航栏提供最后同步时间、刷新间隔、暂停／继续和立即刷新按钮。点击进程后，右侧区域自动切换到「进程详情」标签，显示关系与调度事件；历史事件以列表按时间排列，展示中文事件名称、状态、等待对象及错误信息；可随时切回「当前进程表」，筛选和分表选择会保留。页面占满视口，时间线、进程表和进程详情在各自面板内滚动；窄屏上下排列时也按剩余高度分配空间。
@@ -199,6 +201,9 @@ tool_server/        工具注册与调用中心,任务状态、回调投递
 tool_provider/      实际执行工具的 Provider(QQ / Bilibili / 文档)
 webui_py/           Agent WebUI(8081)
 manager_webui/      管理 WebUI(8084)
+benchmark_webui/    评测控制台(8085)
+benchmark_worker/   ALFWorld 评测 worker
+benchmark_common/   任务配置与 Redis/MongoDB 存储
 workflow_editor/    Workflow 编辑器(8082)
 docs/               设计文档、审查记录与 README 图片
 data/               Redis / MongoDB 持久化数据(不提交)

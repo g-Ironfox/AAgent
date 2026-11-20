@@ -24,7 +24,7 @@ from scheduler import create_scheduler_router
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("aagent.webui")
 
-MAX_TERMINAL_BODY_BYTES = 16 * 1024
+MAX_TERMINAL_BODY_BYTES = 1024 * 1024
 MAX_PROCESS_BODY_BYTES = 256 * 1024
 MAX_FILE_BODY_BYTES = 1024 * 1024
 
@@ -106,6 +106,10 @@ def create_terminal_indexes():
             [("terminal_id", 1), ("created_at", -1), ("_id", -1)],
             name="terminal_id_created_at_id",
         )
+        terminal_messages.create_index(
+            [("terminal_id", 1), ("role", 1), ("_id", 1)],
+            name="terminal_id_role_id",
+        )
     except PyMongoError as error:
         logger.error("failed to create terminal indexes: %s", error)
 
@@ -148,7 +152,7 @@ async def request_logger(request: Request, call_next):
 async def request_body_guard(request: Request, call_next):
     body_limits = {
         ("POST", "/api/processes"): (MAX_PROCESS_BODY_BYTES, "请求体不能超过 256 KB"),
-        ("POST", "/api/terminal"): (MAX_TERMINAL_BODY_BYTES, "请求体不能超过 16 KB"),
+        ("POST", "/api/terminal"): (MAX_TERMINAL_BODY_BYTES, "终端请求体不能超过 1 MiB"),
     }
     body_limit = body_limits.get((request.method, request.url.path))
     if request.method in {"POST", "PUT"} and (

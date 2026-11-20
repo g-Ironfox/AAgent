@@ -158,7 +158,7 @@ function resetHistory() {
 function resizeInput() {
   elements.input.style.height = 'auto';
   elements.input.style.height = `${Math.min(elements.input.scrollHeight, 180)}px`;
-  elements.characterCount.textContent = `${[...elements.input.value].length} / 4000`;
+  elements.characterCount.textContent = `${[...elements.input.value].length} 字符`;
 }
 
 function appendHistory(items) {

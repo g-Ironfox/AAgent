@@ -64,6 +64,18 @@ services:
       tool_server:
         condition: service_started
 
+  benchmark_worker:
+    volumes:
+      - ./alfworld_runner:/app/alfworld_runner
+      - ./benchmark_common:/app/benchmark_common
+      - ./benchmark_worker:/app/benchmark_worker
+
+  benchmark_webui:
+    volumes:
+      - ./benchmark_common:/app/benchmark_common
+      - ./benchmark_webui:/app/benchmark_webui
+    command: ["uvicorn", "benchmark_webui.main:app", "--host", "0.0.0.0", "--port", "8085", "--reload"]
+
   redis:
     ports:
       - "6379:6379"

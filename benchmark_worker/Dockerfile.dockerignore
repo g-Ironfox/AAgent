@@ -1,0 +1,12 @@
+**
+!alfworld_runner
+!alfworld_runner/*.py
+!alfworld_runner/config.yaml
+!alfworld_runner/requirements.txt
+!benchmark_common
+!benchmark_common/*.py
+!benchmark_common/requirements.txt
+!benchmark_worker
+!benchmark_worker/*.py
+!benchmark_worker/requirements.txt
+!benchmark_worker/Dockerfile

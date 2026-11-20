@@ -1,0 +1,105 @@
+# Isolated acceptance stack; never connects to the user's runtime queues.
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  mongodb:
+    image: mongo:8
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  webui:
+    image: aagent-webui_py
+    volumes:
+      - ../../webui_py:/app:ro
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081"]
+    environment:
+      REDIS_HOST: redis
+      MONGO_HOST: mongodb
+      MONGO_DATABASE: benchmark_smoke
+    depends_on:
+      redis: {condition: service_healthy}
+      mongodb: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/api/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  agent:
+    image: aagent-agent
+    volumes:
+      - ../../agent:/app:ro
+    command: ["python", "main.py"]
+    environment:
+      REDIS_HOST: redis
+      MONGO_HOST: mongodb
+      MONGO_DATABASE: benchmark_smoke
+      WORKSPACE_API_URL: http://webui:8081
+      DEEPSEEK_BASE_URL: http://unused
+      DEEPSEEK_API_KEY: unused
+      KIMI_BASE_URL: http://unused
+      KIMI_API_KEY: unused
+      ZAI_API_KEY: unused
+      TAVILY_API_KEYS: unused
+      BOCHA_BASE_URL: http://unused
+      BOCHA_API_KEY: unused
+    depends_on:
+      webui: {condition: service_healthy}
+  benchmark_webui:
+    image: aagent-benchmark-webui:local
+    volumes:
+      - ../../benchmark_common:/app/benchmark_common:ro
+      - ../../benchmark_webui:/app/benchmark_webui:ro
+    ports: ["127.0.0.1:18085:8085"]
+    environment: &benchmark_environment
+      REDIS_HOST: redis
+      MONGO_HOST: mongodb
+      MONGO_DATABASE: benchmark_smoke
+      AAGENT_API_URL: http://webui:8081
+      ALFWORLD_DATA: /data/alfworld
+    depends_on:
+      webui: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8085/api/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  benchmark_worker:
+    image: aagent-benchmark-worker:local
+    init: true
+    stop_grace_period: 30s
+    volumes:
+      - ../../alfworld_runner:/app/alfworld_runner:ro
+      - ../../benchmark_common:/app/benchmark_common:ro
+      - ../../benchmark_worker:/app/benchmark_worker:ro
+      - alfworld_data:/data/alfworld:ro
+    environment:
+      <<: *benchmark_environment
+      BENCHMARK_WORKER_CONCURRENCY: "2"
+    depends_on:
+      agent: {condition: service_started}
+      benchmark_webui: {condition: service_healthy}
+  verify:
+    image: aagent-benchmark-worker:local
+    entrypoint: ["python", "-m", "unittest", "discover", "-s", "/verification", "-p", "test_*.py", "-v"]
+    volumes:
+      - .:/verification:ro
+      - ../../docs/examples:/examples:ro
+      - ../../benchmark_common:/app/benchmark_common:ro
+      - ../../benchmark_worker:/app/benchmark_worker:ro
+      - ../../alfworld_runner:/app/alfworld_runner:ro
+    environment:
+      <<: *benchmark_environment
+      BENCHMARK_INTEGRATION: "1"
+    depends_on:
+      benchmark_worker: {condition: service_started}
+volumes:
+  alfworld_data:
+    external: true
+    name: ${ALFWORLD_TEST_DATA_VOLUME:-aagent_alfworld_data}

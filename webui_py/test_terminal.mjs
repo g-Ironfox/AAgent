@@ -132,7 +132,7 @@ test('loads available process terminals and reloads history after switching', as
   select.listeners.change();
   while (vm.runInContext('state.loading', h.context)) await Promise.resolve();
   assert.equal(h.historyRequests.at(-1).terminalId, 'terminal-2');
-  assert.equal(h.get('#terminalTitle').textContent, '进程终端 · terminal');
+  assert.equal(h.get('#terminalTitle').textContent, '终端 · terminal');
 });
 
 test('sends a message to the selected process terminal', async () => {
@@ -254,7 +254,7 @@ test('creating a process posts inputs and selects its paired terminal', async ()
   h.get('#processInputs').value = '{"text":"hello"}';
   await vm.runInContext('submitNewProcess()', h.context);
   assert.deepEqual(requests, [{ file: 'workflow-file', terminalId: 'generated-terminal', inputs: { text: 'hello' } }]);
-  assert.equal(h.get('#terminalSelect').value, 'new-terminal');
+  assert.equal(h.get('#terminalSelect').value, 'generated-terminal');
   assert.equal(h.get('#createProcessDialog').open, false);
   assert.equal(h.historyRequests.at(-1).terminalId, 'generated-terminal');
   assert.match(h.get('#sendStatus').textContent, /创建请求已排队/);

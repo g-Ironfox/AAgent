@@ -1,0 +1,22 @@
+# Only the keys used by AlfredTWEnv; no training model or visual dependencies.
+dataset:
+  data_path: '$ALFWORLD_DATA/json_2.1.1/train'
+  eval_id_data_path: '$ALFWORLD_DATA/json_2.1.1/valid_seen'
+  eval_ood_data_path: '$ALFWORLD_DATA/json_2.1.1/valid_unseen'
+  num_train_games: -1
+  num_eval_games: -1
+logic:
+  domain: '$ALFWORLD_DATA/logic/alfred.pddl'
+  grammar: '$ALFWORLD_DATA/logic/alfred.twl2'
+env:
+  type: AlfredTWEnv
+  domain_randomization: false
+  task_types: [1, 2, 3, 4, 5, 6]
+  expert_type: handcoded
+  goal_desc_human_anns_prob: 0
+# dqn selects the text environment without adding the training expert wrapper.
+general:
+  training_method: dqn
+rl:
+  training:
+    max_nb_steps_per_episode: 50

@@ -1,0 +1,606 @@
+{
+  "schema_version": "2.0",
+  "description": "ALFWorld IO smoke test: always look; does not solve tasks",
+  "input_ports": [],
+  "output_ports": [],
+  "metadata": {
+    "structs": [
+      {
+        "id": "AlfworldAction",
+        "name": "AlfworldAction",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "type",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "episode_id",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "step",
+            "type": "number",
+            "required": true
+          },
+          {
+            "name": "text",
+            "type": "content",
+            "required": true
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "id": "alfworld_turn",
+        "name": "alfworld_turn",
+        "input_ports": [
+          {
+            "name": "tokens_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      }
+    ],
+    "tools": []
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "input",
+      "name": "start",
+      "x": 80,
+      "y": 100,
+      "workflowPorts": []
+    },
+    {
+      "id": "token",
+      "type": "construct_content",
+      "name": "token",
+      "x": 360,
+      "y": 100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "next"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "initial_tokens",
+      "type": "construct_list",
+      "name": "initial tokens",
+      "x": 640,
+      "y": 100,
+      "arguments": {
+        "item_type": "content",
+        "initial_value_count": 1
+      },
+      "dataInputPorts": [
+        "content-in-0"
+      ]
+    },
+    {
+      "id": "tokens",
+      "type": "context_create",
+      "name": "tokens",
+      "x": 920,
+      "y": 100,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "turn_gate",
+      "type": "while_pop",
+      "name": "turn gate",
+      "x": 1200,
+      "y": 100,
+      "arguments": {
+        "value_type": "list-content",
+        "position": "start",
+        "context_id_source": "port"
+      }
+    },
+    {
+      "id": "turn",
+      "type": "function_call",
+      "name": "turn",
+      "x": 80,
+      "y": 340,
+      "arguments": {
+        "function_id": "alfworld_turn"
+      }
+    },
+    {
+      "id": "out",
+      "type": "output",
+      "name": "out",
+      "x": 360,
+      "y": 340,
+      "workflowPorts": []
+    },
+    {
+      "id": "alfworld_turn_in",
+      "type": "function_input",
+      "name": "alfworld turn in",
+      "x": 640,
+      "y": 340,
+      "function_id": "alfworld_turn"
+    },
+    {
+      "id": "read",
+      "type": "read_terminal_queue",
+      "name": "read",
+      "x": 920,
+      "y": 340
+    },
+    {
+      "id": "latest",
+      "type": "list_get",
+      "name": "latest",
+      "x": 1200,
+      "y": 340,
+      "arguments": {
+        "value_type": "list-content",
+        "index_source": "fixed",
+        "index": -1
+      }
+    },
+    {
+      "id": "parse",
+      "type": "deserialize_json",
+      "name": "parse",
+      "x": 80,
+      "y": 580,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "episode_id",
+            "type": "content"
+          },
+          {
+            "key": "step",
+            "type": "number"
+          },
+          {
+            "key": "done",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "done",
+      "type": "router",
+      "name": "done",
+      "x": 360,
+      "y": 580,
+      "arguments": {
+        "branches": [
+          {
+            "id": "finish",
+            "name": "true"
+          }
+        ]
+      }
+    },
+    {
+      "id": "end",
+      "type": "function_output",
+      "name": "end",
+      "x": 640,
+      "y": 580,
+      "function_id": "alfworld_turn"
+    },
+    {
+      "id": "look",
+      "type": "construct_content",
+      "name": "look",
+      "x": 920,
+      "y": 580,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "look"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "action_type",
+      "type": "construct_content",
+      "name": "action type",
+      "x": 1200,
+      "y": 580,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "action"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "action",
+      "type": "construct_struct",
+      "name": "action",
+      "x": 80,
+      "y": 820,
+      "arguments": {
+        "struct_id": "AlfworldAction"
+      },
+      "dataInputPorts": [
+        "type",
+        "episode_id",
+        "step",
+        "text"
+      ]
+    },
+    {
+      "id": "serialize",
+      "type": "struct_to_json",
+      "name": "serialize",
+      "x": 360,
+      "y": 820,
+      "arguments": {
+        "value_type": "struct:AlfworldAction"
+      }
+    },
+    {
+      "id": "send",
+      "type": "output_to_terminal",
+      "name": "send",
+      "x": 640,
+      "y": 820
+    },
+    {
+      "id": "tokens_read",
+      "type": "context_read",
+      "name": "tokens read",
+      "x": 920,
+      "y": 820,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "next_token",
+      "type": "construct_content",
+      "name": "next token",
+      "x": 1200,
+      "y": 820,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "next"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "tokens_append",
+      "type": "list_append",
+      "name": "tokens append",
+      "x": 80,
+      "y": 1060,
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      }
+    },
+    {
+      "id": "tokens_write",
+      "type": "context_write",
+      "name": "tokens write",
+      "x": 360,
+      "y": 1060,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "continue",
+      "type": "function_output",
+      "name": "continue",
+      "x": 640,
+      "y": 1060,
+      "function_id": "alfworld_turn"
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "token",
+      "fromPortId": "content-out",
+      "toId": "initial_tokens",
+      "toPortId": "content-in-0",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_tokens",
+      "fromPortId": "list-out",
+      "toId": "tokens",
+      "toPortId": "initial-value",
+      "type": "list-content"
+    },
+    {
+      "fromId": "tokens",
+      "fromPortId": "context-id",
+      "toId": "turn_gate",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "start",
+      "fromPortId": "control-out",
+      "toId": "token",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "token",
+      "fromPortId": "control-out",
+      "toId": "initial_tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_tokens",
+      "fromPortId": "control-out",
+      "toId": "tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens",
+      "fromPortId": "control-out",
+      "toId": "turn_gate",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens",
+      "fromPortId": "context-id",
+      "toId": "turn",
+      "toPortId": "function:tokens_id",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_gate",
+      "fromPortId": "loop-out",
+      "toId": "turn",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn",
+      "fromPortId": "control-out",
+      "toId": "turn_gate",
+      "toPortId": "loop-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_gate",
+      "fromPortId": "control-out",
+      "toId": "out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "alfworld_turn_in",
+      "fromPortId": "control-out",
+      "toId": "read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read",
+      "fromPortId": "list-out",
+      "toId": "latest",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "latest",
+      "fromPortId": "item-out",
+      "toId": "parse",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "parse",
+      "fromPortId": "done",
+      "toId": "done",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "done",
+      "fromPortId": "finish",
+      "toId": "end",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read",
+      "fromPortId": "control-out",
+      "toId": "latest",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "latest",
+      "fromPortId": "control-out",
+      "toId": "parse",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "parse",
+      "fromPortId": "control-out",
+      "toId": "done",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "done",
+      "fromPortId": "branch$others",
+      "toId": "look",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "action_type",
+      "fromPortId": "content-out",
+      "toId": "action",
+      "toPortId": "type",
+      "type": "content"
+    },
+    {
+      "fromId": "parse",
+      "fromPortId": "episode_id",
+      "toId": "action",
+      "toPortId": "episode_id",
+      "type": "content"
+    },
+    {
+      "fromId": "parse",
+      "fromPortId": "step",
+      "toId": "action",
+      "toPortId": "step",
+      "type": "number"
+    },
+    {
+      "fromId": "look",
+      "fromPortId": "content-out",
+      "toId": "action",
+      "toPortId": "text",
+      "type": "content"
+    },
+    {
+      "fromId": "action",
+      "fromPortId": "struct-out",
+      "toId": "serialize",
+      "toPortId": "value-in",
+      "type": "struct:AlfworldAction"
+    },
+    {
+      "fromId": "serialize",
+      "fromPortId": "content-out",
+      "toId": "send",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "alfworld_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "tokens_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "tokens_read",
+      "fromPortId": "value-out",
+      "toId": "tokens_append",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "next_token",
+      "fromPortId": "content-out",
+      "toId": "tokens_append",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "alfworld_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "tokens_write",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "tokens_append",
+      "fromPortId": "list-out",
+      "toId": "tokens_write",
+      "toPortId": "value-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "look",
+      "fromPortId": "control-out",
+      "toId": "action_type",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "action_type",
+      "fromPortId": "control-out",
+      "toId": "action",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "action",
+      "fromPortId": "control-out",
+      "toId": "serialize",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "serialize",
+      "fromPortId": "control-out",
+      "toId": "send",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "send",
+      "fromPortId": "control-out",
+      "toId": "tokens_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_read",
+      "fromPortId": "control-out",
+      "toId": "next_token",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "next_token",
+      "fromPortId": "control-out",
+      "toId": "tokens_append",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_append",
+      "fromPortId": "control-out",
+      "toId": "tokens_write",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_write",
+      "fromPortId": "control-out",
+      "toId": "continue",
+      "toPortId": "control-in",
+      "type": "control"
+    }
+  ]
+}
