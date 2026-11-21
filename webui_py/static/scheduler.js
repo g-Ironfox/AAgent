@@ -105,7 +105,7 @@ function renderTable() {
   el.tableEmpty.textContent = snapshot.current_available === false ? '公开 Redis 进程投影暂不可用，请确认 Agent 已更新并启动' : '当前没有符合筛选条件的活跃进程';
   el.tableCount.textContent = snapshot.current_available === false ? '状态不可用' : items.length + ' / ' + snapshot.active_count + ' 个活跃进程';
 }
-const eventLabels = { resumed: '再次调度', yielded: '返回就绪', created: '创建', started: '开始执行', blocked: '挂起', woken: '唤醒', completed: '完成', failed: '失败', terminated: '终止' };
+const eventLabels = { resumed: '再次调度', yielded: '返回就绪', created: '创建', started: '开始执行', blocked: '挂起', woken: '唤醒', completed: '完成', failed: '失败', terminated: '终止', lost: '发现运行状态丢失' };
 function eventDescription(event) {
   if (event.event !== 'woken' && !event.wait_for) return '';
   const source = event.wait_for || {};
@@ -144,7 +144,7 @@ function renderDetails() {
     return;
   }
   const grid = node('dl', 'detail-grid');
-  for (const [label, value] of [['进程 ID', process.process_id], ['名称', name(process)], ['当前状态', statusLabels[process.status] || process.status], ['类型', process.process_type || 'workflow'], ['父进程', process.parent_process_id || '—'], ['根进程', process.root_process_id || '—'], ['终端', process.terminal_id || '—'], ['等待对象', waitLabel(process.wait_for)], ['累计执行', formatDuration(process.active_duration_ms)], ['最近节点', process.current_node_id ?? '—'], ['创建时间', date(process.start_time)], ['结束时间', date(process.finished_at)], ['快照时间', date(process.observed_at)]]) {
+  for (const [label, value] of [['进程 ID', process.process_id], ['名称', name(process)], ['当前状态', statusLabels[process.status] || process.status], ['类型', process.process_type || 'workflow'], ['父进程', process.parent_process_id || '—'], ['根进程', process.root_process_id || '—'], ['终端', process.terminal_id || '—'], ['等待对象', waitLabel(process.wait_for)], ['累计执行', formatDuration(process.active_duration_ms)], ['最近节点', process.current_node_id ?? '—'], ['创建时间', date(process.start_time)], [process.status === 'lost' ? '结束时间（自检发现）' : '结束时间', date(process.finished_at)], ['快照时间', date(process.observed_at)]]) {
     const item = node('div'); item.append(node('dt', '', label), node('dd', '', value)); grid.append(item);
   }
   const history = process.events || [];

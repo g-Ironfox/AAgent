@@ -49,6 +49,7 @@
 .process-id { display:block; margin-top:5px; overflow:hidden; text-overflow:ellipsis; color:var(--muted); font:10px Consolas,monospace; }
 .run-status.blocked,.run-status.waiting_for_input,.run-status.waiting { color:#805b11; background:#fff3d6; }
 .run-status.ready,.run-status.running { color:#235b86; background:#e7f2fa; }
+.run-status.lost { color:#805b11; background:#fff3d6; }
 .run-status.terminated,.run-status.unknown { color:var(--muted); background:#edf0ee; }
 .timeline-event { border-left:3px solid #cbded3; }
 .timeline-detail { grid-column:2/-1; color:var(--muted); overflow-wrap:anywhere; font-size:10px; }

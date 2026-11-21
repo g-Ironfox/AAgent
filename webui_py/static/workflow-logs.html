@@ -28,7 +28,7 @@
   <main class="logs-main">
     <header class="logs-heading"><div><p>PROCESS · MONGODB</p><h1>进程日志</h1></div><span id="logCount" class="log-count">0 个进程</span></header>
     <section class="logs-toolbar" aria-label="筛选日志">
-      <label><span>状态</span><select id="statusFilter"><option value="all">全部状态</option><option value="ready">就绪</option><option value="running">运行中</option><option value="blocked">已挂起</option><option value="waiting_for_input">等待输入</option><option value="terminated">已终止</option><option value="completed">已完成</option><option value="failed">失败</option></select></label>
+      <label><span>状态</span><select id="statusFilter"><option value="all">全部状态</option><option value="ready">就绪</option><option value="running">运行中</option><option value="blocked">已挂起</option><option value="waiting_for_input">等待输入</option><option value="terminated">已终止</option><option value="completed">已完成</option><option value="failed">失败</option><option value="lost">运行状态丢失</option></select></label>
       <label><span>进程类型</span><select id="typeFilter"><option value="all">全部进程</option><option value="workflow">工作流进程</option><option value="terminal">终端进程</option></select></label>
       <label class="log-search"><span>搜索</span><input id="searchInput" type="search" placeholder="进程 ID、工作流名称或事件" autocomplete="off"></label>
       <label><span>自动刷新</span><select id="interval"><option value="2000">2 秒</option><option value="5000" selected>5 秒</option><option value="10000">10 秒</option><option value="0">关闭</option></select></label>

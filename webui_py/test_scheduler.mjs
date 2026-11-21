@@ -24,6 +24,14 @@ assert.equal(segments[0].start, start + 4500);
 assert.equal(segments.at(-1).end, start + 8500);
 assert.equal(segments.reduce((sum, s) => sum + s.end - s.start, 0), 4000);
 assert.equal(buildSegments(process, start + 11000, start + 20000).length, 0);
+const lost = { start_time: at(0), status: 'lost', finished_at: at(5),
+  events: [event('started', 1, 'running'), event('lost', 5, 'lost')] };
+assert.equal(data.finalStatuses.has('lost'), true);
+assert.equal(data.statusLabels.lost, '运行状态丢失');
+assert.deepEqual(buildSegments(lost, start, start + 20000).map(s => s.status), ['unknown', 'running', 'lost']);
+assert.equal(buildSegments(lost, start, start + 20000).at(-1).start, start + 5000);
+assert.equal(buildSegments(lost, start + 6000, start + 20000).length, 0);
+assert.deepEqual(buildSegments({ ...lost, events: [] }, start, start + 20000).map(s => s.status), ['unknown', 'lost']);
 const noEvents = { start_time: at(0), status: 'failed', finished_at: at(5), events: [] };
 assert.deepEqual(buildSegments(noEvents, start, start + 10000).map(s => s.status), ['unknown', 'failed']);
 assert.equal(isPrecise({ events: [event('started', 0, 'running'), event('resumed', 2, 'running', { dispatch: true })] }), false);
@@ -212,4 +220,19 @@ assert.match(eventList.children[4].textContent, /未记录.*future_event.*future
 assert.equal(eventList.children[0].children[0].attributes.datetime, at(0));
 assert.equal(eventList.children[4].children[0].attributes.datetime, undefined);
 assert.match(vm.runInContext('renderEventList([])', context).textContent, /暂无历史调度事件/);
+// Lost records reuse the normal finish time and disappear from later windows.
+fail = false;
+body.items = [{ ...lost, process_id: 'lost-run', process_type: 'workflow', workflow_name: 'Lost.flow' }];
+body.current_available = true; body.active_items = []; body.active_count = 0;
+body.status_counts = {}; body.warnings = [];
+await vm.runInContext('refresh()', context);
+assert.equal(elements.gantt.children.length, 2);
+elements.gantt.children[1].children[0].listeners.click();
+assert.match(elements.detailContent.textContent, /运行状态丢失/);
+assert.match(elements.detailContent.textContent, /结束时间（自检发现）/);
+const savedStart = body.start;
+body.start = at(6);
+await vm.runInContext('refresh()', context);
+assert.match(elements.gantt.textContent, /没有符合条件的进程记录/);
+body.start = savedStart;
 console.log('Scheduler assertions passed: event intervals, clipping, legacy records, filters, current table, details and error recovery.');

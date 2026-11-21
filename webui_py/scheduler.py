@@ -10,7 +10,7 @@ from pymongo import DESCENDING
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-FINAL_STATUSES = {"completed", "failed", "terminated"}
+FINAL_STATUSES = {"completed", "failed", "terminated", "lost"}
 PROJECTION = {key: 1 for key in (
     "process_id", "process_type", "parent_process_id", "root_process_id",
     "terminal_id", "workflow_name", "status", "start_time", "finished_at",

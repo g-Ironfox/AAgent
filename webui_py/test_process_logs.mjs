@@ -168,6 +168,11 @@ assert.equal(vm.runInContext("formatDate(null)", context), '时间未知');
 const unknown = vm.runInContext("renderRecord({process_id:'unknown', status:'new_status'})", context);
 assert.equal(unknown.children[0].children[1].textContent, 'new_status');
 
+const lostView = vm.runInContext("renderRecord({process_id:'lost', status:'lost', finished_at:'2026-11-21T02:00:00Z', events:[{event:'lost', status:'lost'}]})", context);
+assert.equal(lostView.children[0].children[1].textContent, '运行状态丢失');
+assert.match(lostView.textContent, /结束时间为启动自检发现丢失的时间/);
+assert.match(lostView.textContent, /发现运行状态丢失/);
+
 // A failed refresh keeps the last successful list available.
 fail = true;
 await vm.runInContext('refresh()', context);

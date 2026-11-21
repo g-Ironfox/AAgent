@@ -126,7 +126,7 @@ def read_terminal_input_queue(client, terminal_process_id: str) -> list[str]:
     return list(terminal.get("input_queue", []))
 
 
-TERMINAL_STATUSES = {"completed", "failed", "terminated"}
+TERMINAL_STATUSES = {"completed", "failed", "terminated", "lost"}
 
 
 def _encode_process(process: dict) -> str:

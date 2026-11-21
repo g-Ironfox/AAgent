@@ -542,6 +542,18 @@ class ProcessWorkflowTest(unittest.TestCase):
                             for call in self.runs.update_one.call_args_list))
         self.assertEqual(main.read_process(root["process_id"]), saved)
 
+    def test_startup_recovery_keeps_scheduler_state_when_mongo_scan_is_unavailable(self):
+        from pymongo.errors import ServerSelectionTimeoutError
+        root = self.start(document("Root", wait=True))
+        self.drain()
+        saved = self.redis.hgetall(r.PROCESSTABLE)
+        self.logs.find.side_effect = ServerSelectionTimeoutError("logs offline")
+        with self.assertLogs("main", level="ERROR"):
+            main.rebuild_process_observability(self.redis)
+        self.assertEqual(self.redis.hgetall(r.PROCESSTABLE), saved)
+        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.logs.find_one_and_update.assert_not_called()
+
     def test_commit_retry_does_not_duplicate_suspend_events(self):
         root = self.start(document("Root", wait=True))
         main.schedule_once(timeout=1)  # input

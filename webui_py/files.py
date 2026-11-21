@@ -88,7 +88,7 @@ def create_files_router(
             or process.get("process_type") != "workflow"
             or not isinstance(process.get("_workspace_token"), str)
             or not hmac.compare_digest(process["_workspace_token"].encode(), token.encode())
-            or process.get("status") in {"completed", "failed", "terminated"}
+            or process.get("status") in {"completed", "failed", "terminated", "lost"}
         ):
             return None, JSONResponse(status_code=403, content={"error": "invalid process identity"})
         return process, None

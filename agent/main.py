@@ -9,6 +9,7 @@ from uuid import uuid4
 from process_creation import initialize_process_pair
 
 from pymongo import ASCENDING, MongoClient
+from pymongo.errors import PyMongoError
 
 from redis_client import get_connection, get_event_connection
 from scheduler_projection import queue_public_process_updates, rebuild_public_scheduler
@@ -304,6 +305,8 @@ def _sync_process_observability(process: dict) -> None:
             'process_type': process.get('process_type', 'workflow'),
             'terminal_id': process.get('terminal_id'),
             'terminal_process_id': process.get('terminal_process_id'),
+            'invocation_id': process.get('invocation_id'),
+            'call_stack': copy.deepcopy(process.get('call_stack', [])),
             'wait_for': process.get('wait_for'),
             'events': copy.deepcopy(process.get('events', [])),
             'input': process.get('input', {}),
@@ -700,6 +703,11 @@ def rebuild_process_observability(client) -> None:
     """Repair history left behind by a crash or MongoDB outage from Redis."""
     for raw in client.hgetall(PROCESSTABLE).values():
         _sync_process_observability(json.loads(raw))
+    from process_recovery import reconcile_lost_processes
+    try:
+        reconcile_lost_processes(client, _get_process_log_collection())
+    except PyMongoError:
+        logger.exception('failed to reconcile lost process history; retry at next startup')
 
 
 def main() -> None:

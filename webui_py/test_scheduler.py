@@ -141,6 +141,18 @@ class SchedulerApiTest(unittest.TestCase):
         self.assertFalse(data["current_available"])
         self.assertTrue(data["warnings"])
 
+    def test_lost_history_is_final_and_keeps_the_discovery_finish_time(self):
+        lost = {"process_id": "lost", "status": "lost", "start_time": self.start,
+                "finished_at": self.end, "events": [{"event": "lost", "status": "lost"}]}
+        self.logs.find.return_value.sort.return_value.limit.return_value = [lost]
+        self.current["lost"] = {"process_id": "lost", "status": "lost"}
+        self.public_snapshot()
+        data = self.get("/api/scheduler").json()
+        self.assertEqual(data["items"][0]["status"], "lost")
+        self.assertEqual(datetime.fromisoformat(data["items"][0]["finished_at"]), self.end)
+        self.assertNotIn("lost", [p["process_id"] for p in data["active_items"]])
+        self.assertNotIn("lost", data["status_counts"])
+
     def test_current_counts_remain_complete_when_rows_are_truncated(self):
         self.current = {str(index): {"process_id": str(index), "status": "ready"} for index in range(ACTIVE_LIMIT + 1)}
         self.public_snapshot()

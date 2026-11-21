@@ -489,7 +489,7 @@ class FileStoreTests(unittest.TestCase):
         router = create_files_router(self.store, lambda _: process)
         listing = next(route.endpoint for route in router.routes if route.path == "/api/files" and "GET" in route.methods)
         self.assertEqual(listing("p1:伪造").status_code, 403)
-        for status in ("completed", "failed", "terminated"):
+        for status in ("completed", "failed", "terminated", "lost"):
             process["status"] = status
             self.assertEqual(listing("p1:secret").status_code, 403)
 

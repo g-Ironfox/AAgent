@@ -32,7 +32,7 @@
       <label>时间范围<select id="range"><option value="300000">最近 5 分钟</option><option value="900000" selected>最近 15 分钟</option><option value="3600000">最近 1 小时</option><option value="21600000">最近 6 小时</option><option value="86400000">最近 24 小时</option><option value="custom">自定义</option></select></label>
       <div id="customRange" class="custom-range" hidden><label>开始<input id="startTime" type="datetime-local" step="1"></label><label>结束<input id="endTime" type="datetime-local" step="1"></label><button type="button" id="applyRange">应用</button></div>
       <label>类型<select id="typeFilter"><option value="all">全部进程</option><option value="workflow">工作流</option><option value="terminal">终端</option></select></label>
-      <label>状态<select id="statusFilter"><option value="all">全部状态</option><option value="running">运行中</option><option value="ready">就绪</option><option value="blocked">已挂起</option><option value="waiting_for_input">等待输入</option><option value="completed">已完成</option><option value="failed">失败</option><option value="terminated">已终止</option></select></label>
+      <label>状态<select id="statusFilter"><option value="all">全部状态</option><option value="running">运行中</option><option value="ready">就绪</option><option value="blocked">已挂起</option><option value="waiting_for_input">等待输入</option><option value="completed">已完成</option><option value="failed">失败</option><option value="terminated">已终止</option><option value="lost">运行状态丢失</option></select></label>
       <label class="search-label">搜索<input id="searchInput" type="search" placeholder="进程 ID、工作流、终端或父进程" autocomplete="off"></label>
     </section>
     <div id="warning" class="notice warning" role="alert" hidden></div>
@@ -40,7 +40,7 @@
     <div class="scheduler-columns">
       <section class="panel" aria-labelledby="ganttTitle">
         <header class="panel-heading"><div><h2 id="ganttTitle">进程时间线</h2><p id="timeWindow">正在加载时间范围…</p></div><span id="timelineCount" class="muted"></span></header>
-        <div class="legend" aria-label="甘特图图例"><span class="running">运行</span><span class="blocked">挂起</span><span class="waiting_for_input">等待输入</span><span class="completed">完成</span><span class="failed">失败</span><span class="terminated">终止</span></div>
+        <div class="legend" aria-label="甘特图图例"><span class="running">运行</span><span class="blocked">挂起</span><span class="waiting_for_input">等待输入</span><span class="completed">完成</span><span class="failed">失败</span><span class="terminated">终止</span><span class="lost">状态丢失</span></div>
         <div class="timeline-scroll"><div id="gantt" class="gantt"></div></div>
         <p id="timelineNote" class="panel-note">色块表示调度状态的持续时间。悬停可查看时间与等待原因，点击进程可查看详情。</p>
       </section>

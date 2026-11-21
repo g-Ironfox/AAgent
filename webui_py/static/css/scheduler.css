@@ -39,7 +39,7 @@ button:hover { border-color:var(--green); color:var(--green); } button:disabled 
 .legend span { display:flex; align-items:center; gap:6px; }
 .legend span:before { content:''; display:inline-block; width:9px; height:9px; background:var(--state-color); border-radius:2px; }
 .ready { --state-color:#4289c3; } .running { --state-color:#13775a; } .blocked { --state-color:#d09a28; }
-.waiting_for_input { --state-color:#a3abb4; } .completed { --state-color:#306e59; } .failed { --state-color:#c85147; } .terminated { --state-color:#707983; } .unknown { --state-color:#bbc0c5; }
+.waiting_for_input { --state-color:#a3abb4; } .completed { --state-color:#306e59; } .failed { --state-color:#c85147; } .terminated { --state-color:#707983; } .lost { --state-color:#a47935; } .unknown { --state-color:#bbc0c5; }
 .timeline-scroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
 .gantt { min-width:680px; }
 .axis-row,.gantt-row { display:grid; grid-template-columns:200px minmax(0,1fr); }
