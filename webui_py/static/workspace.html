@@ -37,6 +37,7 @@
           <div class="workflow-fields">
             <span id="workflowVersion" class="workflow-version"></span>
             <label class="workflow-field">描述<textarea id="workflowDescription" placeholder="暂无描述" disabled></textarea></label>
+            <label class="workflow-field">累计执行时间上限（秒）<input id="workflowExecutionTimeout" type="number" step="1" inputmode="numeric" placeholder="不限时" disabled><small>留空或负数表示不限时；正数按秒限制，挂起时暂停计时。</small></label>
           </div>
           <section class="workflow-canvas-preview" aria-labelledby="workflowCanvasTitle">
             <header><div><p>CANVAS PREVIEW</p><h3 id="workflowCanvasTitle">完整画布</h3></div><button id="canvasExportButton" class="tool-button" type="button">导出画布</button><span id="workflowCanvasMeta" class="metadata-readonly"></span></header>

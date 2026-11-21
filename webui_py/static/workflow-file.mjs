@@ -23,14 +23,25 @@ export function parseWorkflowFile(content) {
   }
 }
 
-export function editWorkflowMetadata(workflow, { description }) {
+export function editWorkflowMetadata(workflow, { description, max_execution_time_seconds }) {
   const next = migrateSubprocessWorkflowFormat(workflow);
   if (description !== (next.description || '')) next.description = description;
+  if (max_execution_time_seconds !== undefined) {
+    if (max_execution_time_seconds === '') {
+      if (next.metadata) delete next.metadata.max_execution_time_seconds;
+    } else {
+      next.metadata = { ...(next.metadata || {}), max_execution_time_seconds: Number(max_execution_time_seconds) };
+    }
+  }
   return next;
 }
 
 export function validateWorkflowMetadata(workflow) {
   if (workflow.description !== undefined && typeof workflow.description !== 'string') throw new Error('Workflow 描述必须是文本');
+  const timeout = workflow.metadata?.max_execution_time_seconds;
+  if (timeout !== undefined && !Number.isInteger(timeout)) {
+    throw new Error('metadata.max_execution_time_seconds must be an integer');
+  }
 }
 
 export function migrateSubprocessWorkflowFormat(workflow) {

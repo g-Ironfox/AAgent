@@ -3,7 +3,7 @@ import { editWorkflowMetadata, parseWorkflowFile, validateWorkflowMetadata } fro
 
 export function createWorkflowPanel({ onChange, onError, getFileName = () => 'workflow.flow' }) {
   const el = Object.fromEntries([
-    'workflowPanel', 'workflowVersion', 'workflowDescription', 'workflowCanvasPreview',
+    'workflowPanel', 'workflowVersion', 'workflowDescription', 'workflowExecutionTimeout', 'workflowCanvasPreview',
     'workflowCanvasMeta', 'canvasExportButton', 'inputPorts', 'outputPorts',
     'remoteTools', 'remoteToolCount',
   ].map((id) => [id, document.getElementById(id)]));
@@ -59,6 +59,7 @@ export function createWorkflowPanel({ onChange, onError, getFileName = () => 'wo
   function currentWorkflow() {
     return editWorkflowMetadata(original, {
       description: el.workflowDescription.value,
+      max_execution_time_seconds: el.workflowExecutionTimeout.value,
     });
   }
 
@@ -89,6 +90,7 @@ export function createWorkflowPanel({ onChange, onError, getFileName = () => 'wo
   }
 
   el.workflowDescription.addEventListener('input', sync);
+  el.workflowExecutionTimeout.addEventListener('input', sync);
   el.canvasExportButton.addEventListener('click', () => {
     if (!original || el.canvasExportButton.disabled) return;
     try {
@@ -109,6 +111,7 @@ export function createWorkflowPanel({ onChange, onError, getFileName = () => 'wo
       originalContent = JSON.stringify(JSON.parse(content)) === JSON.stringify(original) ? content : JSON.stringify(original, null, 2);
       el.workflowVersion.textContent = 'SCHEMA ' + original.schema_version + ' / VERSION ' + (original.version ?? 1);
       el.workflowDescription.value = original.description || '';
+      el.workflowExecutionTimeout.value = original.metadata?.max_execution_time_seconds ?? '';
       renderPorts(el.inputPorts, original.input_ports);
       renderPorts(el.outputPorts, original.output_ports);
       const tools = [...(original.metadata?.tools || []), ...(original.remote_tools || []).map((tool) => ({ ...tool, kind: 'remote' }))];
@@ -120,6 +123,7 @@ export function createWorkflowPanel({ onChange, onError, getFileName = () => 'wo
     setEditing(editing, busy) {
       disabled = !editing || busy;
       el.workflowDescription.disabled = disabled;
+      el.workflowExecutionTimeout.disabled = disabled;
       el.canvasExportButton.disabled = busy;
     },
     validate() { if (original) { validateWorkflowMetadata(currentWorkflow()); sync(); } },

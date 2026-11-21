@@ -48,6 +48,16 @@ test('metadata edits preserve node inputs, connections and other document fields
   assert.deepEqual(source, before);
 });
 
+test('metadata edits set and clear the optional execution timeout', () => {
+  const source = workflow();
+  const limited = editWorkflowMetadata(source, { description: source.description, max_execution_time_seconds: '45' });
+  assert.equal(limited.metadata.max_execution_time_seconds, 45);
+  const unlimited = editWorkflowMetadata(limited, { description: source.description, max_execution_time_seconds: '' });
+  assert.equal(Object.hasOwn(unlimited.metadata, 'max_execution_time_seconds'), false);
+  assert.doesNotThrow(() => validateWorkflowMetadata({ ...source, metadata: { max_execution_time_seconds: -1 } }));
+  assert.throws(() => validateWorkflowMetadata({ ...source, metadata: { max_execution_time_seconds: 1.5 } }), /must be an integer/);
+});
+
 test('metadata edits remove obsolete declarations and keep optional description absent', () => {
   const source = { ...workflow(), subprocess_workflow_files: [{ workflow_name: 'child-a' }] };
   delete source.description;
@@ -168,6 +178,23 @@ test('view switching preserves exact text, renders ports and strips inline SVG s
   await h.fire('workflowButton');
   assert.equal(h.get('fileContent').value, content);
   assert.equal(h.calls.length, 0);
+});
+
+test('workspace Workflow view edits the execution timeout metadata', async () => {
+  const h = await harness([file('flow')]);
+  await h.fire('workflowButton');
+  assert.equal(h.get('workflowExecutionTimeout').value, '');
+  await h.fire('editButton');
+  assert.equal(h.get('workflowExecutionTimeout').disabled, false);
+  await h.input('workflowExecutionTimeout', '45');
+  await h.fire('editButton');
+  assert.equal(JSON.parse(h.stored.get('flow').content).metadata.max_execution_time_seconds, 45);
+
+  await h.fire('workflowButton');
+  await h.fire('editButton');
+  await h.input('workflowExecutionTimeout', '-1');
+  await h.fire('editButton');
+  assert.equal(JSON.parse(h.stored.get('flow').content).metadata.max_execution_time_seconds, -1);
 });
 
 test('metadata edits round-trip through raw JSON and save using the file revision', async () => {
