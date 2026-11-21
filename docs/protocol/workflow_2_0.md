@@ -30,9 +30,11 @@ Workflow 2.0 新增 Workflow 局部具名 Struct 类型，并允许 Context 保�
 
 端口对象由 `name` 和 `type` 两个字段组成，例如一个名称为 prompt、类型为 content 的接口端口。节点顶层字段包括必需的 `id`、`type`，可选的字符串 `name`、函数边界标识 `function_id` 及数字 `x`、`y`，以及按类型要求的 `arguments`、`workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。`id` 在单个 Workflow 中必须唯一。不支持的节点参数和节点顶层字段会被语义校验拒绝。Schema 是本文约束的机器可读镜像；本文逐节定义其语义，不以 Schema 文件替代协议规则。
 
-规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。Workflow 根对象和 metadata 均不包含 `name`；文件名由工作区文件记录提供。旧文件的名称字段在兼容读取时移除，保存和导出不再生成。`description` 最大长度 2000。`metadata` 允许 `structs`、`tools`、`functions` 三个属性，均缺省为空数组。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
+规范化后持久化的 Workflow 必须包含表中标为必需的字段；`connections` 即使为空也必须显式保存。管理端创建/更新请求允许省略 `connections`、`description`、`metadata` 和 `remote_tools`，服务端分别补为 `[]`、`""`、`{}`、`[]` 后再保存，因此 `connections` 在 API 请求中可省略，但在本规范的规范化 Workflow JSON 中必需（表中 *）。Workflow 根对象和 metadata 均不包含 `name`；文件名由工作区文件记录提供。旧文件的名称字段在兼容读取时移除，保存和导出不再生成。`description` 最大长度 2000。`metadata` 允许 `structs`、`tools`、`functions` 和可选的 `max_execution_time_seconds`；前三者缺省为空数组，未配置时不设时限。`metadata.tools` 最多 100 项。输入和输出接口各最多 50 个端口，每个端口名称长度为 1–80。`nodes` 必须有 1–200 个元素；`connections` 最多 1000 条；`remote_tools` 最多 100 项。通过管理端 HTTP API 写入 Workflow 时，请求体上限为 512 KiB。
 
 对根对象的未知字段，管理端请求模型会拒绝；当前 Agent 所用 JSON Schema 没有在根层设置 `additionalProperties: false`，因此 Agent 单独进行 Schema 校验时不拒绝未知根字段。这是接收端行为差异，不改变本协议规定的根字段集合；需要严格互操作的生产者不得发送未知根字段。
+
+`metadata.max_execution_time_seconds` 可选，整数秒；正数限制单次运行累计活跃执行时间（包含节点、LLM 与同步 Tool 的等待，不包含挂起期间），未配置或负数表示不限时，0 表示零秒上限。超限后在下一节点执行前失败，节点自身运行期间超过上限时也会失败。
 
 ## 3. 数据类型与 Struct 声明
 

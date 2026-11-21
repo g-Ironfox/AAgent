@@ -20,7 +20,7 @@ from process_repository import (
     TERMINAL_STATUSES, wake_process as wake_process_record,
 )
 from workflow_nodes import (
-    WORKFLOW_END, WORKFLOW_TIMEOUT_SECONDS, WorkflowStep, FunctionCall, current_workflow_process,
+    WORKFLOW_END, WorkflowStep, FunctionCall, current_workflow_process,
     execute_node, propagate_workflow_output, read_workflow_input,
 )
 from terminal_repository import terminal_process_context
@@ -544,6 +544,7 @@ def Executor(process_id: str) -> dict:
     process.setdefault('context_ids', [])
     process.setdefault('node_trace', [])
     process.setdefault('active_duration_ms', 0)
+    process.setdefault('execution_timeout_ms', None)
     workflow_map = []
     context_ids = set(process['context_ids'])
     child = child_terminal = None
@@ -556,8 +557,8 @@ def Executor(process_id: str) -> dict:
         workflow_map = json.loads(process['workflow'])
         if not isinstance(workflow_map, list) or not all(isinstance(node, dict) for node in workflow_map):
             raise ValueError(f'invalid workflow data: {process_id}')
-        if process['active_duration_ms'] > WORKFLOW_TIMEOUT_SECONDS * 1000:
-            raise TimeoutError(f'workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds of active execution')
+        timeout_ms = process.get('execution_timeout_ms')
+        timeout_seconds = timeout_ms / 1000 if timeout_ms is not None else None
         if "workflow_reference" in process:
             process.setdefault("workflow_file", process.pop("workflow_reference"))
         from workflow_contract import migrate_subprocess_workflow_format
@@ -570,6 +571,10 @@ def Executor(process_id: str) -> dict:
             node['_workflow_context_ids'] = context_ids
             node['_workflow_call_stack'] = process.get('call_stack', [])
         node = workflow_map[current_id]
+        if timeout_ms is not None and process['active_duration_ms'] >= timeout_ms:
+            raise TimeoutError(
+                f'workflow execution exceeded {timeout_seconds:g} seconds of active execution'
+            )
         trace = {
             'index': len(process['node_trace']) + 1,
             'node_id': node.get('id'), 'node_name': node.get('name'),
@@ -596,8 +601,10 @@ def Executor(process_id: str) -> dict:
         if handled_error is not None:
             trace.update(status='failed', error=handled_error)
         elapsed_ms = (time.perf_counter() - started) * 1000
-        if process['active_duration_ms'] + elapsed_ms > WORKFLOW_TIMEOUT_SECONDS * 1000:
-            raise TimeoutError(f'workflow execution exceeded {WORKFLOW_TIMEOUT_SECONDS} seconds of active execution')
+        if timeout_ms is not None and process['active_duration_ms'] + elapsed_ms > timeout_ms:
+            raise TimeoutError(
+                f'workflow execution exceeded {timeout_seconds:g} seconds of active execution'
+            )
         process['status'] = 'ready'
         process['wait_for'] = None
         if isinstance(outcome, FunctionCall):

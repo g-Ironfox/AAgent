@@ -35,8 +35,11 @@ class FunctionCall:
 current_workflow_process = ContextVar("workflow_process", default=None)
 NodeHandler = Callable[[int, WorkflowMap], int | WorkflowStep | FunctionCall]
 WORKFLOW_END = -1
-WORKFLOW_TIMEOUT_SECONDS = 180
 logger = logging.getLogger("aagent.workflow")
+
+def workflow_execution_timeout_ms(workflow: dict[str, Any]) -> int | None:
+    seconds = workflow.get("metadata", {}).get("max_execution_time_seconds")
+    return seconds * 1000 if seconds is not None and seconds >= 0 else None
 
 
 def _is_map_content(value: Any) -> bool:
@@ -1058,6 +1061,7 @@ def _prepare_subprocess_call(process: dict[str, Any], parent_node: dict[str, Any
         "terminal_id": process.get("terminal_id"),
         "workflow_name": workflow_file,
         "workflow_file": workflow_file,
+        "execution_timeout_ms": workflow_execution_timeout_ms(workflow_document),
         "permissions": snapshot_process_permissions(workflow_permissions),
         "_workspace_token": secrets.token_urlsafe(32),
         "call_stack": next_call_stack,

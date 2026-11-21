@@ -520,6 +520,24 @@ class SubprocessWorkflowFileNodeTest(unittest.TestCase):
         }
         self.assertEqual(workflow_router(0, [node, {}, {}]), 1)
 
+    def test_validator_rejects_non_integer_workflow_timeout(self):
+        for value in (1.5, True, "10"):
+            with self.subTest(value=value):
+                workflow = callable_workflow_fixture()
+                workflow["metadata"] = {"max_execution_time_seconds": value}
+                with self.assertRaisesRegex(
+                    WorkflowValidationError,
+                    "metadata.max_execution_time_seconds",
+                ):
+                    validate_workflow(workflow)
+
+    def test_validator_accepts_integer_workflow_timeouts(self):
+        for value in (-1, 0, 300):
+            with self.subTest(value=value):
+                workflow = callable_workflow_fixture()
+                workflow["metadata"] = {"max_execution_time_seconds": value}
+                validate_workflow(workflow)
+
     def test_validator_rejects_flattened_node_arguments(self):
         workflow = callable_workflow_fixture()
         workflow["nodes"][1]["workflow_file"] = "Summary"
@@ -1001,7 +1019,7 @@ class WorkflowExecutionTest(unittest.TestCase):
             with self.assertRaisesRegex(
                 TimeoutError, "workflow execution exceeded 180 seconds"
             ):
-                run_scheduled_workflow(workflow_map, 0)
+                run_scheduled_workflow(workflow_map, 0, execution_timeout_ms=180000)
 
         self.assertEqual(perf_counter.call_count, 3)
         delete_contexts.assert_called_once_with(set())

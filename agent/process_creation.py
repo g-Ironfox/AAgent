@@ -60,7 +60,7 @@ def build_workflow_process(
     terminal_id: str,
     permissions: dict | None = None,
 ) -> dict:
-    from workflow_nodes import propagate_workflow_output
+    from workflow_nodes import propagate_workflow_output, workflow_execution_timeout_ms
     from workflow_parser import parse_workflow
     from workflow_structs import validate_struct_definitions, validate_value
     from workflow_validator import validate_workflow
@@ -102,6 +102,7 @@ def build_workflow_process(
         "permissions": process_permissions,
         "_workspace_token": secrets.token_urlsafe(32),
         "workflow_name": file_name,
+        "execution_timeout_ms": workflow_execution_timeout_ms(document),
         "workflow_file": file_name,
         "call_stack": [file_name],
         "input": input_values,

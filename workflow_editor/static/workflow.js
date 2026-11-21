@@ -47,6 +47,7 @@ const elements = {
   metadataDialog: document.querySelector('#metadataDialog'),
   metadataForm: document.querySelector('#metadataForm'),
   workflowDescription: document.querySelector('#workflowDescription'),
+  workflowExecutionTimeout: document.querySelector('#workflowExecutionTimeout'),
   structDefinitions: document.querySelector('#structDefinitions'),
   structDefinitionsError: document.querySelector('#structDefinitionsError'),
   addStructButton: document.querySelector('#addStructButton'),
@@ -293,6 +294,7 @@ function renderMetadataPortList(collection) {
 
 function renderMetadataDialog() {
   elements.workflowDescription.value = state.description;
+  elements.workflowExecutionTimeout.value = state.metadata?.max_execution_time_seconds ?? '';
   renderMetadataPortList('input_ports');
   renderMetadataPortList('output_ports');
   structDraft = structuredClone(state.metadata?.structs || []);
@@ -798,6 +800,9 @@ elements.metadataForm.addEventListener('submit', (event) => {
   syncRemoteToolNodes(remoteTools);
   state.description = elements.workflowDescription.value.trim();
   state.metadata = { ...(state.metadata || {}), structs, functions };
+  const executionTimeout = elements.workflowExecutionTimeout.value.trim();
+  if (executionTimeout) state.metadata.max_execution_time_seconds = Number(executionTimeout);
+  else delete state.metadata.max_execution_time_seconds;
   state.input_ports = inputPorts;
   state.output_ports = outputPorts;
   state.metadata.tools = remoteTools.map(({ previous_name, ...tool }) => tool);

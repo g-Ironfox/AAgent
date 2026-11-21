@@ -265,6 +265,7 @@
       <div class="metadata-body">
         <div class="metadata-basics">
           <label>描述<textarea id="workflowDescription" rows="4" maxlength="2000" placeholder="简要说明用途、输入输出或使用场景"></textarea></label>
+          <label>累计执行时间上限（秒）<input id="workflowExecutionTimeout" type="number" step="1" inputmode="numeric" placeholder="不限时"><small>留空或负数表示不限时；正数按秒限制，挂起时暂停计时。</small></label>
         </div>
         <div class="metadata-columns">
           <section class="metadata-port-section">

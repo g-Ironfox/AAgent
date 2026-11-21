@@ -170,7 +170,7 @@ class MemoryPipeline:
         return command
 
 
-def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=None, max_steps=1000):
+def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=None, max_steps=1000, execution_timeout_ms=None):
     """Drive real Executor/Redis transitions; never implement node execution here.
 
     Node-unit fixtures may start at a non-input node. Add an input shim without
@@ -202,6 +202,8 @@ def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=
         "workflow": json.dumps(graph, ensure_ascii=False, allow_nan=False),
         "current_node_id": -1, "control_port": None, "input": inputs,
     }
+    if execution_timeout_ms is not None:
+        process["execution_timeout_ms"] = execution_timeout_ms
     redis = MemoryRedis()
     errors = []
     execute_node = main.execute_node

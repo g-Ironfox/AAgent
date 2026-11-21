@@ -20,6 +20,10 @@
     "metadata": {
       "type": "object",
       "properties": {
+        "max_execution_time_seconds": {
+          "type": "integer",
+          "description": "Maximum cumulative active execution time in seconds; negative values disable the limit."
+        },
         "structs": {
           "type": "array",
           "items": {

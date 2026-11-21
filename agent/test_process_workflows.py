@@ -110,6 +110,19 @@ class ProcessWorkflowTest(unittest.TestCase):
         })
         self.assertTrue(process["_workspace_token"])
 
+    def test_missing_or_negative_execution_timeout_is_unlimited(self):
+        for value in (None, -1):
+            with self.subTest(value=value):
+                workflow = document("Root")
+                if value is not None:
+                    workflow["metadata"]["max_execution_time_seconds"] = value
+                process = self.start(workflow)
+                self.assertIsNone(process["execution_timeout_ms"])
+                process["active_duration_ms"] = 200001
+                main.write_process(process)
+                self.drain()
+                self.assertEqual(main.read_process(process["process_id"])["status"], "completed")
+
     def test_root_checkpoint_permissions_are_snapshotted_and_preserved_when_claimed(self):
         flags = {"read": True, "create": False, "restore": True}
         process = build_workflow_process(
@@ -697,6 +710,24 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(sum(entry["node_id"] == "call" for entry in restored["node_trace"]), 1)
         return details
 
+    def test_child_execution_timeout_enters_parent_error_branch(self):
+        child_document = document("Child", wait=True)
+        child_document["metadata"]["max_execution_time_seconds"] = 1
+        self.documents = {"Child.flow": child_document}
+        root_process = self.start(self.parent_with_child_error_handler())
+        self.drain()
+        child, = [item for item in self.workflows() if item["workflow_name"] == "Child.flow"]
+        self.assertEqual(child["status"], "blocked")
+        child["active_duration_ms"] = child["execution_timeout_ms"]
+        main.write_process(child)
+        self.send(child)
+
+        with self.assertLogs("main", level="ERROR"):
+            self.drain()
+
+        details = self.assert_handled_child_exit(root_process, child, "failed")
+        self.assertIn("exceeded 1 seconds", details["error"])
+
     def test_child_failure_returns_error_and_parent_prints_it_without_respawning(self):
         self.documents = {"Child.flow": document("Child", wait=True, output_terminal=True)}
         root = self.start(self.parent_with_child_error_handler(), text=" ")
@@ -974,12 +1005,17 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertFalse(any(key.startswith("workflow-context:") for key in self.redis.hashes))
 
     def test_timeout_on_active_execution_fails_process_and_cleans_contexts(self):
-        root = self.start(document("Root"))
-        root["active_duration_ms"] = 180001
+        workflow = document("Root")
+        workflow["metadata"]["max_execution_time_seconds"] = 1
+        root = self.start(workflow)
+        self.assertEqual(root["execution_timeout_ms"], 1000)
+        root["active_duration_ms"] = 1000
         main.write_process(root)
         with self.assertLogs("main", level="ERROR"):
             self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "failed")
+        saved = main.read_process(root["process_id"])
+        self.assertEqual(saved["status"], "failed")
+        self.assertIn("exceeded 1 seconds", saved["error"])
         self.assertFalse(self.redis.lists[r.READY_PROCESSES])
 
     def test_process_cursor_resolves_successors_from_the_selected_control_port(self):
