@@ -29,6 +29,34 @@ class WorkflowParseError(ValueError):
 WORKFLOW_SCHEMA_VERSION = "2.0"
 
 
+def _node_struct_definitions(node: dict[str, Any], definitions: dict[str, Any]) -> dict[str, Any]:
+    """Keep only types this node can validate, including nested dependencies.
+
+    Node state is serialized at every scheduler step and in each function frame;
+    copying the complete workflow type table into every node makes local
+    functions unnecessarily expensive to persist.
+    """
+    value_types = [node_argument(node, key) for key in ("value_type", "item_type")]
+    struct_id = node_argument(node, "struct_id")
+    if struct_id:
+        value_types.append("struct:" + struct_id)
+    for key in ("workflowPorts", "function_ports", "input_ports", "output_ports"):
+        value_types.extend(port.get("type") for port in node.get(key, []))
+    for key in ("parameters", "outputs"):
+        value_types.extend(port.get("type") for port in node_argument(node, key, []))
+    selected = set()
+    while value_types:
+        kind = value_types.pop()
+        if not isinstance(kind, str) or not kind.startswith(("struct:", "list-struct:")):
+            continue
+        sid = kind.split(":", 1)[1]
+        if sid in selected or sid not in definitions:
+            continue
+        selected.add(sid)
+        value_types.extend(field["type"] for field in definitions[sid]["fields"])
+    return {sid: definition for sid, definition in definitions.items() if sid in selected}
+
+
 def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     """Convert ``nodes`` and ``connections`` to an index-linked node list.
 
@@ -82,7 +110,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
         linked_nodes.append(
             {
                 **parsed_node,
-                "_struct_definitions": struct_definitions,
+                "_struct_definitions": _node_struct_definitions(parsed_node, struct_definitions),
                 "predecessors": {},
                 "successors": {},
                 "data_inputs": {

@@ -27,6 +27,14 @@ python scripts/build_alfworld_workflow.py --model-id <模型ID> --output tmp/alf
 
 模型 ID 与工作区 Workflow 文件 ID 不同。模型凭证仍由现有 Agent 使用。生成流程保留完整多轮 Context，收到 done 时退出。
 
+最小 ReAct 示例可直接导入 `docs/examples/alfworld-react.flow`，将 `decide` 节点的模型占位符替换为已启用的模型 ID；也可以生成已绑定模型的版本：
+
+```powershell
+python scripts/build_alfworld_workflow.py --react --model-id <模型ID> --output tmp/alfworld-react.flow
+```
+
+该流程启用 LLM 节点的原生 `reasoning`，将推理与动作一并保存到历史，模型正文只输出一条 ALFWorld 命令并封装后发送给环境。使用说明和限制见 [ALFWorld 最小 ReAct](../docs/examples/alfworld-react.md)。
+
 ## 独立 CLI
 
 `main.py` 保留 download / smoke / run 子命令。以下命令绕过 benchmark 队列，直接调用已有后端，结果写到宿主机文件：
@@ -79,3 +87,8 @@ python -m unittest discover -s agent -p test_alfworld_workflow.py
 ```
 
 数据缓存与真实环境已验证 valid_unseen 包含 134 个可运行任务。固定 look 示例可验证终端通信与正常结束，不代表模型解题能力。
+
+
+## 三段工作流与经验迭代
+
+需要固定引导、异常时逐版本回退和跨 episode 经验学习时，可使用 [ALFWorld 三段工作流](../docs/examples/alfworld-agent/README.md)。执行 `python scripts/install_alfworld_workflows.py --model YOUR_MODEL_ID --install` 一次安装并绑定权限，在 Benchmark 中选择返回的 bootstrap 文件 ID，inputs 填 `{}`。引导负责终端收发，主流程逐轮返回动作；runner 会等待结束后的经验迭代完成再开始下一轮。

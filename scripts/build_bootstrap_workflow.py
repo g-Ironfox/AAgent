@@ -248,7 +248,7 @@ def _build_call_iterator(g, prefix):
         g.control(flag, ret)
 
 
-def _build_finish_task(g, prefix):
+def _build_finish_task(g, prefix, terminal_summary=True):
     fi = g.function("finish_task", [("run", "struct:Run"), ("outcome", "struct:Outcome"), ("attempts", "list-content")],
                     [("status", "content"), ("result", "content"), ("record_file_id", "content")])
     rs, re, run = unpack(g, "finish_run", "Run", (fi, "function:run"), RUN_FIELDS)
@@ -270,10 +270,11 @@ def _build_finish_task(g, prefix):
         "iterator_status": ("iterate_experience", "function:status"), "iterator_result": ("iterate_experience", "function:result")})
     g.call("save_final_record", "write_record", {**record, "content": (final_end, "content-out")})
     cp, cp_end = tool(g, "checkpoint_final", "workspace.create_checkpoint", arguments={"name": prefix + ": after iterator"})
-    text(g, "summary", ["任务状态：", outcome["status"][:2], "\n结果：", outcome["result"][:2],
-        "\n迭代器状态：", ("iterate_experience", "function:status"), "\n记录文件：", run["record_id"][:2]])
-    g.node("show_summary", "output_to_terminal")
-    g.data("summary", "content-out", "show_summary", "content-in")
+    if terminal_summary:
+        text(g, "summary", ["任务状态：", outcome["status"][:2], "\n结果：", outcome["result"][:2],
+            "\n迭代器状态：", ("iterate_experience", "function:status"), "\n记录文件：", run["record_id"][:2]])
+        g.node("show_summary", "output_to_terminal")
+        g.data("summary", "content-out", "show_summary", "content-in")
     ret = result(g, "finish_return", "finish_task", {"status": outcome["status"], "result": outcome["result"], "record_file_id": run["record_id"]})
     g.chain(fi, rs)
     g.chain(re, os)
@@ -283,7 +284,10 @@ def _build_finish_task(g, prefix):
     g.control(changes_json, start)
     g.chain(end, "save_task_record", "iterate_experience", final_start)
     g.chain(final_end, "save_final_record", cp)
-    g.chain(cp_end, "summary", "show_summary", ret)
+    if terminal_summary:
+        g.chain(cp_end, "summary", "show_summary", ret)
+    else:
+        g.control(cp_end, ret)
 
 
 def build_bootstrap(main_id, stable_id, prefix="restricted-agent"):
@@ -299,6 +303,12 @@ def build_bootstrap(main_id, stable_id, prefix="restricted-agent"):
     for field in ("status", "result", "record_file_id"):
         g.data("finish", "function:" + field, "out", "workflow:" + field)
     g.chain("in", "initialize", "execute", "finish", "out")
+    add_bootstrap_functions(g, main_id, stable_id, prefix)
+    return g.doc
+
+
+def add_bootstrap_functions(g, main_id, stable_id, prefix, *, terminal_summary=True):
+    """Shared recording, child calls and bounded file-version recovery functions."""
     _build_initialize_run(g, prefix)
     _build_run_with_recovery(g, main_id, stable_id)
     _build_attempt_main(g, prefix)
@@ -306,7 +316,7 @@ def build_bootstrap(main_id, stable_id, prefix="restricted-agent"):
     _build_restore_version(g, main_id)
     _build_retry_version(g)
     _build_write_record(g)
-    _build_finish_task(g, prefix)
+    _build_finish_task(g, prefix, terminal_summary)
     _build_call_iterator(g, prefix)
     label_functions(g, {
         "initialize_run": "初始化任务记录", "run_with_recovery": "执行主流程与逐级恢复",
@@ -314,4 +324,3 @@ def build_bootstrap(main_id, stable_id, prefix="restricted-agent"):
         "restore_main_version": "回退主流程版本", "retry_version": "尝试回退版本",
         "write_record": "写入任务记录", "finish_task": "记录结果并迭代经验", "call_iterator": "调用经验迭代器",
     })
-    return g.doc

@@ -37,7 +37,15 @@ docker compose --profile benchmark up -d benchmark_worker benchmark_webui
 
 在 Agent WebUI 的工作区导入 `docs/examples/alfworld-look.flow`，回到控制台刷新，在 Workflow 列表中选择它。先发布 episodes=1、每轮步数=2 的测试，验证通信。该示例始终执行 look，正常应达到步数上限，成功率为 0。
 
-真实模型流程可先生成再导入：
+最小 ReAct 流程可导入 `docs/examples/alfworld-react.flow`，修改 `decide` 节点的模型 ID 后保存，或先生成绑定模型的版本：
+
+```powershell
+python scripts/build_alfworld_workflow.py --react --model-id <模型ID> --output tmp/alfworld-react.flow
+```
+
+该流程使用 LLM 原生 `reasoning` 保存推理历史，正文只输出一个动作，收到结束观察后退出。详细说明见 [ALFWorld 最小 ReAct](../docs/examples/alfworld-react.md)。
+
+仅输出动作的模型流程仍可先生成再导入：
 
 ```powershell
 python scripts/build_alfworld_workflow.py --model-id <模型ID> --output tmp/alfworld-agent.flow
@@ -143,3 +151,8 @@ docker compose -p aagent-benchmark-smoke -f tests/benchmark/docker-compose.yml d
 ```
 
 默认数据卷为 `aagent_alfworld_data`，其他 Compose 项目名请设置 `ALFWORLD_TEST_DATA_VOLUME`。验收页面映射到 http://localhost:18085。清理仅删除验收项目的临时容器和数据库卷，保留外部 ALFWorld 数据卷。
+
+
+## 三段工作流与经验迭代
+
+需要固定引导、异常时逐版本回退和跨 episode 经验学习时，可使用 [ALFWorld 三段工作流](../docs/examples/alfworld-agent/README.md)。执行 `python scripts/install_alfworld_workflows.py --model YOUR_MODEL_ID --install` 一次安装并绑定权限，在 Benchmark 中选择返回的 bootstrap 文件 ID，inputs 填 `{}`。引导负责终端收发，主流程逐轮返回动作；runner 会等待结束后的经验迭代完成再开始下一轮。

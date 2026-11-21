@@ -76,6 +76,31 @@ class TerminalClientTest(unittest.TestCase):
             self.client.action("terminal", "episode", 0, 0.01)
         self.assertEqual(self.client.cursor, "existing")
 
+    def test_workflow_recovery_error_is_reported_without_waiting_for_timeout(self):
+        self.client.request.return_value = {"items": [output("1", {
+            "type": "error", "episode_id": "episode", "step": 0, "error": "stable failed",
+        })], "next_cursor": "1"}
+        with self.assertRaisesRegex(ProtocolError, "stable failed"):
+            self.client.action("terminal", "episode", 0, 1)
+        self.client.request.assert_called_once()
+
+    def test_finish_waits_for_experience_then_terminal_closure(self):
+        self.client.request.side_effect = [
+            {"sessions": [{"terminal_id": "terminal", "status": "open"}]},
+            {"sessions": [{"terminal_id": "terminal", "status": "closed", "workflow_status": "completed"}]},
+        ]
+        self.client.finish("terminal", 1)
+        self.assertEqual(self.client.request.call_count, 2)
+
+    def test_finish_reports_failed_workflow_and_timeout(self):
+        self.client.request.return_value = {"sessions": [
+            {"terminal_id": "terminal", "status": "closed", "workflow_status": "failed"}]}
+        with self.assertRaisesRegex(RuntimeError, "finalization"):
+            self.client.finish("terminal", 1)
+        self.client.request.return_value = {"sessions": [{"terminal_id": "terminal", "status": "open"}]}
+        with self.assertRaises(TimeoutError):
+            self.client.finish("terminal", 0.01)
+
     def test_failed_post_is_not_retried(self):
         self.client.request = TerminalClient.request.__get__(self.client)
         self.client.session = MagicMock()
@@ -106,6 +131,7 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["success"])
         self.assertEqual(result["steps"], 1)
+        self.client.finish.assert_called_once_with("alfworld-episode", 1)
         self.env.step.assert_called_once_with(["look"])
         final = self.client.send.call_args.args[1]
         self.assertTrue(final["done"])
@@ -138,6 +164,14 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.env.step.assert_not_called()
         self.assertEqual(self.client.send.call_args.args[1]["reason"], "runner_error")
+
+    def test_finalization_failure_is_recorded_before_next_episode(self):
+        self.client.finish.side_effect = TimeoutError("experience review did not finish")
+        result = self.run_episode()
+        self.assertEqual(result["status"], "error")
+        self.assertIn("experience review did not finish", result["error"])
+        self.client.finish.assert_called_once_with("alfworld-episode", 1)
+        self.assertEqual(self.env.step.call_count, 1)
 
     def test_startup_failure_does_not_send_input_to_an_uncreated_terminal(self):
         self.client.start.side_effect = TimeoutError("no terminal")

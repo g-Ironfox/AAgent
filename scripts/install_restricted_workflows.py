@@ -4,6 +4,7 @@ Example: python scripts/install_restricted_workflows.py --model MODEL_ID --insta
 Without --install this command only previews names and permissions.
 """
 import argparse
+from functools import partial
 import json
 import re
 import urllib.error
@@ -26,12 +27,16 @@ def request(base_url, method, path, payload=None):
 
 
 def install_bundle(api, model, prefix="restricted-agent", max_turns=8):
-    """Never overwrite an existing bundle, including its accumulated experience."""
+    return install_files(api, model, prefix, partial(build_bundle, max_turns=max_turns))
+
+
+def install_files(api, model, prefix, builder):
+    """Bind a fresh bundle in dependency order without overwriting existing files."""
     if not isinstance(model, str) or not model.strip() or model.startswith("REPLACE_WITH_"):
         raise ValueError("an enabled model ID is required")
     if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", prefix):
         raise ValueError("prefix must contain 1-80 ASCII letters, digits, hyphens or underscores")
-    bundle = build_bundle(model=model, prefix=prefix, max_turns=max_turns)
+    bundle = builder(model=model, prefix=prefix)
     existing = {item["name"] for item in api("GET", "")["items"]}
     conflicts = sorted(existing & {item["name"] for item in bundle})
     if conflicts:
@@ -39,7 +44,7 @@ def install_bundle(api, model, prefix="restricted-agent", max_turns=8):
     installed = {}
     for index in range(len(bundle)):
         # Earlier creates supply exact file IDs to all later definitions.
-        bound = build_bundle(model=model, prefix=prefix, max_turns=max_turns,
+        bound = builder(model=model, prefix=prefix,
                              experience_id=installed.get("experience", {}).get("file_id", "UNBOUND_EXPERIENCE"),
                              main_id=installed.get("main", {}).get("file_id", "UNBOUND_MAIN"),
                              stable_id=installed.get("stable", {}).get("file_id", "UNBOUND_STABLE"))

@@ -112,9 +112,29 @@ class WorkflowStructTest(unittest.TestCase):
                 workflow["metadata"]["structs"][0]["name"] = name
                 validate_workflow(workflow)
                 workflow_map = parse_workflow(workflow)
-                self.assertEqual(workflow_map[0]["_struct_definitions"]["profile"]["name"], name)
+                self.assertEqual(workflow_map[0]["_struct_definitions"], {})
+                self.assertEqual(workflow_map[1]["_struct_definitions"]["profile"]["name"], name)
                 propagate_workflow_output(workflow_map, workflow_map[0], "workflow:display_name", "Ada Lovelace")
                 self.assertEqual(run_scheduled_workflow(workflow_map, 0), {"result": "Ada Lovelace"})
+
+    def test_compiled_nodes_retain_nested_types_without_unrelated_definitions(self):
+        from workflow_parser import _node_struct_definitions
+        defs = definitions()
+        for node in (
+            {"type": "construct_struct", "arguments": {"struct_id": "task"}},
+            {"type": "context_read", "arguments": {"value_type": "list-struct:task"}},
+            {"type": "function_input", "function_ports": [{"name": "task", "type": "struct:task"}]},
+            {"type": "tool", "arguments": {"outputs": [{"name": "task", "type": "struct:task"}]}},
+        ):
+            with self.subTest(node=node):
+                selected = _node_struct_definitions(node, defs)
+                self.assertEqual(set(selected), {"task", "profile"})
+                value = {"owner": {"name": "Ada"}, "reviewers": [{"name": "Lin"}]}
+                self.assertEqual(validate_value("struct:task", value, selected), value)
+                with self.assertRaises(StructValidationError):
+                    validate_value("struct:task", {"owner": {}}, selected)
+        self.assertEqual(set(_node_struct_definitions({"arguments": {"struct_id": "profile"}}, defs)), {"profile"})
+        self.assertEqual(_node_struct_definitions({"type": "construct_content"}, defs), {})
 
     def test_json_conversion_schema_accepts_declared_struct_types(self):
         workflow = {

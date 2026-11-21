@@ -56,6 +56,8 @@ def run_episode(env, client, workflow_file_id, inputs, max_steps, action_timeout
             journal({"direction": "observation", "message": last_message})
             client.send(terminal_id, last_message)
             if done:
+                # Wait for experience review before starting the next episode.
+                client.finish(terminal_id, action_timeout)
                 result["status"] = reason
                 break
     except Exception as error:

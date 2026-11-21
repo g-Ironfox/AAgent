@@ -1,4 +1,4 @@
-"""Build an editable terminal-driven ALFWorld agent or a no-model IO smoke test."""
+"""Build an editable ALFWorld ReAct agent, action-only agent, or IO smoke test."""
 
 import argparse
 import json
@@ -19,10 +19,39 @@ The user sends JSON observations; optional admissible_commands are available
 only when the evaluator explicitly enables that setting."""
 
 
-def build_workflow(model_id=None):
+REACT_PROMPT = """You are acting in the ALFWorld text environment. Solve the household task
+from the initial observation using a reasoning, action, observation loop.
+The user sends one JSON observation per turn. Use the complete history to track
+the task, locations, inventory, and results of previous actions. Reason using the
+model's reasoning channel, then return exactly one executable ALFWorld command
+as plain text in the final response, for example: open cabinet 1
+Do not include reasoning, JSON, markdown, a prefix, or multiple commands in the
+final response. Only the final response is executed by the environment.
+Typical commands include: look, inventory, go to <receptacle>, open <receptacle>,
+close <receptacle>, take <object> from <receptacle>, put <object> in/on <receptacle>,
+clean <object> with <receptacle>, heat <object> with <receptacle>,
+cool <object> with <receptacle>, use <object>.
+Use the exact object and receptacle IDs from observations. Inspect likely locations,
+open closed receptacles before searching them, and revise your plan if an action
+fails. Optional admissible_commands are provided only when the evaluator enables
+that setting; when present, choose an action from that list.
+"""
+
+REACT_MODEL_ID = "REPLACE_WITH_MODEL_ID"
+
+
+def build_workflow(model_id=None, *, react=False):
+    if react:
+        model_id = model_id or REACT_MODEL_ID
     g = Graph()
-    g.doc.update(description="ALFWorld terminal loop" if model_id else "ALFWorld IO smoke test: always look; does not solve tasks",
-                 input_ports=[], output_ports=[], metadata={"structs": [], "functions": [], "tools": []})
+    if react:
+        description = "ALFWorld minimal ReAct: native reasoning, action, observation with durable history"
+    elif model_id:
+        description = "ALFWorld terminal loop"
+    else:
+        description = "ALFWorld IO smoke test: always look; does not solve tasks"
+    g.doc.update(description=description, input_ports=[], output_ports=[],
+                 metadata={"structs": [], "functions": [], "tools": []})
     g.node("start", "input", workflowPorts=[])
     g.const("token", "next")
     g.node("initial_tokens", "construct_list", arguments={"item_type": "content", "initial_value_count": 1}, dataInputPorts=["content-in-0"])
@@ -33,7 +62,7 @@ def build_workflow(model_id=None):
     g.data("tokens", "context-id", "turn_gate", "context-id")
     bindings = {"tokens_id": ("tokens", "context-id")}
     if model_id:
-        g.const("system_text", PROMPT)
+        g.const("system_text", REACT_PROMPT if react else PROMPT)
         g.node("system", "construct_message", arguments={"role": "system"})
         g.data("system_text", "content-out", "system", "content-in")
         g.node("initial", "construct_list", arguments={"item_type": "content", "initial_value_count": 1}, dataInputPorts=["content-in-0"])
@@ -76,10 +105,12 @@ def build_workflow(model_id=None):
         g.node("append_user", "list_append", arguments={"item_type": "content", "position": "end"})
         g.data("history_read", "value-out", "append_user", "list-in", "list-content")
         g.data("user", "content-out", "append_user", "item-in")
-        g.node("decide", "llm", arguments={"model": model_id, "think": False, "tool_calls": False, "tools_source": "definitions"})
+        g.node("decide", "llm", arguments={"model": model_id, "think": react, "tool_calls": False, "tools_source": "definitions"})
         g.data("append_user", "list-out", "decide", "messages-in", "list-content")
         g.node("assistant", "construct_message", arguments={"role": "assistant"})
         g.data("decide", "output", "assistant", "content-in")
+        if react:
+            g.data("decide", "reasoning", "assistant", "reasoning-in")
         g.node("append_assistant", "list_append", arguments={"item_type": "content", "position": "end"})
         g.data("append_user", "list-out", "append_assistant", "list-in", "list-content")
         g.data("assistant", "content-out", "append_assistant", "item-in")
@@ -124,8 +155,12 @@ def build_workflow(model_id=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-id", help="Enabled model ID from the manager WebUI")
-    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "docs/examples/alfworld-look.flow")
+    parser.add_argument("--react", action="store_true", help="Use native reasoning and execute one action per observation")
+    parser.add_argument("--output", type=Path, help="Destination .flow file (default: docs/examples/alfworld-look.flow or alfworld-react.flow with --react)")
     args = parser.parse_args()
+    if args.output is None:
+        example = "alfworld-react.flow" if args.react else "alfworld-look.flow"
+        args.output = Path(__file__).resolve().parents[1] / "docs/examples" / example
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(build_workflow(args.model_id), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    args.output.write_text(json.dumps(build_workflow(args.model_id, react=args.react), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(args.output)

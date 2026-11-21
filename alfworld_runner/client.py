@@ -71,7 +71,11 @@ class TerminalClient:
                     action = json.loads(item["content"])
                 except (ValueError, TypeError):
                     continue  # Human-readable reasoning is not an action.
-                if not isinstance(action, dict) or action.get("type") != "action":
+                if not isinstance(action, dict):
+                    continue
+                if action.get("type") == "error" and action.get("episode_id") == episode_id:
+                    raise ProtocolError(f"Workflow failed at step {action.get('step')}: {action.get('error')}")
+                if action.get("type") != "action":
                     continue
                 if action.get("episode_id") != episode_id:
                     raise ProtocolError("Action episode_id does not match the current episode")
@@ -91,3 +95,17 @@ class TerminalClient:
                 continue
             time.sleep(self.poll_interval)
         raise TimeoutError(f"No action for episode {episode_id}, step {step} within {timeout}s")
+
+    def finish(self, terminal_id, timeout):
+        """Wait for post-episode work (including experience writes) to finish."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.check()
+            sessions = self.request("GET", "/api/terminal/sessions")["sessions"]
+            record = next((item for item in sessions if item["terminal_id"] == terminal_id), None)
+            if record is not None and record["status"] == "closed":
+                if record.get("workflow_status") != "completed":
+                    raise RuntimeError(f"Workflow failed during finalization: {record.get('workflow_status')}")
+                return
+            time.sleep(self.poll_interval)
+        raise TimeoutError(f"Workflow did not finish within {timeout}s: {terminal_id}")
