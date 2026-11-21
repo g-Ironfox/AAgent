@@ -57,3 +57,25 @@
 3. 控制边、数据边、分支返回、循环状态和缺失值是否完整？
 4. 能否用更小的改动得到同样效果？没有证据时是否应保持不变？
 5. 是否混淆了“可编译”“已采用”“能运行”和“效果更好”？
+
+## 记录与权限修复补充
+
+- 即使事件数组已经结构化，task/result/observation/workspace/iterator_result 仍若保存 JSON 字符串，也会多一层转义。实验版记录 v2 直接嵌套这些对象，把状态与 checkpoint 收入 summary；普通 action/reasoning 字符串只编码一次。
+- 只有确定来源为合法 JSON 的环境信封和运行时序列化结果可作为 JSON 片段嵌入；环境对象先解析验证。模型输出、引号、换行和 Windows 路径不做全局反转义，不递归猜测字符串内容。
+- 权限分为进程 runtime 与目标文件 required；写入条件是 runtime.write >= required.write。本实验 iterator=3、main required.write=3，受保护参考文档/stable/bootstrap/iterator=4。生成时交叉校验，测试必须实际走工作区 API 写入，而不只比较清单数字。
+- 更新 .flow 内容不会同步工作区 ACL，也不会修改已运行进程的权限快照。线上回退状态必须保留，不能用本地生成操作暗中重新发布。
+
+## 以实现为准的参考资料
+
+- 仓库旧 workflow-json skill 中的 wait_terminal_event/read_terminal_input 已不属于当前节点集合；当前终端节点为 read_terminal_queue。不要同时注入新声明和整份旧 skill，让模型自行消解冲突。
+- 实验使用 workflow-json-runtime/SKILL.md，节点目录、端口和约束直接由当前代码导出；完整示例必须经过 validate_workflow 和 parse_workflow。参考文档同时保留编译、循环/函数生命周期、关键运行语义及 main 能力校验的原始代码摘录和源文件指纹。
+- 代码中存在工具实现、metadata.tools 声明与运行进程已加载工具是三件不同的事。必须检查实际注册表，不能把“未知工具”解释成候选无改动。
+- 先总结并保存经验，再尝试 main 迭代。缺工具、候选模型异常、checkpoint 或主文件写入失败不应抹掉已独立提交的经验；仍应显式记录 main 迭代失败。
+
+## 工具契约与运行时验证补充
+
+- 工具名出现在 metadata.tools 只说明工作流声明了接口；本地分发仍必须在 tools.tool.tool_handlers 中找到可调用的函数。旧 Python 进程不会因为绑定挂载的源码更新而重新执行 @tool。缺少 handler 会在 HTTP 请求前抛出“未知工具”。
+- 参考文档的 workspace 工具 inputSchema/outputSchema 直接从 agent/tools/workspace.py 的 @tool 装饰器抽取；生成器不导入有 Redis 注册副作用的模块。契约测试另行加载真实装饰器，逐一比对抽取结果、实际注册值、迭代器端口。
+- 候选校验结果 ready/unchanged/rejected 都是正常的具名输出；404/403 和 handler 缺失会抛异常，不能解释成“无需迭代”。revision 从文件读取结果以 number 传递，实际 API 值是整数；不经过 content 字符串转换。
+- 模拟模型的全流程测试可能替代工具执行器；它能验证流程顺序与写入，但不能证明注册包装函数可调用。另用 test_runtime_tools.py 检查真实注册、统一 tool 节点分发、HTTP 包装、权限身份头、URL 编码、校验和结果传递。
+- verify_runtime_tools.py 用临时只读工作流在线校验三个结果分支，使用线上 iterator 的接口和读取等级；可选 --include-recovery 以 bootstrap 的读取等级验证当前内容/稳定锚点恢复计划。后者使用 checkpoint_seq=0，不证明历史 checkpoint 回溯。探针不调用模型、不采纳候选、不修改 main/经验，完成后删除自身文件。

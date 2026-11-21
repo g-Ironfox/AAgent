@@ -6,7 +6,8 @@ write=4. The iterator reads this file at runtime and must not edit it.
 ## Authority and scope
 
 - Current runtime declarations/schema and semantic checks below override stale
-  examples in the repository skill. In particular, only listed node types exist;
+  examples or prose. The bundled experiment skill replaces the legacy repository
+  skill; it does not append conflicting historical instructions. Only listed node types exist;
   `wait_terminal_event` and `read_terminal_input` are not current node types.
 - This catalog documents ALL runtime types, not permission to use them in main.
   `main_policy` marks the stricter evolution gate. Preserve root interfaces,
@@ -4236,6 +4237,486 @@ write=4. The iterator reads this file at runtime and must not edit it.
 }
 ```
 
+## Actual workspace tool contracts (from runtime decorators)
+
+These are extracted from @tool on the implemented Python handlers, not from workflow metadata. Metadata resolves local/remote routing only; the running agent must also have imported the handler. A bind-mounted source update does not reload an existing Python process.
+
+Workflow content ports carry strings; number ports carry numeric values. The revision input comes from workspace.get_file's integer revision without stringification. Named tool outputs are mapped individually by workflow_local_tool. prepare_main_update is read-only: ready means accepted for a later CAS update, unchanged means no executable change, rejected includes a validation error. HTTP/ACL errors and missing handlers raise; they are not candidate rejection results.
+
+```json
+{
+  "workspace.list_files": {
+    "handler": "list_workspace_files",
+    "source": "agent/tools/workspace.py",
+    "description": "列出工作区文件（不包含文件内容）",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "revision": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "revision"
+      ]
+    }
+  },
+  "workspace.get_file": {
+    "handler": "get_workspace_file",
+    "source": "agent/tools/workspace.py",
+    "description": "读取工作区文件内容和 revision",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "file_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object"
+    }
+  },
+  "workspace.create_file": {
+    "handler": "create_workspace_file",
+    "source": "agent/tools/workspace.py",
+    "description": "在工作区创建文件",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object"
+    }
+  },
+  "workspace.update_file": {
+    "handler": "update_workspace_file",
+    "source": "agent/tools/workspace.py",
+    "description": "更新工作区文件名称或内容；必须使用最近读取到的 revision",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "file_id",
+        "name",
+        "content",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object"
+    }
+  },
+  "workspace.delete_file": {
+    "handler": "delete_workspace_file",
+    "source": "agent/tools/workspace.py",
+    "description": "删除工作区文件；必须使用最近读取到的 revision",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "file_id",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        },
+        "file_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deleted",
+        "file_id"
+      ]
+    }
+  },
+  "workspace.list_checkpoints": {
+    "handler": "list_workspace_checkpoints",
+    "source": "agent/tools/workspace.py",
+    "description": "分页列出工作区 checkpoint，可按文件筛选；使用 next_before_seq 获取下一页",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "before_seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        },
+        "file_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_before_seq": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "has_more",
+        "next_before_seq"
+      ]
+    }
+  },
+  "workspace.checkpoint_tree": {
+    "handler": "get_workspace_checkpoint_tree",
+    "source": "agent/tools/workspace.py",
+    "description": "读取工作区 checkpoint 分支树及当前 head_seq",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "head_seq": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "head_seq"
+      ]
+    }
+  },
+  "workspace.get_parent_checkpoint": {
+    "handler": "get_parent_workspace_checkpoint",
+    "source": "agent/tools/workspace.py",
+    "description": "获取 checkpoint 的父序号用于回滚；省略 seq 时查询当前 head。parent_seq=0 表示空工作区，可传给 restore_checkpoint；null 表示已无父 checkpoint",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "parent_seq": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "required": [
+        "seq",
+        "parent_seq"
+      ]
+    }
+  },
+  "workspace.checkpoint_diff": {
+    "handler": "get_workspace_checkpoint_diff",
+    "source": "agent/tools/workspace.py",
+    "description": "读取 checkpoint 相对于父 checkpoint 的文件差异；seq=0 表示空工作区",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "seq"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer"
+        },
+        "parent_seq": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "seq",
+        "parent_seq",
+        "changes"
+      ]
+    }
+  },
+  "workspace.create_checkpoint": {
+    "handler": "create_workspace_checkpoint",
+    "source": "agent/tools/workspace.py",
+    "description": "为当前工作区全部文件创建命名 checkpoint",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object"
+    }
+  },
+  "workspace.restore_checkpoint": {
+    "handler": "restore_workspace_checkpoint",
+    "source": "agent/tools/workspace.py",
+    "description": "将整个工作区恢复到指定 checkpoint，文件 revision 会更新；seq=0 会清空工作区",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "seq"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object"
+    }
+  },
+  "workspace.get_file_recovery_plan": {
+    "handler": "get_file_recovery_plan",
+    "source": "agent/tools/workspace.py",
+    "description": "读取指定文件的逐级恢复计划：沿 checkpoint 当前分支跳过重复版本，以固定 stable 文件为底线；只读取，不执行恢复",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stable_file_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpoint_seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "file_id",
+        "stable_file_id",
+        "checkpoint_seq"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "checkpoint_seq": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "source": {
+                "enum": [
+                  "checkpoint",
+                  "stable"
+                ]
+              }
+            },
+            "required": [
+              "content",
+              "checkpoint_seq",
+              "source"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "versions"
+      ]
+    }
+  },
+  "workspace.prepare_main_update": {
+    "handler": "prepare_workspace_main_update",
+    "source": "agent/tools/workspace.py",
+    "description": "只读校验 ALFWorld main 候选：检查版本、Workflow 2.0 编译、接口及只读能力边界，不执行也不写入候选",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "proposal": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "file_id",
+        "revision",
+        "proposal"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "content",
+        "error",
+        "name",
+        "revision"
+      ]
+    }
+  }
+}
+```
+
 ## Exact runtime semantic validation and port rules (source excerpts)
 
 ### agent/workflow_contract.py
@@ -4587,6 +5068,426 @@ def connection_validation_error(
 ### agent/workflow_validator.py
 
 ```python
+def validate_workflow(workflow: dict[str, Any]) -> None:
+    if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
+        raise WorkflowValidationError(
+            f"workflow.schema_version must be {WORKFLOW_SCHEMA_VERSION}"
+        )
+    _validate_workflow_schema(workflow)
+    from workflow_functions import bind_function_interfaces
+    try:
+        workflow = bind_function_interfaces(workflow)
+    except ValueError as error:
+        raise WorkflowValidationError(str(error)) from error
+    from workflow_structs import StructValidationError, is_internal_type, validate_struct_definitions
+    try:
+        structs = validate_struct_definitions(workflow.get("metadata", {}).get("structs", []))
+    except (StructValidationError, AttributeError) as error:
+        raise WorkflowValidationError(str(error)) from error
+    nodes = workflow.get("nodes")
+    connections = workflow.get("connections")
+    if not isinstance(nodes, list):
+        raise WorkflowValidationError("workflow.nodes must be a list")
+    if not isinstance(connections, list):
+        raise WorkflowValidationError("workflow.connections must be a list")
+    input_ports = _validate_boundary_metadata(workflow, "input_ports")
+    output_ports = _validate_boundary_metadata(workflow, "output_ports")
+    for label, ports in (("input_ports", input_ports), ("output_ports", output_ports)):
+        if any(port["type"].startswith(("struct:", "list-struct:")) for port in ports):
+            raise WorkflowValidationError(f"workflow.{label} cannot expose Struct types; use JSON content")
+    remote_tools = _validate_remote_tool_metadata(workflow)
+    tools = _validate_tool_metadata(workflow)
+    for tool in workflow.get("remote_tools", []):
+        for port in tool.get("input_ports", []) + tool.get("output_ports", []):
+            if port.get("type", "").startswith(("struct:", "list-struct:")):
+                raise WorkflowValidationError("Tool interfaces cannot expose Struct types")
+
+    node_by_id: dict[str, dict[str, Any]] = {}
+    for index, node in enumerate(nodes):
+        _validate_node(node, index, structs)
+        if node["type"] == "tool":
+            declaration = tools.get(node_argument(node, "tool"))
+            if declaration is None:
+                raise WorkflowValidationError(f"nodes[{index}] tool is not registered in metadata.tools")
+            if node_argument(node, "parameters") != declaration["input_ports"] or node_argument(node, "outputs") != declaration["output_ports"]:
+                raise WorkflowValidationError(f"nodes[{index}] tool ports must match metadata.tools")
+            if declaration["kind"] == "local" and node_argument(node, "mode", "sync") != "sync":
+                raise WorkflowValidationError("local tool only supports sync mode")
+        if node["type"] in {"remote_sync_tool", "remote_async_tool"}:
+            declaration = (tools.get(node_argument(node, "tool")) if node["type"] == "remote_async_tool" else None) or remote_tools.get(node_argument(node, "tool"))
+            if declaration is None:
+                raise WorkflowValidationError(
+                    f"nodes[{index}] remote tool is not registered in metadata.tools or workflow.remote_tools"
+                )
+            if declaration.get("kind", "remote") != "remote":
+                raise WorkflowValidationError("remote_async_tool requires a remote tool declaration")
+            if node_argument(node, "parameters") != declaration["input_ports"]:
+                raise WorkflowValidationError(
+                    f"nodes[{index}] remote tool inputs must match workflow.remote_tools"
+                )
+            if (
+                node["type"] == "remote_sync_tool"
+                and node_argument(node, "outputs") != declaration["output_ports"]
+            ):
+                raise WorkflowValidationError(
+                    f"nodes[{index}] remote tool outputs must match workflow.remote_tools"
+                )
+        if node["type"] in {"input", "output"}:
+            expected_ports = boundary_ports(
+                input_ports if node["type"] == "input" else output_ports
+            )
+            if node.get("workflowPorts") != expected_ports:
+                raise WorkflowValidationError(
+                    f"nodes[{index}].workflowPorts must match workflow {node['type']}_ports"
+                )
+        node_id = node["id"]
+        if node_id in node_by_id:
+            raise WorkflowValidationError(f"duplicate node id: {node_id}")
+        node_by_id[node_id] = node
+
+    input_count = sum(node["type"] == "input" for node in nodes)
+    if input_count != 1:
+        raise WorkflowValidationError(
+            f"workflow must contain exactly one input node, found {input_count}"
+        )
+    if not any(node["type"] == "output" for node in nodes):
+        raise WorkflowValidationError("workflow must contain at least one output node")
+
+    groups, owners = _infer_function_groups(workflow, node_by_id)
+
+    # Acyclic calls allow nesting while keeping this first version non-recursive.
+    calls = {f["id"]: set() for f in workflow.get("metadata", {}).get("functions", [])}
+    for node in nodes:
+        if node["type"] == "function_call" and owners[node["id"]] is not None:
+            calls[owners[node["id"]]].add(node_argument(node, "function_id"))
+    complete, active = set(), set()
+    for function_id in calls:
+        pending = [(function_id, False)]
+        while pending:
+            fid, exiting = pending.pop()
+            if exiting:
+                active.remove(fid)
+                complete.add(fid)
+            elif fid in active:
+                raise WorkflowValidationError(f"recursive function call is not supported: {fid}")
+            elif fid not in complete:
+                active.add(fid)
+                pending.append((fid, True))
+                pending.extend((target, False) for target in calls[fid])
+
+    connected_control_inputs: dict[str, set[str]] = {
+        node_id: set() for node_id in node_by_id
+    }
+    connected_control_outputs: dict[str, set[str]] = {
+        node_id: set() for node_id in node_by_id
+    }
+    connected_data_inputs: set[tuple[str, str]] = set()
+
+    for index, connection in enumerate(connections):
+        if not isinstance(connection, dict):
+            raise WorkflowValidationError(f"connections[{index}] must be an object")
+        from_id = connection.get("fromId")
+        to_id = connection.get("toId")
+        if from_id not in node_by_id:
+            raise WorkflowValidationError(
+                f"connections[{index}].fromId references unknown node: {from_id}"
+            )
+        if to_id not in node_by_id:
+            raise WorkflowValidationError(
+                f"connections[{index}].toId references unknown node: {to_id}"
+            )
+
+        from_port = _port_id(connection, index, "fromPortId")
+        to_port = _port_id(connection, index, "toPortId")
+        connection_type = connection.get("type")
+        source_node = node_by_id[from_id]
+        target_node = node_by_id[to_id]
+        if owners[from_id] != owners[to_id]:
+            raise WorkflowValidationError(f"connections[{index}] crosses function boundary")
+        if connection_type == "control":
+            _validate_control_connection(
+                source_node, from_port, target_node, to_port, index
+            )
+            if from_port in connected_control_outputs[from_id]:
+                raise WorkflowValidationError(
+                    f"control output has multiple successors: node {from_id}, port {from_port}"
+                )
+            connected_control_outputs[from_id].add(from_port)
+            connected_control_inputs[to_id].add(to_port)
+        elif connection_type in DATA_CONNECTION_TYPES or (
+            isinstance(connection_type, str)
+            and connection_type.startswith(("struct:", "list-struct:"))
+        ):
+            _validate_data_connection(
+                source_node,
+                from_port,
+                target_node,
+                to_port,
+                connection_type,
+                index,
+                input_ports,
+                output_ports,
+                structs,
+            )
+            target_endpoint = (to_id, to_port)
+            if target_endpoint in connected_data_inputs:
+                raise WorkflowValidationError(
+                    f"data input has multiple sources: node {to_id}, port {to_port}"
+                )
+            connected_data_inputs.add(target_endpoint)
+        else:
+            raise WorkflowValidationError(
+                f"connections[{index}].type must be a supported control or data type"
+            )
+
+    _validate_branches_in_foreach(node_by_id, connections)
+
+    for node_id, node in node_by_id.items():
+        node_type = node["type"]
+        required_data_ports: set[str] = set()
+        if node_type == "construct_tool":
+            from workflow_tools import TOOL_FIELDS, TOOL_PORTS
+            required_data_ports = {TOOL_PORTS[field] for field in TOOL_FIELDS if node_argument(node, f"{field}_source", "fixed") == "port"}
+        elif node_type == "llm" and node_argument(node, "tool_calls") is True and node_argument(node, "tools_source", "declared") == "definitions":
+            required_data_ports = {"tools-in"}
+        elif node_type == "function_call":
+            required_data_ports = {f"function:{port['name']}" for port in node["input_ports"]}
+        elif node_type == "function_output":
+            required_data_ports = {f"function:{port['name']}" for port in node["function_ports"]}
+        elif node_type == "while_pop" and node_argument(node, "context_id_source", "port") == "port":
+            required_data_ports = {"context-id"}
+        elif node_type == "construct_struct":
+            sid = node_argument(node, "struct_id")
+            required_data_ports = {field["name"] for field in structs[sid]["fields"] if field["required"]}
+        elif node_type == "struct_get":
+            required_data_ports = {"struct-in"}
+            if node_argument(node, "missing", "error") == "fallback":
+                required_data_ports.add("fallback-in")
+        elif node_type == "struct_update":
+            required_data_ports = {"struct-in", *node_argument(node, "updates", [])}
+        elif node_type == "struct_to_json":
+            required_data_ports = {"value-in"}
+        elif node_type == "json_to_struct":
+            required_data_ports = {"content-in"}
+        missing_data = sorted(port for port in required_data_ports if (node_id, port) not in connected_data_inputs)
+        if missing_data:
+            raise WorkflowValidationError(f"required data ports must be connected: node {node_id}, ports {', '.join(missing_data)}")
+        required_inputs, required_outputs = control_ports_for_node(node)
+        missing_inputs = required_inputs - connected_control_inputs[node_id]
+        missing_outputs = required_outputs - connected_control_outputs[node_id]
+        if node_type in {"json_tool", "spawn_and_wait_subprocess"}:
+            missing_outputs.discard("error-out")
+        if missing_inputs or missing_outputs:
+            missing = [
+                *(f"input:{port_id}" for port_id in sorted(missing_inputs)),
+                *(f"output:{port_id}" for port_id in sorted(missing_outputs)),
+            ]
+            raise WorkflowValidationError(
+                f"control ports must be connected: node {node_id}, ports {', '.join(missing)}"
+            )
+
+    # Each function is a separate control tree and lifecycle root.
+    for members in groups.values():
+        edges = [edge for edge in connections if edge["fromId"] in members]
+        _validate_lifecycles(members, edges)
+
+def _validate_branches_in_foreach(
+    nodes_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
+) -> None:
+    control_edges = [connection for connection in connections if connection.get("type") == "control"]
+    outgoing: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    incoming: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    for edge in control_edges:
+        outgoing[edge["fromId"]].append(edge)
+        incoming[edge["toId"]].append(edge)
+
+    for foreach_id, foreach_node in nodes_by_id.items():
+        if foreach_node["type"] not in {"foreach", "while_pop"}:
+            continue
+
+        pending = [edge["toId"] for edge in outgoing[foreach_id] if edge["fromPortId"] == "loop-out"]
+        body: set[str] = set()
+        while pending:
+            node_id = pending.pop()
+            if node_id == foreach_id or node_id in body:
+                continue
+            if len(outgoing[node_id]) > 1:
+                raise WorkflowValidationError(
+                    f"branching control flow is not allowed inside {foreach_node['type']}: node {node_id}"
+                )
+            body.add(node_id)
+            for edge in outgoing[node_id]:
+                target_id = edge["toId"]
+                if target_id == foreach_id and edge["toPortId"] == "loop-in":
+                    continue
+                pending.append(target_id)
+
+        for node_id in body:
+            external_entries = [
+                edge for edge in incoming[node_id]
+                if edge["fromId"] not in body
+                and not (edge["fromId"] == foreach_id and edge["fromPortId"] == "loop-out")
+            ]
+            if external_entries:
+                raise WorkflowValidationError(
+                    f"{foreach_node['type']} body node also has a control-flow entry from outside the loop: node {node_id}"
+                )
+
+def _infer_function_groups(workflow, node_by_id):
+    """Infer static function membership by DFS; never annotate runtime nodes."""
+    groups = {None: {}}
+    roots = {None: next(n["id"] for n in node_by_id.values() if n["type"] == "input")}
+    for function in workflow.get("metadata", {}).get("functions", []):
+        fid = function["id"]
+        entries = [n["id"] for n in node_by_id.values()
+                   if n["type"] == "function_input" and n.get("function_id") == fid]
+        if len(entries) != 1:
+            raise WorkflowValidationError(f"function {fid} must contain exactly one function_input, found {len(entries)}")
+        if not any(n["type"] == "function_output" and n.get("function_id") == fid
+                   for n in node_by_id.values()):
+            raise WorkflowValidationError(f"function {fid} must contain at least one function_output")
+        roots[fid] = entries[0]
+        groups[fid] = {}
+    outgoing = {nid: [] for nid in node_by_id}
+    for edge in workflow["connections"]:
+        # Endpoint and port errors are reported by the regular connection checks.
+        if (edge.get("type") == "control" and edge.get("fromId") in outgoing
+                and edge.get("toId") in node_by_id):
+            outgoing[edge["fromId"]].append(edge["toId"])
+    owners = {}
+    for owner, root in roots.items():
+        pending = [root]
+        while pending:
+            nid = pending.pop()
+            node = node_by_id[nid]
+            if nid in owners:
+                if owners[nid] != owner:
+                    raise WorkflowValidationError(f"node {nid} is shared across function boundary")
+                continue  # Loop back edges are checked by the lifecycle validator.
+            if node["type"] in {"input", "output", "function_input", "function_output"}:
+                boundary = node.get("function_id") if node["type"].startswith("function_") else None
+                if boundary != owner:
+                    raise WorkflowValidationError(f"control flow crosses function boundary at node {nid}")
+            owners[nid] = owner
+            groups[owner][nid] = node
+            if node["type"] not in {"output", "function_output"}:
+                # A function_call is an ordinary step here; do not enter its callee.
+                pending.extend(outgoing[nid])
+    # Keep unreachable nodes for the existing port/lifecycle diagnostics. They
+    # cannot acquire function membership from legacy labels or data edges.
+    for nid in node_by_id.keys() - owners.keys():
+        owners[nid] = None
+        groups[None][nid] = node_by_id[nid]
+    return groups, owners
+
+def _validate_lifecycles(
+    nodes_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
+) -> None:
+    """Check a control tree and visibility of values across branch/loop scopes.
+
+    Scope paths are static compiler state only. Parents may supply descendants;
+    a child or sibling may not supply its parent/sibling. Context operations are
+    ordinary nodes: explicitly stored values cross boundaries via a later read.
+    """
+    Scope = tuple[tuple[str, str], ...]
+    outgoing: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes_by_id}
+    for edge in connections:
+        if edge["type"] == "control":
+            outgoing[edge["fromId"]].append(edge)
+
+    node_scopes: dict[str, Scope] = {}
+    output_scopes: dict[tuple[str, str], Scope] = {}
+    active: set[str] = set()
+    returned_loops: set[str] = set()
+    input_id = next(node_id for node_id, node in nodes_by_id.items() if node["type"] in {"input", "function_input"})
+    # Explicit DFS stack keeps maximum-sized trees independent of recursion limits.
+    pending: list[tuple[str, Scope, str | None, bool]] = [(input_id, (), None, False)]
+    while pending:
+        node_id, scope, loop_id, exiting = pending.pop()
+        if exiting:
+            active.remove(node_id)
+            continue
+        if node_id in active:
+            raise WorkflowValidationError(
+                f"control-flow cycle is not a foreach loop-in return: node {node_id}"
+            )
+        if node_id in node_scopes:
+            raise WorkflowValidationError(
+                f"control-flow merge is not allowed: node {node_id} has multiple entries"
+            )
+        node = nodes_by_id[node_id]
+        node_type = node["type"]
+        _, control_outputs = control_ports_for_node(node)
+        branching_outputs = control_outputs
+        if node_type == "spawn_and_wait_subprocess" and not any(
+            edge["fromPortId"] == "error-out" for edge in outgoing[node_id]
+        ):
+            # An unconnected optional error exit preserves existing linear loop bodies.
+            branching_outputs = control_outputs - {"error-out"}
+        if loop_id and (node_type == "router" or len(branching_outputs) > 1):
+            raise WorkflowValidationError(
+                f"branching control flow is not allowed inside {nodes_by_id[loop_id]['type']}: node {node_id}"
+            )
+        if loop_id and node_type in {"output", "function_output"}:
+            raise WorkflowValidationError(
+                f"{nodes_by_id[loop_id]['type']} body must return to loop-in instead of output: node {node_id}"
+            )
+        node_scopes[node_id] = scope
+        active.add(node_id)
+        pending.append((node_id, scope, loop_id, True))
+
+        child_scopes = {}
+        for port in control_outputs:
+            child_scope = scope
+            if node_type in {"foreach", "while_pop"} and port == "loop-out":
+                child_scope = (*scope, (node_id, port))
+                output_scopes[(node_id, "item-out")] = child_scope
+            elif node_type not in {"foreach", "while_pop"} and (node_type == "router" or len(control_outputs) > 1):
+                child_scope = (*scope, (node_id, port))
+                if node_type in {"json_tool", "spawn_and_wait_subprocess"}:
+                    data_port = "error-json" if port == "error-out" else "result-json"
+                    output_scopes[(node_id, data_port)] = child_scope
+            child_scopes[port] = child_scope
+
+        for edge in reversed(outgoing[node_id]):
+            port = edge["fromPortId"]
+            child_scope = child_scopes[port]
+            child_loop = node_id if node_type in {"foreach", "while_pop"} and port == "loop-out" else loop_id
+            target_id = edge["toId"]
+            if nodes_by_id[target_id]["type"] in {"foreach", "while_pop"} and edge["toPortId"] == "loop-in":
+                if child_loop != target_id:
+                    raise WorkflowValidationError(
+                        f"{nodes_by_id[target_id]['type']} loop-in must return from its own body: node {target_id}, source {node_id}"
+                    )
+                returned_loops.add(target_id)
+            else:
+                pending.append((target_id, child_scope, child_loop, False))
+
+    unreachable = sorted(set(nodes_by_id) - set(node_scopes))
+    if unreachable:
+        raise WorkflowValidationError(
+            f"control-flow nodes are unreachable from input: {', '.join(unreachable)}"
+        )
+    for node_id, node in nodes_by_id.items():
+        if node["type"] in {"foreach", "while_pop"} and node_id not in returned_loops:
+            raise WorkflowValidationError(f"{node['type']} body has no loop-in return: node {node_id}")
+
+    def describe(scope: Scope) -> str:
+        return "root" + "".join(f" / {owner}:{port}" for owner, port in scope)
+
+    for index, edge in enumerate(connections):
+        if edge["type"] == "control":
+            continue
+        source = output_scopes.get((edge["fromId"], edge["fromPortId"]), node_scopes[edge["fromId"]])
+        target = node_scopes[edge["toId"]]
+        if target[:len(source)] != source:
+            raise WorkflowValidationError(
+                f"connections[{index}] crosses lifecycle boundary: "
+                f"{edge['fromId']}.{edge['fromPortId']} [{describe(source)}] -> "
+                f"{edge['toId']}.{edge['toPortId']} [{describe(target)}]; "
+                "data source must belong to the same or an ancestor lifecycle"
+            )
+
 def _validate_node(node: Any, index: int, structs: dict[str, Any] | None = None) -> None:
     structs = structs or {}
     if not isinstance(node, dict):
@@ -5126,6 +6027,517 @@ def bind_function_interfaces(workflow: dict[str, Any]) -> dict[str, Any]:
     return workflow
 ```
 
+### agent/workflow_parser.py
+
+```python
+def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
+    """Convert ``nodes`` and ``connections`` to an index-linked node list.
+
+    Control-flow links contain node indexes. Data inputs contain one mutable
+    slot in the form ``[node_index, port_id, value_or_default]``; data outputs
+    contain endpoint lists.
+    """
+    from workflow_functions import bind_function_interfaces
+    workflow = bind_function_interfaces(workflow)
+    if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
+        raise WorkflowParseError(
+            f"unsupported workflow schema_version: {workflow.get('schema_version')!r}; "
+            f"expected {WORKFLOW_SCHEMA_VERSION}"
+        )
+    nodes = workflow["nodes"]
+    connections = workflow["connections"]
+    input_ports = workflow["input_ports"]
+    output_ports = workflow["output_ports"]
+    from workflow_structs import validate_struct_definitions
+    struct_definitions = validate_struct_definitions(workflow.get("metadata", {}).get("structs", []))
+    function_names = {function["id"]: function["name"]
+                      for function in workflow.get("metadata", {}).get("functions", [])}
+    node_indexes = {node["id"]: index for index, node in enumerate(nodes)}
+    linked_nodes: list[dict[str, Any]] = []
+    for node in nodes:
+        parsed_node = normalize_node_arguments(node)
+        if node.get("type") == "function_input":
+            parsed_node["_function_name"] = function_names[node["function_id"]]
+        if node.get("type") in {"tool", "remote_async_tool"}:
+            declaration = next((tool for tool in workflow.get("metadata", {}).get("tools", []) if tool["name"] == node_argument(node, "tool")), None)
+            if declaration is None and node["type"] == "remote_async_tool":
+                declaration = next((tool for tool in workflow.get("remote_tools", []) if tool["name"] == node_argument(node, "tool")), None)
+            if declaration is None:
+                raise WorkflowParseError("tool is not registered in metadata.tools")
+            parsed_node["_tool_kind"] = declaration.get("kind", "remote")
+        if node.get("type") == "llm":
+            parsed_node["_metadata_tools"] = [
+                {"name": tool["name"], "kind": tool.get("kind", "remote")}
+                for tool in workflow.get("metadata", {}).get("tools", [])
+            ]
+        parsed_node.pop("x", None)
+        parsed_node.pop("y", None)
+        if node.get("type") == "input":
+            parsed_node["workflowPorts"] = boundary_ports(input_ports)
+        elif node.get("type") == "output":
+            parsed_node["workflowPorts"] = boundary_ports(output_ports)
+        node_input_ports, node_output_ports = data_ports_for_node(
+            node, input_ports, output_ports
+        )
+        linked_nodes.append(
+            {
+                **parsed_node,
+                "_struct_definitions": _node_struct_definitions(parsed_node, struct_definitions),
+                "predecessors": {},
+                "successors": {},
+                "data_inputs": {
+                    port_id: [None, None, None] for port_id in node_input_ports
+                },
+                "data_outputs": {port_id: [] for port_id in node_output_ports},
+            }
+        )
+
+    for connection in connections:
+        from_id = connection["fromId"]
+        to_id = connection["toId"]
+        from_index = node_indexes[from_id]
+        to_index = node_indexes[to_id]
+        from_port = connection["fromPortId"]
+        to_port = connection["toPortId"]
+        connection_type = connection["type"]
+        if connection_type == "control":
+            successor_key = _successor_key(linked_nodes[from_index], from_port)
+            predecessor_key = _predecessor_key(linked_nodes[to_index], to_port)
+            linked_nodes[from_index]["successors"][successor_key] = to_index
+            linked_nodes[to_index]["predecessors"].setdefault(
+                predecessor_key, []
+            ).append(from_index)
+        else:
+            _append_output_endpoint(
+                linked_nodes[from_index]["data_outputs"],
+                from_port,
+                [to_index, to_port],
+            )
+            linked_nodes[to_index]["data_inputs"][to_port] = [
+                from_index,
+                from_port,
+                None,
+            ]
+
+    return linked_nodes
+```
+
+### agent/workflow_nodes.py
+
+```python
+def workflow_read_terminal_queue(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
+    from process_repository import read_terminal_input_queue
+    from redis_client import get_connection
+    from terminal_repository import current_terminal_process_id
+
+    terminal_process_id = current_terminal_process_id.get()
+    process = current_workflow_process.get()
+    if not terminal_process_id or process is None:
+        raise ValueError("read_terminal_queue requires a process terminal")
+    node = workflow_map[current_id]
+    successor = next_successor(node)
+    contents = read_terminal_input_queue(get_connection(), terminal_process_id)
+    if not contents:
+        return WorkflowStep({"kind": "terminal_message", "process_id": terminal_process_id})
+    propagate_workflow_output(workflow_map, node, "list-out", contents)
+    return successor
+
+def _json_content(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+def _deserialize_json_value(value: Any, value_type: str) -> Any:
+    if value_type == "number" and is_number_value(value):
+        return value
+    if value_type == "content":
+        return _json_content(value)
+    if value_type == "list-content" and isinstance(value, list):
+        return [_json_content(item) for item in value]
+    if value_type == "map-content" and _is_map_content(value):
+        return dict(value)
+    raise ValueError(f"value does not match declared type {value_type}")
+
+def workflow_deserialize_json(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    has_content, content = read_workflow_input(node, "content-in")
+    if not has_content:
+        raise ValueError(f"deserialize_json input is missing: node {node.get('id')}")
+    if not isinstance(content, str):
+        raise ValueError(f"deserialize_json input must be content: node {node.get('id')}")
+    try:
+        document = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"deserialize_json input is invalid JSON: node {node.get('id')}") from error
+    if not isinstance(document, dict):
+        raise ValueError(f"deserialize_json root must be an object: node {node.get('id')}")
+
+    converted = {}
+    for output in node_argument(node, "outputs", []):
+        key = output["key"]
+        if key not in document:
+            raise ValueError(f"deserialize_json key is missing: node {node.get('id')}, key {key}")
+        try:
+            converted[key] = _deserialize_json_value(document[key], output["type"])
+        except ValueError as error:
+            raise ValueError(
+                f"deserialize_json value type mismatch: node {node.get('id')}, key {key}"
+            ) from error
+
+    for key, value in converted.items():
+        propagate_workflow_output(workflow_map, node, key, value)
+    return next_successor(node)
+
+def workflow_struct_to_json(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+    node = workflow_map[current_id]
+    present, value = read_workflow_input(node, "value-in")
+    if not present: raise ValueError(f"struct_to_json input missing: node {node.get('id')}")
+    value = validate_value(node_argument(node, "value_type"), value, _struct_defs(node))
+    propagate_workflow_output(workflow_map, node, "content-out", json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+    return next_successor(node)
+
+def workflow_json_to_struct(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_structs import validate_value
+    node = workflow_map[current_id]
+    present, content = read_workflow_input(node, "content-in")
+    if not present or not isinstance(content, str): raise ValueError(f"json_to_struct content input invalid: node {node.get('id')}")
+    try: value = json.loads(content)
+    except json.JSONDecodeError as error: raise ValueError(f"json_to_struct invalid JSON: node {node.get('id')}") from error
+    value = validate_value(node_argument(node, "value_type"), value, _struct_defs(node), copy_value=True)
+    propagate_workflow_output(workflow_map, node, "value-out", value)
+    return next_successor(node)
+
+def workflow_foreach(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    items = node.get("_foreach_items")
+    if items is None:
+        has_items, input_items = read_workflow_input(node, "list-in")
+        if not has_items:
+            raise ValueError(f"foreach input is missing: node {node.get('id')}")
+        if not isinstance(input_items, list):
+            raise ValueError(f"foreach input must be a list: node {node.get('id')}")
+        items = list(input_items)
+        node["_foreach_items"] = items
+
+    if not items:
+        node.pop("_foreach_items", None)
+        return next_successor(node)
+
+    propagate_workflow_output(workflow_map, node, "item-out", items.pop(0))
+    return next_successor(node, "item")
+
+def workflow_while_pop(current_id: int, workflow_map: WorkflowMap) -> int:
+    from workflow_context_repository import pop_context
+
+    node = workflow_map[current_id]
+    context_id = node_argument(node, "context_id") if node_argument(node, "context_id_source", "port") == "fixed" else _context_input(node, "context-id", "Context ID 输入无效")
+    has_item, item = pop_context(
+        context_id,
+        node["_workflow_invocation_id"],
+        node_argument(node, "value_type"),
+        node_argument(node, "position", "end"),
+        _struct_defs(node),
+        ancestor_invocation_ids=node.get("_workflow_ancestor_invocation_ids", ()),
+    )
+    if not has_item:
+        return next_successor(node)
+    propagate_workflow_output(workflow_map, node, "item-out", item)
+    return next_successor(node, "item")
+
+def workflow_router(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    has_key, key = read_workflow_input(node, "content-in")
+    if not has_key:
+        raise ValueError(f"router input is missing: node {node.get('id')}")
+    branch_key = f"branch-{key}"
+    if branch_key not in node.get("successors", {}):
+        branch_key = "branch$others"
+    return next_successor(node, branch_key)
+
+def _tool_arguments(node: dict[str, Any]) -> dict[str, Any]:
+    arguments = {}
+    for parameter in tool_parameter_names(node):
+        has_value, value = read_workflow_input(node, parameter)
+        if has_value:
+            if tool_parameter_type(node, parameter) == "number" and not is_number_value(value):
+                raise ValueError(f"tool parameter {parameter} must match number")
+            arguments[parameter] = value
+    return arguments
+
+def workflow_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    node = workflow_map[current_id]
+    if node_argument(node, "mode", "sync") != "sync":
+        raise ValueError("tool only supports sync mode; use remote_async_tool")
+    kind = node.get("_tool_kind")
+    if kind == "local":
+        if node_argument(node, "mode", "sync") != "sync":
+            raise ValueError("local tool only supports sync mode")
+        return workflow_local_tool(current_id, workflow_map)
+    if kind == "remote":
+        return workflow_remote_sync_tool(current_id, workflow_map)
+    raise ValueError("tool kind must be resolved from metadata.tools")
+
+def workflow_local_tool(current_id: int, workflow_map: WorkflowMap) -> int:
+    from tools.tool import execute_tool
+
+    node = workflow_map[current_id]
+    result = execute_tool(
+        node["id"], node_argument(node, "tool"), _tool_arguments(node), preserve_result=True
+    )
+    if node.get("type") == "local_tool":
+        propagate_workflow_output(workflow_map, node, "output", _tool_output(result))
+        return next_successor(node)
+
+    outputs = node_argument(node, "outputs", [])
+    if isinstance(result, dict):
+        if len(outputs) == 1 and outputs[0]["name"] == "output" and "output" not in result:
+            values = {"output": result}
+        else:
+            missing = [output["name"] for output in outputs if output["name"] not in result]
+            if missing:
+                raise ValueError(f"local tool result is missing outputs: {', '.join(missing)}")
+            values = result
+    elif len(outputs) == 1:
+        values = {outputs[0]["name"]: result}
+    elif outputs:
+        raise ValueError("local tool result must be an object for named outputs")
+    else:
+        values = {}
+
+    for output in outputs:
+        name = output["name"]
+        value = values[name]
+        if output["type"] == "number" and not is_number_value(value):
+            raise ValueError(f"local tool output {name} must match number")
+        if output["type"] == "content":
+            value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        elif output["type"] == "map-content" and not _is_map_content(value):
+            raise ValueError(f"local tool output {name} must match map-content")
+        propagate_workflow_output(workflow_map, node, name, value)
+    return next_successor(node)
+```
+
+### agent/tools/tool.py
+
+```python
+def tool(description, parameters=None, name=None, output_schema=None):
+    def register(function):
+        tool_name = name or function.__name__
+        if tool_name in tool_handlers:
+            raise ValueError(f"工具已注册: {tool_name}")
+
+        schema = {
+            "type": "function",
+            "function": {
+                "name": tool_name,
+                "description": description,
+                "parameters": parameters or {"type": "object", "properties": {}}
+            }
+        }
+        registered_tools.append(schema)
+        tool_handlers[tool_name] = function
+        registry_schema = {**schema, "outputSchema": output_schema}
+        redis_register_tool(tool_name, registry_schema)
+        return function
+
+    return register
+
+def execute_tool(id,tool,args,preserve_result=False):
+    handler = tool_handlers.get(tool)
+    if handler is None:
+        raise ValueError(f"未知工具: {tool}")
+
+    result = handler(**args)
+
+    if preserve_result:
+        return result
+
+    # 将结果转为字符串（如果是列表等复杂类型，可做适当格式化）
+    if isinstance(result, (list, dict)):
+        result = json.dumps(result, ensure_ascii=False)
+    elif result is None:
+        result = "执行失败，未获取到数据"
+    return str(result)
+```
+
+### agent/tools/workspace.py
+
+```python
+def _request(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    base_url = os.getenv("WORKSPACE_API_URL", "http://webui_py:8081").rstrip("/")
+    headers = dict(kwargs.pop("headers", {}))
+    try:
+        from workflow_nodes import current_workflow_process
+
+        process = current_workflow_process.get()
+    except ImportError:
+        process = None
+    if process and process.get("process_id"):
+        headers["X-AAgent-Process-ID"] = (
+            f"{process['process_id']}:{process['_workspace_token']}"
+        )
+    try:
+        response = requests.request(
+            method,
+            f"{base_url}/api/files{path}",
+            timeout=(3, 15),
+            headers=headers,
+            **kwargs,
+        )
+    except requests.RequestException as error:
+        raise RuntimeError(f"workspace request failed: {error}") from error
+
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    if not response.ok:
+        detail = payload.get("error", payload.get("detail", payload))
+        if response.status_code == 409:
+            raise ValueError(f"workspace file revision conflict; read the file again: {detail}")
+        if response.status_code == 404:
+            resource = "checkpoint" if path.startswith("/checkpoints/") else "file"
+            raise ValueError(f"workspace {resource} not found: {detail}")
+        raise RuntimeError(f"workspace request failed with HTTP {response.status_code}: {detail}")
+    if not isinstance(payload, dict):
+        raise RuntimeError("workspace API returned an invalid response")
+    return payload
+
+def prepare_workspace_main_update(file_id: str, revision: int, proposal: str) -> dict[str, Any]:
+    from workflow_evolution import prepare_main_update
+
+    current = _request("GET", "/" + quote(file_id, safe=""))
+    return prepare_main_update(current, revision, proposal)
+
+def get_file_recovery_plan(file_id: str, stable_file_id: str, checkpoint_seq: int) -> dict[str, Any]:
+    from workflow_recovery import build_file_recovery_plan
+
+    return build_file_recovery_plan(file_id, stable_file_id, checkpoint_seq, _request)
+```
+
+### agent/workflow_recovery.py
+
+```python
+def build_file_recovery_plan(file_id, stable_file_id, checkpoint_seq, request):
+    """Try each distinct earlier content once and stop at the stable anchor.
+
+    All reads use the existing workspace API, including its file/checkpoint
+    permission checks. Only the selected checkpoint's ancestors are considered.
+    """
+    if isinstance(checkpoint_seq, bool) or not isinstance(checkpoint_seq, int) or checkpoint_seq < 0:
+        raise ValueError("checkpoint_seq must be a non-negative integer")
+    current = request("GET", "/" + quote(file_id, safe=""))["content"]
+    stable = request("GET", "/" + quote(stable_file_id, safe=""))["content"]
+    if current == stable:
+        return {"versions": []}
+    versions = []
+    seen_contents = {current}
+    seen_checkpoints = set()
+    cursor = checkpoint_seq
+    while cursor:
+        if cursor in seen_checkpoints:
+            raise ValueError("checkpoint ancestry contains a cycle")
+        seen_checkpoints.add(cursor)
+        diff = request("GET", f"/checkpoints/{cursor}/diff")
+        parent = diff["parent_seq"] or 0
+        for change in diff["changes"]:
+            previous = change.get("before_content")
+            if change["file_id"] != file_id or previous is None or previous in seen_contents:
+                continue
+            seen_contents.add(previous)
+            versions.append({"content": previous, "checkpoint_seq": parent,
+                             "source": "stable" if previous == stable else "checkpoint"})
+            if previous == stable:
+                return {"versions": versions}
+        cursor = parent
+    # The immutable installation anchor is also usable when no older checkpoint
+    # contains it (for example, an imported main with only one saved version).
+    versions.append({"content": stable, "checkpoint_seq": 0, "source": "stable"})
+    return {"versions": versions}
+```
+
+### agent/workflow_evolution.py
+
+```python
+def _check_capabilities(current: dict[str, Any], candidate: dict[str, Any]) -> None:
+    for side in ("input_ports", "output_ports"):
+        if candidate[side] != current[side]:
+            raise ValueError(f"main {side} must remain unchanged")
+    old_tools = current.get("metadata", {}).get("tools", [])
+    if candidate.get("metadata", {}).get("tools", []) != old_tools:
+        raise ValueError("main tool declarations must remain unchanged")
+    # The shipped main may only read its bound experience file. Freeze the tool
+    # and its entire data dependency chain, not merely a model-supplied file ID.
+    old_nodes = {n["id"]: n for n in current["nodes"]}
+    new_nodes = {n["id"]: n for n in candidate["nodes"]}
+    protected = {n["id"] for n in current["nodes"] if n["type"] == "tool"}
+    if {n["id"] for n in candidate["nodes"] if n["type"] == "tool"} != protected:
+        raise ValueError("main cannot add or remove workspace tool nodes")
+    for node_id in protected:
+        if old_nodes[node_id].get("arguments", {}).get("tool") != "workspace.get_file":
+            raise ValueError("main baseline must contain read-only workspace.get_file tools only")
+    pending = list(protected)
+    while pending:
+        target = pending.pop()
+        for edge in current["connections"]:
+            if edge["type"] != "control" and edge["toId"] == target and edge["fromId"] not in protected:
+                protected.add(edge["fromId"])
+                pending.append(edge["fromId"])
+    for node_id in protected:
+        if node_id not in new_nodes or _without_layout(old_nodes[node_id]) != _without_layout(new_nodes[node_id]):
+            raise ValueError(f"bound experience reader must remain unchanged: {node_id}")
+        old_edges = [e for e in current["connections"] if e["type"] != "control" and e["toId"] == node_id]
+        new_edges = [e for e in candidate["connections"] if e["type"] != "control" and e["toId"] == node_id]
+        normalize = lambda edges: sorted(json.dumps({k: v for k, v in e.items() if k != "id"}, sort_keys=True) for e in edges)
+        if normalize(old_edges) != normalize(new_edges):
+            raise ValueError(f"bound experience reader wiring must remain unchanged: {node_id}")
+    models = {n.get("arguments", {}).get("model") for n in current["nodes"] if n["type"] == "llm"}
+    if not models or any(not isinstance(m, str) or not m or m.startswith("REPLACE_WITH_") for m in models):
+        raise ValueError("main baseline requires concrete model bindings")
+    if not any(n["type"] == "llm" for n in candidate["nodes"]):
+        raise ValueError("main must retain an LLM decision node")
+    for node in candidate["nodes"]:
+        if node["type"] not in PURE_NODES:
+            raise ValueError(f"main cannot use capability node {node['type']}")
+        if node["type"] == "llm":
+            args = node.get("arguments", {})
+            if args.get("model") not in models:
+                raise ValueError("main model bindings must remain unchanged")
+            if args.get("tool_calls") is not False or args.get("tools"):
+                raise ValueError("main LLM tool calls must remain disabled")
+
+def prepare_main_update(current: dict[str, Any], revision: int, proposal: str) -> dict[str, Any]:
+    """Return a checked candidate plus a CAS revision; rejection never mutates state."""
+    result = {"status": "rejected", "content": "", "error": "",
+              "name": current["name"], "revision": current["revision"]}
+    try:
+        if isinstance(revision, bool) or revision != current["revision"]:
+            raise ValueError("main revision conflict; discard stale proposal and read main again")
+        if not current["name"].endswith("-main.flow") or current["name"].endswith("-stable-main.flow"):
+            raise ValueError("only a task main workflow can be evolved; stable-main is immutable")
+        if not isinstance(proposal, str) or len(proposal) > 1_000_000:
+            raise ValueError("candidate must be JSON text of at most 1000000 characters")
+        text = proposal.strip()
+        fenced = re.fullmatch(r"```(?:json)?\s*\n(.*?)\n```", text, flags=re.DOTALL)
+        if fenced:
+            text = fenced.group(1)
+        candidate = json.loads(text)
+        if not isinstance(candidate, dict):
+            raise ValueError("candidate must be a complete workflow JSON object")
+        original = json.loads(current["content"])
+        validate_workflow(candidate)
+        _check_capabilities(original, candidate)
+        parse_workflow(candidate)
+        # Layout-only edits do not create new executable revisions.
+        comparable = lambda doc: {**doc, "nodes": [_without_layout(n) for n in doc["nodes"]]}
+        result["status"] = "unchanged" if comparable(original) == comparable(candidate) else "ready"
+        result["content"] = json.dumps(candidate, ensure_ascii=False, indent=2) + "\n"
+    except (ValueError, TypeError, KeyError, RecursionError) as error:
+        result["error"] = str(error)
+    return result
+```
+
 ### agent/workflow_tools.py
 
 ```python
@@ -5190,167 +6602,140 @@ def validate_construct_tool_arguments(arguments: dict[str, Any]) -> None:
     build_tool(name, description, schema, required)
 ```
 
-## Repository workflow-json skill snapshot
+## Implementation-aligned workflow-json design skill
 
 ---
-name: workflow-json
-description: Design executable AAgent Workflow 2.0 JSON without repository access.
+name: workflow-json-runtime
+description: Design and revise this experiment's AAgent Workflow 2.0 JSON using the current runtime declarations, validator, compiler, and execution semantics.
 ---
 
-# AAgent Workflow JSON Design
+# Workflow JSON design from the current implementation
 
-Generate complete executable Workflow 2.0 JSON. Assume only this skill and user input are available. This is a durable **process-scheduled** workflow language, not a generic DAG or API sequence. Return valid JSON in one fenced `json` block. Never emit pseudo-nodes, comments, invented types, or runtime process records.
+Use the accompanying generated node/schema reference as the language definition.
+Its catalog comes from `agent/workflow_contract.py`; its schema, semantic checks,
+compiler and execution excerpts come from the current `agent/` implementation.
+This skill describes how to use that material. It does not replace the code.
+Do not import node names or ports from an older workflow skill or from memory.
 
-## Missing external facts
+## Design against the code
 
-Infer ordinary choices conservatively. Ask only when missing information blocks execution or materially changes behavior. Never invent registered Tool names/contracts, required model identifiers, existing child-workflow filenames/contracts, or user approval policy. A dynamic child filename may be supplied at runtime; do not require a static declaration. When creating both parent and child, choose explicit filenames and use them consistently. `metadata.tools` declares an expected contract; it does not register/install a Tool. Ask for missing facts or avoid that dependency. Never claim testing or registration without evidence.
+1. Preserve the current workflow's root input/output contract and concrete model
+   and file bindings unless the task explicitly authorizes changing them.
+2. Look up each node in the generated catalog. Copy its exact authored fields,
+   argument allowlist, dynamic ports and accepted data connection types. Node
+   fragments need the metadata shown alongside them; they are not complete graphs.
+3. Declare structs/functions in metadata before using their types or IDs. Use
+   `bind_function_interfaces` as the source for function boundary and call ports.
+   Keep graph edges inside their function region; call functions through
+   `function_call` and return through `function_output`.
+4. Wire control edges for execution and data edges for values. A data edge alone
+   does not schedule its target. Use `control_ports_for_node` for special branches
+   and `connection_validation_error` for endpoint/type compatibility. Connect a
+   router's `branch$others`. A control output has at most one successor.
+5. Check the whole graph with `validate_workflow`, then compile it with
+   `parse_workflow`. Per-node JSON Schema validation alone does not check graph
+   lifecycles, function regions, loop bodies, required inputs or tool bindings.
 
-## Process runtime model
+Ordinary control ports are `control-in`/`control-out`, except where the catalog
+says otherwise. Root boundary nodes require matching `workflowPorts`. Functions
+use metadata-derived interfaces. Do not copy compiled `successors`, `data_inputs`,
+`_struct_definitions`, scheduler state or function frames into authored JSON.
 
-A Workflow run is a durable process. A scheduler executes one node at a time from a ready queue and persists progress.
+A loop has `control-in`, `loop-out`, `loop-in`, `control-out`. Wire the final body
+node back to `loop-in` and the post-loop successor from `control-out`. The actual
+`_validate_branches_in_foreach` check forbids multiple outgoing control edges and
+external entries in a loop body. Put branching inside a called local function
+when needed; do not wire the function's internal branches into the caller loop.
 
-- Waiting nodes return a scheduling request. The process becomes `blocked` with a `wait_for` condition and re-enters the ready queue only on a matching event. Waiting does not occupy a worker.
-- `wait_terminal_event` blocks for a **new** user-message event on this process terminal. Earlier messages do not satisfy it. Assistant output does not wake it. It has no data output and does not consume the message.
-- `read_terminal_input`, after wake, returns all saved user message bodies in chronological order as `list-content`, not just the waking message.
-- `output_to_terminal` appends non-empty text and continues; it does not wake a waiter. Emit a prompt before waiting when appropriate.
-- `spawn_and_wait_subprocess` reads a filename and JSON arguments from data inputs, creates a distinct child process and terminal, and blocks the parent until child exit. On success it emits the full result object as JSON text and continues through control-out. On child failure/termination, a connected error-out resumes the parent with error-json. Invalid argument JSON, arguments that violate the child input interface, and missing target files use the same error path immediately without creating a child or blocking. Without that branch, failure propagates to the parent.
-- The scheduler persists a pending child call. Resume validates results against the child's saved compiled output interface, fills result-json on success or error-json on a handled child failure/termination, and advances to the selected successor without executing the spawn node again or reloading the target file. Do not add a manual restart, polling loop, or Context handoff to return the result. Worker-crash side-effect guarantees remain separate.
-- Parent/child may share a public terminal but have separate internal process identities. Never serialize process IDs, wait conditions, scheduler status, compiled graphs, logs, or checkpoints.
-- Context is durable cross-node/process state. A process owns Context it creates; a child may access ancestor Context, but parent cannot access a child's Context. Context is cleaned with process termination. Session has separate semantics.
-- Active execution timeout excludes blocked/queued time. Do not model human waits as long-running LLM/Tool calls or assume side effects are exactly-once after worker crash.
+## Runtime values and terminal I/O
 
-## Root contract
+Use the runtime's declared types. `content` is text; JSON objects in a content
+port are JSON text. `number` excludes booleans. Struct/list-struct types require
+metadata and runtime field validation. Root/tool interfaces have their own
+boundary restrictions; verify them in the validator instead of assuming every
+internal type is accepted there.
+
+`deserialize_json` requires a JSON object and each requested key. A `content`
+output preserves an existing string and serializes a non-string JSON value;
+it does not create an arbitrary object-typed wire. For typed structs use
+`json_to_struct`, `struct_get` and `struct_to_json`. Serialize plain text once.
+Never strip backslashes globally or recursively parse model text that resembles
+JSON. Preserve booleans/null and nested objects at persistence boundaries.
+
+The current terminal reader is `read_terminal_queue`, with `list-out`. Its
+implementation reads queued input and returns a terminal-message wait when the
+queue is empty. Do not design the older wait-then-read-history pattern. Terminal
+and subprocess nodes in the general catalog are unavailable to main evolution
+when the evolution policy excludes them.
+
+## Experimental main evolution and installed capabilities
+
+For this iterator, `agent/workflow_evolution.py` is an additional capability gate.
+Preserve root ports, model IDs, tool declarations, and the full data dependency
+chain of existing `workspace.get_file` readers. The catalog's `main_policy` marks
+which runtime types this gate permits; existence in the catalog grants no access.
+The design LLM returns a complete main JSON document with tools disabled. Choose
+an unchanged document when there is no evidence for a useful structural change.
+
+`metadata.tools` declares expected interfaces; it does not register Python
+handlers. The deployed tool registry must contain `workspace.prepare_main_update`
+before main evolution can run. Source code containing that function does not mean
+an already running scheduler has loaded it. A missing tool is an infrastructure
+failure, not evidence that a candidate was rejected or that no learning was needed.
+
+Workspace write access compares process `runtime.write >= file.required.write`.
+Uploading flow content, applying ACL, and loading runtime tools are separate
+operations. Flow JSON does not carry the workspace file ACL. In this experiment,
+commit the experience summary before attempting main evolution, so an evolution
+exception does not discard the independently saved experience. Accepted main
+writes still need validation, a checkpoint and revision-checked update.
+
+## Complete examples checked by the actual validator and compiler
+
+Echo a content input without model or tool dependencies:
 
 ```json
 {
   "schema_version": "2.0",
-  "description": "Purpose",
   "metadata": {"structs": [], "tools": [], "functions": []},
-  "input_ports": [],
-  "output_ports": [],
-  "nodes": [],
-  "connections": []
+  "input_ports": [{"name": "value", "type": "content"}],
+  "output_ports": [{"name": "value", "type": "content"}],
+  "nodes": [
+    {"id": "in", "type": "input", "arguments": {}, "workflowPorts": [{"id": "workflow:value", "name": "value", "type": "content"}]},
+    {"id": "out", "type": "output", "arguments": {}, "workflowPorts": [{"id": "workflow:value", "name": "value", "type": "content"}]}
+  ],
+  "connections": [
+    {"fromId": "in", "fromPortId": "control-out", "toId": "out", "toPortId": "control-in", "type": "control"},
+    {"fromId": "in", "fromPortId": "workflow:value", "toId": "out", "toPortId": "workflow:value", "type": "content"}
+  ]
 }
 ```
 
-- Required keys: `schema_version`, `input_ports`, `output_ports`, `nodes`, `connections`. Version is string `"2.0"`. Always include `connections`, even empty. Include description and metadata when useful. Do not emit subprocess_workflow_files or workflow_nodes at root or under metadata. No root `name`; filename is external.
-- Port is exactly `{ "name":"...", "type":"..." }`; names non-empty and unique per side after trim/case-fold.
-- Types: `content` (string), `number` (finite JSON number, not boolean), `list-content` (string array), `map-content` (string-to-string object), `struct:<Id>`, `list-struct:<Id>`. Struct IDs match `[A-Za-z_][A-Za-z0-9_]*` and must be declared in `metadata.structs`.
-- Struct is forbidden on root, Tool, and child interfaces. Convert to JSON `content` at those boundaries.
-- Node IDs unique/non-empty. Only documented node types, arguments, and fields. Configuration belongs in `arguments`; optional `name`, numeric `x`,`y` are presentation-only. Never include compiled fields (`data_inputs`, `successors`, `_workflow_result`).
-- Exactly one `input` and at least one `output`. Their `workflowPorts` mirror root ports exactly and in order: `[{"id":"workflow:<name>","name":"<name>","type":"<type>"}]`.
-- Node shape: `{ "id":"...", "type":"...", "arguments":{...} }` plus permitted shared fields; omit empty arguments. Connection shape: `{ "fromId":"...", "fromPortId":"...", "toId":"...", "toPortId":"...", "type":"..." }` (optional `id` omitted). Type is `control` or exact data type at both endpoints.
-- At runtime, Input receives values supplied when the process is created. Output collects connected, provided values matching `output_ports` and ends that graph/process frame.
+Extract an `observation` value from an object encoded as JSON text. A nested
+observation object becomes JSON text on `value`, not a new object wire type:
 
-## Control and data
+```json
+{
+  "schema_version": "2.0",
+  "metadata": {"structs": [], "tools": [], "functions": []},
+  "input_ports": [{"name": "record", "type": "content"}],
+  "output_ports": [{"name": "value", "type": "content"}],
+  "nodes": [
+    {"id": "in", "type": "input", "arguments": {}, "workflowPorts": [{"id": "workflow:record", "name": "record", "type": "content"}]},
+    {"id": "extract", "type": "deserialize_json", "arguments": {"outputs": [{"key": "observation", "type": "content"}]}},
+    {"id": "out", "type": "output", "arguments": {}, "workflowPorts": [{"id": "workflow:value", "name": "value", "type": "content"}]}
+  ],
+  "connections": [
+    {"fromId": "in", "fromPortId": "control-out", "toId": "extract", "toPortId": "control-in", "type": "control"},
+    {"fromId": "extract", "fromPortId": "control-out", "toId": "out", "toPortId": "control-in", "type": "control"},
+    {"fromId": "in", "fromPortId": "workflow:record", "toId": "extract", "toPortId": "content-in", "type": "content"},
+    {"fromId": "extract", "fromPortId": "observation", "toId": "out", "toPortId": "workflow:value", "type": "content"}
+  ]
+}
+```
 
-Normal nodes have `control-in`,`control-out`; Input only `control-out`, Output only `control-in`. Control orders execution; data edges propagate values independently.
-
-- Every node is control-reachable from the unique Input. Control graph is a tree: no merges, shared nodes between branches, or cycles except loop-back to its owner.
-- Each control output/input has at most one edge. Required control ports connect. Every Router branch, including fallback, connects.
-- Each data input has at most one producer. Missing runtime-required input fails; `null` counts as missing. Draw data edges even when control passes through the producer.
-- Data may flow from ancestor scope into nested scope, not child-to-parent, between sibling branches, or between loop iterations. Use Context for loop results.
-- Branches do not reconverge. Give each terminal branch its own Output or redesign.
-
-### Router
-
-Requires `arguments.branches:[{"id":"branch_id","name":"exact-match"}]`. `content-in:content` selects exact name. Each branch ID is a control output. Fixed `branch$others` fallback is always present and not listed in branches; connect it. No generic `control-out`. Missing/non-string input fails; unmatched string takes fallback.
-
-### Loops
-
-`foreach` and `while_pop` use `control-in`,`loop-out`,`loop-in`,`control-out`. Connect loop-out to first body node and last body node back to this loop's loop-in. Connect control-out to post-loop node. Empty list goes directly to control-out. Body is linear: no Router/multi-output node, Output, shared node, or other entry. A spawn_and_wait_subprocess with unconnected error-out remains valid in an existing linear body; move a call with both success/error branches into a local function if handling inside an iteration.
-
-- `foreach`: required `item_type` (`content` or declared `struct:<Id>`); `list-in:list-<item_type>`; `item-out:<item_type>` is in loop scope.
-- `while_pop`: required `value_type` (`list-content` or declared `list-struct:<Id>`); pops one item/iteration from a Context-backed list and outputs `item-out` of item type. Defaults `position:"end"`, `context_id_source:"port"`. Port mode requires `context-id:content`; fixed mode requires nonblank `context_id`. It does not output the mutated list.
-- If an iteration needs branching or a multi-control-output node, keep the loop body as one `function_call` and put that logic in a local function. Function control flow has its own validated region; do not connect its branches back into the caller except through the declared function return.
-
-## Node reference
-
-Unless noted, nodes use ordinary control ports. Data port names below include types.
-
-| Type | Required arguments | Data ports / semantics |
-|---|---|---|
-| `input` | none | outputs root `workflow:<name>` |
-| `output` | none | inputs root `workflow:<name>`; ends graph |
-| `router` | `branches` | `content-in`; special control ports above |
-| `construct_message` | none | `content-in` -> `content-out` Message JSON; optional inputs `reasoning-in:content`, `tool-calls-in:list-content` (assistant only), `tool-call-id-in:content` (tool only); optional `role` (system/user/assistant/tool, default user), `role_source` (fixed default or port; port adds `role-in`) |
-| `construct_content` | `append_items` | nonempty ordered concat -> `content-out`; items `{type:"fixed",value:string}` or `{type:"port",port_id:string}`; port IDs unique and equal `dataInputPorts`; missing runtime values skipped |
-| `construct_map_content` | `mappings` | nonempty mappings -> `map-out`; unique key and fixed string value, or `value_source:"port"` plus unique `port_id`; port IDs equal `dataInputPorts`, runtime values strings |
-| `map_content_get` | none | `map-in:map-content`,`key-in:content` -> `content-out:content`; missing key fails |
-| `number_to_content` | none | `number-in:number` -> `content-out:content` |
-| `output_to_terminal` | none | `content-in:content`; appends nonempty text |
-| `wait_terminal_event` | none | no data ports; blocks on new user message; does not return/consume it |
-| `read_terminal_input` | none | `list-out:list-content`; all saved user messages oldest-first |
-| `deserialize_json` | nonempty `outputs:[{key,type}]` | `content-in` JSON object -> configured outputs; unique keys, built-in types, keys required; non-string content JSON-serialized |
-| `construct_list` | `item_type`,`initial_value_count` | count 0..20; inputs `<item_type>-in-N`; `list-out:list-<item_type>`; item type content or declared Struct |
-| `list_append` | `item_type`,`position` | `list-in:list-<item_type>`,`item-in:<item_type>` -> same list type; position start/end |
-| `list_length` | `value_type` | `list-in` -> `length-out:number`; list-content or declared list-struct |
-| `list_get` | `value_type` | `list-in` -> `item-out`; `index_source` default port or fixed; port adds `index-in:number`; fixed requires integer `index` |
-| `list_slice` | `value_type` | `list-in` -> same `list-out`; list-content or list-struct. Optional start/stop/step source/value; port adds matching `*-in:number` |
-| `construct_tool` | none | outputs `tool-out:content`; optional `tool_name`,`description`,`schema`,`required`, each with optional `<field>_source` (`fixed`/`port`). Port inputs: `name-in`,`description-in`,`schema-in` (JSON Schema text), `required-in:list-content`. Builds one function Tool definition; schema must be an object-parameter JSON Schema |
-| `foreach`,`while_pop` | as above | special loop control ports |
-| `llm` | none | `messages-in:list-content` (nonempty JSON-string list of `{role,content}`) -> `output:content`; optional `model`,`think`,`tool_calls`,`tools`,`tools_source`. `tool_calls:true` adds `tool_calls:list-content` output and `available-tools-in:list-content` input (or `tools-in:list-content` with `tools_source:"definitions"`). Provider/model external. Generated tool calls are not executed automatically |
-| `tool` | `tool`,`parameters:[{name,type}]`,`outputs:[{name,type}]` | synchronous registered Tool. Ports exactly match `metadata.tools` declaration (`kind` local/remote). Optional `mode` only sync, `timeout_ms`, `callback` only null |
-| `json_tool` | none | `tool-name:content`,`arguments-json:content` -> `result-json:content` on `control-out`; on exception outputs `error-json:content` and takes `error-out` if connected, otherwise process fails. Invokes a dynamically named registered Local/Remote Tool; it does not create a child process |
-| `remote_async_tool` | `tool` | async Remote Tool; declared params, output `task_id:content`; optional parameters/timeout_ms/callback; requires remote declaration; not a workflow subprocess |
-| `local_tool` (legacy) | `tool` | optional string-array parameters; each content input; `output:content`. Prefer unified `tool` |
-| `remote_sync_tool` (legacy) | `tool` | parameters/outputs port arrays, optional timeout_ms. Prefer unified `tool` |
-| `context_create` | `value_type` | `initial-value:<type>` -> `context-id:content`; optional nonblank unique `context_id`; omit to generate |
-| `context_read` | `value_type` | -> `value-out:<type>`; default port ID mode requires `context-id:content`; fixed mode requires nonblank `context_id` |
-| `context_write` | `value_type` | `value-in:<type>` and port-mode context-id -> `context-id:content`,`value-out:<type>`; ID mode as context_read |
-| `session_create` | `value_type` | `initial-value:<type>` -> `session-id:content` |
-| `session_read` | `value_type` | `session-id:content` -> `value-out:<type>` |
-| `session_write` | `value_type` | `session-id:content`,`value-in:<type>` -> `session-id:content`,`value-out:<type>` |
-| `spawn_and_wait_subprocess` | none | `workflow-file:content`, `arguments-json:content` -> `result-json:content` on control-out; optional error-out with `error-json:content`; creates and waits for a child process |
-
-## Contracts and composition
-
-- Struct entry: `{"id":"Record","name":"Record","color":"#336699","fields":[{"name":"title","type":"content","required":true}]}`. IDs/field names use identifier syntax; fields unique; types built-in or declared Struct; recursion forbidden. Struct values are validated objects; list-struct is a list of objects.
-- Struct nodes if needed: `construct_struct` (`struct_id`, required fields by name -> `struct-out`); `struct_get` (`struct_id`,`field`, optional `missing:"error"|"fallback"`, `has_fallback` default false; `struct-in`, optional `fallback-in` -> `value-out`); `struct_update` (`struct_id`, optional `updates`,`remove_fields`; `struct-in` -> `struct-out`); `struct_to_json` (`value_type`,`value-in` -> JSON `content-out`); `json_to_struct` (`value_type`,`content-in` -> `value-out`). Declare Struct first.
-- Context allows built-in/declared Struct; Session built-in only. Context IDs are exact strings, never normalize. Port mode default; fixed mode has no ID input and requires nonblank `context_id`.
-- Tool declaration: `metadata.tools:[{"name":"...","kind":"local|remote","input_ports":[{"name":"...","type":"content"}],"output_ports":[{"name":"...","type":"content"}]}]`. Types only content/number/list-content/map-content; no Struct/control names. Declaration is not proof of registration; node arrays copy it exactly.
-- `llm.messages-in` is a list of JSON-encoded messages, not a raw prompt. Build via `construct_message` and compatible list flow; use a system message for system instructions. Exact model/provider is external.
-- To save an assistant turn, use one `construct_message(role="assistant")`: connect LLM `output` (normalize null to empty content if necessary) to `content-in`, `reasoning` to `reasoning-in`, and `tool_calls` directly to `tool-calls-in`. The call input is a list of JSON strings; the node parses each into an object, preserving call IDs and argument strings. Empty calls and absent optional inputs are omitted. Reasoning is retained even without calls. Do not build different message shapes using a required-field Struct and a plain-message branch.
-- For a tool result, use `construct_message(role="tool")` with result text on `content-in` and the original assistant call ID on `tool-call-id-in`. Always supply this ID for native tool results. Optional message fields are role-specific; passing reasoning/calls to a non-assistant, or a tool-call ID to a non-tool, fails. Existing role/content-only messages remain supported.
-- LLM tools may come from `metadata.tools` (`tools_source:"declared"`, the default) or complete function definitions supplied as JSON strings in `tools-in:list-content` (`tools_source:"definitions"`). The latter does not require pre-registration when merely offered to the model. To execute a model-selected call, explicitly route/parse and invoke a Tool node or `json_tool`; `llm.tool_calls` alone only returns call descriptions. `json_tool` success/error control branches are separate scopes, so never pass data from one branch into the other or out to a parent scope.
-- Local functions are not processes. Declare `metadata.functions` entries `{id,name,input_ports,output_ports}`. Each has exactly one `function_input` and at least one `function_output`, with top-level `function_id` matching declaration. Control goes entry-to-return. Call with `function_call` and `arguments.function_id`; data ports `function:<name>`. Each invocation has isolated state; return only via function outputs. No recursive calls; each node belongs to one main/function region.
-## Child workflows and terminal interaction
-
-- Use one node: `{"id":"call-child","type":"spawn_and_wait_subprocess","arguments":{}}` (empty arguments may be omitted). Connect control-in/control-out and optionally error-out. It has no configuration fields, child declarations, or input_ports/output_ports snapshots. Old workflow_file/workflow_name arguments and per-port calls require explicit JSON rewiring; removing old declarations alone does not convert them.
-- Connect `workflow-file:content` to an exact workspace filename including its extension (nonblank, at most 200 characters). Preserve the exact string; do not substitute a repository path. Supply it from a parent input or a construct_content node with a fixed filename. Runtime loading checks the target and rejects recursive calls.
-- Connect `arguments-json:content` to JSON **object text**, for example `{"name":"小明"}`. Keys match the target's root input_ports names; unknown keys or non-null values of the wrong type fail. Missing/null values count as unprovided. With dynamic targets, validation uses the interface loaded at call time, not an author-time snapshot. An empty input interface still needs `{}` text.
-- `result-json:content` contains the full child output object as JSON text, for example `{"reply":"你好，小明！"}`. The child receives values through Input and returns through Output. To extract reply, use deserialize_json with `arguments:{"outputs":[{"key":"reply","type":"content"}]}`, connect result-json to content-in, and use its reply output. Forward result-json directly when the full object is wanted.
-- To recover from a child that fails or is terminated, connect error-out to a separate handler and error-json to that handler's data input. Error JSON is an object with workflow_file, process_id, status (failed/terminated), and error (string); deserialize_json with key error and type content extracts the message for output_to_terminal or another handler. Leave error-out unconnected to preserve failure propagation. Success and error branches have separate scopes and must terminate separately; result-json is only available on success and error-json only on the error path. Errors before child creation (including invalid/non-object argument JSON, unknown argument names, wrong argument types, and missing target workflow files) also emit error-json and select error-out; their process_id is null and status is failed, and no child or pending call is created. Missing/null arguments retain the input interface semantics and are treated as not supplied. If error-out is not connected these errors fail the parent. Invalid child result contracts still fail the current process directly. Handled invocation and child errors are retained in the call trace while the parent may complete successfully.
-- For dynamic JSON parameters, build a declared Struct and serialize with struct_to_json, or use an already serialized object input. Do not concatenate arbitrary user strings into JSON; quotes and newlines need correct escaping. Struct values must be serialized before crossing the process interface. Context remains available for explicit shared state; result-json already handles the return value.
-- When the requested workflow is interactive, connect terminal nodes explicitly. A runnable one-message pattern is: prompt via output_to_terminal → wait_terminal_event → read_terminal_input → list_get with `arguments:{"value_type":"list-content","index_source":"fixed","index":-1}` → spawn_and_wait_subprocess → deserialize_json → output_to_terminal → Output. Connect the terminal reader's list-out to list-in, the selected item-out to arguments-json, and a filename producer to workflow-file. The prompt should ask for a JSON object such as `{"name":"小明"}`; print the decoded reply in the parent terminal. This handles one message and ends; do not imply it is a continuing chat loop. Prompt and filename text need actual producers and control edges.
-- Terminal I/O serves user interaction; child Input/Output serves process parameters and results. A child does not need to reread terminal history to receive arguments, and printing to its terminal does not return a value to the parent. Keep Input and Output boundary nodes even for terminal-driven workflows, using empty root input_ports when creation-time inputs are unnecessary.
-
-## Design and validation
-
-1. Extract purpose, inputs, outputs, dependencies, side effects, interaction, failure, repetition, and stop conditions.
-2. Resolve only necessary external facts; make other reasonable choices.
-3. Choose the smallest structure: ordinary nodes, Router, finite Foreach, Context, terminal wait+read, or a real subprocess.
-4. Declare ports, Structs, Tool contracts, and local functions before nodes. Child calls use fixed JSON ports and runtime filename/argument producers; do not declare child snapshots.
-5. Sketch control tree first; independently terminate branches. Add loop-backs, then typed data edges.
-6. Check node arguments/ports/types, persistence over waits, and behavior on every path.
-7. Without validator/runtime, say the result is statically reasoned, not executed.
-
-Final checklist:
-
-- [ ] Pure valid JSON; version exactly `"2.0"`; required root keys present.
-- [ ] Exactly one Input, at least one Output; unique IDs; supported nodes/arguments only.
-- [ ] Root snapshots exact and ordered; no Struct on public interfaces.
-- [ ] Required controls connected; every node reachable; no merge/illegal cycle; Router branches and fallback terminate separately.
-- [ ] Loop body linear and returns to owner; no Router/Output/branching; item does not escape scope.
-- [ ] Data endpoints/types match; no duplicate producer or illegal cross-scope edge.
-- [ ] Runtime-required values exist on all paths and match JSON types.
-- [ ] Terminal wait has an appropriate prompt and explicit read after wake.
-- [ ] Context/Session types and ID modes correct; loop results use Context as needed.
-- [ ] External dependencies supplied or resolved at runtime; Tool/function declarations match; no fabricated registration claims.
-- [ ] Child calls have workflow-file and JSON object text on arguments-json, consume result-json on success or error-json via an optional separate error-out handler, and contain no legacy declarations, filename arguments, or interface snapshots.
-- [ ] Output, empty-input, branch, and failure behavior meet request.
-
-If a blocking external fact is missing, ask a focused question instead of fabricating an executable workflow. Add a concise note for assumptions or unverified dependencies.
+Report validation, adoption, runtime success and improved task results separately.
+Compilation does not establish provider availability or better ALFWorld behavior.
 
 
 ## Experiment design experience
@@ -5415,6 +6800,28 @@ If a blocking external fact is missing, ask a focused question instead of fabric
 4. 能否用更小的改动得到同样效果？没有证据时是否应保持不变？
 5. 是否混淆了“可编译”“已采用”“能运行”和“效果更好”？
 
+## 记录与权限修复补充
+
+- 即使事件数组已经结构化，task/result/observation/workspace/iterator_result 仍若保存 JSON 字符串，也会多一层转义。实验版记录 v2 直接嵌套这些对象，把状态与 checkpoint 收入 summary；普通 action/reasoning 字符串只编码一次。
+- 只有确定来源为合法 JSON 的环境信封和运行时序列化结果可作为 JSON 片段嵌入；环境对象先解析验证。模型输出、引号、换行和 Windows 路径不做全局反转义，不递归猜测字符串内容。
+- 权限分为进程 runtime 与目标文件 required；写入条件是 runtime.write >= required.write。本实验 iterator=3、main required.write=3，受保护参考文档/stable/bootstrap/iterator=4。生成时交叉校验，测试必须实际走工作区 API 写入，而不只比较清单数字。
+- 更新 .flow 内容不会同步工作区 ACL，也不会修改已运行进程的权限快照。线上回退状态必须保留，不能用本地生成操作暗中重新发布。
+
+## 以实现为准的参考资料
+
+- 仓库旧 workflow-json skill 中的 wait_terminal_event/read_terminal_input 已不属于当前节点集合；当前终端节点为 read_terminal_queue。不要同时注入新声明和整份旧 skill，让模型自行消解冲突。
+- 实验使用 workflow-json-runtime/SKILL.md，节点目录、端口和约束直接由当前代码导出；完整示例必须经过 validate_workflow 和 parse_workflow。参考文档同时保留编译、循环/函数生命周期、关键运行语义及 main 能力校验的原始代码摘录和源文件指纹。
+- 代码中存在工具实现、metadata.tools 声明与运行进程已加载工具是三件不同的事。必须检查实际注册表，不能把“未知工具”解释成候选无改动。
+- 先总结并保存经验，再尝试 main 迭代。缺工具、候选模型异常、checkpoint 或主文件写入失败不应抹掉已独立提交的经验；仍应显式记录 main 迭代失败。
+
+## 工具契约与运行时验证补充
+
+- 工具名出现在 metadata.tools 只说明工作流声明了接口；本地分发仍必须在 tools.tool.tool_handlers 中找到可调用的函数。旧 Python 进程不会因为绑定挂载的源码更新而重新执行 @tool。缺少 handler 会在 HTTP 请求前抛出“未知工具”。
+- 参考文档的 workspace 工具 inputSchema/outputSchema 直接从 agent/tools/workspace.py 的 @tool 装饰器抽取；生成器不导入有 Redis 注册副作用的模块。契约测试另行加载真实装饰器，逐一比对抽取结果、实际注册值、迭代器端口。
+- 候选校验结果 ready/unchanged/rejected 都是正常的具名输出；404/403 和 handler 缺失会抛异常，不能解释成“无需迭代”。revision 从文件读取结果以 number 传递，实际 API 值是整数；不经过 content 字符串转换。
+- 模拟模型的全流程测试可能替代工具执行器；它能验证流程顺序与写入，但不能证明注册包装函数可调用。另用 test_runtime_tools.py 检查真实注册、统一 tool 节点分发、HTTP 包装、权限身份头、URL 编码、校验和结果传递。
+- verify_runtime_tools.py 用临时只读工作流在线校验三个结果分支，使用线上 iterator 的接口和读取等级；可选 --include-recovery 以 bootstrap 的读取等级验证当前内容/稳定锚点恢复计划。后者使用 checkpoint_seq=0，不证明历史 checkpoint 回溯。探针不调用模型、不采纳候选、不修改 main/经验，完成后删除自身文件。
+
 
 ## Source fingerprints
 
@@ -5427,10 +6834,20 @@ If a blocking external fact is missing, ask a focused question instead of fabric
 
 - `agent/workflow_functions.py`: `caaa24e2f7ac351cc03ba15a0aa4250bd16bafe7708318014992542388576ae6`
 
-- `agent/workflow_tools.py`: `11784cfae7e315899ced6c266de5c9710ac6293d743e1e45c8010a1f8654dc87`
+- `agent/workflow_parser.py`: `49a855d7c1e8244daf8c5d305cc707cfaaa4e0b141b440ccfce8ccbb97d334c4`
+
+- `agent/workflow_nodes.py`: `733fec5ad3887ab743114cc39199612bee7ad086bbbc66b9229452b19c463800`
+
+- `agent/tools/tool.py`: `3a1317beab429d8e724e26af9599256198117f676b3ef310a7a0a554278d38fc`
+
+- `agent/tools/workspace.py`: `b4c64789580a9fde270531c284154617aca1f939e1e9ffe65fad2d69101d5463`
+
+- `agent/workflow_recovery.py`: `e1ab5cc9768a573f9405053c174b4b4248ec4bcdd36e6339c9f67434b00045a2`
 
 - `agent/workflow_evolution.py`: `ef8caad6f78d9d963f1e899ecf280a3233792e0334ef7655eb9415fdc4534b8f`
 
-- `skills/workflow-json/SKILL.md`: `ae24159205ddd2c42d1839ba2c805958c8dfe0a57f9f1e6936cbc8cc9c7f69c1`
+- `agent/workflow_tools.py`: `11784cfae7e315899ced6c266de5c9710ac6293d743e1e45c8010a1f8654dc87`
+
+- `experiments/alfworld-recovery-scope/workflow-json-runtime/SKILL.md`: `83ec746ea87827997d66d1b1718f14a618b559fe166c3bb0172f76a932038736`
 
 - Node types: 40. Regenerate with `python experiments/alfworld-recovery-scope/build_workflow_reference.py`.

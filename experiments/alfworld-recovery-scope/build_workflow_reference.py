@@ -19,10 +19,12 @@ from workflow_contract import (NODE_ARGUMENT_FIELDS_BY_TYPE, SUPPORTED_NODE_TYPE
 from workflow_evolution import PURE_NODES
 from workflow_functions import bind_function_interfaces
 from workflow_structs import validate_struct_definitions
-from workflow_validator import _validate_node
+from workflow_validator import _validate_node, validate_workflow
+from workflow_parser import parse_workflow
+import re
 from jsonschema import Draft202012Validator
 
-SKILL_PATH = ROOT / "skills/workflow-json/SKILL.md"
+SKILL_PATH = Path(__file__).with_name("workflow-json-runtime") / "SKILL.md"
 DESIGN_NOTES_PATH = Path(__file__).with_name("workflow-design-notes.md")
 REFERENCE_PATH = Path(__file__).with_name("workflow-node-reference.md")
 REFERENCE_PLACEHOLDER = "REPLACE_WITH_WORKFLOW_REFERENCE_FILE_ID"
@@ -188,10 +190,39 @@ def catalog(schema=None):
     return result
 
 
+def workspace_tool_catalog():
+    """Read actual decorator contracts without importing the Redis-writing registry."""
+    path = ROOT / "agent/tools/workspace.py"
+    source = path.read_text(encoding="utf-8")
+    tools = {}
+    for function in ast.parse(source).body:
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        for decorator in function.decorator_list:
+            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Name) or decorator.func.id != "tool":
+                continue
+            keywords = {item.arg: ast.literal_eval(item.value) for item in decorator.keywords}
+            name = keywords.get("name", function.name)
+            tools[name] = {
+                "handler": function.name,
+                "source": "agent/tools/workspace.py",
+                "description": ast.literal_eval(decorator.args[0]),
+                "inputSchema": ast.literal_eval(decorator.args[1]) if len(decorator.args) > 1 else {},
+                "outputSchema": keywords.get("output_schema"),
+            }
+    return tools
+
+
 @lru_cache(maxsize=1)
 def build_reference():
     schema = schema_bundle()
     nodes = catalog(schema)
+    skill = SKILL_PATH.read_text(encoding="utf-8")
+    # A skill example is a whole authored graph, not only a schema-valid node.
+    for encoded in re.findall(r"```json\s*\n(.*?)\n```", skill, re.S):
+        example = json.loads(encoded)
+        validate_workflow(example)
+        parse_workflow(example)
     parts = ["""# Workflow 2.0 node/schema reference (experiment-local)
 
 This is a standalone workspace Markdown file. Required permission: read=1,
@@ -200,7 +231,8 @@ write=4. The iterator reads this file at runtime and must not edit it.
 ## Authority and scope
 
 - Current runtime declarations/schema and semantic checks below override stale
-  examples in the repository skill. In particular, only listed node types exist;
+  examples or prose. The bundled experiment skill replaces the legacy repository
+  skill; it does not append conflicting historical instructions. Only listed node types exist;
   `wait_terminal_event` and `read_terminal_input` are not current node types.
 - This catalog documents ALL runtime types, not permission to use them in main.
   `main_policy` marks the stricter evolution gate. Preserve root interfaces,
@@ -227,19 +259,35 @@ write=4. The iterator reads this file at runtime and must not edit it.
         parts += ["### " + kind + "\n", "```json\n" + json.dumps(entry, ensure_ascii=False, indent=2) + "\n```\n"]
     parts += ["## Complete runtime JSON Schema + per-type structural definitions\n",
               "```json\n" + json.dumps(schema, ensure_ascii=False, indent=2) + "\n```\n"]
+    parts += ["## Actual workspace tool contracts (from runtime decorators)\n",
+              "These are extracted from @tool on the implemented Python handlers, not from workflow metadata. "
+              "Metadata resolves local/remote routing only; the running agent must also have imported the handler. "
+              "A bind-mounted source update does not reload an existing Python process.\n\n"
+              "Workflow content ports carry strings; number ports carry numeric values. The revision input "
+              "comes from workspace.get_file's integer revision without stringification. Named tool outputs "
+              "are mapped individually by workflow_local_tool. prepare_main_update is read-only: ready "
+              "means accepted for a later CAS update, unchanged means no executable change, rejected includes "
+              "a validation error. HTTP/ACL errors and missing handlers raise; they are not candidate rejection results.\n",
+              "```json\n" + json.dumps(workspace_tool_catalog(), ensure_ascii=False, indent=2) + "\n```\n"]
     sources = {
         "agent/workflow_contract.py": ["data_ports_for_node", "data_type_for_port", "control_ports_for_node", "connection_validation_error"],
-        "agent/workflow_validator.py": ["_validate_node", "_validate_declared_data_inputs", "_validate_workflow_ports", "_validate_construct_content", "_validate_construct_map_content", "_validate_construct_list"],
+        "agent/workflow_validator.py": ["validate_workflow", "_validate_branches_in_foreach", "_infer_function_groups", "_validate_lifecycles", "_validate_node", "_validate_declared_data_inputs", "_validate_workflow_ports", "_validate_construct_content", "_validate_construct_map_content", "_validate_construct_list"],
         "agent/workflow_functions.py": ["bind_function_interfaces"],
+        "agent/workflow_parser.py": ["parse_workflow"],
+        "agent/workflow_nodes.py": ["workflow_read_terminal_queue", "_json_content", "_deserialize_json_value", "workflow_deserialize_json", "workflow_struct_to_json", "workflow_json_to_struct", "workflow_foreach", "workflow_while_pop", "workflow_router", "_tool_arguments", "workflow_tool", "workflow_local_tool"],
+        "agent/tools/tool.py": ["tool", "execute_tool"],
+        "agent/tools/workspace.py": ["_request", "prepare_workspace_main_update", "get_file_recovery_plan"],
+        "agent/workflow_recovery.py": ["build_file_recovery_plan"],
+        "agent/workflow_evolution.py": ["_check_capabilities", "prepare_main_update"],
         "agent/workflow_tools.py": ["validate_parameters", "validate_tool", "build_tool", "validate_construct_tool_arguments"],
     }
     parts += ["## Exact runtime semantic validation and port rules (source excerpts)\n"]
     for path, functions in sources.items():
         parts += ["### " + path + "\n", "```python\n" + source_sections(path, functions) + "\n```\n"]
-    parts += ["## Repository workflow-json skill snapshot\n", SKILL_PATH.read_text(encoding="utf-8"),
+    parts += ["## Implementation-aligned workflow-json design skill\n", skill,
               "\n## Experiment design experience\n", DESIGN_NOTES_PATH.read_text(encoding="utf-8"),
               "\n## Source fingerprints\n\n"]
-    for path in ["agent/workflow_2_0.schema.json", *sources, "agent/workflow_evolution.py", "skills/workflow-json/SKILL.md"]:
+    for path in ["agent/workflow_2_0.schema.json", *sources, str(SKILL_PATH.relative_to(ROOT)).replace("\\", "/")]:
         parts += [f"- `{path}`: `{hashlib.sha256((ROOT / path).read_bytes()).hexdigest()}`\n"]
     parts += [f"- Node types: {len(nodes)}. Regenerate with `python experiments/alfworld-recovery-scope/build_workflow_reference.py`.\n"]
     return "\n".join(parts)

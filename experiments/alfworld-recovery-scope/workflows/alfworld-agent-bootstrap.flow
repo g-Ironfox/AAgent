@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "description": "ALFWorld 引导：终端观察/动作、逐轮文件恢复、完整轨迹记录、结束后经验迭代。",
+  "description": "ALFWorld 引导：终端观察/动作、逐轮文件恢复、完整轨迹记录、结束后经验迭代。 Audit v2: structured JSON records without JSON-in-string snapshots.",
   "input_ports": [],
   "output_ports": [
     {
@@ -270,11 +270,6 @@
         "color": "#3976A8",
         "fields": [
           {
-            "name": "task",
-            "type": "content",
-            "required": true
-          },
-          {
             "name": "status",
             "type": "content",
             "required": true
@@ -285,23 +280,8 @@
             "required": true
           },
           {
-            "name": "result",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "events",
-            "type": "list-struct:EpisodeEvent",
-            "required": true
-          },
-          {
             "name": "checkpoint_before",
             "type": "number",
-            "required": true
-          },
-          {
-            "name": "workspace_before",
-            "type": "content",
             "required": true
           }
         ]
@@ -388,18 +368,8 @@
             "required": true
           },
           {
-            "name": "task",
-            "type": "content",
-            "required": true
-          },
-          {
             "name": "checkpoint_before",
             "type": "number",
-            "required": true
-          },
-          {
-            "name": "workspace_before",
-            "type": "content",
             "required": true
           }
         ]
@@ -454,17 +424,7 @@
             "required": true
           },
           {
-            "name": "result",
-            "type": "content",
-            "required": true
-          },
-          {
             "name": "error",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "task",
             "type": "content",
             "required": true
           },
@@ -474,23 +434,8 @@
             "required": true
           },
           {
-            "name": "workspace_before",
-            "type": "content",
-            "required": true
-          },
-          {
             "name": "checkpoint_after",
             "type": "number",
-            "required": true
-          },
-          {
-            "name": "workspace_after",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "events",
-            "type": "list-struct:EpisodeEvent",
             "required": true
           }
         ]
@@ -506,17 +451,7 @@
             "required": true
           },
           {
-            "name": "result",
-            "type": "content",
-            "required": true
-          },
-          {
             "name": "error",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "task",
             "type": "content",
             "required": true
           },
@@ -526,32 +461,12 @@
             "required": true
           },
           {
-            "name": "workspace_before",
-            "type": "content",
-            "required": true
-          },
-          {
             "name": "checkpoint_after",
             "type": "number",
             "required": true
           },
           {
-            "name": "workspace_after",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "events",
-            "type": "list-struct:EpisodeEvent",
-            "required": true
-          },
-          {
             "name": "iterator_status",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "iterator_result",
             "type": "content",
             "required": true
           }
@@ -949,6 +864,57 @@
           },
           {
             "name": "result",
+            "type": "content"
+          }
+        ]
+      },
+      {
+        "id": "audit_encode_event",
+        "name": "audit_encode_event",
+        "input_ports": [
+          {
+            "name": "event",
+            "type": "struct:EpisodeEvent"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "json",
+            "type": "content"
+          }
+        ]
+      },
+      {
+        "id": "audit_append_event",
+        "name": "audit_append_event",
+        "input_ports": [
+          {
+            "name": "event",
+            "type": "struct:EpisodeEvent"
+          },
+          {
+            "name": "buffer",
+            "type": "content"
+          },
+          {
+            "name": "separator",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "audit_encode_events",
+        "name": "audit_encode_events",
+        "input_ports": [
+          {
+            "name": "events",
+            "type": "list-struct:EpisodeEvent"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "json",
             "type": "content"
           }
         ]
@@ -1661,24 +1627,10 @@
         "struct_id": "episode_progress_fields"
       },
       "dataInputPorts": [
-        "task",
         "status",
         "error",
-        "result",
-        "events",
-        "checkpoint_before",
-        "workspace_before"
+        "checkpoint_before"
       ]
-    },
-    {
-      "id": "episode_progress",
-      "type": "struct_to_json",
-      "name": "episode progress",
-      "x": 4500,
-      "y": 2500,
-      "arguments": {
-        "value_type": "struct:episode_progress_fields"
-      }
     },
     {
       "id": "persist_episode",
@@ -3287,20 +3239,8 @@
       },
       "dataInputPorts": [
         "status",
-        "task",
-        "checkpoint_before",
-        "workspace_before"
+        "checkpoint_before"
       ]
-    },
-    {
-      "id": "initial_record",
-      "type": "struct_to_json",
-      "name": "initial record",
-      "x": 2940,
-      "y": 7300,
-      "arguments": {
-        "value_type": "struct:initial_record_fields"
-      }
     },
     {
       "id": "create_record",
@@ -4147,16 +4087,6 @@
       ]
     },
     {
-      "id": "progress_record",
-      "type": "struct_to_json",
-      "name": "progress record",
-      "x": 5540,
-      "y": 9100,
-      "arguments": {
-        "value_type": "struct:progress_record_fields"
-      }
-    },
-    {
       "id": "save_progress",
       "type": "function_call",
       "name": "写入任务记录",
@@ -4826,25 +4756,10 @@
       },
       "dataInputPorts": [
         "status",
-        "result",
         "error",
-        "task",
         "checkpoint_before",
-        "workspace_before",
-        "checkpoint_after",
-        "workspace_after",
-        "events"
+        "checkpoint_after"
       ]
-    },
-    {
-      "id": "task_record",
-      "type": "struct_to_json",
-      "name": "task record",
-      "x": 4240,
-      "y": 11500,
-      "arguments": {
-        "value_type": "struct:task_record_fields"
-      }
     },
     {
       "id": "save_task_record",
@@ -4877,27 +4792,11 @@
       },
       "dataInputPorts": [
         "status",
-        "result",
         "error",
-        "task",
         "checkpoint_before",
-        "workspace_before",
         "checkpoint_after",
-        "workspace_after",
-        "events",
-        "iterator_status",
-        "iterator_result"
+        "iterator_status"
       ]
-    },
-    {
-      "id": "completed_record",
-      "type": "struct_to_json",
-      "name": "completed record",
-      "x": 5280,
-      "y": 11500,
-      "arguments": {
-        "value_type": "struct:completed_record_fields"
-      }
     },
     {
       "id": "save_final_record",
@@ -5056,6 +4955,822 @@
       "x": 2160,
       "y": 12100,
       "function_id": "call_iterator"
+    },
+    {
+      "id": "audit_encode_event_in",
+      "type": "function_input",
+      "name": "audit encode event in",
+      "x": 80,
+      "y": 700,
+      "function_id": "audit_encode_event"
+    },
+    {
+      "id": "audit_event_kind",
+      "type": "struct_get",
+      "name": "audit event kind",
+      "x": 340,
+      "y": 700,
+      "arguments": {
+        "struct_id": "EpisodeEvent",
+        "field": "type"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "audit_event_route",
+      "type": "router",
+      "name": "audit event route",
+      "x": 600,
+      "y": 700,
+      "arguments": {
+        "branches": [
+          {
+            "id": "observation",
+            "name": "observation"
+          }
+        ]
+      }
+    },
+    {
+      "id": "audit_event_observation",
+      "type": "struct_get",
+      "name": "audit event observation",
+      "x": 860,
+      "y": 700,
+      "arguments": {
+        "struct_id": "EpisodeEvent",
+        "field": "observation"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "audit_validate_observation",
+      "type": "deserialize_json",
+      "name": "audit validate observation",
+      "x": 1120,
+      "y": 700,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "type",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "audit_observation_json",
+      "type": "construct_content",
+      "name": "audit observation json",
+      "x": 1380,
+      "y": 700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "{\"type\":\"observation\",\"observation\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_1"
+          },
+          {
+            "type": "fixed",
+            "value": "}"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_1"
+      ]
+    },
+    {
+      "id": "audit_observation_return",
+      "type": "function_output",
+      "name": "audit observation return",
+      "x": 1640,
+      "y": 700,
+      "function_id": "audit_encode_event"
+    },
+    {
+      "id": "audit_turn_json",
+      "type": "struct_to_json",
+      "name": "audit turn json",
+      "x": 1900,
+      "y": 700,
+      "arguments": {
+        "value_type": "struct:EpisodeEvent"
+      }
+    },
+    {
+      "id": "audit_turn_return",
+      "type": "function_output",
+      "name": "audit turn return",
+      "x": 2160,
+      "y": 700,
+      "function_id": "audit_encode_event"
+    },
+    {
+      "id": "audit_append_event_in",
+      "type": "function_input",
+      "name": "audit append event in",
+      "x": 80,
+      "y": 1300,
+      "function_id": "audit_append_event"
+    },
+    {
+      "id": "audit_encode_one",
+      "type": "function_call",
+      "name": "audit encode one",
+      "x": 340,
+      "y": 1300,
+      "arguments": {
+        "function_id": "audit_encode_event"
+      }
+    },
+    {
+      "id": "audit_read_buffer",
+      "type": "context_read",
+      "name": "audit read buffer",
+      "x": 600,
+      "y": 1300,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "audit_read_separator",
+      "type": "context_read",
+      "name": "audit read separator",
+      "x": 860,
+      "y": 1300,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "audit_join_event",
+      "type": "construct_content",
+      "name": "audit join event",
+      "x": 1120,
+      "y": 1300,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "port",
+            "port_id": "part_0"
+          },
+          {
+            "type": "port",
+            "port_id": "part_1"
+          },
+          {
+            "type": "port",
+            "port_id": "part_2"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_0",
+        "part_1",
+        "part_2"
+      ]
+    },
+    {
+      "id": "audit_write_buffer",
+      "type": "context_write",
+      "name": "audit write buffer",
+      "x": 1380,
+      "y": 1300,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "audit_comma",
+      "type": "construct_content",
+      "name": "audit comma",
+      "x": 1640,
+      "y": 1300,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": ","
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "audit_write_separator",
+      "type": "context_write",
+      "name": "audit write separator",
+      "x": 1900,
+      "y": 1300,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "audit_append_return",
+      "type": "function_output",
+      "name": "audit append return",
+      "x": 2160,
+      "y": 1300,
+      "function_id": "audit_append_event"
+    },
+    {
+      "id": "audit_encode_events_in",
+      "type": "function_input",
+      "name": "audit encode events in",
+      "x": 80,
+      "y": 1900,
+      "function_id": "audit_encode_events"
+    },
+    {
+      "id": "audit_array_open",
+      "type": "construct_content",
+      "name": "audit array open",
+      "x": 340,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "["
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "audit_separator_empty",
+      "type": "construct_content",
+      "name": "audit separator empty",
+      "x": 600,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": ""
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "audit_create_buffer",
+      "type": "context_create",
+      "name": "audit create buffer",
+      "x": 860,
+      "y": 1900,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "audit_create_separator",
+      "type": "context_create",
+      "name": "audit create separator",
+      "x": 1120,
+      "y": 1900,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "audit_event_loop",
+      "type": "foreach",
+      "name": "audit event loop",
+      "x": 1380,
+      "y": 1900,
+      "arguments": {
+        "item_type": "struct:EpisodeEvent"
+      }
+    },
+    {
+      "id": "audit_append_one",
+      "type": "function_call",
+      "name": "audit append one",
+      "x": 1640,
+      "y": 1900,
+      "arguments": {
+        "function_id": "audit_append_event"
+      }
+    },
+    {
+      "id": "audit_array_read",
+      "type": "context_read",
+      "name": "audit array read",
+      "x": 1900,
+      "y": 1900,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "audit_array_close",
+      "type": "construct_content",
+      "name": "audit array close",
+      "x": 2160,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "port",
+            "port_id": "part_0"
+          },
+          {
+            "type": "fixed",
+            "value": "]"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_0"
+      ]
+    },
+    {
+      "id": "audit_array_return",
+      "type": "function_output",
+      "name": "audit array return",
+      "x": 2420,
+      "y": 1900,
+      "function_id": "audit_encode_events"
+    },
+    {
+      "id": "initial_record_summary",
+      "type": "struct_to_json",
+      "name": "initial record summary",
+      "x": 2680,
+      "y": 1900,
+      "arguments": {
+        "value_type": "struct:initial_record_fields"
+      }
+    },
+    {
+      "id": "initial_record_validate_task",
+      "type": "deserialize_json",
+      "name": "initial record validate task",
+      "x": 2940,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "type",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "initial_record",
+      "type": "construct_content",
+      "name": "initial record",
+      "x": 3200,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "{\"format\":\"alfworld-episode/v2\",\"summary\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_1"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"task\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_3"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"workspace_before\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_5"
+          },
+          {
+            "type": "fixed",
+            "value": "}"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_1",
+        "part_3",
+        "part_5"
+      ]
+    },
+    {
+      "id": "progress_record_summary",
+      "type": "struct_to_json",
+      "name": "progress record summary",
+      "x": 3460,
+      "y": 1900,
+      "arguments": {
+        "value_type": "struct:progress_record_fields"
+      }
+    },
+    {
+      "id": "progress_record",
+      "type": "construct_content",
+      "name": "progress record",
+      "x": 3720,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "{\"format\":\"alfworld-episode/v2\",\"summary\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_1"
+          },
+          {
+            "type": "fixed",
+            "value": "}"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_1"
+      ]
+    },
+    {
+      "id": "episode_progress_summary",
+      "type": "struct_to_json",
+      "name": "episode progress summary",
+      "x": 3980,
+      "y": 1900,
+      "arguments": {
+        "value_type": "struct:episode_progress_fields"
+      }
+    },
+    {
+      "id": "episode_progress_events",
+      "type": "function_call",
+      "name": "episode progress events",
+      "x": 4240,
+      "y": 1900,
+      "arguments": {
+        "function_id": "audit_encode_events"
+      }
+    },
+    {
+      "id": "episode_progress_validate_task",
+      "type": "deserialize_json",
+      "name": "episode progress validate task",
+      "x": 4500,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "type",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "episode_progress_validate_result",
+      "type": "deserialize_json",
+      "name": "episode progress validate result",
+      "x": 4760,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "type",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "episode_progress",
+      "type": "construct_content",
+      "name": "episode progress",
+      "x": 5020,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "{\"format\":\"alfworld-episode/v2\",\"summary\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_1"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"task\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_3"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"result\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_5"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"events\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_7"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"workspace_before\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_9"
+          },
+          {
+            "type": "fixed",
+            "value": "}"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_1",
+        "part_3",
+        "part_5",
+        "part_7",
+        "part_9"
+      ]
+    },
+    {
+      "id": "task_record_summary",
+      "type": "struct_to_json",
+      "name": "task record summary",
+      "x": 5280,
+      "y": 1900,
+      "arguments": {
+        "value_type": "struct:task_record_fields"
+      }
+    },
+    {
+      "id": "task_record_events",
+      "type": "function_call",
+      "name": "task record events",
+      "x": 5540,
+      "y": 1900,
+      "arguments": {
+        "function_id": "audit_encode_events"
+      }
+    },
+    {
+      "id": "task_record_validate_result",
+      "type": "deserialize_json",
+      "name": "task record validate result",
+      "x": 5800,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "type",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "task_record_validate_task",
+      "type": "deserialize_json",
+      "name": "task record validate task",
+      "x": 6060,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "type",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "task_record",
+      "type": "construct_content",
+      "name": "task record",
+      "x": 6320,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "{\"format\":\"alfworld-episode/v2\",\"summary\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_1"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"result\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_3"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"task\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_5"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"workspace_before\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_7"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"workspace_after\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_9"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"events\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_11"
+          },
+          {
+            "type": "fixed",
+            "value": "}"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_1",
+        "part_3",
+        "part_5",
+        "part_7",
+        "part_9",
+        "part_11"
+      ]
+    },
+    {
+      "id": "completed_record_summary",
+      "type": "struct_to_json",
+      "name": "completed record summary",
+      "x": 6580,
+      "y": 1900,
+      "arguments": {
+        "value_type": "struct:completed_record_fields"
+      }
+    },
+    {
+      "id": "completed_record_events",
+      "type": "function_call",
+      "name": "completed record events",
+      "x": 6840,
+      "y": 1900,
+      "arguments": {
+        "function_id": "audit_encode_events"
+      }
+    },
+    {
+      "id": "completed_record_validate_result",
+      "type": "deserialize_json",
+      "name": "completed record validate result",
+      "x": 7100,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "type",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "completed_record_validate_task",
+      "type": "deserialize_json",
+      "name": "completed record validate task",
+      "x": 7360,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "type",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "completed_record",
+      "type": "construct_content",
+      "name": "completed record",
+      "x": 7620,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "{\"format\":\"alfworld-episode/v2\",\"summary\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_1"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"result\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_3"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"task\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_5"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"workspace_before\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_7"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"workspace_after\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_9"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"events\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_11"
+          },
+          {
+            "type": "fixed",
+            "value": ",\"iterator_result\":"
+          },
+          {
+            "type": "port",
+            "port_id": "part_13"
+          },
+          {
+            "type": "fixed",
+            "value": "}"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_1",
+        "part_3",
+        "part_5",
+        "part_7",
+        "part_9",
+        "part_11",
+        "part_13"
+      ]
     }
   ],
   "connections": [
@@ -5669,13 +6384,6 @@
       "type": "control"
     },
     {
-      "fromId": "save_run_task",
-      "fromPortId": "value-out",
-      "toId": "episode_progress_value",
-      "toPortId": "task",
-      "type": "content"
-    },
-    {
       "fromId": "save_outcome_status",
       "fromPortId": "value-out",
       "toId": "episode_progress_value",
@@ -5690,46 +6398,11 @@
       "type": "content"
     },
     {
-      "fromId": "save_last",
-      "fromPortId": "value-out",
-      "toId": "episode_progress_value",
-      "toPortId": "result",
-      "type": "content"
-    },
-    {
-      "fromId": "save_trace",
-      "fromPortId": "value-out",
-      "toId": "episode_progress_value",
-      "toPortId": "events",
-      "type": "list-struct:EpisodeEvent"
-    },
-    {
       "fromId": "save_run_checkpoint_before",
       "fromPortId": "value-out",
       "toId": "episode_progress_value",
       "toPortId": "checkpoint_before",
       "type": "number"
-    },
-    {
-      "fromId": "save_run_workspace_before",
-      "fromPortId": "value-out",
-      "toId": "episode_progress_value",
-      "toPortId": "workspace_before",
-      "type": "content"
-    },
-    {
-      "fromId": "episode_progress_value",
-      "fromPortId": "struct-out",
-      "toId": "episode_progress",
-      "toPortId": "value-in",
-      "type": "struct:episode_progress_fields"
-    },
-    {
-      "fromId": "episode_progress_value",
-      "fromPortId": "control-out",
-      "toId": "episode_progress",
-      "toPortId": "control-in",
-      "type": "control"
     },
     {
       "fromId": "save_run_record_id",
@@ -7629,39 +8302,11 @@
       "type": "content"
     },
     {
-      "fromId": "initialize_run_in",
-      "fromPortId": "function:task",
-      "toId": "initial_record_value",
-      "toPortId": "task",
-      "type": "content"
-    },
-    {
       "fromId": "before_seq",
       "fromPortId": "seq",
       "toId": "initial_record_value",
       "toPortId": "checkpoint_before",
       "type": "number"
-    },
-    {
-      "fromId": "inventory_before_json",
-      "fromPortId": "content-out",
-      "toId": "initial_record_value",
-      "toPortId": "workspace_before",
-      "type": "content"
-    },
-    {
-      "fromId": "initial_record_value",
-      "fromPortId": "struct-out",
-      "toId": "initial_record",
-      "toPortId": "value-in",
-      "type": "struct:initial_record_fields"
-    },
-    {
-      "fromId": "initial_record_value",
-      "fromPortId": "control-out",
-      "toId": "initial_record",
-      "toPortId": "control-in",
-      "type": "control"
     },
     {
       "fromId": "record_name",
@@ -8714,20 +9359,6 @@
       "type": "list-struct:RecoveryAttempt"
     },
     {
-      "fromId": "progress_record_value",
-      "fromPortId": "struct-out",
-      "toId": "progress_record",
-      "toPortId": "value-in",
-      "type": "struct:progress_record_fields"
-    },
-    {
-      "fromId": "progress_record_value",
-      "fromPortId": "control-out",
-      "toId": "progress_record",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
       "fromId": "remember_run_record_id",
       "fromPortId": "value-out",
       "toId": "save_progress",
@@ -9393,24 +10024,10 @@
       "type": "content"
     },
     {
-      "fromId": "finish_outcome_result",
-      "fromPortId": "value-out",
-      "toId": "task_record_value",
-      "toPortId": "result",
-      "type": "content"
-    },
-    {
       "fromId": "finish_outcome_error",
       "fromPortId": "value-out",
       "toId": "task_record_value",
       "toPortId": "error",
-      "type": "content"
-    },
-    {
-      "fromId": "finish_run_task",
-      "fromPortId": "value-out",
-      "toId": "task_record_value",
-      "toPortId": "task",
       "type": "content"
     },
     {
@@ -9421,46 +10038,11 @@
       "type": "number"
     },
     {
-      "fromId": "finish_run_workspace_before",
-      "fromPortId": "value-out",
-      "toId": "task_record_value",
-      "toPortId": "workspace_before",
-      "type": "content"
-    },
-    {
       "fromId": "after_seq",
       "fromPortId": "seq",
       "toId": "task_record_value",
       "toPortId": "checkpoint_after",
       "type": "number"
-    },
-    {
-      "fromId": "inventory_after_json",
-      "fromPortId": "content-out",
-      "toId": "task_record_value",
-      "toPortId": "workspace_after",
-      "type": "content"
-    },
-    {
-      "fromId": "finish_task_in",
-      "fromPortId": "function:attempts",
-      "toId": "task_record_value",
-      "toPortId": "events",
-      "type": "list-struct:EpisodeEvent"
-    },
-    {
-      "fromId": "task_record_value",
-      "fromPortId": "struct-out",
-      "toId": "task_record",
-      "toPortId": "value-in",
-      "type": "struct:task_record_fields"
-    },
-    {
-      "fromId": "task_record_value",
-      "fromPortId": "control-out",
-      "toId": "task_record",
-      "toPortId": "control-in",
-      "type": "control"
     },
     {
       "fromId": "finish_run_record_id",
@@ -9498,24 +10080,10 @@
       "type": "content"
     },
     {
-      "fromId": "finish_outcome_result",
-      "fromPortId": "value-out",
-      "toId": "completed_record_value",
-      "toPortId": "result",
-      "type": "content"
-    },
-    {
       "fromId": "finish_outcome_error",
       "fromPortId": "value-out",
       "toId": "completed_record_value",
       "toPortId": "error",
-      "type": "content"
-    },
-    {
-      "fromId": "finish_run_task",
-      "fromPortId": "value-out",
-      "toId": "completed_record_value",
-      "toPortId": "task",
       "type": "content"
     },
     {
@@ -9526,13 +10094,6 @@
       "type": "number"
     },
     {
-      "fromId": "finish_run_workspace_before",
-      "fromPortId": "value-out",
-      "toId": "completed_record_value",
-      "toPortId": "workspace_before",
-      "type": "content"
-    },
-    {
       "fromId": "after_seq",
       "fromPortId": "seq",
       "toId": "completed_record_value",
@@ -9540,46 +10101,11 @@
       "type": "number"
     },
     {
-      "fromId": "inventory_after_json",
-      "fromPortId": "content-out",
-      "toId": "completed_record_value",
-      "toPortId": "workspace_after",
-      "type": "content"
-    },
-    {
-      "fromId": "finish_task_in",
-      "fromPortId": "function:attempts",
-      "toId": "completed_record_value",
-      "toPortId": "events",
-      "type": "list-struct:EpisodeEvent"
-    },
-    {
       "fromId": "iterate_experience",
       "fromPortId": "function:status",
       "toId": "completed_record_value",
       "toPortId": "iterator_status",
       "type": "content"
-    },
-    {
-      "fromId": "iterate_experience",
-      "fromPortId": "function:result",
-      "toId": "completed_record_value",
-      "toPortId": "iterator_result",
-      "type": "content"
-    },
-    {
-      "fromId": "completed_record_value",
-      "fromPortId": "struct-out",
-      "toId": "completed_record",
-      "toPortId": "value-in",
-      "type": "struct:completed_record_fields"
-    },
-    {
-      "fromId": "completed_record_value",
-      "fromPortId": "control-out",
-      "toId": "completed_record",
-      "toPortId": "control-in",
-      "type": "control"
     },
     {
       "fromId": "finish_run_record_id",
@@ -9830,6 +10356,776 @@
       "fromId": "iterator_error",
       "fromPortId": "control-out",
       "toId": "iterator_error_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_encode_event_in",
+      "fromPortId": "function:event",
+      "toId": "audit_event_kind",
+      "toPortId": "struct-in",
+      "type": "struct:EpisodeEvent"
+    },
+    {
+      "fromId": "audit_event_kind",
+      "fromPortId": "value-out",
+      "toId": "audit_event_route",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_encode_event_in",
+      "fromPortId": "function:event",
+      "toId": "audit_event_observation",
+      "toPortId": "struct-in",
+      "type": "struct:EpisodeEvent"
+    },
+    {
+      "fromId": "audit_event_observation",
+      "fromPortId": "value-out",
+      "toId": "audit_validate_observation",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_event_observation",
+      "fromPortId": "value-out",
+      "toId": "audit_observation_json",
+      "toPortId": "part_1",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_observation_json",
+      "fromPortId": "content-out",
+      "toId": "audit_observation_return",
+      "toPortId": "function:json",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_encode_event_in",
+      "fromPortId": "function:event",
+      "toId": "audit_turn_json",
+      "toPortId": "value-in",
+      "type": "struct:EpisodeEvent"
+    },
+    {
+      "fromId": "audit_turn_json",
+      "fromPortId": "content-out",
+      "toId": "audit_turn_return",
+      "toPortId": "function:json",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_encode_event_in",
+      "fromPortId": "control-out",
+      "toId": "audit_event_kind",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_event_kind",
+      "fromPortId": "control-out",
+      "toId": "audit_event_route",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_event_route",
+      "fromPortId": "observation",
+      "toId": "audit_event_observation",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_event_observation",
+      "fromPortId": "control-out",
+      "toId": "audit_validate_observation",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_validate_observation",
+      "fromPortId": "control-out",
+      "toId": "audit_observation_json",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_observation_json",
+      "fromPortId": "control-out",
+      "toId": "audit_observation_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_event_route",
+      "fromPortId": "branch$others",
+      "toId": "audit_turn_json",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_turn_json",
+      "fromPortId": "control-out",
+      "toId": "audit_turn_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_append_event_in",
+      "fromPortId": "function:event",
+      "toId": "audit_encode_one",
+      "toPortId": "function:event",
+      "type": "struct:EpisodeEvent"
+    },
+    {
+      "fromId": "audit_append_event_in",
+      "fromPortId": "function:buffer",
+      "toId": "audit_read_buffer",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_append_event_in",
+      "fromPortId": "function:separator",
+      "toId": "audit_read_separator",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_read_buffer",
+      "fromPortId": "value-out",
+      "toId": "audit_join_event",
+      "toPortId": "part_0",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_read_separator",
+      "fromPortId": "value-out",
+      "toId": "audit_join_event",
+      "toPortId": "part_1",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_encode_one",
+      "fromPortId": "function:json",
+      "toId": "audit_join_event",
+      "toPortId": "part_2",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_append_event_in",
+      "fromPortId": "function:buffer",
+      "toId": "audit_write_buffer",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_join_event",
+      "fromPortId": "content-out",
+      "toId": "audit_write_buffer",
+      "toPortId": "value-in",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_append_event_in",
+      "fromPortId": "function:separator",
+      "toId": "audit_write_separator",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_comma",
+      "fromPortId": "content-out",
+      "toId": "audit_write_separator",
+      "toPortId": "value-in",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_append_event_in",
+      "fromPortId": "control-out",
+      "toId": "audit_encode_one",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_encode_one",
+      "fromPortId": "control-out",
+      "toId": "audit_read_buffer",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_read_buffer",
+      "fromPortId": "control-out",
+      "toId": "audit_read_separator",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_read_separator",
+      "fromPortId": "control-out",
+      "toId": "audit_join_event",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_join_event",
+      "fromPortId": "control-out",
+      "toId": "audit_write_buffer",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_write_buffer",
+      "fromPortId": "control-out",
+      "toId": "audit_comma",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_comma",
+      "fromPortId": "control-out",
+      "toId": "audit_write_separator",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_write_separator",
+      "fromPortId": "control-out",
+      "toId": "audit_append_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_array_open",
+      "fromPortId": "content-out",
+      "toId": "audit_create_buffer",
+      "toPortId": "initial-value",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_separator_empty",
+      "fromPortId": "content-out",
+      "toId": "audit_create_separator",
+      "toPortId": "initial-value",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_encode_events_in",
+      "fromPortId": "function:events",
+      "toId": "audit_event_loop",
+      "toPortId": "list-in",
+      "type": "list-struct:EpisodeEvent"
+    },
+    {
+      "fromId": "audit_event_loop",
+      "fromPortId": "item-out",
+      "toId": "audit_append_one",
+      "toPortId": "function:event",
+      "type": "struct:EpisodeEvent"
+    },
+    {
+      "fromId": "audit_create_buffer",
+      "fromPortId": "context-id",
+      "toId": "audit_append_one",
+      "toPortId": "function:buffer",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_create_separator",
+      "fromPortId": "context-id",
+      "toId": "audit_append_one",
+      "toPortId": "function:separator",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_event_loop",
+      "fromPortId": "loop-out",
+      "toId": "audit_append_one",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_append_one",
+      "fromPortId": "control-out",
+      "toId": "audit_event_loop",
+      "toPortId": "loop-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_create_buffer",
+      "fromPortId": "context-id",
+      "toId": "audit_array_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_array_read",
+      "fromPortId": "value-out",
+      "toId": "audit_array_close",
+      "toPortId": "part_0",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_array_close",
+      "fromPortId": "content-out",
+      "toId": "audit_array_return",
+      "toPortId": "function:json",
+      "type": "content"
+    },
+    {
+      "fromId": "audit_encode_events_in",
+      "fromPortId": "control-out",
+      "toId": "audit_array_open",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_array_open",
+      "fromPortId": "control-out",
+      "toId": "audit_separator_empty",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_separator_empty",
+      "fromPortId": "control-out",
+      "toId": "audit_create_buffer",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_create_buffer",
+      "fromPortId": "control-out",
+      "toId": "audit_create_separator",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_create_separator",
+      "fromPortId": "control-out",
+      "toId": "audit_event_loop",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_event_loop",
+      "fromPortId": "control-out",
+      "toId": "audit_array_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_array_read",
+      "fromPortId": "control-out",
+      "toId": "audit_array_close",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "audit_array_close",
+      "fromPortId": "control-out",
+      "toId": "audit_array_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_record_value",
+      "fromPortId": "struct-out",
+      "toId": "initial_record_summary",
+      "toPortId": "value-in",
+      "type": "struct:initial_record_fields"
+    },
+    {
+      "fromId": "initialize_run_in",
+      "fromPortId": "function:task",
+      "toId": "initial_record_validate_task",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_record_summary",
+      "fromPortId": "content-out",
+      "toId": "initial_record",
+      "toPortId": "part_1",
+      "type": "content"
+    },
+    {
+      "fromId": "initialize_run_in",
+      "fromPortId": "function:task",
+      "toId": "initial_record",
+      "toPortId": "part_3",
+      "type": "content"
+    },
+    {
+      "fromId": "inventory_before_json",
+      "fromPortId": "content-out",
+      "toId": "initial_record",
+      "toPortId": "part_5",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_record_value",
+      "fromPortId": "control-out",
+      "toId": "initial_record_summary",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_record_summary",
+      "fromPortId": "control-out",
+      "toId": "initial_record_validate_task",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_record_validate_task",
+      "fromPortId": "control-out",
+      "toId": "initial_record",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "progress_record_value",
+      "fromPortId": "struct-out",
+      "toId": "progress_record_summary",
+      "toPortId": "value-in",
+      "type": "struct:progress_record_fields"
+    },
+    {
+      "fromId": "progress_record_summary",
+      "fromPortId": "content-out",
+      "toId": "progress_record",
+      "toPortId": "part_1",
+      "type": "content"
+    },
+    {
+      "fromId": "progress_record_value",
+      "fromPortId": "control-out",
+      "toId": "progress_record_summary",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "progress_record_summary",
+      "fromPortId": "control-out",
+      "toId": "progress_record",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "episode_progress_value",
+      "fromPortId": "struct-out",
+      "toId": "episode_progress_summary",
+      "toPortId": "value-in",
+      "type": "struct:episode_progress_fields"
+    },
+    {
+      "fromId": "save_trace",
+      "fromPortId": "value-out",
+      "toId": "episode_progress_events",
+      "toPortId": "function:events",
+      "type": "list-struct:EpisodeEvent"
+    },
+    {
+      "fromId": "save_run_task",
+      "fromPortId": "value-out",
+      "toId": "episode_progress_validate_task",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "save_last",
+      "fromPortId": "value-out",
+      "toId": "episode_progress_validate_result",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "episode_progress_summary",
+      "fromPortId": "content-out",
+      "toId": "episode_progress",
+      "toPortId": "part_1",
+      "type": "content"
+    },
+    {
+      "fromId": "save_run_task",
+      "fromPortId": "value-out",
+      "toId": "episode_progress",
+      "toPortId": "part_3",
+      "type": "content"
+    },
+    {
+      "fromId": "save_last",
+      "fromPortId": "value-out",
+      "toId": "episode_progress",
+      "toPortId": "part_5",
+      "type": "content"
+    },
+    {
+      "fromId": "episode_progress_events",
+      "fromPortId": "function:json",
+      "toId": "episode_progress",
+      "toPortId": "part_7",
+      "type": "content"
+    },
+    {
+      "fromId": "save_run_workspace_before",
+      "fromPortId": "value-out",
+      "toId": "episode_progress",
+      "toPortId": "part_9",
+      "type": "content"
+    },
+    {
+      "fromId": "episode_progress_value",
+      "fromPortId": "control-out",
+      "toId": "episode_progress_summary",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "episode_progress_summary",
+      "fromPortId": "control-out",
+      "toId": "episode_progress_events",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "episode_progress_events",
+      "fromPortId": "control-out",
+      "toId": "episode_progress_validate_task",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "episode_progress_validate_task",
+      "fromPortId": "control-out",
+      "toId": "episode_progress_validate_result",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "episode_progress_validate_result",
+      "fromPortId": "control-out",
+      "toId": "episode_progress",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "task_record_value",
+      "fromPortId": "struct-out",
+      "toId": "task_record_summary",
+      "toPortId": "value-in",
+      "type": "struct:task_record_fields"
+    },
+    {
+      "fromId": "finish_task_in",
+      "fromPortId": "function:attempts",
+      "toId": "task_record_events",
+      "toPortId": "function:events",
+      "type": "list-struct:EpisodeEvent"
+    },
+    {
+      "fromId": "finish_outcome_result",
+      "fromPortId": "value-out",
+      "toId": "task_record_validate_result",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_run_task",
+      "fromPortId": "value-out",
+      "toId": "task_record_validate_task",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "task_record_summary",
+      "fromPortId": "content-out",
+      "toId": "task_record",
+      "toPortId": "part_1",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_outcome_result",
+      "fromPortId": "value-out",
+      "toId": "task_record",
+      "toPortId": "part_3",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_run_task",
+      "fromPortId": "value-out",
+      "toId": "task_record",
+      "toPortId": "part_5",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_run_workspace_before",
+      "fromPortId": "value-out",
+      "toId": "task_record",
+      "toPortId": "part_7",
+      "type": "content"
+    },
+    {
+      "fromId": "inventory_after_json",
+      "fromPortId": "content-out",
+      "toId": "task_record",
+      "toPortId": "part_9",
+      "type": "content"
+    },
+    {
+      "fromId": "task_record_events",
+      "fromPortId": "function:json",
+      "toId": "task_record",
+      "toPortId": "part_11",
+      "type": "content"
+    },
+    {
+      "fromId": "task_record_value",
+      "fromPortId": "control-out",
+      "toId": "task_record_summary",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "task_record_summary",
+      "fromPortId": "control-out",
+      "toId": "task_record_events",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "task_record_events",
+      "fromPortId": "control-out",
+      "toId": "task_record_validate_result",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "task_record_validate_result",
+      "fromPortId": "control-out",
+      "toId": "task_record_validate_task",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "task_record_validate_task",
+      "fromPortId": "control-out",
+      "toId": "task_record",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "completed_record_value",
+      "fromPortId": "struct-out",
+      "toId": "completed_record_summary",
+      "toPortId": "value-in",
+      "type": "struct:completed_record_fields"
+    },
+    {
+      "fromId": "finish_task_in",
+      "fromPortId": "function:attempts",
+      "toId": "completed_record_events",
+      "toPortId": "function:events",
+      "type": "list-struct:EpisodeEvent"
+    },
+    {
+      "fromId": "finish_outcome_result",
+      "fromPortId": "value-out",
+      "toId": "completed_record_validate_result",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_run_task",
+      "fromPortId": "value-out",
+      "toId": "completed_record_validate_task",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "completed_record_summary",
+      "fromPortId": "content-out",
+      "toId": "completed_record",
+      "toPortId": "part_1",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_outcome_result",
+      "fromPortId": "value-out",
+      "toId": "completed_record",
+      "toPortId": "part_3",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_run_task",
+      "fromPortId": "value-out",
+      "toId": "completed_record",
+      "toPortId": "part_5",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_run_workspace_before",
+      "fromPortId": "value-out",
+      "toId": "completed_record",
+      "toPortId": "part_7",
+      "type": "content"
+    },
+    {
+      "fromId": "inventory_after_json",
+      "fromPortId": "content-out",
+      "toId": "completed_record",
+      "toPortId": "part_9",
+      "type": "content"
+    },
+    {
+      "fromId": "completed_record_events",
+      "fromPortId": "function:json",
+      "toId": "completed_record",
+      "toPortId": "part_11",
+      "type": "content"
+    },
+    {
+      "fromId": "iterate_experience",
+      "fromPortId": "function:result",
+      "toId": "completed_record",
+      "toPortId": "part_13",
+      "type": "content"
+    },
+    {
+      "fromId": "completed_record_value",
+      "fromPortId": "control-out",
+      "toId": "completed_record_summary",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "completed_record_summary",
+      "fromPortId": "control-out",
+      "toId": "completed_record_events",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "completed_record_events",
+      "fromPortId": "control-out",
+      "toId": "completed_record_validate_result",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "completed_record_validate_result",
+      "fromPortId": "control-out",
+      "toId": "completed_record_validate_task",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "completed_record_validate_task",
+      "fromPortId": "control-out",
+      "toId": "completed_record",
       "toPortId": "control-in",
       "type": "control"
     }
