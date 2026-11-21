@@ -90,6 +90,10 @@ footer { text-align:center; color:var(--muted); font-size:11px; padding:4px 0 12
 .process-panel #detailContent { padding:14px 12px; }
 .process-panel #detailContent > .empty { margin:0; }
 .detail-snapshot-note { margin:0 0 12px; font-size:12px; color:var(--amber); }
+.process-detail-actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.kill-process-button { min-height:34px; padding:0 11px; color:#8c3028; border:1px solid #d8aaa4; background:#fff; cursor:pointer; }
+.kill-process-button:hover { background:#fff6f5; }
+.kill-process-button:disabled { opacity:.55; cursor:wait; }
 
 .scheduler-event-section { margin-bottom:16px; }
 .scheduler-events { list-style:none; margin:10px 0 0; padding:0; border:1px solid var(--line); border-radius:6px; overflow:hidden; }

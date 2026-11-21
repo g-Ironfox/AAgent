@@ -1,0 +1,47 @@
+[
+  {
+    "role": "experience",
+    "name": "alfworld-agent-experience.md",
+    "permissions": {
+      "runtime": { "read": 0, "write": 0 },
+      "required": { "read": 1, "write": 2 },
+      "checkpoints": { "read": false, "create": false, "restore": false }
+    }
+  },
+  {
+    "role": "main",
+    "name": "alfworld-agent-main.flow",
+    "permissions": {
+      "runtime": { "read": 1, "write": 1 },
+      "required": { "read": 1, "write": 3 },
+      "checkpoints": { "read": false, "create": false, "restore": false }
+    }
+  },
+  {
+    "role": "stable",
+    "name": "alfworld-agent-stable-main.flow",
+    "permissions": {
+      "runtime": { "read": 1, "write": 1 },
+      "required": { "read": 3, "write": 4 },
+      "checkpoints": { "read": false, "create": false, "restore": false }
+    }
+  },
+  {
+    "role": "iterator",
+    "name": "alfworld-agent-iterator.flow",
+    "permissions": {
+      "runtime": { "read": 2, "write": 2 },
+      "required": { "read": 2, "write": 4 },
+      "checkpoints": { "read": false, "create": false, "restore": false }
+    }
+  },
+  {
+    "role": "bootstrap",
+    "name": "alfworld-agent-bootstrap.flow",
+    "permissions": {
+      "runtime": { "read": 3, "write": 3 },
+      "required": { "read": 3, "write": 4 },
+      "checkpoints": { "read": true, "create": true, "restore": false }
+    }
+  }
+]

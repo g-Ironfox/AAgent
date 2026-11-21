@@ -154,7 +154,29 @@ function renderDetails() {
   const link = node('a', 'process-log-link', '打开进程日志'); link.href = '/logs';
   const notice = node('p', 'detail-snapshot-note', '该进程已不在本次快照中，以下保留上次获取的详情。');
   notice.hidden = Boolean(current);
-  el.detailContent.replaceChildren(notice, grid, events, link);
+  const actions = node('div', 'process-detail-actions');
+  if (current && process.process_type !== 'terminal' && !finalStatuses.has(process.status)) {
+    const kill = node('button', 'kill-process-button', '强制结束整棵进程树');
+    kill.type = 'button';
+    kill.addEventListener('click', async () => {
+      if (!window.confirm('强制结束该进程所属的根进程、全部子进程及其终端？')) return;
+      kill.disabled = true;
+      try {
+        const response = await fetch('/api/processes/' + encodeURIComponent(process.process_id) + '/kill', { method: 'POST' });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+        el.refreshState.textContent = '强制结束请求已提交';
+        await refresh();
+      } catch (error) {
+        el.warning.textContent = '强制结束失败：' + error.message;
+        el.warning.hidden = false;
+        kill.disabled = false;
+      }
+    });
+    actions.append(kill);
+  }
+  actions.append(link);
+  el.detailContent.replaceChildren(notice, grid, events, actions);
 }
 function render() {
   if (!snapshot) return;
