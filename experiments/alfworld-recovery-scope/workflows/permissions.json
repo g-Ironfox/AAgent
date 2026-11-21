@@ -1,5 +1,24 @@
 [
   {
+    "role": "workflow_reference",
+    "name": "alfworld-agent-workflow-reference.md",
+    "permissions": {
+      "runtime": {
+        "read": 0,
+        "write": 0
+      },
+      "required": {
+        "read": 1,
+        "write": 4
+      },
+      "checkpoints": {
+        "read": false,
+        "create": false,
+        "restore": false
+      }
+    }
+  },
+  {
     "role": "experience",
     "name": "alfworld-agent-experience.md",
     "permissions": {
@@ -62,7 +81,7 @@
     "permissions": {
       "runtime": {
         "read": 2,
-        "write": 2
+        "write": 3
       },
       "required": {
         "read": 2,
@@ -70,7 +89,7 @@
       },
       "checkpoints": {
         "read": false,
-        "create": false,
+        "create": true,
         "restore": false
       }
     }

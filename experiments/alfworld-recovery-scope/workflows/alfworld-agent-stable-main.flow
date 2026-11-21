@@ -289,7 +289,7 @@
       "x": 340,
       "y": 1300,
       "arguments": {
-        "model": "REPLACE_WITH_MODEL_ID",
+        "model": "6aba33cb2d499f6a57d08bc3",
         "think": true,
         "tool_calls": false,
         "tools_source": "definitions"
@@ -342,7 +342,7 @@
         "append_items": [
           {
             "type": "fixed",
-            "value": "REPLACE_WITH_EXPERIENCE_FILE_ID"
+            "value": "41d16619a1e143889ac6e77bef09f231"
           }
         ]
       },

@@ -54,6 +54,9 @@ def document(name, child=None, wait=False, output_terminal=False):
 
 class ProcessWorkflowTest(unittest.TestCase):
     def setUp(self):
+        slice_patcher = patch("main.SCHEDULER_TIME_SLICE_MS", 0)
+        slice_patcher.start()
+        self.addCleanup(slice_patcher.stop)
         self.redis = MemoryRedis()
         self.public_redis = self.redis.with_db(r.REDIS_PUBLIC_DB)
         self.documents = {}
@@ -477,6 +480,16 @@ class ProcessWorkflowTest(unittest.TestCase):
                          ["created", "started", "yielded", "resumed", "completed"])
         self.assertTrue(completed["events"][-2]["dispatch"])
 
+    def test_time_slice_executes_multiple_nodes_before_committing(self):
+        root = self.start(document("Root"))
+        with patch("main.SCHEDULER_TIME_SLICE_MS", 500):
+            result = main.schedule_once(timeout=1)
+        self.assertEqual(result["status"], "completed")
+        saved = main.read_process(root["process_id"])
+        self.assertEqual([entry["node_id"] for entry in saved["node_trace"]], ["in", "out"])
+        self.assertEqual([event["event"] for event in saved["events"]],
+                         ["created", "started", "completed"])
+
     def test_child_exit_publishes_parent_wakeup_before_next_execution(self):
         self.documents = {"Child.flow": document("Child", wait=True)}
         root = self.start(document("Root", "Child.flow"))
@@ -656,16 +669,15 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(restored["status"], "failed")
         self.assertEqual(len(self.workflows()), 2)
 
-    def test_legacy_pending_node_resumes_without_spawning_a_second_child(self):
+    def test_pending_node_resumes_without_spawning_a_second_child(self):
         self.documents = {"Child.flow": document("Child", wait=True)}
         root = self.start(document("Root", "Child.flow"))
         self.drain()
         parent = main.read_process(root["process_id"])
         compiled = json.loads(parent["workflow"])
-        pending_node = compiled[parent["pending_call"]["node_index"]]
-        pending_node["type"] = "workflow"
-        parent["workflow"] = json.dumps(compiled)
-        self.redis.hset(r.PROCESSTABLE, root["process_id"], json.dumps(parent))
+        pending_node_id = parent["pending_call"]["node_id"]
+        pending_node = next(node for node in compiled if node["id"] == pending_node_id)
+        self.assertEqual(pending_node["type"], "spawn_and_wait_subprocess")
         child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         self.send(child)
         self.drain()
@@ -673,9 +685,9 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(restored["status"], "completed")
         self.assertEqual(restored["result"], {"text": "hello"})
         self.assertEqual(len(self.workflows()), 2)
-        migrated_node = next(node for node in json.loads(restored["workflow"]) if node["id"] == "call")
-        self.assertEqual(migrated_node["type"], "spawn_and_wait_subprocess")
-        self.assertNotIn("workflow_name", migrated_node.get("arguments", {}))
+        restored_node = next(node for node in json.loads(restored["workflow"]) if node["id"] == "call")
+        self.assertEqual(restored_node["type"], "spawn_and_wait_subprocess")
+        self.assertNotIn("workflow_name", restored_node.get("arguments", {}))
 
     def parent_with_child_error_handler(self, target="Child.flow"):
         doc = document("Root", target)

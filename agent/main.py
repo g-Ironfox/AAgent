@@ -38,6 +38,7 @@ MONGO_PASS = os.getenv('MONGO_PASS', '')
 _mongo_client = None
 _process_log_collection = None
 logger = logging.getLogger(__name__)
+SCHEDULER_TIME_SLICE_MS = 500
 
 
 def _get_process_log_collection():
@@ -543,7 +544,7 @@ def _pop_function(process: dict, node: dict) -> list[dict]:
 
 
 def Executor(process_id: str) -> dict:
-    """Claim and execute one node, atomically publishing spawn/wait/exit effects."""
+    """Claim a process and execute one bounded slice, atomically publishing effects."""
     from workflow_context_repository import current_persistent_invocation_id
 
     client = get_connection()
@@ -562,6 +563,7 @@ def Executor(process_id: str) -> dict:
     context_ids = set(process['context_ids'])
     child = child_terminal = None
     trace = None
+    trace_pending = False
     started = time.perf_counter()
     process_token = current_workflow_process.set(process)
     context_token = current_persistent_invocation_id.set(process['invocation_id'])
@@ -574,91 +576,110 @@ def Executor(process_id: str) -> dict:
         timeout_seconds = timeout_ms / 1000 if timeout_ms is not None else None
         if "workflow_reference" in process:
             process.setdefault("workflow_file", process.pop("workflow_reference"))
-        from workflow_contract import migrate_subprocess_workflow_format
-        workflow_map = migrate_subprocess_workflow_format({'nodes': workflow_map})['nodes']
         _resume_subprocess(process, workflow_map)
         current_id = _next_process_node(process, workflow_map)
-        for node in workflow_map:
-            node['_workflow_invocation_id'] = process['invocation_id']
-            node['_workflow_ancestor_invocation_ids'] = process['ancestor_invocation_ids']
-            node['_workflow_context_ids'] = context_ids
-            node['_workflow_call_stack'] = process.get('call_stack', [])
-        node = workflow_map[current_id]
-        if timeout_ms is not None and process['active_duration_ms'] >= timeout_ms:
-            raise TimeoutError(
-                f'workflow execution exceeded {timeout_seconds:g} seconds of active execution'
-            )
-        trace = {
-            'index': len(process['node_trace']) + 1,
-            'node_id': node.get('id'), 'node_name': node.get('name'),
-            'node_type': node.get('type'),
-            'started_at': datetime.now(timezone.utc).isoformat(),
-            'status': 'completed',
-        }
-        if process.get('active_function_id'):
-            # Also initialize IDs for calls restored from older process snapshots.
-            if not process.get('active_function_call_id'):
-                process['active_function_call_id'] = uuid4().hex
-            trace.update(
-                function_id=process['active_function_id'],
-                function_name=process.get('active_function_name') or process['active_function_id'],
-                function_call_id=process['active_function_call_id'],
-                function_depth=len(process.get('function_stack', [])),
-            )
-        with terminal_process_context(
-            process.get('terminal_process_id'),
-            process.get('terminal_id'),
-        ):
-            outcome = execute_node(current_id, workflow_map)
-        handled_error = node.pop('_handled_subprocess_error', None)
-        if handled_error is not None:
-            trace.update(status='failed', error=handled_error)
-        elapsed_ms = (time.perf_counter() - started) * 1000
-        if timeout_ms is not None and process['active_duration_ms'] + elapsed_ms > timeout_ms:
-            raise TimeoutError(
-                f'workflow execution exceeded {timeout_seconds:g} seconds of active execution'
-            )
-        process['status'] = 'ready'
-        process['wait_for'] = None
-        if isinstance(outcome, FunctionCall):
-            workflow_map = _push_function(process, workflow_map, current_id, outcome.function_id)
-        elif isinstance(outcome, WorkflowStep):
-            process['status'] = 'blocked'
-            process['wait_for'] = outcome.wait_for
-            child = outcome.child_process
-            if child is not None:
-                child_terminal = initialize_process_pair(child)
-                process['pending_call'] = {
-                    'node_id': node['id'], 'node_index': current_id,
-                    'child_process_id': child['process_id'],
-                    'trace_index': len(process['node_trace']),
-                }
-                trace.update(status='waiting', child_process_id=child['process_id'])
-            else:
-                # Keep the previous completed node so wake-up retries this read.
-                trace['status'] = 'waiting'
-        else:
-            process['current_node_id'] = current_id
-            process['control_port'] = node.get('_selected_control_port')
-            if outcome == WORKFLOW_END:
-                if node.get('type') == 'function_output':
-                    if not process.get('function_stack'):
-                        raise ValueError('function output has no caller')
-                    workflow_map = _pop_function(process, node)
+        def bind_runtime_context(graph):
+            for graph_node in graph:
+                graph_node['_workflow_invocation_id'] = process['invocation_id']
+                graph_node['_workflow_ancestor_invocation_ids'] = process['ancestor_invocation_ids']
+                graph_node['_workflow_context_ids'] = context_ids
+                graph_node['_workflow_call_stack'] = process.get('call_stack', [])
+
+        bind_runtime_context(workflow_map)
+        while process['status'] == 'running' or process['status'] == 'ready':
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            if timeout_ms is not None and process['active_duration_ms'] + elapsed_ms >= timeout_ms:
+                raise TimeoutError(
+                    f'workflow execution exceeded {timeout_seconds:g} seconds of active execution'
+                )
+            node = workflow_map[current_id]
+            node_started = time.perf_counter()
+            trace = {
+                'index': len(process['node_trace']) + 1,
+                'node_id': node.get('id'), 'node_name': node.get('name'),
+                'node_type': node.get('type'),
+                'started_at': datetime.now(timezone.utc).isoformat(),
+                'status': 'completed',
+            }
+            trace_pending = True
+            if process.get('active_function_id'):
+                if not process.get('active_function_call_id'):
+                    process['active_function_call_id'] = uuid4().hex
+                trace.update(
+                    function_id=process['active_function_id'],
+                    function_name=process.get('active_function_name') or process['active_function_id'],
+                    function_call_id=process['active_function_call_id'],
+                    function_depth=len(process.get('function_stack', [])),
+                )
+            with terminal_process_context(
+                process.get('terminal_process_id'),
+                process.get('terminal_id'),
+            ):
+                outcome = execute_node(current_id, workflow_map)
+            handled_error = node.pop('_handled_subprocess_error', None)
+            if handled_error is not None:
+                trace.update(status='failed', error=handled_error)
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            if timeout_ms is not None and process['active_duration_ms'] + elapsed_ms > timeout_ms:
+                raise TimeoutError(
+                    f'workflow execution exceeded {timeout_seconds:g} seconds of active execution'
+                )
+            process['status'] = 'ready'
+            process['wait_for'] = None
+            if isinstance(outcome, FunctionCall):
+                workflow_map = _push_function(process, workflow_map, current_id, outcome.function_id)
+                bind_runtime_context(workflow_map)
+                current_id = _next_process_node(process, workflow_map)
+            elif isinstance(outcome, WorkflowStep):
+                process['status'] = 'blocked'
+                process['wait_for'] = outcome.wait_for
+                child = outcome.child_process
+                if child is not None:
+                    child_terminal = initialize_process_pair(child)
+                    process['pending_call'] = {
+                        'node_id': node['id'], 'node_index': current_id,
+                        'child_process_id': child['process_id'],
+                        'trace_index': len(process['node_trace']),
+                    }
+                    trace.update(status='waiting', child_process_id=child['process_id'])
                 else:
-                    process.update(status='completed', result=node.pop('_workflow_result', {}))
+                    trace['status'] = 'waiting'
+            else:
+                process['current_node_id'] = current_id
+                process['control_port'] = node.get('_selected_control_port')
+                if outcome == WORKFLOW_END:
+                    if node.get('type') == 'function_output':
+                        if not process.get('function_stack'):
+                            raise ValueError('function output has no caller')
+                        workflow_map = _pop_function(process, node)
+                        # Persisted caller frames have no runtime bindings.
+                        bind_runtime_context(workflow_map)
+                    else:
+                        process.update(status='completed', result=node.pop('_workflow_result', {}))
+                if process['status'] == 'ready':
+                    current_id = _next_process_node(process, workflow_map)
+            trace['duration_ms'] = round((time.perf_counter() - node_started) * 1000)
+            if trace['status'] != 'waiting':
+                trace['finished_at'] = datetime.now(timezone.utc).isoformat()
+            process['node_trace'].append(trace)
+            trace_pending = False
+            trace = None
+            if process['status'] != 'ready':
+                break
+            if (time.perf_counter() - started) * 1000 >= SCHEDULER_TIME_SLICE_MS:
+                break
     except Exception as error:
         logger.exception('failed to execute process %s', process_id)
         process.update(status='failed', wait_for=None, error=str(error))
         child = child_terminal = None
         _finish_call_trace(process, 'failed', str(error))
-        if trace is not None:
+        if trace_pending and trace is not None:
             trace.update(status='failed', error=str(error))
     finally:
         elapsed_ms = (time.perf_counter() - started) * 1000
         process['active_duration_ms'] += elapsed_ms
-        if trace is not None:
-            trace['duration_ms'] = round(elapsed_ms)
+        if trace_pending and trace is not None:
+            trace['duration_ms'] = round((time.perf_counter() - node_started) * 1000)
             if trace['status'] != 'waiting':
                 trace['finished_at'] = datetime.now(timezone.utc).isoformat()
             process['node_trace'].append(trace)

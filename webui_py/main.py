@@ -26,7 +26,7 @@ logger = logging.getLogger("aagent.webui")
 
 MAX_TERMINAL_BODY_BYTES = 1024 * 1024
 MAX_PROCESS_BODY_BYTES = 256 * 1024
-MAX_FILE_BODY_BYTES = 1024 * 1024
+MAX_FILE_BODY_BYTES = 128 * 1024 * 1024
 
 
 def env(name: str, fallback: str) -> str:
@@ -158,7 +158,7 @@ async def request_body_guard(request: Request, call_next):
     if request.method in {"POST", "PUT"} and (
         request.url.path == "/api/files" or request.url.path.startswith("/api/files/")
     ):
-        body_limit = (MAX_FILE_BODY_BYTES, "文件请求体不能超过 1 MB")
+        body_limit = (MAX_FILE_BODY_BYTES, "文件请求体不能超过 128 MB")
     if body_limit:
         content_length = request.headers.get("content-length")
         if content_length:

@@ -131,13 +131,26 @@ def enqueue_terminal_input(client, terminal_id: str, content: str) -> dict | Non
 
 
 def read_terminal_input_queue(client, terminal_process_id: str) -> list[str]:
-    """Snapshot pending input; commit_process acknowledges it with node progress."""
+    """Atomically take all pending input, independently of workflow commits."""
     if not isinstance(terminal_process_id, str) or not terminal_process_id.strip():
         raise ValueError("terminal_process_id must be a non-empty string")
-    terminal = _read_process_record(client, terminal_process_id)
-    if terminal.get("process_type") != "terminal":
-        raise ValueError("terminal process required")
-    return list(terminal.get("input_queue", []))
+    while True:
+        with client.pipeline() as pipe:
+            try:
+                pipe.watch(PROCESSTABLE)
+                terminal = _read_process_record(pipe, terminal_process_id)
+                if terminal.get("process_type") != "terminal":
+                    raise ValueError("terminal process required")
+                contents = list(terminal.get("input_queue", []))
+                if not contents:
+                    return []
+                terminal["input_queue"] = []
+                pipe.multi()
+                pipe.hset(PROCESSTABLE, terminal_process_id, _encode_process(terminal))
+                pipe.execute()
+                return contents
+            except redis.WatchError:
+                continue
 
 
 TERMINAL_STATUSES = {"completed", "failed", "terminated", "killed", "lost"}
@@ -323,18 +336,9 @@ def commit_process(client, process: dict, child: dict | None = None,
                         or saved.get("execution_id") != process.get("execution_id")):
                     return saved
                 candidate = copy.deepcopy(process)
-                batch = candidate.pop("_terminal_input_batch", None)
                 records = {process_id: candidate}
                 terminal_process_id = candidate.get("terminal_process_id")
                 terminal = existing.get(terminal_process_id)
-                if batch and candidate.get("status") == "ready":
-                    if terminal is None or terminal.get("parent_process_id") != process_id:
-                        raise ValueError("terminal input owner mismatch")
-                    queue = terminal.get("input_queue", [])
-                    if queue[:len(batch)] != batch:
-                        raise ValueError("terminal input queue changed before commit")
-                    terminal["input_queue"] = queue[len(batch):]
-                    records[terminal_process_id] = terminal
                 if (candidate.get("status") == "blocked"
                         and candidate.get("wait_for") == {
                             "kind": "terminal_message", "process_id": terminal_process_id}

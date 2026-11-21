@@ -36,18 +36,17 @@ class WorkflowFormatMigrationTest(unittest.TestCase):
         self.assertEqual(canonical["metadata"]["structs"][0]["name"], "Profile")
         self.assertEqual(document, before)
         validate_workflow(canonical)
-        validate_workflow(document)
-        self.assertEqual(parse_workflow(canonical), parse_workflow(document))
+        parse_workflow(canonical)
 
 
     def test_legacy_document_compiles_to_only_new_fields_without_mutation(self):
         original = legacy_workflow()
         before = copy.deepcopy(original)
-        validate_workflow(original)
-        compiled = parse_workflow(original)
+        canonical = migrate_subprocess_workflow_format(original)
+        validate_workflow(canonical)
+        compiled = parse_workflow(canonical)
         self.assertEqual(compiled[1]["type"], "spawn_and_wait_subprocess")
         self.assertEqual(compiled[1]["arguments"], {})
-        canonical = migrate_subprocess_workflow_format(original)
         self.assertNotIn("workflow_nodes", canonical)
         self.assertNotIn("subprocess_workflow_files", canonical)
         self.assertEqual(original, before)
@@ -64,8 +63,9 @@ class WorkflowFormatMigrationTest(unittest.TestCase):
     def test_legacy_fixed_call_requires_explicit_json_port_conversion(self):
         original = legacy_workflow()
         original["nodes"][1]["arguments"] = {"workflow_name": "Child.flow"}
+        migrated = migrate_subprocess_workflow_format(original)
         with self.assertRaisesRegex(WorkflowValidationError, "unsupported fields: workflow_file"):
-            validate_workflow(original)
+            validate_workflow(migrated)
 
     def test_malformed_nodes_report_validation_errors(self):
         document = empty_workflow()

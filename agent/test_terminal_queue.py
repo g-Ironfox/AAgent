@@ -80,15 +80,71 @@ class TerminalQueueTest(unittest.TestCase):
         self.assertEqual(sum(e["event"] == "woken" for e in final["events"]), 1)
 
     def test_consumed_messages_do_not_reappear_in_the_next_read(self):
-        root = self.start(queue_document(reads=2))
-        self.send(root, "old")
+        self.assert_separate_read_batches(0)
+
+    def test_same_time_slice_does_not_read_consumed_messages_twice(self):
+        self.assert_separate_read_batches(500)
+
+    def assert_separate_read_batches(self, slice_ms):
+        with patch("main.SCHEDULER_TIME_SLICE_MS", slice_ms):
+            root = self.start(queue_document(reads=2))
+            self.send(root, "old")
+            self.drain()
+            self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+            self.assertEqual(self.queue(root), [])
+            self.send(root, "new")
+            self.drain()
+            self.assertEqual(main.read_process(root["process_id"])["result"],
+                             {"batch0": ["old"], "batch1": ["new"]})
+
+    def test_read_consumes_and_propagates_before_workflow_commit(self):
+        root = self.start(queue_document())
+        self.send(root, "immediate")
+        main.schedule_once(timeout=1)
+        execute = main.execute_node
+        observed = []
+
+        def observe_read(index, graph):
+            outcome = execute(index, graph)
+            if graph[index]["type"] == "read_terminal_queue":
+                self.assertEqual(self.queue(root), [])
+                output = next(node for node in graph if node["type"] == "output")
+                self.assertEqual(output["data_inputs"]["workflow:batch0"][2], ["immediate"])
+                observed.append(graph[index]["id"])
+            return outcome
+
+        with patch("main.execute_node", side_effect=observe_read):
+            main.schedule_once(timeout=1)
+        self.assertEqual(observed, ["read0"])
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.assertEqual(main.read_process(root["process_id"])["result"], {"batch0": ["immediate"]})
+
+    def test_read_before_subprocess_wait_consumes_input(self):
+        self.documents["Child.flow"] = support.document("Child", wait=True)
+        doc = support.document("Root", child="Child.flow")
+        doc["nodes"].append({"id": "read-before-child", "type": "read_terminal_queue"})
+        entry = next(edge for edge in doc["connections"]
+                     if edge["fromId"] == "in" and edge["type"] == "control")
+        following = entry["toId"]
+        entry["toId"] = "read-before-child"
+        doc["connections"].append(support.edge("read-before-child", following))
+        root = self.start(doc)
+        self.send(root, "parent input")
+        with patch("main.SCHEDULER_TIME_SLICE_MS", 500):
+            self.drain()
+        saved = main.read_process(root["process_id"])
+        self.assertEqual(saved["status"], "blocked")
+        self.assertEqual(saved["wait_for"]["kind"], "process_exit")
         self.assertEqual(self.queue(root), [])
-        self.send(root, "new")
-        self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["result"],
-                         {"batch0": ["old"], "batch1": ["new"]})
+
+    def test_queue_take_retries_concurrent_append_without_losing_input(self):
+        root = self.start(queue_document())
+        self.send(root, "first")
+        self.redis.before_execute = lambda: self.send(root, "second")
+        batch = repository.read_terminal_input_queue(self.redis, root["terminal_process_id"])
+        self.assertEqual(batch, ["first", "second"])
+        self.assertEqual(self.queue(root), [])
+        self.assertEqual(repository.read_terminal_input_queue(self.redis, root["terminal_process_id"]), [])
 
     def test_input_between_empty_read_and_suspend_does_not_get_stranded(self):
         root = self.start(queue_document())
@@ -134,22 +190,22 @@ class TerminalQueueTest(unittest.TestCase):
         saved = main.read_process(root["process_id"])
         self.assertEqual(sum(e["event"] == "woken" for e in saved["events"]), 1)
 
-    def test_failed_commit_does_not_consume_input(self):
+    def test_failed_commit_does_not_restore_consumed_input(self):
         root = self.start(queue_document())
-        self.send(root, "retain until committed")
+        self.send(root, "consume immediately")
         main.schedule_once(timeout=1)
         with patch("main.commit_process", side_effect=RuntimeError("commit unavailable")):
             with self.assertRaisesRegex(RuntimeError, "commit unavailable"):
                 main.schedule_once(timeout=1)
-        self.assertEqual(self.queue(root), ["retain until committed"])
+        self.assertEqual(self.queue(root), [])
 
-    def test_fenced_worker_cannot_consume_input(self):
+    def test_fenced_commit_does_not_change_input_queue(self):
         root = self.start(queue_document())
         self.send(root, "keep")
         claimed, acquired = repository.claim_process(self.redis, root["process_id"])
         self.assertTrue(acquired)
         stale = copy.deepcopy(claimed)
-        stale.update(status="ready", execution_id="stale", _terminal_input_batch=["keep"])
+        stale.update(status="ready", execution_id="stale")
         saved = repository.commit_process(self.redis, stale)
         self.assertEqual(saved["execution_id"], claimed["execution_id"])
         self.assertEqual(self.queue(root), ["keep"])

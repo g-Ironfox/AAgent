@@ -280,7 +280,7 @@ Workflow 2.0 的 `schema_version` 必须精确为字符串 `2.0`。Agent 和管�
 - `construct_content.append_items` 必须为非空数组。每项是 object，`type` 必须为 `fixed` 或 `port`。固定项恰含 `type`、`value`，且 value 为字符串；端口项恰含 `type`、`port_id`，且 port_id 为非空字符串。端口 ID 不重复，且端口项 ID 集合与 `dataInputPorts` 一致。按条目顺序拼接；运行时缺失的端口值跳过，非字符串值转换为字符串。
 - `construct_map_content.mappings` 必须为非空数组。每项必须包含非空字符串 `key` 且 key 唯一。固定值项含 `key`、`value`，可以附 `value_source` 且其值必须为 `fixed`；value 为字符串。端口项恰含 `key`、`value_source`、`port_id`，其中 value_source 固定为 `port`，port_id 非空且唯一，不得为控制端口，并与 `dataInputPorts` 一致。端口运行值必须为已提供的字符串；输出保留条目顺序。
 - `map_content_get` 按 key 查值；查不到时执行失败。
-- `read_terminal_queue` 从当前终端进程的 Redis `input_queue` 缓冲区读取全部未消费消息，按到达顺序输出到 `list-out: list-content`。消费队列与保存节点输出、推进工作流进度在同一 Redis 事务中提交；读取期间新追加的消息留给下次读取。队列为空时保留当前节点为待执行节点，将进程设为 `blocked`，`wait_for` 指向关联终端进程的 `terminal_message`。终端事件必须携带 `terminal_id` 和文本 `content`；内核原子追加正文并唤醒等待者，唤醒后重试本节点。有消息在检查队列与挂起提交之间到达时，提交会发现队列非空并保持进程就绪。就绪、运行或等待子进程退出期间到达的输入也会保存在被路由到的终端进程中。MongoDB 终端历史仅供 WebUI 展示，不参与内核消费。终端输出不进入输入缓冲区。进程完成、失败或终止时清空其终端缓冲区。
+- `read_terminal_queue` 从当前终端进程的 Redis `input_queue` 缓冲区读取全部未消费消息，按到达顺序输出到 `list-out: list-content`。读取时通过 Redis 事务原子取出并清空当前批次，立即将值传播到下游输入端口，不等待时间片结束或工作流进度提交；出队事务完成后新追加的消息留给下次读取，同一时间片内后续读取不会重复获得已消费消息。消费完成后即使后续节点或进程提交失败，也不将消息放回队列。队列为空时保留当前节点为待执行节点，将进程设为 `blocked`，`wait_for` 指向关联终端进程的 `terminal_message`。终端事件必须携带 `terminal_id` 和文本 `content`；内核原子追加正文并唤醒等待者，唤醒后重试本节点。有消息在检查队列与挂起提交之间到达时，提交会发现队列非空并保持进程就绪。就绪、运行或等待子进程退出期间到达的输入也会保存在被路由到的终端进程中。MongoDB 终端历史仅供 WebUI 展示，不参与内核消费。终端输出不进入输入缓冲区。进程完成、失败或终止时清空其终端缓冲区。
 - `output_to_terminal` 将 `content-in` 非空字符串追加到当前进程关联的终端，不产生事件，并沿控制流继续执行。
 - `deserialize_json.outputs` 必须为非空数组，key 非空且唯一，type 为四种内建数据类型之一。输入必须解析为 object，且包含每个配置 key。除 `content` 外，值须符合声明类型；`content` 保持字符串原值，非字符串值（包括 null）紧凑 JSON 序列化为字符串；`list-content` 对每个元素执行相同转换。其余内建类型严格按类型验证。
 - `construct_list.item_type` 允许 `content` 或已声明的 `struct:<id>`；`initial_value_count` 为 0 到 20 的整数。`dataInputPorts` 必须恰为该数量的 `<item_type>-in-N` 端口。输出列表类型为 `list-content` 或 `list-struct:<id>`。
@@ -367,9 +367,9 @@ While Pop 与 Foreach 使用相同的生命周期和循环体限制：`item-out`
 
 Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KERNEL_DB`（默认 1），配置要求两个编号不同。进程表、ready 队列、blocked 集合、内部终端索引和 Workflow Context 全部存于内核库；外部事件队列 `external_events`、公共终端状态 `terminal_sessions` 和工具注册存于公共库。WebUI 只连接公共库。
 
-当前采用单个 runtime 调度循环：先从内核 ready 队列非阻塞 `RPOP` 一个进程，执行一个节点后将公共库的外部事件逐个 `RPOP` 处理完；ready 为空时只在公共库的 `external_events` 上 `BRPOP`。外部事件产生新的 ready 进程后，下一轮继续执行，无需跨库阻塞取队列或增加轮询等待。外部事件的阻塞连接不设 socket 读取超时。
+当前采用单个 runtime 调度循环：先从内核 ready 队列非阻塞 `RPOP` 一个进程，在同一轮中连续执行节点，直到进程挂起、完成或失败，或调度时间片耗尽；随后将公共库的外部事件逐个 `RPOP` 处理完。ready 为空时只在公共库的 `external_events` 上 `BRPOP`。外部事件产生新的 ready 进程后，下一轮继续执行，无需跨库阻塞取队列或增加轮询等待。外部事件的阻塞连接不设 socket 读取超时。
 
-调度器原子领取 `ready` 进程，设为 `running` 并记录本次 execution ID，每次只执行一个节点。完成后原子保存图、索引和状态，并更新就绪队列或阻塞集合。重复队列项不能执行 `running`、`blocked` 或终态进程；被终止的旧执行结果不能覆盖终态。多层调用重复相同规则，无需嵌套同步 runner。
+调度器原子领取 `ready` 进程，设为 `running` 并记录本次 execution ID。默认调度时间片为 500 ms，仅在节点执行边界检查，因此是软上限：单个耗时节点不可被时间片抢占，单轮调度可能超过 500 ms。时间片耗尽时，将进程以 `ready` 状态连同图、索引及逐节点 trace 一起提交并重新入队；节点请求挂起或子进程时立即以 `blocked` 状态提交，工作流完成或失败时立即提交终态。每个时间片内的进程状态和图变更在该轮提交时一并持久化，并非每执行一个节点就单独提交检查点；节点级 trace 条目随本轮提交保存。进程状态提交的原子性不意味着节点产生的外部副作用可回滚。重复队列项不能执行 `running`、`blocked` 或终态进程；被终止的旧执行结果不能覆盖终态。多层调用重复相同规则，无需嵌套同步 runner。
 
 子进程执行到 `output` 时收集结果到进程的 `result`；保存终态、关闭自身终端、唤醒等待该子进程退出的父进程在同一事务提交。进程表中的 `current_node_id` 表示最近完成节点；`control_port` 保存已选控制端口，调度时由其与该节点的 `successors` 解析下一节点，不持久化 `next_node_id`。首次执行使用 `current_node_id: -1` 和 `control_port: null`，从 input 节点开始。父进程下次被调度时先处理 `pending_call`，校验父子关系、状态与输出类型，从原调用节点的数据输出向下游传播，将调用节点记为最近完成节点并保存其控制端口，再清除 pending；后继节点从该节点的控制端口按需解析；不会重新执行调用节点或再次创建子进程。`failed` 和 `terminated` 同样唤醒父进程，父进程失败并保留子进程标识和错误，逐层传播。
 
@@ -381,7 +381,7 @@ Redis 公共通信使用 `REDIS_DB`（默认 0），内核状态使用 `REDIS_KE
 
 每个进程使用稳定的 `invocation_id`（缺省等于进程 ID），持久化 `context_ids` 和祖先 invocation ID 列表。每次节点执行临时恢复已有 Context 节点所需的运行作用域，保存工作流时剔除内存 set 等临时对象。子进程可沿用原有规则访问祖先 Context；自己创建的 Context 归自己所有。受进程管理的 Context 不设过期时间，挂起期间保留；进程完成、失败或显式终止时清理，Session 语义不变。
 
-执行超时按实际节点执行累计时间判断，终端等待、子进程等待和队列等待不计入；单个阻塞调用仍由其自身的工具或网络超时约束。进程日志分别记录总经过时间与 active_duration_ms。调用节点创建子进程后记为 waiting，接收子进程结果时再改为 completed 或 failed。取消入口 `terminate_process` 原子终止目标进程及仍活动的后代和终端，清理其 Context；若目标是子进程，则唤醒树外等待它的父进程。
+执行超时按 Executor 单轮执行区间累计的 active 时间判断，包含工作流 JSON 解析、恢复准备及节点执行，不包含调度轮次之间的队列等待、终端等待或子进程等待；单个阻塞节点不可被调度时间片抢占，仍由其自身的工具或网络超时约束。进程日志分别记录总经过时间与 active_duration_ms。调用节点创建子进程后记为 waiting，接收子进程结果时再改为 completed 或 failed。取消入口 `terminate_process` 原子终止目标进程及仍活动的后代和终端，清理其 Context；若目标是子进程，则唤醒树外等待它的父进程。
 
 进程记录和队列依赖现有 Redis 持久化配置。当前不提供 worker 崩溃后自动重领 running 进程或任意外部副作用恰好一次的保证；execution ID 用于防止取消后的迟到提交，不是自动重试租约。受进程管理的 Context 需通过终态清理，不能仅删除进程记录。
 

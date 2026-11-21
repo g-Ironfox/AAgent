@@ -10,7 +10,6 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from workflow_contract import (
-    migrate_subprocess_workflow_format,
     DATA_CONNECTION_TYPES,
     NODE_ARGUMENT_FIELDS,
     NODE_ARGUMENT_FIELDS_BY_TYPE,
@@ -37,10 +36,6 @@ _WORKFLOW_SCHEMA_VALIDATOR = Draft202012Validator(_WORKFLOW_SCHEMA)
 
 
 def validate_workflow(workflow: dict[str, Any]) -> None:
-    try:
-        workflow = migrate_subprocess_workflow_format(workflow)
-    except ValueError as error:
-        raise WorkflowValidationError(str(error)) from error
     if workflow.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
         raise WorkflowValidationError(
             f"workflow.schema_version must be {WORKFLOW_SCHEMA_VERSION}"

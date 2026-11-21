@@ -35,8 +35,9 @@ INITIAL_EXPERIENCE = """# ALFWorld 任务经验
 """
 REVIEW_PROMPT = (
     "你维护唯一的 ALFWorld 经验文档。根据旧经验与本轮 JSON 记录，输出完整新版 Markdown。"
-    "task 是初始观察；result 是最后的环境观察 JSON；attempts 是按时间排列的轨迹 JSON 字符串。"
-    "轨迹包含所有观察以及逐轮主流程结果、原生 reasoning 历史和恢复尝试。"
+    "task 是初始观察 JSON；result 是最后的环境观察 JSON；events 是按时间排列的事件对象数组。"
+    "observation 事件的 observation 是环境观察 JSON 字符串；turn 事件只包含本轮新增的 action、reasoning 和恢复尝试 attempts。"
+    "attempts 只记录状态、错误、checkpoint_seq 和 source，不重复包含完整历史。"
     "以最后观察的 success/score/done/truncated/reason 判断解题结果，completed/recovered 仅指流程执行状态。"
     "只有 success=true 才可确认任务成功；max_steps、runner_error 和主流程异常不能标成解题成功。"
     "总结有证据的搜索、拿取、放置、清洁、加热、冷却方法及无效动作教训，去重并保留有效旧经验。"
@@ -48,16 +49,22 @@ SESSION_FIELDS = [("run", "struct:Run")] + [(name + "_id", "content") for name i
     ("history", "trace", "state", "last", "tokens", "recovery")]
 
 
-def append_context(g, prefix, context, item):
-    """Append one JSON string to a list context; return control endpoints."""
-    read = g.ctx(prefix + "_read", "read")
+EVENTS_TYPE = "list-struct:EpisodeEvent"
+ATTEMPTS_TYPE = "list-struct:RecoveryAttempt"
+RECOVERY_ATTEMPT_FIELDS = [(name, kind) for name, kind in ATTEMPT_FIELDS if name != "result"]
+
+
+def append_context(g, prefix, context, item, value_type="list-content"):
+    """Append one typed item to a list context; return control endpoints."""
+    read = g.ctx(prefix + "_read", "read", value_type)
     g.data(*context[:2], read, "context-id")
-    append = g.node(prefix + "_append", "list_append", arguments={"item_type": "content", "position": "end"})
-    g.data(read, "value-out", append, "list-in", "list-content")
-    g.data(*item[:2], append, "item-in")
-    write = g.ctx(prefix + "_write", "write")
+    item_type = value_type.removeprefix("list-")
+    append = g.node(prefix + "_append", "list_append", arguments={"item_type": item_type, "position": "end"})
+    g.data(read, "value-out", append, "list-in", value_type)
+    g.data(*item[:2], append, "item-in", item_type)
+    write = g.ctx(prefix + "_write", "write", value_type)
     g.data(*context[:2], write, "context-id")
-    g.data(append, "list-out", write, "value-in", "list-content")
+    g.data(append, "list-out", write, "value-in", value_type)
     g.chain(read, append, write)
     return read, write
 
@@ -129,6 +136,7 @@ def add_initialize_episode(g):
     fi = g.function("initialize_episode", [("observation", "content")], [("session", "struct:AlfworldSession")])
     g.call("initialize_record", "initialize_run", {"task": (fi, "function:observation")})
     g.node("empty_episode_list", "construct_list", arguments={"item_type": "content", "initial_value_count": 0}, dataInputPorts=[])
+    g.node("empty_episode_trace", "construct_list", arguments={"item_type": "struct:EpisodeEvent", "initial_value_count": 0}, dataInputPorts=[])
     completed = g.const("episode_completed", "completed")
     empty = g.const("episode_empty_error", "")
     g.make_struct("initial_episode_state", "Outcome", {"status": (completed, "content-out", "content"),
@@ -137,7 +145,7 @@ def add_initialize_episode(g):
     previous = "initial_cursor"
     for name, kind, source in (
         ("history", "list-content", ("empty_episode_list", "list-out")),
-        ("trace", "list-content", ("empty_episode_list", "list-out")),
+        ("trace", EVENTS_TYPE, ("empty_episode_trace", "list-out")),
         ("tokens", "list-content", ("empty_episode_list", "list-out")),
         ("state", "struct:Outcome", ("initial_episode_state", "struct-out")),
         ("last", "content", (fi, "function:observation")),
@@ -150,7 +158,7 @@ def add_initialize_episode(g):
     g.make_struct("session", "AlfworldSession", {"run": ("initialize_record", "function:run", "struct:Run"),
         **{name + "_id": ("episode_" + name, "context-id", "content") for name in ("history", "trace", "state", "last", "tokens", "recovery")}})
     ret = result(g, "initialize_episode_return", "initialize_episode", {"session": ("session", "struct-out", "struct:AlfworldSession")})
-    g.chain(fi, "initialize_record", "empty_episode_list", completed, empty, "initial_episode_state", "initial_cursor")
+    g.chain(fi, "initialize_record", "empty_episode_list", "empty_episode_trace", completed, empty, "initial_episode_state", "initial_cursor")
     g.chain(previous, "session", ret)
 
 
@@ -158,7 +166,7 @@ def add_save_episode(g):
     fi = g.function("save_episode", [("session", "struct:AlfworldSession")])
     ss, se, session = session_fields(g, fi, "save_session", ("run", "trace_id", "state_id", "last_id"))
     rs, re, run = unpack(g, "save_run", "Run", session["run"], RUN_FIELDS)
-    g.ctx("save_trace", "read")
+    g.ctx("save_trace", "read", EVENTS_TYPE)
     g.data(*session["trace_id"][:2], "save_trace", "context-id")
     g.ctx("save_state", "read", "struct:Outcome")
     g.data(*session["state_id"][:2], "save_state", "context-id")
@@ -166,7 +174,7 @@ def add_save_episode(g):
     g.data(*session["last_id"][:2], "save_last", "context-id")
     os, oe, outcome = unpack(g, "save_outcome", "Outcome", ("save_state", "value-out"), OUTCOME_FIELDS)
     ps, pe = pack(g, "episode_progress", {"task": run["task"], "status": outcome["status"], "error": outcome["error"],
-        "result": ("save_last", "value-out"), "attempts": ("save_trace", "value-out", "list-content"),
+        "result": ("save_last", "value-out"), "events": ("save_trace", "value-out", EVENTS_TYPE),
         "checkpoint_before": run["checkpoint_before"], "workspace_before": run["workspace_before"]})
     g.call("persist_episode", "write_record", {"record_id": run["record_id"], "record_name": run["record_name"], "content": (pe, "content-out")})
     ret = result(g, "save_episode_return", "save_episode", {})
@@ -209,35 +217,78 @@ def add_solve_turn(g):
     ss, se, session = session_fields(g, fi, "solve_session", ("run", "history_id", "trace_id", "state_id", "recovery_id"))
     rs, re, run = unpack(g, "solve_run", "Run", session["run"], RUN_FIELDS)
     previous = re
-    for name, kind in (("history", "list-content"), ("trace", "list-content"), ("recovery", "number")):
+    for name, kind in (("history", "list-content"), ("recovery", "number")):
         g.ctx("solve_" + name, "read", kind)
         g.data(*session[name + "_id"][:2], "solve_" + name, "context-id")
         g.control(previous, "solve_" + name)
         previous = "solve_" + name
     ts, te = pack(g, "turn_task", {"observation": (fi, "function:observation"),
-        "history": ("solve_history", "value-out", "list-content"), "trajectory": ("solve_trace", "value-out", "list-content")})
+        "history": ("solve_history", "value-out", "list-content")})
     g.make_struct("turn_run", "Run", {**run, "task": (te, "content-out", "content"),
         "checkpoint_before": ("solve_recovery", "value-out", "number")})
     g.call("recover_turn", "run_with_recovery", {"run": ("turn_run", "struct-out", "struct:Run")})
-    es, ee = pack(g, "turn_event", {"observation": (fi, "function:observation"),
+    g.call("turn_event", "record_turn", {"observation": (fi, "function:observation"),
         "outcome": ("recover_turn", "function:outcome", "struct:Outcome"),
-        "attempts": ("recover_turn", "function:attempts", "list-content")})
-    aps, ape = append_context(g, "trace_turn", session["trace_id"], (ee, "content-out"))
-    g.node("last_attempt", "list_get", arguments={"value_type": "list-content", "index_source": "fixed", "index": -1})
-    g.data("recover_turn", "function:attempts", "last_attempt", "list-in", "list-content")
-    parse(g, "attempt_cursor", ("last_attempt", "item-out"), [("checkpoint_seq", "number")])
+        "attempts": ("recover_turn", "function:attempts", ATTEMPTS_TYPE)})
+    aps, ape = append_context(g, "trace_turn", session["trace_id"], ("turn_event", "function:event"), EVENTS_TYPE)
+    g.node("last_attempt", "list_get", arguments={"value_type": ATTEMPTS_TYPE, "index_source": "fixed", "index": -1})
+    g.data("recover_turn", "function:attempts", "last_attempt", "list-in", ATTEMPTS_TYPE)
+    g.get("attempt_cursor", "RecoveryAttempt", "checkpoint_seq", "last_attempt", "item-out")
     g.ctx("advance_recovery", "write", "number")
     g.data(*session["recovery_id"][:2], "advance_recovery", "context-id")
-    g.data("attempt_cursor", "checkpoint_seq", "advance_recovery", "value-in", "number")
+    g.data("attempt_cursor", "value-out", "advance_recovery", "value-in", "number")
     g.call("apply_turn", "apply_outcome", {"state_id": session["state_id"], "outcome": ("recover_turn", "function:outcome", "struct:Outcome")})
     g.call("save_turn", "save_episode", {"session": (fi, "function:session", "struct:AlfworldSession")})
     ret = result(g, "solve_turn_return", "solve_turn", {"outcome": ("recover_turn", "function:outcome", "struct:Outcome")})
     g.chain(fi, ss)
     g.control(se, rs)
     g.control(previous, ts)
-    g.chain(te, "turn_run", "recover_turn", es)
-    g.control(ee, aps)
+    g.chain(te, "turn_run", "recover_turn", "turn_event", aps)
     g.chain(ape, "last_attempt", "attempt_cursor", "advance_recovery", "apply_turn", "save_turn", ret)
+
+
+def make_episode_event(g, node_id, bindings):
+    g.make_struct(node_id, "EpisodeEvent", bindings)
+    definition = next(item for item in g.doc["metadata"]["structs"] if item["id"] == "EpisodeEvent")
+    node = next(item for item in g.doc["nodes"] if item["id"] == node_id)
+    node["dataInputPorts"] = [field["name"] for field in definition["fields"]]
+
+
+def add_record_turn(g):
+    fi = g.function("record_turn", [("observation", "content"), ("outcome", "struct:Outcome"),
+                    ("attempts", ATTEMPTS_TYPE)], [("event", "struct:EpisodeEvent")])
+    os, oe, outcome = unpack(g, "recorded_outcome", "Outcome", (fi, "function:outcome"), OUTCOME_FIELDS)
+    parse(g, "recorded_observation", (fi, "function:observation"), [("step", "number")])
+    event_type = g.const("turn_event_type", "turn")
+    fields = {"type": (event_type, "content-out", "content"),
+        "step": ("recorded_observation", "step", "number"), "status": outcome["status"],
+        "error": outcome["error"], "attempts": (fi, "function:attempts", ATTEMPTS_TYPE)}
+    g.node("recorded_status", "router", arguments={"branches": [{"id": "failed", "name": "failed"}]})
+    g.data(*outcome["status"][:2], "recorded_status", "content-in")
+    make_episode_event(g, "failed_turn_event", fields)
+    failed = result(g, "record_failed_turn_return", "record_turn", {
+        "event": ("failed_turn_event", "struct-out", "struct:EpisodeEvent")})
+    parse(g, "recorded_reply", outcome["result"][:2], [("action", "content"), ("history", "list-content")])
+    g.node("recorded_last_message", "list_get", arguments={"value_type": "list-content", "index_source": "fixed", "index": -1})
+    g.data("recorded_reply", "history", "recorded_last_message", "list-in", "list-content")
+    g.node("recorded_assistant", "json_to_struct", arguments={"value_type": "struct:RecordedAssistant"})
+    g.data("recorded_last_message", "item-out", "recorded_assistant", "content-in")
+    empty = g.const("recorded_empty_reasoning", "")
+    g.node("recorded_reasoning", "struct_get", arguments={"struct_id": "RecordedAssistant",
+           "field": "reasoning_content", "missing": "fallback", "has_fallback": True}, dataInputPorts=["struct-in", "fallback-in"])
+    g.data("recorded_assistant", "value-out", "recorded_reasoning", "struct-in", "struct:RecordedAssistant")
+    g.data(empty, "content-out", "recorded_reasoning", "fallback-in")
+    make_episode_event(g, "successful_turn_event", {**fields,
+        "action": ("recorded_reply", "action", "content"), "reasoning": ("recorded_reasoning", "value-out", "content")})
+    success = result(g, "record_successful_turn_return", "record_turn", {
+        "event": ("successful_turn_event", "struct-out", "struct:EpisodeEvent")})
+    g.chain(fi, os)
+    g.chain(oe, "recorded_observation", event_type, "recorded_status")
+    g.control("recorded_status", "failed_turn_event", "failed")
+    g.control("failed_turn_event", failed)
+    g.control("recorded_status", "recorded_reply", "branch$others")
+    g.chain("recorded_reply", "recorded_last_message", "recorded_assistant", empty,
+            "recorded_reasoning", "successful_turn_event", success)
 
 
 def add_publish_action(g):
@@ -268,7 +319,10 @@ def add_process_observation(g):
     g.ctx("remember_observation", "write", "content")
     g.data(*session["last_id"][:2], "remember_observation", "context-id")
     g.data(fi, "function:observation", "remember_observation", "value-in")
-    aps, ape = append_context(g, "trace_observation", session["trace_id"], (fi, "function:observation"))
+    event_type = g.const("observation_event_type", "observation")
+    make_episode_event(g, "observation_event", {
+        "type": (event_type, "content-out", "content"), "observation": (fi, "function:observation", "content")})
+    aps, ape = append_context(g, "trace_observation", session["trace_id"], ("observation_event", "struct-out"), EVENTS_TYPE)
     g.call("save_observation", "save_episode", {"session": (fi, "function:session", "struct:AlfworldSession")})
     parse(g, "observation", (fi, "function:observation"), [("done", "content"), ("episode_id", "content"), ("step", "number")])
     g.node("episode_done", "router", arguments={"branches": [{"id": "done", "name": "true"}]})
@@ -288,7 +342,7 @@ def add_process_observation(g):
     g.data(ee, "content-out", "send_error", "content-in")
     failed = result(g, "observation_failed", "process_observation", {})
     g.chain(fi, ss)
-    g.chain(se, "remember_observation", aps)
+    g.chain(se, "remember_observation", event_type, "observation_event", aps)
     g.chain(ape, "save_observation", "observation", "episode_done")
     g.control("episode_done", done, "done")
     g.control("episode_done", "solve", "branch$others")
@@ -306,7 +360,7 @@ def add_finish_episode(g):
                     [("status", "content"), ("result", "content"), ("record_file_id", "content")])
     ss, se, session = session_fields(g, fi, "finish_session", ("run", "trace_id", "state_id", "last_id"))
     previous = se
-    for name, kind in (("trace", "list-content"), ("state", "struct:Outcome"), ("last", "content")):
+    for name, kind in (("trace", EVENTS_TYPE), ("state", "struct:Outcome"), ("last", "content")):
         g.ctx("finish_" + name, "read", kind)
         g.data(*session[name + "_id"][:2], "finish_" + name, "context-id")
         g.control(previous, "finish_" + name)
@@ -314,7 +368,7 @@ def add_finish_episode(g):
     os, oe, outcome = unpack(g, "final_outcome", "Outcome", ("finish_state", "value-out"), [("status", "content"), ("error", "content")])
     g.make_struct("environment_outcome", "Outcome", {**outcome, "result": ("finish_last", "value-out", "content")})
     g.call("finalize_record", "finish_task", {"run": session["run"], "outcome": ("environment_outcome", "struct-out", "struct:Outcome"),
-        "attempts": ("finish_trace", "value-out", "list-content")})
+        "attempts": ("finish_trace", "value-out", EVENTS_TYPE)})
     ret = result(g, "finish_episode_return", "finish_episode", {name: ("finalize_record", "function:" + name)
         for name in ("status", "result", "record_file_id")})
     g.chain(fi, ss)
@@ -328,6 +382,14 @@ def build_bootstrap(main_id=MAIN_PLACEHOLDER, stable_id=STABLE_PLACEHOLDER, pref
     for name, fields in (("Run", RUN_FIELDS), ("Outcome", OUTCOME_FIELDS), ("Attempt", ATTEMPT_FIELDS),
                          ("RecoveryVersion", VERSION_FIELDS), ("AlfworldSession", SESSION_FIELDS)):
         g.struct(name, fields)
+    g.struct("RecoveryAttempt", RECOVERY_ATTEMPT_FIELDS)
+    g.struct("EpisodeEvent", [("type", "content"), ("observation", "content"), ("step", "number"),
+        ("status", "content"), ("action", "content"), ("reasoning", "content"), ("error", "content"),
+        ("attempts", ATTEMPTS_TYPE)])
+    for field in g.doc["metadata"]["structs"][-1]["fields"]:
+        field["required"] = field["name"] == "type"
+    g.struct("RecordedAssistant", [("role", "content"), ("content", "content"), ("reasoning_content", "content")])
+    g.doc["metadata"]["structs"][-1]["fields"][-1]["required"] = False
     g.call("first_observation", "read_observation", {})
     g.call("initialize", "initialize_episode", {"observation": ("first_observation", "function:observation")})
     g.get("tokens_id", "AlfworldSession", "tokens_id", "initialize", "function:session")
@@ -355,14 +417,16 @@ def build_bootstrap(main_id=MAIN_PLACEHOLDER, stable_id=STABLE_PLACEHOLDER, pref
     add_save_episode(g)
     add_apply_outcome(g)
     add_solve_turn(g)
+    add_record_turn(g)
     add_publish_action(g)
     add_process_observation(g)
     add_finish_episode(g)
-    add_bootstrap_functions(g, main_id, stable_id, prefix, terminal_summary=False)
+    add_bootstrap_functions(g, main_id, stable_id, prefix, terminal_summary=False,
+                            attempt_struct="RecoveryAttempt", events_type=EVENTS_TYPE)
     label_functions(g, {"read_and_process": "等待并处理下一条观察", "read_observation": "读取环境观察",
         "initialize_episode": "初始化 episode", "save_episode": "持久化 episode 轨迹",
         "choose_episode_status": "保留恢复状态", "apply_outcome": "累计执行状态与错误",
-        "solve_turn": "生成动作并按需恢复", "publish_action": "发送动作并等待下一轮",
+        "solve_turn": "生成动作并按需恢复", "record_turn": "记录本轮新增动作与推理", "publish_action": "发送动作并等待下一轮",
         "process_observation": "处理观察或结束信号", "finish_episode": "保存环境结果并迭代经验"})
     return g.doc
 
@@ -382,10 +446,44 @@ def build_bundle(model=MODEL_PLACEHOLDER, experience_id=EXPERIENCE_PLACEHOLDER,
     ]
 
 
-def write_examples(destination=DESTINATION, **options):
+def _deployment_bindings(document):
+    """Read concrete dependency bindings, not arbitrary prompt/record text."""
+    bindings = {}
+    file_nodes = {"read_experience_file_id", "write_experience_file_id", "recovery_plan_file_id",
+                  "recovery_plan_stable_file_id", "read_main_file_id", "restore_main_id",
+                  "main_name", "iterator_name"}
+    for node in document.get("nodes", []):
+        arguments = node.get("arguments", {})
+        value = None
+        if node.get("type") == "llm":
+            value = arguments.get("model")
+        elif node.get("id") in file_nodes:
+            parts = arguments.get("append_items", [])
+            if len(parts) == 1 and parts[0].get("type") == "fixed":
+                value = parts[0].get("value")
+        if isinstance(value, str) and value and not value.startswith(("REPLACE_WITH_", "UNBOUND_")):
+            bindings[node["id"]] = value
+    return bindings
+
+
+def write_examples(destination=DESTINATION, *, force=False, **options):
     destination = Path(destination)
-    destination.mkdir(parents=True, exist_ok=True)
     bundle = build_bundle(**options)
+    # Preflight the whole bundle before writing even one file: a default
+    # regeneration must never silently reset an already deployed binding.
+    if not force:
+        for item in bundle:
+            path = destination / item["name"]
+            if not item["name"].endswith(".flow") or not path.exists():
+                continue
+            current = _deployment_bindings(json.loads(path.read_text(encoding="utf-8")))
+            replacement = _deployment_bindings(item["content"])
+            changed = [name for name, value in current.items() if replacement.get(name) != value]
+            if changed:
+                raise ValueError(f"Refusing to overwrite bound workflow {path}: {', '.join(changed)}. "
+                                 "Provide the existing --model/--prefix/--experience-id/--main-id/--stable-id "
+                                 "bindings, use a new output directory, or explicitly pass --force.")
+    destination.mkdir(parents=True, exist_ok=True)
     for item in bundle:
         content = item["content"]
         if not isinstance(content, str):
@@ -399,7 +497,16 @@ def write_examples(destination=DESTINATION, **options):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=MODEL_PLACEHOLDER)
+    parser.add_argument("--prefix", default="alfworld-agent")
+    parser.add_argument("--experience-id", default=EXPERIENCE_PLACEHOLDER)
+    parser.add_argument("--main-id", default=MAIN_PLACEHOLDER)
+    parser.add_argument("--stable-id", default=STABLE_PLACEHOLDER)
+    parser.add_argument("--force", action="store_true", help="explicitly allow replacing existing dependency bindings")
     parser.add_argument("--output", type=Path, default=DESTINATION)
     args = parser.parse_args()
-    write_examples(args.output, model=args.model)
+    try:
+        write_examples(args.output, model=args.model, prefix=args.prefix, experience_id=args.experience_id,
+                       main_id=args.main_id, stable_id=args.stable_id, force=args.force)
+    except ValueError as error:
+        parser.exit(1, f"Generation stopped: {error}\n")
     print(args.output)

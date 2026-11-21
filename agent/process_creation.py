@@ -65,15 +65,12 @@ def build_workflow_process(
     from workflow_structs import validate_struct_definitions, validate_value
     from workflow_validator import validate_workflow
 
-    from workflow_contract import migrate_subprocess_workflow_format
-
     process_permissions = snapshot_process_permissions(permissions)
 
     if not isinstance(file_name, str) or not file_name.strip():
         raise ValueError("工作流文件名不能为空")
     if not isinstance(terminal_id, str) or not terminal_id.strip():
         raise ValueError("terminal_id must be a non-empty string")
-    document = migrate_subprocess_workflow_format(document)
     validate_workflow(document)
     ports = document["input_ports"]
     unknown = set(inputs) - {port["name"] for port in ports}

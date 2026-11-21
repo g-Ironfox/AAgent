@@ -322,3 +322,33 @@ def get_file_recovery_plan(file_id: str, stable_file_id: str, checkpoint_seq: in
     from workflow_recovery import build_file_recovery_plan
 
     return build_file_recovery_plan(file_id, stable_file_id, checkpoint_seq, _request)
+
+
+@tool(
+    "只读校验 ALFWorld main 候选：检查版本、Workflow 2.0 编译、接口及只读能力边界，不执行也不写入候选",
+    {
+        "type": "object",
+        "properties": {
+            "file_id": {"type": "string", "minLength": 1},
+            "revision": {"type": "integer", "minimum": 0},
+            "proposal": {"type": "string", "maxLength": 1_000_000},
+        },
+        "required": ["file_id", "revision", "proposal"],
+        "additionalProperties": False,
+    },
+    name="workspace.prepare_main_update",
+    output_schema={
+        "type": "object",
+        "properties": {
+            "status": {"type": "string"}, "content": {"type": "string"},
+            "error": {"type": "string"}, "name": {"type": "string"},
+            "revision": {"type": "integer"},
+        },
+        "required": ["status", "content", "error", "name", "revision"],
+    },
+)
+def prepare_workspace_main_update(file_id: str, revision: int, proposal: str) -> dict[str, Any]:
+    from workflow_evolution import prepare_main_update
+
+    current = _request("GET", "/" + quote(file_id, safe=""))
+    return prepare_main_update(current, revision, proposal)

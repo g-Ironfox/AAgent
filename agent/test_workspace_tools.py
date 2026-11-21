@@ -44,10 +44,21 @@ class WorkspaceToolsTest(unittest.TestCase):
             "workspace.checkpoint_tree",
             "workspace.get_parent_checkpoint",
             "workspace.get_file_recovery_plan",
+            "workspace.prepare_main_update",
             "workspace.checkpoint_diff",
             "workspace.create_checkpoint",
             "workspace.restore_checkpoint",
         })
+
+    def test_main_candidate_tool_reads_with_acl_and_never_writes(self):
+        current = {"name": "example-main.flow", "content": "{}", "revision": 3}
+        expected = {"status": "rejected", "content": "", "error": "test", "name": current["name"], "revision": 3}
+        with patch.object(workspace_tools, "_request", return_value=current) as request, \
+                patch("workflow_evolution.prepare_main_update", return_value=expected) as prepare:
+            actual = workspace_tools.prepare_workspace_main_update("main/id", 3, "candidate")
+        self.assertEqual(actual, expected)
+        request.assert_called_once_with("GET", "/main%2Fid")
+        prepare.assert_called_once_with(current, 3, "candidate")
 
     @patch.dict("os.environ", {"WORKSPACE_API_URL": "http://workspace.test/"})
     def test_crud_tools_call_workspace_api(self):

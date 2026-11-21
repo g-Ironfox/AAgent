@@ -169,6 +169,102 @@
         ]
       },
       {
+        "id": "RecoveryAttempt",
+        "name": "RecoveryAttempt",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "status",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "error",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "checkpoint_seq",
+            "type": "number",
+            "required": true
+          },
+          {
+            "name": "source",
+            "type": "content",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "EpisodeEvent",
+        "name": "EpisodeEvent",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "type",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "observation",
+            "type": "content",
+            "required": false
+          },
+          {
+            "name": "step",
+            "type": "number",
+            "required": false
+          },
+          {
+            "name": "status",
+            "type": "content",
+            "required": false
+          },
+          {
+            "name": "action",
+            "type": "content",
+            "required": false
+          },
+          {
+            "name": "reasoning",
+            "type": "content",
+            "required": false
+          },
+          {
+            "name": "error",
+            "type": "content",
+            "required": false
+          },
+          {
+            "name": "attempts",
+            "type": "list-struct:RecoveryAttempt",
+            "required": false
+          }
+        ]
+      },
+      {
+        "id": "RecordedAssistant",
+        "name": "RecordedAssistant",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "role",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "content",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "reasoning_content",
+            "type": "content",
+            "required": false
+          }
+        ]
+      },
+      {
         "id": "episode_progress_fields",
         "name": "episode_progress_fields",
         "color": "#3976A8",
@@ -194,8 +290,8 @@
             "required": true
           },
           {
-            "name": "attempts",
-            "type": "list-content",
+            "name": "events",
+            "type": "list-struct:EpisodeEvent",
             "required": true
           },
           {
@@ -222,33 +318,6 @@
           },
           {
             "name": "history",
-            "type": "list-content",
-            "required": true
-          },
-          {
-            "name": "trajectory",
-            "type": "list-content",
-            "required": true
-          }
-        ]
-      },
-      {
-        "id": "turn_event_fields",
-        "name": "turn_event_fields",
-        "color": "#3976A8",
-        "fields": [
-          {
-            "name": "observation",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "outcome",
-            "type": "struct:Outcome",
-            "required": true
-          },
-          {
-            "name": "attempts",
             "type": "list-content",
             "required": true
           }
@@ -353,17 +422,7 @@
         "color": "#3976A8",
         "fields": [
           {
-            "name": "task",
-            "type": "content",
-            "required": true
-          },
-          {
             "name": "status",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "result",
             "type": "content",
             "required": true
           },
@@ -378,13 +437,8 @@
             "required": true
           },
           {
-            "name": "workspace_before",
-            "type": "content",
-            "required": true
-          },
-          {
             "name": "attempts",
-            "type": "list-content",
+            "type": "list-struct:RecoveryAttempt",
             "required": true
           }
         ]
@@ -435,13 +489,8 @@
             "required": true
           },
           {
-            "name": "workspace_changes",
-            "type": "content",
-            "required": true
-          },
-          {
-            "name": "attempts",
-            "type": "list-content",
+            "name": "events",
+            "type": "list-struct:EpisodeEvent",
             "required": true
           }
         ]
@@ -452,8 +501,48 @@
         "color": "#3976A8",
         "fields": [
           {
-            "name": "task_record",
+            "name": "status",
             "type": "content",
+            "required": true
+          },
+          {
+            "name": "result",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "error",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "task",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "checkpoint_before",
+            "type": "number",
+            "required": true
+          },
+          {
+            "name": "workspace_before",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "checkpoint_after",
+            "type": "number",
+            "required": true
+          },
+          {
+            "name": "workspace_after",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "events",
+            "type": "list-struct:EpisodeEvent",
             "required": true
           },
           {
@@ -587,6 +676,30 @@
         ]
       },
       {
+        "id": "record_turn",
+        "name": "记录本轮新增动作与推理",
+        "input_ports": [
+          {
+            "name": "observation",
+            "type": "content"
+          },
+          {
+            "name": "outcome",
+            "type": "struct:Outcome"
+          },
+          {
+            "name": "attempts",
+            "type": "list-struct:RecoveryAttempt"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "event",
+            "type": "struct:EpisodeEvent"
+          }
+        ]
+      },
+      {
         "id": "publish_action",
         "name": "发送动作并等待下一轮",
         "input_ports": [
@@ -676,7 +789,7 @@
           },
           {
             "name": "attempts",
-            "type": "list-content"
+            "type": "list-struct:RecoveryAttempt"
           }
         ]
       },
@@ -802,7 +915,7 @@
           },
           {
             "name": "attempts",
-            "type": "list-content"
+            "type": "list-struct:EpisodeEvent"
           }
         ],
         "output_ports": [
@@ -957,30 +1070,6 @@
         "output_ports": [
           {
             "name": "output",
-            "type": "content"
-          }
-        ]
-      },
-      {
-        "name": "workspace.checkpoint_diff",
-        "kind": "local",
-        "input_ports": [
-          {
-            "name": "seq",
-            "type": "number"
-          }
-        ],
-        "output_ports": [
-          {
-            "name": "seq",
-            "type": "number"
-          },
-          {
-            "name": "parent_seq",
-            "type": "content"
-          },
-          {
-            "name": "changes",
             "type": "content"
           }
         ]
@@ -1197,10 +1286,22 @@
       "dataInputPorts": []
     },
     {
+      "id": "empty_episode_trace",
+      "type": "construct_list",
+      "name": "empty episode trace",
+      "x": 860,
+      "y": 1900,
+      "arguments": {
+        "item_type": "struct:EpisodeEvent",
+        "initial_value_count": 0
+      },
+      "dataInputPorts": []
+    },
+    {
       "id": "episode_completed",
       "type": "construct_content",
       "name": "episode completed",
-      "x": 860,
+      "x": 1120,
       "y": 1900,
       "arguments": {
         "append_items": [
@@ -1216,7 +1317,7 @@
       "id": "episode_empty_error",
       "type": "construct_content",
       "name": "episode empty error",
-      "x": 1120,
+      "x": 1380,
       "y": 1900,
       "arguments": {
         "append_items": [
@@ -1232,7 +1333,7 @@
       "id": "initial_episode_state",
       "type": "construct_struct",
       "name": "initial episode state",
-      "x": 1380,
+      "x": 1640,
       "y": 1900,
       "arguments": {
         "struct_id": "Outcome"
@@ -1247,7 +1348,7 @@
       "id": "initial_cursor",
       "type": "struct_get",
       "name": "initial cursor",
-      "x": 1640,
+      "x": 1900,
       "y": 1900,
       "arguments": {
         "struct_id": "Run",
@@ -1261,7 +1362,7 @@
       "id": "episode_history",
       "type": "context_create",
       "name": "episode history",
-      "x": 1900,
+      "x": 2160,
       "y": 1900,
       "arguments": {
         "value_type": "list-content"
@@ -1271,17 +1372,17 @@
       "id": "episode_trace",
       "type": "context_create",
       "name": "episode trace",
-      "x": 2160,
+      "x": 2420,
       "y": 1900,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:EpisodeEvent"
       }
     },
     {
       "id": "episode_tokens",
       "type": "context_create",
       "name": "episode tokens",
-      "x": 2420,
+      "x": 2680,
       "y": 1900,
       "arguments": {
         "value_type": "list-content"
@@ -1291,7 +1392,7 @@
       "id": "episode_state",
       "type": "context_create",
       "name": "episode state",
-      "x": 2680,
+      "x": 2940,
       "y": 1900,
       "arguments": {
         "value_type": "struct:Outcome"
@@ -1301,7 +1402,7 @@
       "id": "episode_last",
       "type": "context_create",
       "name": "episode last",
-      "x": 2940,
+      "x": 3200,
       "y": 1900,
       "arguments": {
         "value_type": "content"
@@ -1311,7 +1412,7 @@
       "id": "episode_recovery",
       "type": "context_create",
       "name": "episode recovery",
-      "x": 3200,
+      "x": 3460,
       "y": 1900,
       "arguments": {
         "value_type": "number"
@@ -1321,7 +1422,7 @@
       "id": "session",
       "type": "construct_struct",
       "name": "session",
-      "x": 3460,
+      "x": 3720,
       "y": 1900,
       "arguments": {
         "struct_id": "AlfworldSession"
@@ -1340,7 +1441,7 @@
       "id": "initialize_episode_return",
       "type": "function_output",
       "name": "初始化 episode / 返回",
-      "x": 3720,
+      "x": 3980,
       "y": 1900,
       "function_id": "initialize_episode"
     },
@@ -1485,7 +1586,7 @@
       "x": 2680,
       "y": 2500,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:EpisodeEvent"
       }
     },
     {
@@ -1564,7 +1665,7 @@
         "status",
         "error",
         "result",
-        "attempts",
+        "events",
         "checkpoint_before",
         "workspace_before"
       ]
@@ -1953,20 +2054,10 @@
       }
     },
     {
-      "id": "solve_trace",
-      "type": "context_read",
-      "name": "solve trace",
-      "x": 3200,
-      "y": 4300,
-      "arguments": {
-        "value_type": "list-content"
-      }
-    },
-    {
       "id": "solve_recovery",
       "type": "context_read",
       "name": "solve recovery",
-      "x": 3460,
+      "x": 3200,
       "y": 4300,
       "arguments": {
         "value_type": "number"
@@ -1976,22 +2067,21 @@
       "id": "turn_task_value",
       "type": "construct_struct",
       "name": "turn task value",
-      "x": 3720,
+      "x": 3460,
       "y": 4300,
       "arguments": {
         "struct_id": "turn_task_fields"
       },
       "dataInputPorts": [
         "observation",
-        "history",
-        "trajectory"
+        "history"
       ]
     },
     {
       "id": "turn_task",
       "type": "struct_to_json",
       "name": "turn task",
-      "x": 3980,
+      "x": 3720,
       "y": 4300,
       "arguments": {
         "value_type": "struct:turn_task_fields"
@@ -2001,7 +2091,7 @@
       "id": "turn_run",
       "type": "construct_struct",
       "name": "turn run",
-      "x": 4240,
+      "x": 3980,
       "y": 4300,
       "arguments": {
         "struct_id": "Run"
@@ -2018,55 +2108,40 @@
       "id": "recover_turn",
       "type": "function_call",
       "name": "执行主流程与逐级恢复",
-      "x": 4500,
+      "x": 4240,
       "y": 4300,
       "arguments": {
         "function_id": "run_with_recovery"
       }
     },
     {
-      "id": "turn_event_value",
-      "type": "construct_struct",
-      "name": "turn event value",
-      "x": 4760,
-      "y": 4300,
-      "arguments": {
-        "struct_id": "turn_event_fields"
-      },
-      "dataInputPorts": [
-        "observation",
-        "outcome",
-        "attempts"
-      ]
-    },
-    {
       "id": "turn_event",
-      "type": "struct_to_json",
-      "name": "turn event",
-      "x": 5020,
+      "type": "function_call",
+      "name": "记录本轮新增动作与推理",
+      "x": 4500,
       "y": 4300,
       "arguments": {
-        "value_type": "struct:turn_event_fields"
+        "function_id": "record_turn"
       }
     },
     {
       "id": "trace_turn_read",
       "type": "context_read",
       "name": "trace turn read",
-      "x": 5280,
+      "x": 4760,
       "y": 4300,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:EpisodeEvent"
       }
     },
     {
       "id": "trace_turn_append",
       "type": "list_append",
       "name": "trace turn append",
-      "x": 5540,
+      "x": 5020,
       "y": 4300,
       "arguments": {
-        "item_type": "content",
+        "item_type": "struct:EpisodeEvent",
         "position": "end"
       }
     },
@@ -2074,44 +2149,43 @@
       "id": "trace_turn_write",
       "type": "context_write",
       "name": "trace turn write",
-      "x": 5800,
+      "x": 5280,
       "y": 4300,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:EpisodeEvent"
       }
     },
     {
       "id": "last_attempt",
       "type": "list_get",
       "name": "last attempt",
-      "x": 6060,
+      "x": 5540,
       "y": 4300,
       "arguments": {
-        "value_type": "list-content",
+        "value_type": "list-struct:RecoveryAttempt",
         "index_source": "fixed",
         "index": -1
       }
     },
     {
       "id": "attempt_cursor",
-      "type": "deserialize_json",
+      "type": "struct_get",
       "name": "attempt cursor",
-      "x": 6320,
+      "x": 5800,
       "y": 4300,
       "arguments": {
-        "outputs": [
-          {
-            "key": "checkpoint_seq",
-            "type": "number"
-          }
-        ]
-      }
+        "struct_id": "RecoveryAttempt",
+        "field": "checkpoint_seq"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
     },
     {
       "id": "advance_recovery",
       "type": "context_write",
       "name": "advance recovery",
-      "x": 6580,
+      "x": 6060,
       "y": 4300,
       "arguments": {
         "value_type": "number"
@@ -2121,7 +2195,7 @@
       "id": "apply_turn",
       "type": "function_call",
       "name": "累计执行状态与错误",
-      "x": 6840,
+      "x": 6320,
       "y": 4300,
       "arguments": {
         "function_id": "apply_outcome"
@@ -2131,7 +2205,7 @@
       "id": "save_turn",
       "type": "function_call",
       "name": "持久化 episode 轨迹",
-      "x": 7100,
+      "x": 6580,
       "y": 4300,
       "arguments": {
         "function_id": "save_episode"
@@ -2141,16 +2215,242 @@
       "id": "solve_turn_return",
       "type": "function_output",
       "name": "生成动作并按需恢复 / 返回",
-      "x": 7360,
+      "x": 6840,
       "y": 4300,
       "function_id": "solve_turn"
+    },
+    {
+      "id": "record_turn_in",
+      "type": "function_input",
+      "name": "记录本轮新增动作与推理 / 输入",
+      "x": 80,
+      "y": 4900,
+      "function_id": "record_turn"
+    },
+    {
+      "id": "recorded_outcome_status",
+      "type": "struct_get",
+      "name": "recorded outcome status",
+      "x": 340,
+      "y": 4900,
+      "arguments": {
+        "struct_id": "Outcome",
+        "field": "status"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "recorded_outcome_result",
+      "type": "struct_get",
+      "name": "recorded outcome result",
+      "x": 600,
+      "y": 4900,
+      "arguments": {
+        "struct_id": "Outcome",
+        "field": "result"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "recorded_outcome_error",
+      "type": "struct_get",
+      "name": "recorded outcome error",
+      "x": 860,
+      "y": 4900,
+      "arguments": {
+        "struct_id": "Outcome",
+        "field": "error"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "recorded_observation",
+      "type": "deserialize_json",
+      "name": "recorded observation",
+      "x": 1120,
+      "y": 4900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "step",
+            "type": "number"
+          }
+        ]
+      }
+    },
+    {
+      "id": "turn_event_type",
+      "type": "construct_content",
+      "name": "turn event type",
+      "x": 1380,
+      "y": 4900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "turn"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "recorded_status",
+      "type": "router",
+      "name": "recorded status",
+      "x": 1640,
+      "y": 4900,
+      "arguments": {
+        "branches": [
+          {
+            "id": "failed",
+            "name": "failed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "failed_turn_event",
+      "type": "construct_struct",
+      "name": "failed turn event",
+      "x": 1900,
+      "y": 4900,
+      "arguments": {
+        "struct_id": "EpisodeEvent"
+      },
+      "dataInputPorts": [
+        "type",
+        "observation",
+        "step",
+        "status",
+        "action",
+        "reasoning",
+        "error",
+        "attempts"
+      ]
+    },
+    {
+      "id": "record_failed_turn_return",
+      "type": "function_output",
+      "name": "记录本轮新增动作与推理 / 返回",
+      "x": 2160,
+      "y": 4900,
+      "function_id": "record_turn"
+    },
+    {
+      "id": "recorded_reply",
+      "type": "deserialize_json",
+      "name": "recorded reply",
+      "x": 2420,
+      "y": 4900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "action",
+            "type": "content"
+          },
+          {
+            "key": "history",
+            "type": "list-content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "recorded_last_message",
+      "type": "list_get",
+      "name": "recorded last message",
+      "x": 2680,
+      "y": 4900,
+      "arguments": {
+        "value_type": "list-content",
+        "index_source": "fixed",
+        "index": -1
+      }
+    },
+    {
+      "id": "recorded_assistant",
+      "type": "json_to_struct",
+      "name": "recorded assistant",
+      "x": 2940,
+      "y": 4900,
+      "arguments": {
+        "value_type": "struct:RecordedAssistant"
+      }
+    },
+    {
+      "id": "recorded_empty_reasoning",
+      "type": "construct_content",
+      "name": "recorded empty reasoning",
+      "x": 3200,
+      "y": 4900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": ""
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "recorded_reasoning",
+      "type": "struct_get",
+      "name": "recorded reasoning",
+      "x": 3460,
+      "y": 4900,
+      "arguments": {
+        "struct_id": "RecordedAssistant",
+        "field": "reasoning_content",
+        "missing": "fallback",
+        "has_fallback": true
+      },
+      "dataInputPorts": [
+        "struct-in",
+        "fallback-in"
+      ]
+    },
+    {
+      "id": "successful_turn_event",
+      "type": "construct_struct",
+      "name": "successful turn event",
+      "x": 3720,
+      "y": 4900,
+      "arguments": {
+        "struct_id": "EpisodeEvent"
+      },
+      "dataInputPorts": [
+        "type",
+        "observation",
+        "step",
+        "status",
+        "action",
+        "reasoning",
+        "error",
+        "attempts"
+      ]
+    },
+    {
+      "id": "record_successful_turn_return",
+      "type": "function_output",
+      "name": "记录本轮新增动作与推理 / 返回",
+      "x": 3980,
+      "y": 4900,
+      "function_id": "record_turn"
     },
     {
       "id": "publish_action_in",
       "type": "function_input",
       "name": "发送动作并等待下一轮 / 输入",
       "x": 80,
-      "y": 4900,
+      "y": 5500,
       "function_id": "publish_action"
     },
     {
@@ -2158,7 +2458,7 @@
       "type": "struct_get",
       "name": "publish session history id",
       "x": 340,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "struct_id": "AlfworldSession",
         "field": "history_id"
@@ -2172,7 +2472,7 @@
       "type": "struct_get",
       "name": "publish session tokens id",
       "x": 600,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "struct_id": "AlfworldSession",
         "field": "tokens_id"
@@ -2186,7 +2486,7 @@
       "type": "deserialize_json",
       "name": "reply",
       "x": 860,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "outputs": [
           {
@@ -2205,7 +2505,7 @@
       "type": "deserialize_json",
       "name": "action observation",
       "x": 1120,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "outputs": [
           {
@@ -2224,7 +2524,7 @@
       "type": "context_write",
       "name": "update history",
       "x": 1380,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "value_type": "list-content"
       }
@@ -2234,7 +2534,7 @@
       "type": "construct_content",
       "name": "action type",
       "x": 1640,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "append_items": [
           {
@@ -2250,7 +2550,7 @@
       "type": "construct_struct",
       "name": "action envelope value",
       "x": 1900,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "struct_id": "action_envelope_fields"
       },
@@ -2266,7 +2566,7 @@
       "type": "struct_to_json",
       "name": "action envelope",
       "x": 2160,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "value_type": "struct:action_envelope_fields"
       }
@@ -2276,14 +2576,14 @@
       "type": "output_to_terminal",
       "name": "send action",
       "x": 2420,
-      "y": 4900
+      "y": 5500
     },
     {
       "id": "next_observation",
       "type": "construct_content",
       "name": "next observation",
       "x": 2680,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "append_items": [
           {
@@ -2299,7 +2599,7 @@
       "type": "context_read",
       "name": "queue observation read",
       "x": 2940,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "value_type": "list-content"
       }
@@ -2309,7 +2609,7 @@
       "type": "list_append",
       "name": "queue observation append",
       "x": 3200,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "item_type": "content",
         "position": "end"
@@ -2320,7 +2620,7 @@
       "type": "context_write",
       "name": "queue observation write",
       "x": 3460,
-      "y": 4900,
+      "y": 5500,
       "arguments": {
         "value_type": "list-content"
       }
@@ -2330,7 +2630,7 @@
       "type": "function_output",
       "name": "发送动作并等待下一轮 / 返回",
       "x": 3720,
-      "y": 4900,
+      "y": 5500,
       "function_id": "publish_action"
     },
     {
@@ -2338,7 +2638,7 @@
       "type": "function_input",
       "name": "处理观察或结束信号 / 输入",
       "x": 80,
-      "y": 5500,
+      "y": 6100,
       "function_id": "process_observation"
     },
     {
@@ -2346,7 +2646,7 @@
       "type": "struct_get",
       "name": "observe session trace id",
       "x": 340,
-      "y": 5500,
+      "y": 6100,
       "arguments": {
         "struct_id": "AlfworldSession",
         "field": "trace_id"
@@ -2360,7 +2660,7 @@
       "type": "struct_get",
       "name": "observe session last id",
       "x": 600,
-      "y": 5500,
+      "y": 6100,
       "arguments": {
         "struct_id": "AlfworldSession",
         "field": "last_id"
@@ -2374,29 +2674,65 @@
       "type": "context_write",
       "name": "remember observation",
       "x": 860,
-      "y": 5500,
+      "y": 6100,
       "arguments": {
         "value_type": "content"
       }
     },
     {
+      "id": "observation_event_type",
+      "type": "construct_content",
+      "name": "observation event type",
+      "x": 1120,
+      "y": 6100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "observation"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "observation_event",
+      "type": "construct_struct",
+      "name": "observation event",
+      "x": 1380,
+      "y": 6100,
+      "arguments": {
+        "struct_id": "EpisodeEvent"
+      },
+      "dataInputPorts": [
+        "type",
+        "observation",
+        "step",
+        "status",
+        "action",
+        "reasoning",
+        "error",
+        "attempts"
+      ]
+    },
+    {
       "id": "trace_observation_read",
       "type": "context_read",
       "name": "trace observation read",
-      "x": 1120,
-      "y": 5500,
+      "x": 1640,
+      "y": 6100,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:EpisodeEvent"
       }
     },
     {
       "id": "trace_observation_append",
       "type": "list_append",
       "name": "trace observation append",
-      "x": 1380,
-      "y": 5500,
+      "x": 1900,
+      "y": 6100,
       "arguments": {
-        "item_type": "content",
+        "item_type": "struct:EpisodeEvent",
         "position": "end"
       }
     },
@@ -2404,18 +2740,18 @@
       "id": "trace_observation_write",
       "type": "context_write",
       "name": "trace observation write",
-      "x": 1640,
-      "y": 5500,
+      "x": 2160,
+      "y": 6100,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:EpisodeEvent"
       }
     },
     {
       "id": "save_observation",
       "type": "function_call",
       "name": "持久化 episode 轨迹",
-      "x": 1900,
-      "y": 5500,
+      "x": 2420,
+      "y": 6100,
       "arguments": {
         "function_id": "save_episode"
       }
@@ -2424,8 +2760,8 @@
       "id": "observation",
       "type": "deserialize_json",
       "name": "observation",
-      "x": 2160,
-      "y": 5500,
+      "x": 2680,
+      "y": 6100,
       "arguments": {
         "outputs": [
           {
@@ -2447,8 +2783,8 @@
       "id": "episode_done",
       "type": "router",
       "name": "episode done",
-      "x": 2420,
-      "y": 5500,
+      "x": 2940,
+      "y": 6100,
       "arguments": {
         "branches": [
           {
@@ -2462,16 +2798,16 @@
       "id": "observation_done",
       "type": "function_output",
       "name": "处理观察或结束信号 / 返回",
-      "x": 2680,
-      "y": 5500,
+      "x": 3200,
+      "y": 6100,
       "function_id": "process_observation"
     },
     {
       "id": "solve",
       "type": "function_call",
       "name": "生成动作并按需恢复",
-      "x": 2940,
-      "y": 5500,
+      "x": 3460,
+      "y": 6100,
       "arguments": {
         "function_id": "solve_turn"
       }
@@ -2480,8 +2816,8 @@
       "id": "observed_outcome_status",
       "type": "struct_get",
       "name": "observed outcome status",
-      "x": 3200,
-      "y": 5500,
+      "x": 3720,
+      "y": 6100,
       "arguments": {
         "struct_id": "Outcome",
         "field": "status"
@@ -2494,8 +2830,8 @@
       "id": "observed_outcome_result",
       "type": "struct_get",
       "name": "observed outcome result",
-      "x": 3460,
-      "y": 5500,
+      "x": 3980,
+      "y": 6100,
       "arguments": {
         "struct_id": "Outcome",
         "field": "result"
@@ -2508,8 +2844,8 @@
       "id": "observed_outcome_error",
       "type": "struct_get",
       "name": "observed outcome error",
-      "x": 3720,
-      "y": 5500,
+      "x": 4240,
+      "y": 6100,
       "arguments": {
         "struct_id": "Outcome",
         "field": "error"
@@ -2522,8 +2858,8 @@
       "id": "turn_failed",
       "type": "router",
       "name": "turn failed",
-      "x": 3980,
-      "y": 5500,
+      "x": 4500,
+      "y": 6100,
       "arguments": {
         "branches": [
           {
@@ -2537,8 +2873,8 @@
       "id": "publish",
       "type": "function_call",
       "name": "发送动作并等待下一轮",
-      "x": 4240,
-      "y": 5500,
+      "x": 4760,
+      "y": 6100,
       "arguments": {
         "function_id": "publish_action"
       }
@@ -2547,16 +2883,16 @@
       "id": "observation_published",
       "type": "function_output",
       "name": "处理观察或结束信号 / 返回",
-      "x": 4500,
-      "y": 5500,
+      "x": 5020,
+      "y": 6100,
       "function_id": "process_observation"
     },
     {
       "id": "error_type",
       "type": "construct_content",
       "name": "error type",
-      "x": 4760,
-      "y": 5500,
+      "x": 5280,
+      "y": 6100,
       "arguments": {
         "append_items": [
           {
@@ -2571,8 +2907,8 @@
       "id": "error_envelope_value",
       "type": "construct_struct",
       "name": "error envelope value",
-      "x": 5020,
-      "y": 5500,
+      "x": 5540,
+      "y": 6100,
       "arguments": {
         "struct_id": "error_envelope_fields"
       },
@@ -2587,8 +2923,8 @@
       "id": "error_envelope",
       "type": "struct_to_json",
       "name": "error envelope",
-      "x": 5280,
-      "y": 5500,
+      "x": 5800,
+      "y": 6100,
       "arguments": {
         "value_type": "struct:error_envelope_fields"
       }
@@ -2597,15 +2933,15 @@
       "id": "send_error",
       "type": "output_to_terminal",
       "name": "send error",
-      "x": 5540,
-      "y": 5500
+      "x": 6060,
+      "y": 6100
     },
     {
       "id": "observation_failed",
       "type": "function_output",
       "name": "处理观察或结束信号 / 返回",
-      "x": 5800,
-      "y": 5500,
+      "x": 6320,
+      "y": 6100,
       "function_id": "process_observation"
     },
     {
@@ -2613,7 +2949,7 @@
       "type": "function_input",
       "name": "保存环境结果并迭代经验 / 输入",
       "x": 80,
-      "y": 6100,
+      "y": 6700,
       "function_id": "finish_episode"
     },
     {
@@ -2621,7 +2957,7 @@
       "type": "struct_get",
       "name": "finish session run",
       "x": 340,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "struct_id": "AlfworldSession",
         "field": "run"
@@ -2635,7 +2971,7 @@
       "type": "struct_get",
       "name": "finish session trace id",
       "x": 600,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "struct_id": "AlfworldSession",
         "field": "trace_id"
@@ -2649,7 +2985,7 @@
       "type": "struct_get",
       "name": "finish session state id",
       "x": 860,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "struct_id": "AlfworldSession",
         "field": "state_id"
@@ -2663,7 +2999,7 @@
       "type": "struct_get",
       "name": "finish session last id",
       "x": 1120,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "struct_id": "AlfworldSession",
         "field": "last_id"
@@ -2677,9 +3013,9 @@
       "type": "context_read",
       "name": "finish trace",
       "x": 1380,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:EpisodeEvent"
       }
     },
     {
@@ -2687,7 +3023,7 @@
       "type": "context_read",
       "name": "finish state",
       "x": 1640,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "value_type": "struct:Outcome"
       }
@@ -2697,7 +3033,7 @@
       "type": "context_read",
       "name": "finish last",
       "x": 1900,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "value_type": "content"
       }
@@ -2707,7 +3043,7 @@
       "type": "struct_get",
       "name": "final outcome status",
       "x": 2160,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "struct_id": "Outcome",
         "field": "status"
@@ -2721,7 +3057,7 @@
       "type": "struct_get",
       "name": "final outcome error",
       "x": 2420,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "struct_id": "Outcome",
         "field": "error"
@@ -2735,7 +3071,7 @@
       "type": "construct_struct",
       "name": "environment outcome",
       "x": 2680,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "struct_id": "Outcome"
       },
@@ -2750,7 +3086,7 @@
       "type": "function_call",
       "name": "记录结果并迭代经验",
       "x": 2940,
-      "y": 6100,
+      "y": 6700,
       "arguments": {
         "function_id": "finish_task"
       }
@@ -2760,7 +3096,7 @@
       "type": "function_output",
       "name": "保存环境结果并迭代经验 / 返回",
       "x": 3200,
-      "y": 6100,
+      "y": 6700,
       "function_id": "finish_episode"
     },
     {
@@ -2768,7 +3104,7 @@
       "type": "function_input",
       "name": "初始化任务记录 / 输入",
       "x": 80,
-      "y": 6700,
+      "y": 7300,
       "function_id": "initialize_run"
     },
     {
@@ -2776,12 +3112,12 @@
       "type": "construct_content",
       "name": "checkpoint before name",
       "x": 340,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "alfworld-agent: before task"
+            "value": "alfworld-hard-paired: before task"
           }
         ]
       },
@@ -2792,7 +3128,7 @@
       "type": "tool",
       "name": "checkpoint before",
       "x": 600,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "tool": "workspace.create_checkpoint",
         "parameters": [
@@ -2814,7 +3150,7 @@
       "type": "tool",
       "name": "inventory before",
       "x": 860,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "tool": "workspace.list_files",
         "parameters": [],
@@ -2835,14 +3171,14 @@
       "type": "number_to_content",
       "name": "inventory before revision text",
       "x": 1120,
-      "y": 6700
+      "y": 7300
     },
     {
       "id": "inventory_before_json",
       "type": "construct_content",
       "name": "inventory before json",
       "x": 1380,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "append_items": [
           {
@@ -2881,7 +3217,7 @@
       "type": "deserialize_json",
       "name": "before seq",
       "x": 1640,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "outputs": [
           {
@@ -2896,19 +3232,19 @@
       "type": "number_to_content",
       "name": "seq text",
       "x": 1900,
-      "y": 6700
+      "y": 7300
     },
     {
       "id": "record_name",
       "type": "construct_content",
       "name": "record name",
       "x": 2160,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "alfworld-agent-run-"
+            "value": "alfworld-hard-paired-run-"
           },
           {
             "type": "port",
@@ -2929,7 +3265,7 @@
       "type": "construct_content",
       "name": "running",
       "x": 2420,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "append_items": [
           {
@@ -2945,7 +3281,7 @@
       "type": "construct_struct",
       "name": "initial record value",
       "x": 2680,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "struct_id": "initial_record_fields"
       },
@@ -2961,7 +3297,7 @@
       "type": "struct_to_json",
       "name": "initial record",
       "x": 2940,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "value_type": "struct:initial_record_fields"
       }
@@ -2971,7 +3307,7 @@
       "type": "tool",
       "name": "create record",
       "x": 3200,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "tool": "workspace.create_file",
         "parameters": [
@@ -2997,7 +3333,7 @@
       "type": "deserialize_json",
       "name": "record file",
       "x": 3460,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "outputs": [
           {
@@ -3012,7 +3348,7 @@
       "type": "construct_struct",
       "name": "run info",
       "x": 3720,
-      "y": 6700,
+      "y": 7300,
       "arguments": {
         "struct_id": "Run"
       },
@@ -3029,7 +3365,7 @@
       "type": "function_output",
       "name": "初始化任务记录 / 返回",
       "x": 3980,
-      "y": 6700,
+      "y": 7300,
       "function_id": "initialize_run"
     },
     {
@@ -3037,7 +3373,7 @@
       "type": "function_input",
       "name": "执行主流程与逐级恢复 / 输入",
       "x": 80,
-      "y": 7300,
+      "y": 7900,
       "function_id": "run_with_recovery"
     },
     {
@@ -3045,7 +3381,7 @@
       "type": "struct_get",
       "name": "execution run task",
       "x": 340,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "struct_id": "Run",
         "field": "task"
@@ -3059,7 +3395,7 @@
       "type": "struct_get",
       "name": "execution run checkpoint before",
       "x": 600,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "struct_id": "Run",
         "field": "checkpoint_before"
@@ -3073,9 +3409,9 @@
       "type": "construct_list",
       "name": "empty attempts",
       "x": 860,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
-        "item_type": "content",
+        "item_type": "struct:RecoveryAttempt",
         "initial_value_count": 0
       },
       "dataInputPorts": []
@@ -3085,9 +3421,9 @@
       "type": "context_create",
       "name": "attempts context",
       "x": 1120,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:RecoveryAttempt"
       }
     },
     {
@@ -3095,7 +3431,7 @@
       "type": "construct_content",
       "name": "default status",
       "x": 1380,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "append_items": [
           {
@@ -3111,7 +3447,7 @@
       "type": "construct_content",
       "name": "default text",
       "x": 1640,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "append_items": [
           {
@@ -3127,7 +3463,7 @@
       "type": "construct_struct",
       "name": "default outcome",
       "x": 1900,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "struct_id": "Outcome"
       },
@@ -3142,7 +3478,7 @@
       "type": "context_create",
       "name": "outcome context",
       "x": 2160,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "value_type": "struct:Outcome"
       }
@@ -3152,7 +3488,7 @@
       "type": "construct_content",
       "name": "current source",
       "x": 2420,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "append_items": [
           {
@@ -3168,7 +3504,7 @@
       "type": "construct_content",
       "name": "completed status",
       "x": 2680,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "append_items": [
           {
@@ -3184,7 +3520,7 @@
       "type": "function_call",
       "name": "尝试一次主流程",
       "x": 2940,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "function_id": "attempt_main"
       }
@@ -3194,7 +3530,7 @@
       "type": "function_call",
       "name": "保存本次尝试",
       "x": 3200,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "function_id": "remember_attempt"
       }
@@ -3204,7 +3540,7 @@
       "type": "struct_get",
       "name": "first status",
       "x": 3460,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "struct_id": "Attempt",
         "field": "status"
@@ -3218,7 +3554,7 @@
       "type": "router",
       "name": "first route",
       "x": 3720,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "branches": [
           {
@@ -3233,12 +3569,12 @@
       "type": "construct_content",
       "name": "recovery plan file id",
       "x": 3980,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "REPLACE_WITH_MAIN_FILE_ID"
+            "value": "0b6e01c8a7f2428293748490638f7bd8"
           }
         ]
       },
@@ -3249,12 +3585,12 @@
       "type": "construct_content",
       "name": "recovery plan stable file id",
       "x": 4240,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "REPLACE_WITH_STABLE_FILE_ID"
+            "value": "a972cd8c4b7d48418eccd5a544196333"
           }
         ]
       },
@@ -3265,7 +3601,7 @@
       "type": "tool",
       "name": "recovery plan",
       "x": 4500,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "tool": "workspace.get_file_recovery_plan",
         "parameters": [
@@ -3295,7 +3631,7 @@
       "type": "json_to_struct",
       "name": "recovery versions",
       "x": 4760,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "value_type": "list-struct:RecoveryVersion"
       }
@@ -3305,7 +3641,7 @@
       "type": "context_create",
       "name": "versions context",
       "x": 5020,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "value_type": "list-struct:RecoveryVersion"
       }
@@ -3315,7 +3651,7 @@
       "type": "while_pop",
       "name": "recovery gate",
       "x": 5280,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "value_type": "list-struct:RecoveryVersion",
         "position": "start"
@@ -3326,7 +3662,7 @@
       "type": "function_call",
       "name": "尝试回退版本",
       "x": 5540,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "function_id": "retry_version"
       }
@@ -3336,7 +3672,7 @@
       "type": "context_read",
       "name": "first success state",
       "x": 5800,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "value_type": "struct:Outcome"
       }
@@ -3346,9 +3682,9 @@
       "type": "context_read",
       "name": "first success attempts",
       "x": 6060,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:RecoveryAttempt"
       }
     },
     {
@@ -3356,7 +3692,7 @@
       "type": "function_output",
       "name": "执行主流程与逐级恢复 / 返回",
       "x": 6320,
-      "y": 7300,
+      "y": 7900,
       "function_id": "run_with_recovery"
     },
     {
@@ -3364,7 +3700,7 @@
       "type": "context_read",
       "name": "recovery done state",
       "x": 6580,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
         "value_type": "struct:Outcome"
       }
@@ -3374,9 +3710,9 @@
       "type": "context_read",
       "name": "recovery done attempts",
       "x": 6840,
-      "y": 7300,
+      "y": 7900,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:RecoveryAttempt"
       }
     },
     {
@@ -3384,7 +3720,7 @@
       "type": "function_output",
       "name": "执行主流程与逐级恢复 / 返回",
       "x": 7100,
-      "y": 7300,
+      "y": 7900,
       "function_id": "run_with_recovery"
     },
     {
@@ -3392,7 +3728,7 @@
       "type": "function_input",
       "name": "尝试一次主流程 / 输入",
       "x": 80,
-      "y": 7900,
+      "y": 8500,
       "function_id": "attempt_main"
     },
     {
@@ -3400,12 +3736,12 @@
       "type": "construct_content",
       "name": "main name",
       "x": 340,
-      "y": 7900,
+      "y": 8500,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "alfworld-agent-main.flow"
+            "value": "alfworld-hard-paired-main.flow"
           }
         ]
       },
@@ -3416,7 +3752,7 @@
       "type": "construct_struct",
       "name": "main arguments value",
       "x": 600,
-      "y": 7900,
+      "y": 8500,
       "arguments": {
         "struct_id": "main_arguments_fields"
       },
@@ -3429,7 +3765,7 @@
       "type": "struct_to_json",
       "name": "main arguments",
       "x": 860,
-      "y": 7900,
+      "y": 8500,
       "arguments": {
         "value_type": "struct:main_arguments_fields"
       }
@@ -3439,14 +3775,14 @@
       "type": "spawn_and_wait_subprocess",
       "name": "call main",
       "x": 1120,
-      "y": 7900
+      "y": 8500
     },
     {
       "id": "attempt_ok_value",
       "type": "construct_content",
       "name": "attempt ok value",
       "x": 1380,
-      "y": 7900,
+      "y": 8500,
       "arguments": {
         "append_items": [
           {
@@ -3462,7 +3798,7 @@
       "type": "construct_struct",
       "name": "attempt ok",
       "x": 1640,
-      "y": 7900,
+      "y": 8500,
       "arguments": {
         "struct_id": "Attempt"
       },
@@ -3479,7 +3815,7 @@
       "type": "function_output",
       "name": "尝试一次主流程 / 返回",
       "x": 1900,
-      "y": 7900,
+      "y": 8500,
       "function_id": "attempt_main"
     },
     {
@@ -3487,7 +3823,7 @@
       "type": "construct_content",
       "name": "attempt error value",
       "x": 2160,
-      "y": 7900,
+      "y": 8500,
       "arguments": {
         "append_items": [
           {
@@ -3503,7 +3839,7 @@
       "type": "construct_struct",
       "name": "attempt error",
       "x": 2420,
-      "y": 7900,
+      "y": 8500,
       "arguments": {
         "struct_id": "Attempt"
       },
@@ -3520,7 +3856,7 @@
       "type": "function_output",
       "name": "尝试一次主流程 / 返回",
       "x": 2680,
-      "y": 7900,
+      "y": 8500,
       "function_id": "attempt_main"
     },
     {
@@ -3528,7 +3864,7 @@
       "type": "function_input",
       "name": "保存本次尝试 / 输入",
       "x": 80,
-      "y": 8500,
+      "y": 9100,
       "function_id": "remember_attempt"
     },
     {
@@ -3536,7 +3872,7 @@
       "type": "struct_get",
       "name": "remember run task",
       "x": 340,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Run",
         "field": "task"
@@ -3550,7 +3886,7 @@
       "type": "struct_get",
       "name": "remember run record id",
       "x": 600,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Run",
         "field": "record_id"
@@ -3564,7 +3900,7 @@
       "type": "struct_get",
       "name": "remember run record name",
       "x": 860,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Run",
         "field": "record_name"
@@ -3578,7 +3914,7 @@
       "type": "struct_get",
       "name": "remember run checkpoint before",
       "x": 1120,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Run",
         "field": "checkpoint_before"
@@ -3592,7 +3928,7 @@
       "type": "struct_get",
       "name": "remember run workspace before",
       "x": 1380,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Run",
         "field": "workspace_before"
@@ -3606,7 +3942,7 @@
       "type": "struct_get",
       "name": "remember attempt status",
       "x": 1640,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Attempt",
         "field": "status"
@@ -3620,7 +3956,7 @@
       "type": "struct_get",
       "name": "remember attempt result",
       "x": 1900,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Attempt",
         "field": "result"
@@ -3634,7 +3970,7 @@
       "type": "struct_get",
       "name": "remember attempt error",
       "x": 2160,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Attempt",
         "field": "error"
@@ -3648,7 +3984,7 @@
       "type": "struct_get",
       "name": "remember attempt checkpoint seq",
       "x": 2420,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Attempt",
         "field": "checkpoint_seq"
@@ -3662,7 +3998,7 @@
       "type": "struct_get",
       "name": "remember attempt source",
       "x": 2680,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Attempt",
         "field": "source"
@@ -3672,23 +4008,29 @@
       ]
     },
     {
-      "id": "attempt_json",
-      "type": "struct_to_json",
-      "name": "attempt json",
+      "id": "attempt_summary",
+      "type": "construct_struct",
+      "name": "attempt summary",
       "x": 2940,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
-        "value_type": "struct:Attempt"
-      }
+        "struct_id": "RecoveryAttempt"
+      },
+      "dataInputPorts": [
+        "status",
+        "error",
+        "checkpoint_seq",
+        "source"
+      ]
     },
     {
       "id": "attempts_read",
       "type": "context_read",
       "name": "attempts read",
       "x": 3200,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:RecoveryAttempt"
       }
     },
     {
@@ -3696,9 +4038,9 @@
       "type": "list_append",
       "name": "append attempt",
       "x": 3460,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
-        "item_type": "content",
+        "item_type": "struct:RecoveryAttempt",
         "position": "end"
       }
     },
@@ -3707,9 +4049,9 @@
       "type": "context_write",
       "name": "attempts write",
       "x": 3720,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
-        "value_type": "list-content"
+        "value_type": "list-struct:RecoveryAttempt"
       }
     },
     {
@@ -3717,7 +4059,7 @@
       "type": "context_read",
       "name": "state read",
       "x": 3980,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "value_type": "struct:Outcome"
       }
@@ -3727,7 +4069,7 @@
       "type": "struct_get",
       "name": "prior errors",
       "x": 4240,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Outcome",
         "field": "error"
@@ -3741,7 +4083,7 @@
       "type": "construct_content",
       "name": "all errors",
       "x": 4500,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "append_items": [
           {
@@ -3768,7 +4110,7 @@
       "type": "construct_struct",
       "name": "updated outcome",
       "x": 4760,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "Outcome"
       },
@@ -3783,7 +4125,7 @@
       "type": "context_write",
       "name": "state write",
       "x": 5020,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "value_type": "struct:Outcome"
       }
@@ -3793,17 +4135,14 @@
       "type": "construct_struct",
       "name": "progress record value",
       "x": 5280,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "struct_id": "progress_record_fields"
       },
       "dataInputPorts": [
-        "task",
         "status",
-        "result",
         "error",
         "checkpoint_before",
-        "workspace_before",
         "attempts"
       ]
     },
@@ -3812,7 +4151,7 @@
       "type": "struct_to_json",
       "name": "progress record",
       "x": 5540,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "value_type": "struct:progress_record_fields"
       }
@@ -3822,7 +4161,7 @@
       "type": "function_call",
       "name": "写入任务记录",
       "x": 5800,
-      "y": 8500,
+      "y": 9100,
       "arguments": {
         "function_id": "write_record"
       }
@@ -3832,7 +4171,7 @@
       "type": "function_output",
       "name": "保存本次尝试 / 返回",
       "x": 6060,
-      "y": 8500,
+      "y": 9100,
       "function_id": "remember_attempt"
     },
     {
@@ -3840,7 +4179,7 @@
       "type": "function_input",
       "name": "回退主流程版本 / 输入",
       "x": 80,
-      "y": 9100,
+      "y": 9700,
       "function_id": "restore_main_version"
     },
     {
@@ -3848,12 +4187,12 @@
       "type": "construct_content",
       "name": "read main file id",
       "x": 340,
-      "y": 9100,
+      "y": 9700,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "REPLACE_WITH_MAIN_FILE_ID"
+            "value": "0b6e01c8a7f2428293748490638f7bd8"
           }
         ]
       },
@@ -3864,7 +4203,7 @@
       "type": "tool",
       "name": "read main",
       "x": 600,
-      "y": 9100,
+      "y": 9700,
       "arguments": {
         "tool": "workspace.get_file",
         "parameters": [
@@ -3886,7 +4225,7 @@
       "type": "deserialize_json",
       "name": "main file",
       "x": 860,
-      "y": 9100,
+      "y": 9700,
       "arguments": {
         "outputs": [
           {
@@ -3905,12 +4244,12 @@
       "type": "construct_content",
       "name": "restore main id",
       "x": 1120,
-      "y": 9100,
+      "y": 9700,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "REPLACE_WITH_MAIN_FILE_ID"
+            "value": "0b6e01c8a7f2428293748490638f7bd8"
           }
         ]
       },
@@ -3921,7 +4260,7 @@
       "type": "tool",
       "name": "restore main",
       "x": 1380,
-      "y": 9100,
+      "y": 9700,
       "arguments": {
         "tool": "workspace.update_file",
         "parameters": [
@@ -3955,7 +4294,7 @@
       "type": "function_output",
       "name": "回退主流程版本 / 返回",
       "x": 1640,
-      "y": 9100,
+      "y": 9700,
       "function_id": "restore_main_version"
     },
     {
@@ -3963,7 +4302,7 @@
       "type": "function_input",
       "name": "尝试回退版本 / 输入",
       "x": 80,
-      "y": 9700,
+      "y": 10300,
       "function_id": "retry_version"
     },
     {
@@ -3971,7 +4310,7 @@
       "type": "struct_get",
       "name": "retry run task",
       "x": 340,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "struct_id": "Run",
         "field": "task"
@@ -3985,7 +4324,7 @@
       "type": "struct_get",
       "name": "retry version content",
       "x": 600,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "struct_id": "RecoveryVersion",
         "field": "content"
@@ -3999,7 +4338,7 @@
       "type": "struct_get",
       "name": "retry version checkpoint seq",
       "x": 860,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "struct_id": "RecoveryVersion",
         "field": "checkpoint_seq"
@@ -4013,7 +4352,7 @@
       "type": "struct_get",
       "name": "retry version source",
       "x": 1120,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "struct_id": "RecoveryVersion",
         "field": "source"
@@ -4027,7 +4366,7 @@
       "type": "function_call",
       "name": "回退主流程版本",
       "x": 1380,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "function_id": "restore_main_version"
       }
@@ -4037,7 +4376,7 @@
       "type": "construct_content",
       "name": "recovered status",
       "x": 1640,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "append_items": [
           {
@@ -4053,7 +4392,7 @@
       "type": "function_call",
       "name": "尝试一次主流程",
       "x": 1900,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "function_id": "attempt_main"
       }
@@ -4063,7 +4402,7 @@
       "type": "function_call",
       "name": "保存本次尝试",
       "x": 2160,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "function_id": "remember_attempt"
       }
@@ -4073,7 +4412,7 @@
       "type": "struct_get",
       "name": "retry status",
       "x": 2420,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "struct_id": "Attempt",
         "field": "status"
@@ -4087,7 +4426,7 @@
       "type": "router",
       "name": "retry route",
       "x": 2680,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "branches": [
           {
@@ -4102,7 +4441,7 @@
       "type": "construct_content",
       "name": "empty recovery json",
       "x": 2940,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "append_items": [
           {
@@ -4118,7 +4457,7 @@
       "type": "json_to_struct",
       "name": "empty recovery",
       "x": 3200,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "value_type": "list-struct:RecoveryVersion"
       }
@@ -4128,7 +4467,7 @@
       "type": "context_write",
       "name": "stop recovery",
       "x": 3460,
-      "y": 9700,
+      "y": 10300,
       "arguments": {
         "value_type": "list-struct:RecoveryVersion"
       }
@@ -4138,7 +4477,7 @@
       "type": "function_output",
       "name": "尝试回退版本 / 返回",
       "x": 3720,
-      "y": 9700,
+      "y": 10300,
       "function_id": "retry_version"
     },
     {
@@ -4146,7 +4485,7 @@
       "type": "function_output",
       "name": "尝试回退版本 / 返回",
       "x": 3980,
-      "y": 9700,
+      "y": 10300,
       "function_id": "retry_version"
     },
     {
@@ -4154,7 +4493,7 @@
       "type": "function_input",
       "name": "写入任务记录 / 输入",
       "x": 80,
-      "y": 10300,
+      "y": 10900,
       "function_id": "write_record"
     },
     {
@@ -4162,7 +4501,7 @@
       "type": "tool",
       "name": "read record",
       "x": 340,
-      "y": 10300,
+      "y": 10900,
       "arguments": {
         "tool": "workspace.get_file",
         "parameters": [
@@ -4184,7 +4523,7 @@
       "type": "deserialize_json",
       "name": "record revision",
       "x": 600,
-      "y": 10300,
+      "y": 10900,
       "arguments": {
         "outputs": [
           {
@@ -4199,7 +4538,7 @@
       "type": "tool",
       "name": "write record file",
       "x": 860,
-      "y": 10300,
+      "y": 10900,
       "arguments": {
         "tool": "workspace.update_file",
         "parameters": [
@@ -4233,7 +4572,7 @@
       "type": "function_output",
       "name": "写入任务记录 / 返回",
       "x": 1120,
-      "y": 10300,
+      "y": 10900,
       "function_id": "write_record"
     },
     {
@@ -4241,7 +4580,7 @@
       "type": "function_input",
       "name": "记录结果并迭代经验 / 输入",
       "x": 80,
-      "y": 10900,
+      "y": 11500,
       "function_id": "finish_task"
     },
     {
@@ -4249,7 +4588,7 @@
       "type": "struct_get",
       "name": "finish run task",
       "x": 340,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "struct_id": "Run",
         "field": "task"
@@ -4263,7 +4602,7 @@
       "type": "struct_get",
       "name": "finish run record id",
       "x": 600,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "struct_id": "Run",
         "field": "record_id"
@@ -4277,7 +4616,7 @@
       "type": "struct_get",
       "name": "finish run record name",
       "x": 860,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "struct_id": "Run",
         "field": "record_name"
@@ -4291,7 +4630,7 @@
       "type": "struct_get",
       "name": "finish run checkpoint before",
       "x": 1120,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "struct_id": "Run",
         "field": "checkpoint_before"
@@ -4305,7 +4644,7 @@
       "type": "struct_get",
       "name": "finish run workspace before",
       "x": 1380,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "struct_id": "Run",
         "field": "workspace_before"
@@ -4319,7 +4658,7 @@
       "type": "struct_get",
       "name": "finish outcome status",
       "x": 1640,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "struct_id": "Outcome",
         "field": "status"
@@ -4333,7 +4672,7 @@
       "type": "struct_get",
       "name": "finish outcome result",
       "x": 1900,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "struct_id": "Outcome",
         "field": "result"
@@ -4347,7 +4686,7 @@
       "type": "struct_get",
       "name": "finish outcome error",
       "x": 2160,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "struct_id": "Outcome",
         "field": "error"
@@ -4361,12 +4700,12 @@
       "type": "construct_content",
       "name": "checkpoint after name",
       "x": 2420,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "alfworld-agent: after task"
+            "value": "alfworld-hard-paired: after task"
           }
         ]
       },
@@ -4377,7 +4716,7 @@
       "type": "tool",
       "name": "checkpoint after",
       "x": 2680,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "tool": "workspace.create_checkpoint",
         "parameters": [
@@ -4399,7 +4738,7 @@
       "type": "tool",
       "name": "inventory after",
       "x": 2940,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "tool": "workspace.list_files",
         "parameters": [],
@@ -4420,14 +4759,14 @@
       "type": "number_to_content",
       "name": "inventory after revision text",
       "x": 3200,
-      "y": 10900
+      "y": 11500
     },
     {
       "id": "inventory_after_json",
       "type": "construct_content",
       "name": "inventory after json",
       "x": 3460,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "append_items": [
           {
@@ -4466,7 +4805,7 @@
       "type": "deserialize_json",
       "name": "after seq",
       "x": 3720,
-      "y": 10900,
+      "y": 11500,
       "arguments": {
         "outputs": [
           {
@@ -4477,96 +4816,11 @@
       }
     },
     {
-      "id": "workspace_changes",
-      "type": "tool",
-      "name": "workspace changes",
-      "x": 3980,
-      "y": 10900,
-      "arguments": {
-        "tool": "workspace.checkpoint_diff",
-        "parameters": [
-          {
-            "name": "seq",
-            "type": "number"
-          }
-        ],
-        "outputs": [
-          {
-            "name": "seq",
-            "type": "number"
-          },
-          {
-            "name": "parent_seq",
-            "type": "content"
-          },
-          {
-            "name": "changes",
-            "type": "content"
-          }
-        ]
-      }
-    },
-    {
-      "id": "workspace_changes_seq_text",
-      "type": "number_to_content",
-      "name": "workspace changes seq text",
-      "x": 4240,
-      "y": 10900
-    },
-    {
-      "id": "workspace_changes_json",
-      "type": "construct_content",
-      "name": "workspace changes json",
-      "x": 4500,
-      "y": 10900,
-      "arguments": {
-        "append_items": [
-          {
-            "type": "fixed",
-            "value": "{"
-          },
-          {
-            "type": "fixed",
-            "value": "\"seq\":"
-          },
-          {
-            "type": "port",
-            "port_id": "part_2"
-          },
-          {
-            "type": "fixed",
-            "value": ",\"parent_seq\":"
-          },
-          {
-            "type": "port",
-            "port_id": "part_4"
-          },
-          {
-            "type": "fixed",
-            "value": ",\"changes\":"
-          },
-          {
-            "type": "port",
-            "port_id": "part_6"
-          },
-          {
-            "type": "fixed",
-            "value": "}"
-          }
-        ]
-      },
-      "dataInputPorts": [
-        "part_2",
-        "part_4",
-        "part_6"
-      ]
-    },
-    {
       "id": "task_record_value",
       "type": "construct_struct",
       "name": "task record value",
-      "x": 4760,
-      "y": 10900,
+      "x": 3980,
+      "y": 11500,
       "arguments": {
         "struct_id": "task_record_fields"
       },
@@ -4579,16 +4833,15 @@
         "workspace_before",
         "checkpoint_after",
         "workspace_after",
-        "workspace_changes",
-        "attempts"
+        "events"
       ]
     },
     {
       "id": "task_record",
       "type": "struct_to_json",
       "name": "task record",
-      "x": 5020,
-      "y": 10900,
+      "x": 4240,
+      "y": 11500,
       "arguments": {
         "value_type": "struct:task_record_fields"
       }
@@ -4597,8 +4850,8 @@
       "id": "save_task_record",
       "type": "function_call",
       "name": "写入任务记录",
-      "x": 5280,
-      "y": 10900,
+      "x": 4500,
+      "y": 11500,
       "arguments": {
         "function_id": "write_record"
       }
@@ -4607,8 +4860,8 @@
       "id": "iterate_experience",
       "type": "function_call",
       "name": "调用经验迭代器",
-      "x": 5540,
-      "y": 10900,
+      "x": 4760,
+      "y": 11500,
       "arguments": {
         "function_id": "call_iterator"
       }
@@ -4617,13 +4870,21 @@
       "id": "completed_record_value",
       "type": "construct_struct",
       "name": "completed record value",
-      "x": 5800,
-      "y": 10900,
+      "x": 5020,
+      "y": 11500,
       "arguments": {
         "struct_id": "completed_record_fields"
       },
       "dataInputPorts": [
-        "task_record",
+        "status",
+        "result",
+        "error",
+        "task",
+        "checkpoint_before",
+        "workspace_before",
+        "checkpoint_after",
+        "workspace_after",
+        "events",
         "iterator_status",
         "iterator_result"
       ]
@@ -4632,8 +4893,8 @@
       "id": "completed_record",
       "type": "struct_to_json",
       "name": "completed record",
-      "x": 6060,
-      "y": 10900,
+      "x": 5280,
+      "y": 11500,
       "arguments": {
         "value_type": "struct:completed_record_fields"
       }
@@ -4642,8 +4903,8 @@
       "id": "save_final_record",
       "type": "function_call",
       "name": "写入任务记录",
-      "x": 6320,
-      "y": 10900,
+      "x": 5540,
+      "y": 11500,
       "arguments": {
         "function_id": "write_record"
       }
@@ -4652,13 +4913,13 @@
       "id": "checkpoint_final_name",
       "type": "construct_content",
       "name": "checkpoint final name",
-      "x": 6580,
-      "y": 10900,
+      "x": 5800,
+      "y": 11500,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "alfworld-agent: after iterator"
+            "value": "alfworld-hard-paired: after iterator"
           }
         ]
       },
@@ -4668,8 +4929,8 @@
       "id": "checkpoint_final",
       "type": "tool",
       "name": "checkpoint final",
-      "x": 6840,
-      "y": 10900,
+      "x": 6060,
+      "y": 11500,
       "arguments": {
         "tool": "workspace.create_checkpoint",
         "parameters": [
@@ -4690,8 +4951,8 @@
       "id": "finish_return",
       "type": "function_output",
       "name": "记录结果并迭代经验 / 返回",
-      "x": 7100,
-      "y": 10900,
+      "x": 6320,
+      "y": 11500,
       "function_id": "finish_task"
     },
     {
@@ -4699,7 +4960,7 @@
       "type": "function_input",
       "name": "调用经验迭代器 / 输入",
       "x": 80,
-      "y": 11500,
+      "y": 12100,
       "function_id": "call_iterator"
     },
     {
@@ -4707,12 +4968,12 @@
       "type": "construct_content",
       "name": "iterator name",
       "x": 340,
-      "y": 11500,
+      "y": 12100,
       "arguments": {
         "append_items": [
           {
             "type": "fixed",
-            "value": "alfworld-agent-iterator.flow"
+            "value": "alfworld-hard-paired-iterator.flow"
           }
         ]
       },
@@ -4723,7 +4984,7 @@
       "type": "construct_struct",
       "name": "iterator arguments value",
       "x": 600,
-      "y": 11500,
+      "y": 12100,
       "arguments": {
         "struct_id": "iterator_arguments_fields"
       },
@@ -4736,7 +4997,7 @@
       "type": "struct_to_json",
       "name": "iterator arguments",
       "x": 860,
-      "y": 11500,
+      "y": 12100,
       "arguments": {
         "value_type": "struct:iterator_arguments_fields"
       }
@@ -4746,14 +5007,14 @@
       "type": "spawn_and_wait_subprocess",
       "name": "invoke iterator",
       "x": 1120,
-      "y": 11500
+      "y": 12100
     },
     {
       "id": "iterator_ok",
       "type": "construct_content",
       "name": "iterator ok",
       "x": 1380,
-      "y": 11500,
+      "y": 12100,
       "arguments": {
         "append_items": [
           {
@@ -4769,7 +5030,7 @@
       "type": "function_output",
       "name": "调用经验迭代器 / 返回",
       "x": 1640,
-      "y": 11500,
+      "y": 12100,
       "function_id": "call_iterator"
     },
     {
@@ -4777,7 +5038,7 @@
       "type": "construct_content",
       "name": "iterator error",
       "x": 1900,
-      "y": 11500,
+      "y": 12100,
       "arguments": {
         "append_items": [
           {
@@ -4793,7 +5054,7 @@
       "type": "function_output",
       "name": "调用经验迭代器 / 返回",
       "x": 2160,
-      "y": 11500,
+      "y": 12100,
       "function_id": "call_iterator"
     }
   ],
@@ -5051,11 +5312,11 @@
       "type": "control"
     },
     {
-      "fromId": "empty_episode_list",
+      "fromId": "empty_episode_trace",
       "fromPortId": "list-out",
       "toId": "episode_trace",
       "toPortId": "initial-value",
-      "type": "list-content"
+      "type": "list-struct:EpisodeEvent"
     },
     {
       "fromId": "episode_history",
@@ -5192,6 +5453,13 @@
     },
     {
       "fromId": "empty_episode_list",
+      "fromPortId": "control-out",
+      "toId": "empty_episode_trace",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "empty_episode_trace",
       "fromPortId": "control-out",
       "toId": "episode_completed",
       "toPortId": "control-in",
@@ -5432,8 +5700,8 @@
       "fromId": "save_trace",
       "fromPortId": "value-out",
       "toId": "episode_progress_value",
-      "toPortId": "attempts",
-      "type": "list-content"
+      "toPortId": "events",
+      "type": "list-struct:EpisodeEvent"
     },
     {
       "fromId": "save_run_checkpoint_before",
@@ -5912,20 +6180,6 @@
       "type": "control"
     },
     {
-      "fromId": "solve_session_trace_id",
-      "fromPortId": "value-out",
-      "toId": "solve_trace",
-      "toPortId": "context-id",
-      "type": "content"
-    },
-    {
-      "fromId": "solve_history",
-      "fromPortId": "control-out",
-      "toId": "solve_trace",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
       "fromId": "solve_session_recovery_id",
       "fromPortId": "value-out",
       "toId": "solve_recovery",
@@ -5933,7 +6187,7 @@
       "type": "content"
     },
     {
-      "fromId": "solve_trace",
+      "fromId": "solve_history",
       "fromPortId": "control-out",
       "toId": "solve_recovery",
       "toPortId": "control-in",
@@ -5951,13 +6205,6 @@
       "fromPortId": "value-out",
       "toId": "turn_task_value",
       "toPortId": "history",
-      "type": "list-content"
-    },
-    {
-      "fromId": "solve_trace",
-      "fromPortId": "value-out",
-      "toId": "turn_task_value",
-      "toPortId": "trajectory",
       "type": "list-content"
     },
     {
@@ -6019,37 +6266,23 @@
     {
       "fromId": "solve_turn_in",
       "fromPortId": "function:observation",
-      "toId": "turn_event_value",
-      "toPortId": "observation",
+      "toId": "turn_event",
+      "toPortId": "function:observation",
       "type": "content"
     },
     {
       "fromId": "recover_turn",
       "fromPortId": "function:outcome",
-      "toId": "turn_event_value",
-      "toPortId": "outcome",
+      "toId": "turn_event",
+      "toPortId": "function:outcome",
       "type": "struct:Outcome"
     },
     {
       "fromId": "recover_turn",
       "fromPortId": "function:attempts",
-      "toId": "turn_event_value",
-      "toPortId": "attempts",
-      "type": "list-content"
-    },
-    {
-      "fromId": "turn_event_value",
-      "fromPortId": "struct-out",
       "toId": "turn_event",
-      "toPortId": "value-in",
-      "type": "struct:turn_event_fields"
-    },
-    {
-      "fromId": "turn_event_value",
-      "fromPortId": "control-out",
-      "toId": "turn_event",
-      "toPortId": "control-in",
-      "type": "control"
+      "toPortId": "function:attempts",
+      "type": "list-struct:RecoveryAttempt"
     },
     {
       "fromId": "solve_session_trace_id",
@@ -6063,14 +6296,14 @@
       "fromPortId": "value-out",
       "toId": "trace_turn_append",
       "toPortId": "list-in",
-      "type": "list-content"
+      "type": "list-struct:EpisodeEvent"
     },
     {
       "fromId": "turn_event",
-      "fromPortId": "content-out",
+      "fromPortId": "function:event",
       "toId": "trace_turn_append",
       "toPortId": "item-in",
-      "type": "content"
+      "type": "struct:EpisodeEvent"
     },
     {
       "fromId": "solve_session_trace_id",
@@ -6084,7 +6317,7 @@
       "fromPortId": "list-out",
       "toId": "trace_turn_write",
       "toPortId": "value-in",
-      "type": "list-content"
+      "type": "list-struct:EpisodeEvent"
     },
     {
       "fromId": "trace_turn_read",
@@ -6105,14 +6338,14 @@
       "fromPortId": "function:attempts",
       "toId": "last_attempt",
       "toPortId": "list-in",
-      "type": "list-content"
+      "type": "list-struct:RecoveryAttempt"
     },
     {
       "fromId": "last_attempt",
       "fromPortId": "item-out",
       "toId": "attempt_cursor",
-      "toPortId": "content-in",
-      "type": "content"
+      "toPortId": "struct-in",
+      "type": "struct:RecoveryAttempt"
     },
     {
       "fromId": "solve_session_recovery_id",
@@ -6123,7 +6356,7 @@
     },
     {
       "fromId": "attempt_cursor",
-      "fromPortId": "checkpoint_seq",
+      "fromPortId": "value-out",
       "toId": "advance_recovery",
       "toPortId": "value-in",
       "type": "number"
@@ -6194,7 +6427,7 @@
     {
       "fromId": "recover_turn",
       "fromPortId": "control-out",
-      "toId": "turn_event_value",
+      "toId": "turn_event",
       "toPortId": "control-in",
       "type": "control"
     },
@@ -6244,6 +6477,279 @@
       "fromId": "save_turn",
       "fromPortId": "control-out",
       "toId": "solve_turn_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "record_turn_in",
+      "fromPortId": "function:outcome",
+      "toId": "recorded_outcome_status",
+      "toPortId": "struct-in",
+      "type": "struct:Outcome"
+    },
+    {
+      "fromId": "record_turn_in",
+      "fromPortId": "function:outcome",
+      "toId": "recorded_outcome_result",
+      "toPortId": "struct-in",
+      "type": "struct:Outcome"
+    },
+    {
+      "fromId": "record_turn_in",
+      "fromPortId": "function:outcome",
+      "toId": "recorded_outcome_error",
+      "toPortId": "struct-in",
+      "type": "struct:Outcome"
+    },
+    {
+      "fromId": "recorded_outcome_status",
+      "fromPortId": "control-out",
+      "toId": "recorded_outcome_result",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_outcome_result",
+      "fromPortId": "control-out",
+      "toId": "recorded_outcome_error",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "record_turn_in",
+      "fromPortId": "function:observation",
+      "toId": "recorded_observation",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "recorded_outcome_status",
+      "fromPortId": "value-out",
+      "toId": "recorded_status",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_event_type",
+      "fromPortId": "content-out",
+      "toId": "failed_turn_event",
+      "toPortId": "type",
+      "type": "content"
+    },
+    {
+      "fromId": "recorded_observation",
+      "fromPortId": "step",
+      "toId": "failed_turn_event",
+      "toPortId": "step",
+      "type": "number"
+    },
+    {
+      "fromId": "recorded_outcome_status",
+      "fromPortId": "value-out",
+      "toId": "failed_turn_event",
+      "toPortId": "status",
+      "type": "content"
+    },
+    {
+      "fromId": "recorded_outcome_error",
+      "fromPortId": "value-out",
+      "toId": "failed_turn_event",
+      "toPortId": "error",
+      "type": "content"
+    },
+    {
+      "fromId": "record_turn_in",
+      "fromPortId": "function:attempts",
+      "toId": "failed_turn_event",
+      "toPortId": "attempts",
+      "type": "list-struct:RecoveryAttempt"
+    },
+    {
+      "fromId": "failed_turn_event",
+      "fromPortId": "struct-out",
+      "toId": "record_failed_turn_return",
+      "toPortId": "function:event",
+      "type": "struct:EpisodeEvent"
+    },
+    {
+      "fromId": "recorded_outcome_result",
+      "fromPortId": "value-out",
+      "toId": "recorded_reply",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "recorded_reply",
+      "fromPortId": "history",
+      "toId": "recorded_last_message",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "recorded_last_message",
+      "fromPortId": "item-out",
+      "toId": "recorded_assistant",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "recorded_assistant",
+      "fromPortId": "value-out",
+      "toId": "recorded_reasoning",
+      "toPortId": "struct-in",
+      "type": "struct:RecordedAssistant"
+    },
+    {
+      "fromId": "recorded_empty_reasoning",
+      "fromPortId": "content-out",
+      "toId": "recorded_reasoning",
+      "toPortId": "fallback-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_event_type",
+      "fromPortId": "content-out",
+      "toId": "successful_turn_event",
+      "toPortId": "type",
+      "type": "content"
+    },
+    {
+      "fromId": "recorded_observation",
+      "fromPortId": "step",
+      "toId": "successful_turn_event",
+      "toPortId": "step",
+      "type": "number"
+    },
+    {
+      "fromId": "recorded_outcome_status",
+      "fromPortId": "value-out",
+      "toId": "successful_turn_event",
+      "toPortId": "status",
+      "type": "content"
+    },
+    {
+      "fromId": "recorded_outcome_error",
+      "fromPortId": "value-out",
+      "toId": "successful_turn_event",
+      "toPortId": "error",
+      "type": "content"
+    },
+    {
+      "fromId": "record_turn_in",
+      "fromPortId": "function:attempts",
+      "toId": "successful_turn_event",
+      "toPortId": "attempts",
+      "type": "list-struct:RecoveryAttempt"
+    },
+    {
+      "fromId": "recorded_reply",
+      "fromPortId": "action",
+      "toId": "successful_turn_event",
+      "toPortId": "action",
+      "type": "content"
+    },
+    {
+      "fromId": "recorded_reasoning",
+      "fromPortId": "value-out",
+      "toId": "successful_turn_event",
+      "toPortId": "reasoning",
+      "type": "content"
+    },
+    {
+      "fromId": "successful_turn_event",
+      "fromPortId": "struct-out",
+      "toId": "record_successful_turn_return",
+      "toPortId": "function:event",
+      "type": "struct:EpisodeEvent"
+    },
+    {
+      "fromId": "record_turn_in",
+      "fromPortId": "control-out",
+      "toId": "recorded_outcome_status",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_outcome_error",
+      "fromPortId": "control-out",
+      "toId": "recorded_observation",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_observation",
+      "fromPortId": "control-out",
+      "toId": "turn_event_type",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_event_type",
+      "fromPortId": "control-out",
+      "toId": "recorded_status",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_status",
+      "fromPortId": "failed",
+      "toId": "failed_turn_event",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "failed_turn_event",
+      "fromPortId": "control-out",
+      "toId": "record_failed_turn_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_status",
+      "fromPortId": "branch$others",
+      "toId": "recorded_reply",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_reply",
+      "fromPortId": "control-out",
+      "toId": "recorded_last_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_last_message",
+      "fromPortId": "control-out",
+      "toId": "recorded_assistant",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_assistant",
+      "fromPortId": "control-out",
+      "toId": "recorded_empty_reasoning",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_empty_reasoning",
+      "fromPortId": "control-out",
+      "toId": "recorded_reasoning",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "recorded_reasoning",
+      "fromPortId": "control-out",
+      "toId": "successful_turn_event",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "successful_turn_event",
+      "fromPortId": "control-out",
+      "toId": "record_successful_turn_return",
       "toPortId": "control-in",
       "type": "control"
     },
@@ -6500,6 +7006,20 @@
       "type": "content"
     },
     {
+      "fromId": "observation_event_type",
+      "fromPortId": "content-out",
+      "toId": "observation_event",
+      "toPortId": "type",
+      "type": "content"
+    },
+    {
+      "fromId": "process_observation_in",
+      "fromPortId": "function:observation",
+      "toId": "observation_event",
+      "toPortId": "observation",
+      "type": "content"
+    },
+    {
       "fromId": "observe_session_trace_id",
       "fromPortId": "value-out",
       "toId": "trace_observation_read",
@@ -6511,14 +7031,14 @@
       "fromPortId": "value-out",
       "toId": "trace_observation_append",
       "toPortId": "list-in",
-      "type": "list-content"
+      "type": "list-struct:EpisodeEvent"
     },
     {
-      "fromId": "process_observation_in",
-      "fromPortId": "function:observation",
+      "fromId": "observation_event",
+      "fromPortId": "struct-out",
       "toId": "trace_observation_append",
       "toPortId": "item-in",
-      "type": "content"
+      "type": "struct:EpisodeEvent"
     },
     {
       "fromId": "observe_session_trace_id",
@@ -6532,7 +7052,7 @@
       "fromPortId": "list-out",
       "toId": "trace_observation_write",
       "toPortId": "value-in",
-      "type": "list-content"
+      "type": "list-struct:EpisodeEvent"
     },
     {
       "fromId": "trace_observation_read",
@@ -6711,6 +7231,20 @@
     },
     {
       "fromId": "remember_observation",
+      "fromPortId": "control-out",
+      "toId": "observation_event_type",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "observation_event_type",
+      "fromPortId": "control-out",
+      "toId": "observation_event",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "observation_event",
       "fromPortId": "control-out",
       "toId": "trace_observation_read",
       "toPortId": "control-in",
@@ -6959,7 +7493,7 @@
       "fromPortId": "value-out",
       "toId": "finalize_record",
       "toPortId": "function:attempts",
-      "type": "list-content"
+      "type": "list-struct:EpisodeEvent"
     },
     {
       "fromId": "finalize_record",
@@ -7295,7 +7829,7 @@
       "fromPortId": "list-out",
       "toId": "attempts_context",
       "toPortId": "initial-value",
-      "type": "list-content"
+      "type": "list-struct:RecoveryAttempt"
     },
     {
       "fromId": "default_status",
@@ -7512,7 +8046,7 @@
       "fromPortId": "value-out",
       "toId": "first_success_return",
       "toPortId": "function:attempts",
-      "type": "list-content"
+      "type": "list-struct:RecoveryAttempt"
     },
     {
       "fromId": "first_success_state",
@@ -7554,7 +8088,7 @@
       "fromPortId": "value-out",
       "toId": "recovery_done_return",
       "toPortId": "function:attempts",
-      "type": "list-content"
+      "type": "list-struct:RecoveryAttempt"
     },
     {
       "fromId": "recovery_done_state",
@@ -8026,11 +8560,32 @@
       "type": "control"
     },
     {
-      "fromId": "remember_attempt_in",
-      "fromPortId": "function:attempt",
-      "toId": "attempt_json",
-      "toPortId": "value-in",
-      "type": "struct:Attempt"
+      "fromId": "remember_attempt_status",
+      "fromPortId": "value-out",
+      "toId": "attempt_summary",
+      "toPortId": "status",
+      "type": "content"
+    },
+    {
+      "fromId": "remember_attempt_error",
+      "fromPortId": "value-out",
+      "toId": "attempt_summary",
+      "toPortId": "error",
+      "type": "content"
+    },
+    {
+      "fromId": "remember_attempt_checkpoint_seq",
+      "fromPortId": "value-out",
+      "toId": "attempt_summary",
+      "toPortId": "checkpoint_seq",
+      "type": "number"
+    },
+    {
+      "fromId": "remember_attempt_source",
+      "fromPortId": "value-out",
+      "toId": "attempt_summary",
+      "toPortId": "source",
+      "type": "content"
     },
     {
       "fromId": "remember_attempt_in",
@@ -8044,14 +8599,14 @@
       "fromPortId": "value-out",
       "toId": "append_attempt",
       "toPortId": "list-in",
-      "type": "list-content"
+      "type": "list-struct:RecoveryAttempt"
     },
     {
-      "fromId": "attempt_json",
-      "fromPortId": "content-out",
+      "fromId": "attempt_summary",
+      "fromPortId": "struct-out",
       "toId": "append_attempt",
       "toPortId": "item-in",
-      "type": "content"
+      "type": "struct:RecoveryAttempt"
     },
     {
       "fromId": "remember_attempt_in",
@@ -8065,7 +8620,7 @@
       "fromPortId": "list-out",
       "toId": "attempts_write",
       "toPortId": "value-in",
-      "type": "list-content"
+      "type": "list-struct:RecoveryAttempt"
     },
     {
       "fromId": "remember_attempt_in",
@@ -8131,24 +8686,10 @@
       "type": "struct:Outcome"
     },
     {
-      "fromId": "remember_run_task",
-      "fromPortId": "value-out",
-      "toId": "progress_record_value",
-      "toPortId": "task",
-      "type": "content"
-    },
-    {
       "fromId": "remember_attempt_status",
       "fromPortId": "value-out",
       "toId": "progress_record_value",
       "toPortId": "status",
-      "type": "content"
-    },
-    {
-      "fromId": "remember_attempt_result",
-      "fromPortId": "value-out",
-      "toId": "progress_record_value",
-      "toPortId": "result",
       "type": "content"
     },
     {
@@ -8166,18 +8707,11 @@
       "type": "number"
     },
     {
-      "fromId": "remember_run_workspace_before",
-      "fromPortId": "value-out",
-      "toId": "progress_record_value",
-      "toPortId": "workspace_before",
-      "type": "content"
-    },
-    {
       "fromId": "append_attempt",
       "fromPortId": "list-out",
       "toId": "progress_record_value",
       "toPortId": "attempts",
-      "type": "list-content"
+      "type": "list-struct:RecoveryAttempt"
     },
     {
       "fromId": "progress_record_value",
@@ -8231,12 +8765,12 @@
     {
       "fromId": "remember_attempt_source",
       "fromPortId": "control-out",
-      "toId": "attempt_json",
+      "toId": "attempt_summary",
       "toPortId": "control-in",
       "type": "control"
     },
     {
-      "fromId": "attempt_json",
+      "fromId": "attempt_summary",
       "fromPortId": "control-out",
       "toId": "attempts_read",
       "toPortId": "control-in",
@@ -8852,55 +9386,6 @@
       "type": "content"
     },
     {
-      "fromId": "after_seq",
-      "fromPortId": "seq",
-      "toId": "workspace_changes",
-      "toPortId": "seq",
-      "type": "number"
-    },
-    {
-      "fromId": "workspace_changes",
-      "fromPortId": "seq",
-      "toId": "workspace_changes_seq_text",
-      "toPortId": "number-in",
-      "type": "number"
-    },
-    {
-      "fromId": "workspace_changes_seq_text",
-      "fromPortId": "content-out",
-      "toId": "workspace_changes_json",
-      "toPortId": "part_2",
-      "type": "content"
-    },
-    {
-      "fromId": "workspace_changes",
-      "fromPortId": "parent_seq",
-      "toId": "workspace_changes_json",
-      "toPortId": "part_4",
-      "type": "content"
-    },
-    {
-      "fromId": "workspace_changes",
-      "fromPortId": "changes",
-      "toId": "workspace_changes_json",
-      "toPortId": "part_6",
-      "type": "content"
-    },
-    {
-      "fromId": "workspace_changes",
-      "fromPortId": "control-out",
-      "toId": "workspace_changes_seq_text",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "workspace_changes_seq_text",
-      "fromPortId": "control-out",
-      "toId": "workspace_changes_json",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
       "fromId": "finish_outcome_status",
       "fromPortId": "value-out",
       "toId": "task_record_value",
@@ -8957,18 +9442,11 @@
       "type": "content"
     },
     {
-      "fromId": "workspace_changes_json",
-      "fromPortId": "content-out",
-      "toId": "task_record_value",
-      "toPortId": "workspace_changes",
-      "type": "content"
-    },
-    {
       "fromId": "finish_task_in",
       "fromPortId": "function:attempts",
       "toId": "task_record_value",
-      "toPortId": "attempts",
-      "type": "list-content"
+      "toPortId": "events",
+      "type": "list-struct:EpisodeEvent"
     },
     {
       "fromId": "task_record_value",
@@ -9013,11 +9491,67 @@
       "type": "content"
     },
     {
-      "fromId": "task_record",
+      "fromId": "finish_outcome_status",
+      "fromPortId": "value-out",
+      "toId": "completed_record_value",
+      "toPortId": "status",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_outcome_result",
+      "fromPortId": "value-out",
+      "toId": "completed_record_value",
+      "toPortId": "result",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_outcome_error",
+      "fromPortId": "value-out",
+      "toId": "completed_record_value",
+      "toPortId": "error",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_run_task",
+      "fromPortId": "value-out",
+      "toId": "completed_record_value",
+      "toPortId": "task",
+      "type": "content"
+    },
+    {
+      "fromId": "finish_run_checkpoint_before",
+      "fromPortId": "value-out",
+      "toId": "completed_record_value",
+      "toPortId": "checkpoint_before",
+      "type": "number"
+    },
+    {
+      "fromId": "finish_run_workspace_before",
+      "fromPortId": "value-out",
+      "toId": "completed_record_value",
+      "toPortId": "workspace_before",
+      "type": "content"
+    },
+    {
+      "fromId": "after_seq",
+      "fromPortId": "seq",
+      "toId": "completed_record_value",
+      "toPortId": "checkpoint_after",
+      "type": "number"
+    },
+    {
+      "fromId": "inventory_after_json",
       "fromPortId": "content-out",
       "toId": "completed_record_value",
-      "toPortId": "task_record",
+      "toPortId": "workspace_after",
       "type": "content"
+    },
+    {
+      "fromId": "finish_task_in",
+      "fromPortId": "function:attempts",
+      "toId": "completed_record_value",
+      "toPortId": "events",
+      "type": "list-struct:EpisodeEvent"
     },
     {
       "fromId": "iterate_experience",
@@ -9140,13 +9674,6 @@
     },
     {
       "fromId": "after_seq",
-      "fromPortId": "control-out",
-      "toId": "workspace_changes",
-      "toPortId": "control-in",
-      "type": "control"
-    },
-    {
-      "fromId": "workspace_changes_json",
       "fromPortId": "control-out",
       "toId": "task_record_value",
       "toPortId": "control-in",

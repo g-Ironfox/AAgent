@@ -42,6 +42,14 @@ docker compose --profile benchmark run --rm --no-deps --entrypoint python -v ./d
 python scripts/build_alfworld_bundle.py
 ```
 
+生成器现在会在写入任何文件之前检查整套文件：如果目标文件已经绑定真实模型、文件 ID 或子流程名称，而新生成内容将改掉这些绑定，默认拒绝覆盖。不要用未绑定模板直接覆盖正在使用的工作区副本。可以输出到一个新目录，或显式传入原有绑定：
+
+```powershell
+python scripts/build_alfworld_bundle.py --output tmp/alfworld-bound --prefix YOUR_PREFIX --model YOUR_MODEL_ID --experience-id EXPERIENCE_FILE_ID --main-id MAIN_FILE_ID --stable-id STABLE_FILE_ID
+```
+
+`--force` 仅用于明确要重置本地模板绑定的情况，不会帮你重新绑定或更新线上文件。在线上修复时应保持文件 ID 和权限不变，并分别核对主流程、稳定备份、经验、迭代器和引导的引用。
+
 ## 每轮执行与恢复
 
 引导等待第一条观察，保存初始任务、工作区清单和 checkpoint。每条观察先持久化，再判断 done：未结束时，将当前观察和历史作为 task JSON 交给主流程；主流程返回 action 与 history，引导保存逐轮尝试结果后才发送动作。模型正文只有动作，reasoning 留在原生 assistant 历史中。终端是 ALFWorld 的数据通道：输入为 observation JSON，输出只发送 action/error JSON，不混入进度、推理或结束摘要；这些信息从进程日志和任务记录查看。
@@ -66,7 +74,19 @@ python scripts/build_alfworld_bundle.py
 
 所有已知工具均为固定 Tool 节点；模型节点没有工具调用。主流程只能通过固定节点读经验；迭代器只能写安装时绑定的经验 ID；引导能在恢复路径替换主流程，三个进程都不能修改引导、迭代器或 stable。等级机制本身不提供文件白名单，固定目标由执行图保证，详见 [权限机制](../../process-permissions.md)。
 
-每个 episode 产生 alfworld-agent-run-<checkpoint-seq>.json，格式复用 [受限三段工作流](../restricted-agent/README.md)：最终外层是 task_record、iterator_status、iterator_result。task_record 中 task 为初始观察 JSON 字符串，result 为最后观察 JSON 字符串，attempts 为按时间排列的轨迹字符串列表：观察记录与逐轮结果交替，逐轮结果含 observation、outcome、attempts，outcome.result 再包含 action 和保留 reasoning 的 history。内部 attempts 保留 current/checkpoint/stable 来源和错误。嵌套 JSON 使用字符串以安全保留任意文本。
+每个 episode 产生 `alfworld-agent-run-<checkpoint-seq>.json`，保存为一个普通 JSON 对象：
+
+- `task` / `result`：初始 / 最后环境观察的 JSON 字符串，保留完整原始字段。
+- `status` / `error`：流程状态和恢复错误，不替代环境的成功判定。
+- `events`：按时间排列的**对象数组**，不是 JSON 字符串数组。
+  - `type=observation`：`observation` 保存这一条环境观察。
+  - `type=turn`：`step`、`action`、`reasoning` 保存本轮新增动作和推理；`attempts` 是恢复摘要对象数组，包含 `status`、`error`、`checkpoint_seq`、`source`。失败轮次没有动作或推理。
+- `checkpoint_before` / `checkpoint_after`、`workspace_before` / `workspace_after`：工作区元数据快照。完整变更内容按需通过 checkpoint 查询，不嵌入日志自身，避免把日志递归复制进日志。
+- `iterator_status` / `iterator_result`：经验迭代完成后补充的结果，直接位于顶层。
+
+完整聊天历史只供主流程继续决策，不在每一轮的记录里重复保存；下一轮输入也不再带上完整审计轨迹。所有观察、动作、原生 reasoning 和恢复来源仍可从 `events` 按顺序还原。记录体积随新增内容增长，不再因反复保存完整历史而快速膨胀。普通引号、换行和路径仍会按 JSON 规则正常转义；不应手动删除反斜杠。
+
+这是 ALFWorld 的新记录格式，不再使用旧版 `task_record` 字符串包装。旧文件不会自动迁移；消费记录的脚本应改读顶层字段和 `events`。仓库模板变更不会自动更新已安装的工作区文件或正在运行的进程：建议使用新的 `--prefix` 重新安装整套工作流（先按需备份或迁移经验），然后选择新 bootstrap 的文件 ID 开始新 episode。安装器仍拒绝覆盖旧文件。
 
 status=completed/recovered 只说明流程执行状态，**解题成功以环境 success=true（infos.won）为准**。迭代器据此区分已验证方法与待验证建议，不跨任务照搬物品编号和房间地图。经验在顺序 episode 之间累积，会改变评测条件；比较模型或工作流时应使用新的 --prefix 并保持相同的经验起点。多 worker 并行使用同一套文件可能遇到经验 revision 冲突或主流程恢复竞争，应为各自安装独立的 prefix。
 
@@ -74,6 +94,7 @@ status=completed/recovered 只说明流程执行状态，**解题成功以环境
 
 ```powershell
 python -m unittest discover -s agent -p test_alfworld_bundle.py
+python -m unittest discover -s agent -p test_alfworld_generation.py
 python -m unittest discover -s alfworld_runner -p test_runner.py
 node --test workflow_editor/test_alfworld_bundle.mjs
 ```

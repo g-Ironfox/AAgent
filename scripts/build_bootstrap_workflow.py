@@ -88,21 +88,31 @@ def _build_attempt_main(g, prefix):
         g.chain(first, "attempt_" + suffix, ret)
 
 
-def _build_remember_attempt(g):
+def _build_remember_attempt(g, attempt_struct=None):
     fi = g.function("remember_attempt", [("run", "struct:Run"), ("attempt", "struct:Attempt"),
                                          ("state_id", "content"), ("attempts_id", "content")])
     run_start, run_end, run = unpack(g, "remember_run", "Run", (fi, "function:run"), RUN_FIELDS)
     attempt_start, attempt_end, attempt = unpack(g, "remember_attempt", "Attempt", (fi, "function:attempt"), ATTEMPT_FIELDS)
-    g.node("attempt_json", "struct_to_json", arguments={"value_type": "struct:Attempt"})
-    g.data(fi, "function:attempt", "attempt_json", "value-in", "struct:Attempt")
-    g.ctx("attempts_read", "read")
+    attempts_type = "list-struct:" + attempt_struct if attempt_struct else "list-content"
+    item_type = "struct:" + attempt_struct if attempt_struct else "content"
+    if attempt_struct:
+        # Recovery needs the complete child result in memory, not in every audit entry.
+        g.make_struct("attempt_summary", attempt_struct, {
+            name: attempt[name] for name in ("status", "error", "checkpoint_seq", "source")
+        })
+        attempt_node, attempt_port = "attempt_summary", "struct-out"
+    else:
+        g.node("attempt_json", "struct_to_json", arguments={"value_type": "struct:Attempt"})
+        g.data(fi, "function:attempt", "attempt_json", "value-in", "struct:Attempt")
+        attempt_node, attempt_port = "attempt_json", "content-out"
+    g.ctx("attempts_read", "read", attempts_type)
     g.data(fi, "function:attempts_id", "attempts_read", "context-id")
-    g.node("append_attempt", "list_append", arguments={"item_type": "content", "position": "end"})
-    g.data("attempts_read", "value-out", "append_attempt", "list-in", "list-content")
-    g.data("attempt_json", "content-out", "append_attempt", "item-in")
-    g.ctx("attempts_write", "write")
+    g.node("append_attempt", "list_append", arguments={"item_type": item_type, "position": "end"})
+    g.data("attempts_read", "value-out", "append_attempt", "list-in", attempts_type)
+    g.data(attempt_node, attempt_port, "append_attempt", "item-in", item_type)
+    g.ctx("attempts_write", "write", attempts_type)
     g.data(fi, "function:attempts_id", "attempts_write", "context-id")
-    g.data("append_attempt", "list-out", "attempts_write", "value-in", "list-content")
+    g.data("append_attempt", "list-out", "attempts_write", "value-in", attempts_type)
     g.ctx("state_read", "read", "struct:Outcome")
     g.data(fi, "function:state_id", "state_read", "context-id")
     g.get("prior_errors", "Outcome", "error", "state_read", "value-out")
@@ -113,16 +123,23 @@ def _build_remember_attempt(g):
     g.ctx("state_write", "write", "struct:Outcome")
     g.data(fi, "function:state_id", "state_write", "context-id")
     g.data("updated_outcome", "struct-out", "state_write", "value-in", "struct:Outcome")
-    start, end = pack(g, "progress_record", {
-        "task": run["task"], "status": attempt["status"], "result": attempt["result"],
-        "error": ("all_errors", "content-out"), "checkpoint_before": run["checkpoint_before"],
-        "workspace_before": run["workspace_before"], "attempts": ("append_attempt", "list-out", "list-content"),
-    })
+    progress = {
+        "status": attempt["status"], "error": ("all_errors", "content-out"),
+        "checkpoint_before": run["checkpoint_before"],
+        "attempts": ("append_attempt", "list-out", attempts_type),
+    }
+    if not attempt_struct:
+        progress = {
+            "task": run["task"], "status": attempt["status"], "result": attempt["result"],
+            "error": ("all_errors", "content-out"), "checkpoint_before": run["checkpoint_before"],
+            "workspace_before": run["workspace_before"], "attempts": ("append_attempt", "list-out", "list-content"),
+        }
+    start, end = pack(g, "progress_record", progress)
     g.call("save_progress", "write_record", {"record_id": run["record_id"], "record_name": run["record_name"], "content": (end, "content-out")})
     g.ret("remember_return", "remember_attempt")
     g.chain(fi, run_start)
     g.chain(run_end, attempt_start)
-    g.chain(attempt_end, "attempt_json", "attempts_read", "append_attempt", "attempts_write", "state_read",
+    g.chain(attempt_end, attempt_node, "attempts_read", "append_attempt", "attempts_write", "state_read",
             "prior_errors", "all_errors", "updated_outcome", "state_write", start)
     g.chain(end, "save_progress", "remember_return")
 
@@ -173,25 +190,27 @@ def _build_retry_version(g):
     g.control("retry_route", "retry_failed_return", "branch$others")
 
 
-def _recovery_return(g, prefix):
+def _recovery_return(g, prefix, attempts_type="list-content"):
     g.ctx(prefix + "_state", "read", "struct:Outcome")
     g.data("outcome_context", "context-id", prefix + "_state", "context-id")
-    g.ctx(prefix + "_attempts", "read")
+    g.ctx(prefix + "_attempts", "read", attempts_type)
     g.data("attempts_context", "context-id", prefix + "_attempts", "context-id")
     ret = result(g, prefix + "_return", "run_with_recovery", {
         "outcome": (prefix + "_state", "value-out", "struct:Outcome"),
-        "attempts": (prefix + "_attempts", "value-out", "list-content"),
+        "attempts": (prefix + "_attempts", "value-out", attempts_type),
     })
     g.chain(prefix + "_state", prefix + "_attempts", ret)
     return prefix + "_state"
 
 
-def _build_run_with_recovery(g, main_id, stable_id):
-    fi = g.function("run_with_recovery", [("run", "struct:Run")], [("outcome", "struct:Outcome"), ("attempts", "list-content")])
+def _build_run_with_recovery(g, main_id, stable_id, attempt_struct=None):
+    attempts_type = "list-struct:" + attempt_struct if attempt_struct else "list-content"
+    item_type = "struct:" + attempt_struct if attempt_struct else "content"
+    fi = g.function("run_with_recovery", [("run", "struct:Run")], [("outcome", "struct:Outcome"), ("attempts", attempts_type)])
     rs, re, run = unpack(g, "execution_run", "Run", (fi, "function:run"), [("task", "content"), ("checkpoint_before", "number")])
-    g.node("empty_attempts", "construct_list", arguments={"item_type": "content", "initial_value_count": 0}, dataInputPorts=[])
-    g.ctx("attempts_context", "create")
-    g.data("empty_attempts", "list-out", "attempts_context", "initial-value", "list-content")
+    g.node("empty_attempts", "construct_list", arguments={"item_type": item_type, "initial_value_count": 0}, dataInputPorts=[])
+    g.ctx("attempts_context", "create", attempts_type)
+    g.data("empty_attempts", "list-out", "attempts_context", "initial-value", attempts_type)
     failed = g.const("default_status", "failed")
     empty = g.const("default_text", "")
     g.make_struct("default_outcome", "Outcome", {"status": (failed, "content-out", "content"),
@@ -219,8 +238,8 @@ def _build_run_with_recovery(g, main_id, stable_id):
     g.call("recover_one", "retry_version", {"run": (fi, "function:run", "struct:Run"),
         "version": ("recovery_gate", "item-out", "struct:RecoveryVersion"), "state_id": ("outcome_context", "context-id"),
         "attempts_id": ("attempts_context", "context-id"), "versions_id": ("versions_context", "context-id")})
-    done = _recovery_return(g, "first_success")
-    exhausted = _recovery_return(g, "recovery_done")
+    done = _recovery_return(g, "first_success", attempts_type)
+    exhausted = _recovery_return(g, "recovery_done", attempts_type)
     g.chain(fi, rs)
     g.chain(re, "empty_attempts", "attempts_context", failed, empty, "default_outcome", "outcome_context",
             source, completed, "first_attempt", "remember_first", "first_status", "first_route")
@@ -248,8 +267,9 @@ def _build_call_iterator(g, prefix):
         g.control(flag, ret)
 
 
-def _build_finish_task(g, prefix, terminal_summary=True):
-    fi = g.function("finish_task", [("run", "struct:Run"), ("outcome", "struct:Outcome"), ("attempts", "list-content")],
+def _build_finish_task(g, prefix, terminal_summary=True, events_type=None):
+    attempts_type = events_type or "list-content"
+    fi = g.function("finish_task", [("run", "struct:Run"), ("outcome", "struct:Outcome"), ("attempts", attempts_type)],
                     [("status", "content"), ("result", "content"), ("record_file_id", "content")])
     rs, re, run = unpack(g, "finish_run", "Run", (fi, "function:run"), RUN_FIELDS)
     os, oe, outcome = unpack(g, "finish_outcome", "Outcome", (fi, "function:outcome"), OUTCOME_FIELDS)
@@ -257,16 +277,22 @@ def _build_finish_task(g, prefix, terminal_summary=True):
     inv, _ = tool(g, "inventory_after", "workspace.list_files")
     snapshot = tool_result_json(g, "inventory_after")
     parse(g, "after_seq", (after_end, "output"), [("seq", "number")])
-    changes, _ = tool(g, "workspace_changes", "workspace.checkpoint_diff", bindings={"seq": ("after_seq", "seq", "number")})
-    changes_json = tool_result_json(g, "workspace_changes")
-    start, end = pack(g, "task_record", {**outcome, "task": run["task"], "checkpoint_before": run["checkpoint_before"],
+    record_fields = {**outcome, "task": run["task"], "checkpoint_before": run["checkpoint_before"],
         "workspace_before": run["workspace_before"], "checkpoint_after": ("after_seq", "seq", "number"),
-        "workspace_after": (snapshot, "content-out"), "workspace_changes": (changes_json, "content-out"),
-        "attempts": (fi, "function:attempts", "list-content")})
+        "workspace_after": (snapshot, "content-out")}
+    if not events_type:
+        changes, _ = tool(g, "workspace_changes", "workspace.checkpoint_diff", bindings={"seq": ("after_seq", "seq", "number")})
+        changes_json = tool_result_json(g, "workspace_changes")
+        record_fields["workspace_changes"] = (changes_json, "content-out")
+    # Checkpoints retain full diffs. Do not embed an audit file's own contents
+    # back into that audit file through workspace_changes before/after_content.
+    record_fields["events" if events_type else "attempts"] = (fi, "function:attempts", attempts_type)
+    start, end = pack(g, "task_record", record_fields)
     record = {"record_id": run["record_id"], "record_name": run["record_name"]}
     g.call("save_task_record", "write_record", {**record, "content": (end, "content-out")})
     g.call("iterate_experience", "call_iterator", {"record": (end, "content-out")})
-    final_start, final_end = pack(g, "completed_record", {"task_record": (end, "content-out"),
+    final_start, final_end = pack(g, "completed_record", {
+        **(record_fields if events_type else {"task_record": (end, "content-out")}),
         "iterator_status": ("iterate_experience", "function:status"), "iterator_result": ("iterate_experience", "function:result")})
     g.call("save_final_record", "write_record", {**record, "content": (final_end, "content-out")})
     cp, cp_end = tool(g, "checkpoint_final", "workspace.create_checkpoint", arguments={"name": prefix + ": after iterator"})
@@ -280,8 +306,12 @@ def _build_finish_task(g, prefix, terminal_summary=True):
     g.chain(re, os)
     g.chain(oe, after)
     g.control(after_end, inv)
-    g.chain(snapshot, "after_seq", changes)
-    g.control(changes_json, start)
+    g.control(snapshot, "after_seq")
+    if events_type:
+        g.control("after_seq", start)
+    else:
+        g.control("after_seq", changes)
+        g.control(changes_json, start)
     g.chain(end, "save_task_record", "iterate_experience", final_start)
     g.chain(final_end, "save_final_record", cp)
     if terminal_summary:
@@ -307,16 +337,17 @@ def build_bootstrap(main_id, stable_id, prefix="restricted-agent"):
     return g.doc
 
 
-def add_bootstrap_functions(g, main_id, stable_id, prefix, *, terminal_summary=True):
+def add_bootstrap_functions(g, main_id, stable_id, prefix, *, terminal_summary=True,
+                            attempt_struct=None, events_type=None):
     """Shared recording, child calls and bounded file-version recovery functions."""
     _build_initialize_run(g, prefix)
-    _build_run_with_recovery(g, main_id, stable_id)
+    _build_run_with_recovery(g, main_id, stable_id, attempt_struct)
     _build_attempt_main(g, prefix)
-    _build_remember_attempt(g)
+    _build_remember_attempt(g, attempt_struct)
     _build_restore_version(g, main_id)
     _build_retry_version(g)
     _build_write_record(g)
-    _build_finish_task(g, prefix, terminal_summary)
+    _build_finish_task(g, prefix, terminal_summary, events_type)
     _build_call_iterator(g, prefix)
     label_functions(g, {
         "initialize_run": "初始化任务记录", "run_with_recovery": "执行主流程与逐级恢复",

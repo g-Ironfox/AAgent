@@ -2,6 +2,7 @@
 import copy
 import json
 import unittest
+from unittest.mock import patch
 
 import main
 import test_process_workflows as support
@@ -297,6 +298,82 @@ class FunctionProcessTest(unittest.TestCase):
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'hello'})
         self.assertEqual(len(self.workflows()), 2)
+
+    def test_context_after_function_returns_across_time_slice(self):
+        self.assert_context_after_function_resume('time_slice')
+
+    def test_context_after_function_returns_from_terminal_wait(self):
+        self.assert_context_after_function_resume('terminal')
+
+    def test_context_after_function_returns_from_subprocess_wait(self):
+        self.assert_context_after_function_resume('subprocess')
+
+    def assert_context_after_function_resume(self, pause):
+        doc = function_document(nested=True, wait=pause == 'terminal',
+                                subprocess=pause == 'subprocess')
+        # Exercise both restored frames: B -> A and A -> the root workflow.
+        for caller, output in [('callB', 'Aout'), ('callA', 'out')]:
+            create, write, read = (caller + suffix for suffix in ('_create', '_write', '_read'))
+            doc['nodes'] += [
+                {'id': create, 'type': 'context_create', 'arguments': {'value_type': 'content'}},
+                {'id': write, 'type': 'context_write', 'arguments': {'value_type': 'content'}},
+                {'id': read, 'type': 'context_read', 'arguments': {'value_type': 'content'}},
+            ]
+            for connection in doc['connections']:
+                if connection['fromId'] != caller or connection['toId'] != output:
+                    continue
+                if connection['type'] == 'control':
+                    connection['toId'] = create
+                else:
+                    connection.update(fromId=read, fromPortId='value-out')
+            doc['connections'] += [
+                edge(create, write), edge(write, read), edge(read, output),
+                edge(caller, create, 'function:text', 'initial-value', 'content'),
+                edge(caller, write, 'function:text', 'value-in', 'content'),
+                edge(create, write, 'context-id', 'context-id', 'content'),
+                edge(create, read, 'context-id', 'context-id', 'content'),
+            ]
+        if pause == 'subprocess':
+            self.documents['child.flow'] = support.document('child', wait=True)
+        process = self.start(doc)
+        if pause == 'time_slice':
+            # The fixture uses one-node slices, serializing both caller frames.
+            for _ in range(10):
+                main.schedule_once(timeout=1)
+                waiting = main.read_process(process['process_id'])
+                if waiting.get('active_function_id') == 'B':
+                    break
+            else:
+                self.fail('nested function was not entered')
+        else:
+            self.drain()
+            waiting = main.read_process(process['process_id'])
+            self.assertEqual(waiting['status'], 'blocked')
+        self.assertEqual(waiting['active_function_id'], 'B')
+        self.assertEqual(len(waiting['function_stack']), 2)
+        for frame in waiting['function_stack']:
+            self.assertTrue(all('_workflow_invocation_id' not in node
+                                and '_workflow_context_ids' not in node
+                                for node in frame['workflow']))
+        if pause == 'terminal':
+            self.send(waiting)
+        elif pause == 'subprocess':
+            child = next(p for p in self.workflows()
+                         if p.get('parent_process_id') == process['process_id'])
+            self.send(child)
+        # Both function returns and their Context operations run without a yield.
+        with patch('main.SCHEDULER_TIME_SLICE_MS', 500):
+            self.drain()
+        final = main.read_process(process['process_id'])
+        self.assertEqual(final['status'], 'completed', final.get('error'))
+        self.assertEqual(final['result'], {'text': 'hello'})
+        self.assertEqual(final['function_stack'], [])
+        self.assertEqual(len(final['context_ids']), 2)
+        self.assertFalse(any(key.startswith('workflow-context:') for key in self.redis.hashes))
+        runtime_fields = {'_workflow_invocation_id', '_workflow_ancestor_invocation_ids',
+                          '_workflow_context_ids'}
+        self.assertTrue(all(runtime_fields.isdisjoint(node)
+                            for node in json.loads(final['workflow'])))
 
     def test_template_has_no_runtime_data(self):
         graph = parse_workflow(function_document())

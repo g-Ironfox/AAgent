@@ -222,8 +222,6 @@ def workflow_read_terminal_queue(current_id: int, workflow_map: WorkflowMap) -> 
     contents = read_terminal_input_queue(get_connection(), terminal_process_id)
     if not contents:
         return WorkflowStep({"kind": "terminal_message", "process_id": terminal_process_id})
-    # Acknowledge only when the output and workflow progress are durably saved.
-    process["_terminal_input_batch"] = contents
     propagate_workflow_output(workflow_map, node, "list-out", contents)
     return successor
 
