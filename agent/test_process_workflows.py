@@ -571,6 +571,32 @@ class ProcessWorkflowTest(unittest.TestCase):
     def test_pending_call_resumes_after_target_is_deleted(self):
         self.assert_pending_call_resumes_after_target_changes("delete")
 
+    def test_terminal_route_follows_spawn_and_explicit_parent_resume(self):
+        self.documents["Child.flow"] = document("Child", wait=True)
+        root = self.start(document("Root", "Child.flow"))
+        self.drain()
+        child = next(item for item in self.workflows()
+                     if item.get("parent_process_id") == root["process_id"])
+        self.assertEqual(
+            self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]),
+            child["terminal_process_id"],
+        )
+
+        self.send(child)
+        for _ in range(10):
+            if main.read_process(child["process_id"])["status"] == "completed":
+                break
+            main.schedule_once(timeout=1)
+        else:
+            self.fail("child did not complete")
+        self.assertEqual(
+            self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]),
+            root["terminal_process_id"],
+        )
+
+        self.drain()
+        self.assertIsNone(self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]))
+
     def assert_pending_call_resumes_after_target_changes(self, change):
         text = '中文 "quoted"\nnext line'
         self.documents["Child.flow"] = document("Child", wait=True)
@@ -873,6 +899,10 @@ class ProcessWorkflowTest(unittest.TestCase):
         child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         main.terminate_process(child["process_id"])
         self.assertEqual(main.read_process(root["process_id"])["status"], "ready")
+        self.assertEqual(
+            self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]),
+            root["terminal_process_id"],
+        )
         self.assertEqual(self.latest_log(root["process_id"])["events"][-1]["event"], "woken")
         self.assertEqual(self.latest_log(child["process_id"])["status"], "terminated")
         with self.assertLogs("main", level="ERROR"):

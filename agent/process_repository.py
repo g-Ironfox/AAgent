@@ -17,6 +17,7 @@ BLOCKED_PROCESSES = os.getenv("BlockedProcesses", "blocked_processes")
 EXTERNAL_EVENTS = os.getenv("ExternalEvents", "external_events")
 TERMINAL_INDEX = os.getenv("TerminalIndex", "terminal_index")
 TERMINAL_SESSIONS = os.getenv("TerminalSessions", "terminal_sessions")
+_UNSET = object()
 
 
 def _read_process_record(client, process_id: str) -> dict:
@@ -54,7 +55,7 @@ def wake_process(client, process_id: str, source_process_id: str, event_kind: st
     while True:
         with client.pipeline() as pipe:
             try:
-                pipe.watch(PROCESSTABLE)
+                pipe.watch(PROCESSTABLE, TERMINAL_INDEX)
                 process = _read_process_record(pipe, process_id)
                 if (
                     process.get("status") != "blocked"
@@ -62,6 +63,9 @@ def wake_process(client, process_id: str, source_process_id: str, event_kind: st
                     != {"kind": event_kind, "process_id": source_process_id}
                 ):
                     return process
+                current_terminal_process_id = pipe.hget(
+                    TERMINAL_INDEX, process.get("terminal_id")
+                )
                 _wake_record(process)
                 existing = _read_terminal_scope(pipe, process)
                 pipe.multi()
@@ -69,7 +73,12 @@ def wake_process(client, process_id: str, source_process_id: str, event_kind: st
                 pipe.srem(BLOCKED_PROCESSES, process_id)
                 pipe.lrem(READY_PROCESSES, 0, process_id)
                 pipe.lpush(READY_PROCESSES, process_id)
-                _queue_public_updates(pipe, existing, {process_id: process})
+                _queue_public_updates(
+                    pipe,
+                    existing,
+                    {process_id: process},
+                    current_terminal_process_id=current_terminal_process_id,
+                )
                 pipe.execute()
                 return process
             except redis.WatchError:
@@ -109,7 +118,12 @@ def enqueue_terminal_input(client, terminal_id: str, content: str) -> dict | Non
                                                 for key, value in records.items()})
                 if owner["process_id"] in records:
                     _index_process(pipe, owner)
-                _queue_public_updates(pipe, existing, records)
+                _queue_public_updates(
+                    pipe,
+                    existing,
+                    records,
+                    current_terminal_process_id=terminal_process_id,
+                )
                 pipe.execute()
                 return owner
             except redis.WatchError:
@@ -165,10 +179,26 @@ def _queue_public_updates(
     pipe,
     existing: dict[str, dict],
     updates: dict[str, dict],
+    route_terminal_process_id=_UNSET,
+    current_terminal_process_id=_UNSET,
 ) -> None:
-    """Publish routing, public sessions, and scheduler projections in one transaction."""
+    """Publish routing, public sessions, and projections in one transaction.
+
+    Route changes are supplied by the lifecycle transition that caused them;
+    routine process updates only preserve the already indexed terminal.
+    """
     projected = dict(existing)
     projected.update(updates)
+
+    def lookup(process_id: str | None) -> dict | None:
+        if not process_id:
+            return None
+        process = projected.get(process_id)
+        if process is not None:
+            return process
+        raw = pipe.hget(PROCESSTABLE, process_id)
+        return json.loads(raw) if raw is not None else None
+
     terminal_ids = {
         process.get("terminal_id")
         for process in updates.values()
@@ -186,19 +216,23 @@ def _queue_public_updates(
         if root is None:
             continue
         closed = root.get("status") in TERMINAL_STATUSES
-        candidates = [
-            process for process in projected.values()
-            if process.get("process_type") == "terminal"
-            and process.get("terminal_id") == terminal_id
-            and process.get("status") not in TERMINAL_STATUSES
-        ]
         owner = root
-        if candidates and not closed:
-            current = max(candidates, key=lambda process: process.get("start_time") or "")
-            pipe.hset(TERMINAL_INDEX, terminal_id, current["process_id"])
-            owner = projected.get(current.get("parent_process_id"), root)
-        else:
+        if closed or route_terminal_process_id is None:
             pipe.hdel(TERMINAL_INDEX, terminal_id)
+        elif route_terminal_process_id is _UNSET:
+            current = lookup(current_terminal_process_id)
+            if current is not None and current.get("status") not in TERMINAL_STATUSES:
+                owner = lookup(current.get("parent_process_id")) or root
+        else:
+            current = lookup(route_terminal_process_id)
+            if current is None or current.get("process_type") != "terminal":
+                raise ValueError("terminal route target is missing or invalid")
+            if current.get("terminal_id") != terminal_id:
+                raise ValueError("terminal route target belongs to another terminal")
+            if current.get("status") in TERMINAL_STATUSES:
+                raise ValueError("terminal route target is not active")
+            pipe.hset(TERMINAL_INDEX, terminal_id, route_terminal_process_id)
+            owner = lookup(current.get("parent_process_id")) or root
         # SELECT is queued inside MULTI/EXEC; restore the pooled connection
         # before EXEC finishes, including when another command returns an error.
         pipe.execute_command("SELECT", REDIS_PUBLIC_DB)
@@ -226,7 +260,7 @@ def publish_process_pair(client, process: dict, terminal: dict) -> None:
         _queue_public_updates(pipe, {}, {
             process["process_id"]: process,
             terminal["process_id"]: terminal,
-        })
+        }, route_terminal_process_id=terminal["process_id"])
         _index_process(pipe, process)
         pipe.execute()
 
@@ -236,10 +270,13 @@ def claim_process(client, process_id: str) -> tuple[dict, bool]:
     while True:
         with client.pipeline() as pipe:
             try:
-                pipe.watch(PROCESSTABLE)
+                pipe.watch(PROCESSTABLE, TERMINAL_INDEX)
                 process = _read_process_record(pipe, process_id)
                 if process.get("status") != "ready" or process.get("process_type") == "terminal":
                     return process, False
+                current_terminal_process_id = pipe.hget(
+                    TERMINAL_INDEX, process.get("terminal_id")
+                )
                 if process.get("process_type") == "workflow":
                     process["permissions"] = snapshot_process_permissions(process.get("permissions"))
                     process.setdefault("_workspace_token", secrets.token_urlsafe(32))
@@ -254,7 +291,12 @@ def claim_process(client, process_id: str) -> tuple[dict, bool]:
                 pipe.hset(PROCESSTABLE, process_id, _encode_process(process))
                 pipe.lrem(READY_PROCESSES, 0, process_id)
                 pipe.srem(BLOCKED_PROCESSES, process_id)
-                _queue_public_updates(pipe, existing, {process_id: process})
+                _queue_public_updates(
+                    pipe,
+                    existing,
+                    {process_id: process},
+                    current_terminal_process_id=current_terminal_process_id,
+                )
                 pipe.execute()
                 return process, True
             except redis.WatchError:
@@ -268,11 +310,14 @@ def commit_process(client, process: dict, child: dict | None = None,
     while True:
         with client.pipeline() as pipe:
             try:
-                pipe.watch(PROCESSTABLE)
+                pipe.watch(PROCESSTABLE, TERMINAL_INDEX)
                 existing = {
                     key: json.loads(raw)
                     for key, raw in pipe.hgetall(PROCESSTABLE).items()
                 }
+                current_terminal_process_id = pipe.hget(
+                    TERMINAL_INDEX, process.get("terminal_id")
+                )
                 saved = _read_process_record(pipe, process_id)
                 if (saved.get("status") != "running"
                         or saved.get("execution_id") != process.get("execution_id")):
@@ -330,12 +375,27 @@ def commit_process(client, process: dict, child: dict | None = None,
                                 }):
                             _wake_record(parent)
                             records[parent_id] = parent
+                route_terminal_process_id = _UNSET
+                if child_terminal is not None:
+                    route_terminal_process_id = child_terminal["process_id"]
+                elif candidate.get("status") in TERMINAL_STATUSES:
+                    parent_id = candidate.get("parent_process_id")
+                    parent = existing.get(parent_id) if parent_id else None
+                    route_terminal_process_id = (
+                        parent.get("terminal_process_id") if parent is not None else None
+                    )
                 pipe.multi()
                 pipe.hset(PROCESSTABLE, mapping={key: _encode_process(value)
                                                 for key, value in records.items()})
                 for record in records.values():
                     _index_process(pipe, record)
-                _queue_public_updates(pipe, existing, records)
+                _queue_public_updates(
+                    pipe,
+                    existing,
+                    records,
+                    route_terminal_process_id=route_terminal_process_id,
+                    current_terminal_process_id=current_terminal_process_id,
+                )
                 pipe.execute()
                 return candidate
             except redis.WatchError:
@@ -378,6 +438,16 @@ def terminate_process_tree(client, process_id: str) -> list[dict]:
                 if wake_parent:
                     _wake_record(parent)
                 updates = changed + ([parent] if wake_parent else [])
+                route_terminal_process_id = _UNSET
+                target = records[process_id]
+                if target.get("process_type") == "workflow":
+                    parent_id = target.get("parent_process_id")
+                    parent = records.get(parent_id) if parent_id else None
+                    route_terminal_process_id = (
+                        parent.get("terminal_process_id")
+                        if parent is not None and parent_id not in selected
+                        else None
+                    )
                 pipe.multi()
                 if updates:
                     pipe.hset(PROCESSTABLE, mapping={item["process_id"]: _encode_process(item)
@@ -388,6 +458,7 @@ def terminate_process_tree(client, process_id: str) -> list[dict]:
                         pipe,
                         records,
                         {item["process_id"]: item for item in updates},
+                        route_terminal_process_id=route_terminal_process_id,
                     )
                 pipe.execute()
                 return changed
