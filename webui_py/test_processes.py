@@ -14,6 +14,8 @@ class ProcessCreationApiTest(unittest.TestCase):
         self.store = MagicMock()
         router = create_processes_router(self.redis, self.store)
         self.create = next(route.endpoint for route in router.routes if route.path == "/api/processes")
+        self.kill = next(route.endpoint for route in router.routes
+                         if route.path == "/api/processes/{process_id}/kill")
         self.workflow_options = next(
             route.endpoint for route in router.routes
             if route.path == "/api/processes/workflow-options"
@@ -100,6 +102,20 @@ class ProcessCreationApiTest(unittest.TestCase):
         ))
 
         self.assertEqual(result.status_code, 503)
+
+    def test_kill_queues_runtime_command(self):
+        result = self.kill("process-1")
+
+        self.assertEqual(result, {"status": "queued", "process_id": "process-1"})
+        self.redis.lpush.assert_called_once_with(
+            "external_events", json.dumps({"type": "kill_process", "process_id": "process-1"}),
+        )
+
+    def test_kill_rejects_invalid_process_id(self):
+        result = self.kill(" ")
+
+        self.assertEqual(result.status_code, 400)
+        self.redis.lpush.assert_not_called()
 
 
 if __name__ == "__main__":

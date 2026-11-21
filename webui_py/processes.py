@@ -108,4 +108,17 @@ def create_processes_router(redis_client, store) -> APIRouter:
             "workflow_name": file["name"],
         }
 
+    @router.post("/api/processes/{process_id}/kill", status_code=202)
+    def kill_process(process_id: str):
+        if not process_id.strip() or len(process_id) > 128:
+            return JSONResponse(status_code=400, content={"error": "invalid process_id"})
+        try:
+            redis_client.lpush(EXTERNAL_EVENTS, json.dumps({
+                "type": "kill_process", "process_id": process_id,
+            }))
+        except RedisError:
+            logger.exception("failed to queue process kill")
+            return JSONResponse(status_code=503, content={"error": "process command queue unavailable"})
+        return {"status": "queued", "process_id": process_id}
+
     return router

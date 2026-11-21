@@ -18,6 +18,11 @@ const statusLabels = {
   completed: '已完成', failed: '失败', terminated: '已终止', lost: '运行状态丢失', waiting: '等待子进程',
 };
 const eventLabels = { resumed: '再次调度', yielded: '返回就绪', created: '创建', started: '开始执行', blocked: '挂起', woken: '唤醒', completed: '完成', failed: '失败', terminated: '终止', lost: '发现运行状态丢失' };
+statusLabels.killed = '强制结束';
+eventLabels.killed = '强制结束';
+const killedFilterOption = document.createElement('option');
+killedFilterOption.value = 'killed'; killedFilterOption.textContent = '强制结束';
+elements.status.append(killedFilterOption);
 function waitDescription(waitFor) {
   if (!waitFor) return '';
   const reason = { terminal_message: '等待终端消息', process_exit: '等待子进程退出' }[waitFor.kind] || waitFor.kind || '等待事件';
@@ -111,6 +116,27 @@ function renderRecord(item) {
   details.append(timelinePanel(item.events || [], item.nodes || []));
   if (item.process_type !== 'terminal') details.append(jsonPanel('输入', item.input), jsonPanel('输出', item.output));
   if (item.error) details.append(jsonPanel('错误', item.error));
+  if (item.process_type !== 'terminal' && !['completed', 'failed', 'terminated', 'killed', 'lost'].includes(item.status)) {
+    const kill = document.createElement('button');
+    kill.type = 'button'; kill.className = 'kill-process-button'; kill.textContent = '强制结束整棵进程树';
+    kill.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (!window.confirm('强制结束该进程所属的根进程、全部子进程及其终端？')) return;
+      kill.disabled = true;
+      try {
+        const response = await fetch('/api/processes/' + encodeURIComponent(processId) + '/kill', { method: 'POST' });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+        elements.state.textContent = '强制结束请求已提交';
+        await refresh();
+      } catch (error) {
+        elements.warning.hidden = false;
+        elements.warning.textContent = error.message;
+        kill.disabled = false;
+      }
+    });
+    details.append(kill);
+  }
   summary.addEventListener('click', () => {
     details.hidden = !details.hidden;
     if (details.hidden) expandedProcesses.delete(processId);

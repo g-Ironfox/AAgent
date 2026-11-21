@@ -214,7 +214,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.send(child)
         self.drain()
         self.assertEqual(main.read_process(child["process_id"])["status"], "completed")
-        self.assertEqual(main.read_process(child["terminal_process_id"])["status"], "terminated")
+        self.assertEqual(main.read_process(child["terminal_process_id"])["status"], "completed")
         session = self.terminal_session(root)
         self.assertEqual(session["status"], "open")
         self.assertEqual(session["workflow_name"], "Root.flow")
@@ -300,7 +300,7 @@ class ProcessWorkflowTest(unittest.TestCase):
             self.assertEqual(process["status"], "completed")
             self.assertEqual(process["result"], {"text": "hello"})
             self.assertIsNone(process["pending_call"])
-            self.assertEqual(main.read_process(process["terminal_process_id"])["status"], "terminated")
+            self.assertEqual(main.read_process(process["terminal_process_id"])["status"], "completed")
             self.assertTrue(all(entry["status"] == "completed" or
                                 (entry["node_type"] == "read_terminal_queue" and entry["status"] == "waiting")
                                 for entry in process["node_trace"]))
@@ -342,8 +342,8 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual([event["event"] for event in completed["events"]],
                          ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "yielded", "resumed", "completed"])
         self.assertTrue(all(event["timestamp"] for event in completed["events"]))
-        self.assertEqual(self.latest_log(root["terminal_process_id"])["status"], "terminated")
-        self.assertEqual(self.latest_log(root["terminal_process_id"])["events"][-1]["event"], "terminated")
+        self.assertEqual(self.latest_log(root["terminal_process_id"])["status"], "completed")
+        self.assertEqual(self.latest_log(root["terminal_process_id"])["events"][-1]["event"], "completed")
 
     def public_process(self, process_id):
         return json.loads(self.public_redis.hget(projection.PUBLIC_PROCESSES, process_id))
@@ -389,7 +389,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assert_public_matches_kernel()
         self.drain()
         self.assertEqual(self.public_process(root["process_id"])["status"], "completed")
-        self.assertEqual(self.public_process(root["terminal_process_id"])["status"], "terminated")
+        self.assertEqual(self.public_process(root["terminal_process_id"])["status"], "completed")
         self.assert_public_matches_kernel()
 
     def test_public_projection_publishes_children_and_parent_wakeup_together(self):
@@ -922,6 +922,40 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertTrue(all(item["status"] == "terminated" for item in self.workflows()))
         self.assertFalse(self.redis.lists[r.READY_PROCESSES])
         self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
+
+    def test_kill_from_descendant_kills_root_tree_and_closes_all_terminals(self):
+        self.documents = {
+            "Child.flow": document("Child", "Leaf.flow", wait=True),
+            "Leaf.flow": document("Leaf", wait=True),
+        }
+        root = self.start(document("Root", "Child.flow", wait=True))
+        self.drain()
+        child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
+        leaf = next(item for item in self.workflows() if item["workflow_name"] == "Leaf.flow")
+        self.send(leaf)
+        claimed, acquired = r.claim_process(self.redis, leaf["process_id"])
+        self.assertTrue(acquired)
+
+        main.handle_external_event(self.redis, json.dumps({
+            "type": "kill_process", "process_id": child["process_id"],
+        }))
+        result = main.read_process(child["process_id"])
+
+        self.assertEqual(result["status"], "killed")
+        workflows = self.workflows()
+        terminals = [json.loads(raw) for raw in self.redis.hgetall(r.PROCESSTABLE).values()
+                     if json.loads(raw).get("process_type") == "terminal"]
+        self.assertTrue(all(item["status"] == "killed" for item in workflows))
+        self.assertTrue(all(item["status"] == "killed" for item in terminals))
+        self.assertTrue(all(item["input_queue"] == [] for item in terminals))
+        session = self.terminal_session(root)
+        self.assertEqual(session["status"], "closed")
+        self.assertEqual(session["workflow_status"], "killed")
+        self.assertIsNone(self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]))
+        self.assertFalse(self.redis.lists[r.READY_PROCESSES])
+        self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
+        claimed["status"] = "ready"
+        self.assertEqual(r.commit_process(self.redis, claimed)["status"], "killed")
 
     def test_cancel_child_wakes_parent_and_propagates_failure(self):
         self.documents = {"Child.flow": document("Child", wait=True)}

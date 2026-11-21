@@ -140,7 +140,7 @@ def read_terminal_input_queue(client, terminal_process_id: str) -> list[str]:
     return list(terminal.get("input_queue", []))
 
 
-TERMINAL_STATUSES = {"completed", "failed", "terminated", "lost"}
+TERMINAL_STATUSES = {"completed", "failed", "terminated", "killed", "lost"}
 
 
 def _encode_process(process: dict) -> str:
@@ -361,9 +361,9 @@ def commit_process(client, process: dict, child: dict | None = None,
                         terminal = json.loads(raw_terminal)
                         if (terminal.get("process_type") == "terminal"
                                 and terminal.get("parent_process_id") == process_id):
-                            terminal.update(status="terminated", wait_for=None, input_queue=[],
+                            terminal.update(status="completed", wait_for=None, input_queue=[],
                                             finished_at=process["finished_at"])
-                            record_process_event(terminal, "terminated")
+                            record_process_event(terminal, "completed")
                             records[terminal_process_id] = terminal
                     parent_id = process.get("parent_process_id")
                     raw_parent = pipe.hget(PROCESSTABLE, parent_id) if parent_id else None
@@ -459,6 +459,69 @@ def terminate_process_tree(client, process_id: str) -> list[dict]:
                         records,
                         {item["process_id"]: item for item in updates},
                         route_terminal_process_id=route_terminal_process_id,
+                    )
+                pipe.execute()
+                return changed
+            except redis.WatchError:
+                continue
+
+
+def kill_process_tree(client, process_id: str) -> list[dict]:
+    """Kill the selected process's root tree, including every workflow terminal."""
+    while True:
+        with client.pipeline() as pipe:
+            try:
+                pipe.watch(PROCESSTABLE, TERMINAL_INDEX)
+                records = {key: json.loads(raw) for key, raw in pipe.hgetall(PROCESSTABLE).items()}
+                target = records.get(process_id)
+                if target is None:
+                    raise KeyError(f"process not found: {process_id}")
+                root_id = target.get("root_process_id") or process_id
+                root = records.get(root_id)
+                if root is None or root.get("process_type", "workflow") != "workflow":
+                    raise ValueError(f"root workflow process not found: {root_id}")
+
+                children_by_parent = {}
+                for child_id, child in records.items():
+                    parent_id = child.get("parent_process_id")
+                    if parent_id:
+                        children_by_parent.setdefault(parent_id, []).append(child_id)
+                ordered = []
+                stack = [(root_id, False)]
+                visited = set()
+                while stack:
+                    current_id, expanded = stack.pop()
+                    if expanded:
+                        ordered.append(current_id)
+                        continue
+                    if current_id in visited:
+                        continue
+                    visited.add(current_id)
+                    stack.append((current_id, True))
+                    children = sorted(children_by_parent.get(current_id, []))
+                    stack.extend((child_id, False) for child_id in reversed(children))
+
+                now = datetime.now(timezone.utc).isoformat()
+                changed = []
+                for current_id in ordered:
+                    record = records[current_id]
+                    if record.get("status") in TERMINAL_STATUSES:
+                        continue
+                    record.update(status="killed", wait_for=None, finished_at=now)
+                    if record.get("process_type") == "terminal":
+                        record["input_queue"] = []
+                    record_process_event(record, "killed")
+                    changed.append(record)
+
+                pipe.multi()
+                if changed:
+                    pipe.hset(PROCESSTABLE, mapping={item["process_id"]: _encode_process(item)
+                                                     for item in changed})
+                    for record in changed:
+                        _index_process(pipe, record)
+                    _queue_public_updates(
+                        pipe, records, {item["process_id"]: item for item in changed},
+                        route_terminal_process_id=None,
                     )
                 pipe.execute()
                 return changed

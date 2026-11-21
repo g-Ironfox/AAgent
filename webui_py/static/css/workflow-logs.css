@@ -23,6 +23,9 @@
 .is-open .run-chevron { transform:rotate(225deg) translate(-2px,-1px); }
 .run-details { padding:0 13px 13px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .run-details[hidden] { display:none; }
+.kill-process-button { grid-column:1/-1; justify-self:start; min-height:34px; padding:0 11px; color:#8c3028; border:1px solid #d8aaa4; background:#fff; cursor:pointer; }
+.kill-process-button:hover { background:#fff6f5; }
+.kill-process-button:disabled { opacity:.55; cursor:wait; }
 .trace-panel { grid-column:1/-1; min-width:0; border-top:1px solid var(--line); }
 .trace-panel h2 { margin:10px 0 7px; color:var(--muted); font-size:10px; font-weight:600; }
 .trace-list { max-height:360px; margin:0; padding:0; overflow:auto; list-style:none; border:1px solid var(--line); }
@@ -51,6 +54,7 @@
 .run-status.ready,.run-status.running { color:#235b86; background:#e7f2fa; }
 .run-status.lost { color:#805b11; background:#fff3d6; }
 .run-status.terminated,.run-status.unknown { color:var(--muted); background:#edf0ee; }
+.run-status.killed { color:#8c3028; background:#f8e8e5; }
 .timeline-event { border-left:3px solid #cbded3; }
 .timeline-detail { grid-column:2/-1; color:var(--muted); overflow-wrap:anywhere; font-size:10px; }
 .timeline-empty { color:var(--muted); font-size:10px; }

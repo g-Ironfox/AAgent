@@ -17,6 +17,7 @@ from process_repository import (
     BLOCKED_PROCESSES, EXTERNAL_EVENTS, PROCESSTABLE, READY_PROCESSES,
     record_process_event, enqueue_terminal_input,
     claim_process, commit_process, publish_process_pair, terminate_process_tree,
+    kill_process_tree,
     TERMINAL_STATUSES, wake_process as wake_process_record,
 )
 from workflow_nodes import (
@@ -207,6 +208,9 @@ def handle_external_event(client, raw_event: str) -> None:
             if owner is not None:
                 _sync_process_observability(owner)
             return
+        if event_type == "kill_process":
+            kill_process(event["process_id"])
+            return
         raise ValueError(f"unsupported external event type: {event_type!r}")
     except (KeyError, TypeError, ValueError) as error:
         logger.warning("discarding invalid external event: %s", error)
@@ -279,10 +283,10 @@ def _terminate_terminal_process(parent_process: dict) -> None:
             'terminal process %s has an invalid parent link', terminal_process_id
         )
         return
-    if terminal_process.get('status') == 'terminated':
+    if terminal_process.get('status') in TERMINAL_STATUSES:
         return
 
-    terminal_process['status'] = 'terminated'
+    terminal_process['status'] = 'completed'
     terminal_process['wait_for'] = None
     terminal_process['input_queue'] = []
     terminal_process['finished_at'] = datetime.now(timezone.utc).isoformat()
@@ -387,6 +391,15 @@ def terminate_process(process_id: str) -> dict:
     process = read_process(process_id)
     _sync_related_process_logs(process.get('parent_process_id'))
     return process
+
+
+def kill_process(process_id: str) -> dict:
+    changed = kill_process_tree(get_connection(), process_id)
+    for process in changed:
+        if process.get('process_type') == 'workflow':
+            _cleanup_process_contexts(process)
+        _sync_process_observability(process)
+    return read_process(process_id)
 
 
 def _resume_subprocess(process: dict, workflow_map: list[dict]) -> None:

@@ -1,11 +1,11 @@
-export const finalStatuses = new Set(['completed', 'failed', 'terminated', 'lost']);
+export const finalStatuses = new Set(['completed', 'failed', 'terminated', 'killed', 'lost']);
 export const statusLabels = {
   ready: '就绪', running: '运行中', blocked: '已挂起', waiting_for_input: '等待输入',
-  completed: '已完成', failed: '失败', terminated: '已终止', lost: '运行状态丢失', unknown: '时间状态未知',
+  completed: '已完成', failed: '失败', terminated: '已终止', killed: '已强制终止', lost: '运行状态丢失', unknown: '时间状态未知',
 };
 const eventStatuses = { created: 'ready', started: 'running', resumed: 'running',
   yielded: 'ready', blocked: 'blocked', woken: 'ready', completed: 'completed',
-  failed: 'failed', terminated: 'terminated', lost: 'lost' };
+  failed: 'failed', terminated: 'terminated', killed: 'killed', lost: 'lost' };
 export function timestamp(value) {
   if (value == null || value === '') return null;
   const time = new Date(value).getTime();
