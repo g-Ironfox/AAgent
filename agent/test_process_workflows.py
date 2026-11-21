@@ -492,6 +492,56 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual([item["event"] for item in saved["events"]],
                          ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "yielded", "resumed", "completed"])
 
+    def test_startup_repairs_logs_after_termination_was_committed_only_to_redis(self):
+        root = self.start(document("Root", wait=True))
+        self.drain()
+        self.assertEqual(self.latest_log(root["process_id"])["status"], "blocked")
+        r.terminate_process_tree(self.redis, root["process_id"])
+        saved = self.redis.hgetall(r.PROCESSTABLE)
+        self.logs.reset_mock()
+
+        main.rebuild_process_observability(self.redis)
+
+        for process_id in (root["process_id"], root["terminal_process_id"]):
+            process = json.loads(saved[process_id])
+            log = self.latest_log(process_id)
+            self.assertEqual(log["status"], "terminated")
+            self.assertEqual(log["finished_at"], main._parse_start_time(process["finished_at"]))
+            self.assertEqual(log["events"], process["events"])
+            self.assertEqual(log["nodes"], [
+                {**entry, **{field: main._parse_start_time(entry[field])
+                            for field in ("started_at", "finished_at") if entry.get(field)}}
+                for entry in process.get("node_trace", [])
+            ])
+        self.assertEqual(self.redis.hgetall(r.PROCESSTABLE), saved)
+        self.assert_public_matches_kernel()
+        self.assertEqual(self.runs.update_one.call_args.args[1]["$set"]["status"], "terminated")
+
+    def test_startup_retries_process_logs_after_mongo_recovers(self):
+        self.logs.update_one.side_effect = RuntimeError("logs offline")
+        with self.assertLogs("main", level="ERROR"):
+            root = self.start(document("Root"))
+            self.drain()
+        saved = main.read_process(root["process_id"])
+        self.logs.update_one.side_effect = None
+        self.logs.reset_mock()
+
+        main.rebuild_process_observability(self.redis)
+        main.rebuild_process_observability(self.redis)  # Same process and invocation identities.
+
+        log = self.latest_log(root["process_id"])
+        self.assertEqual(log["status"], "completed")
+        self.assertEqual(log["finished_at"], main._parse_start_time(saved["finished_at"]))
+        self.assertEqual(log["events"], saved["events"])
+        self.assertEqual(log["nodes"], [
+            {**entry, **{field: main._parse_start_time(entry[field])
+                        for field in ("started_at", "finished_at") if entry.get(field)}}
+            for entry in saved["node_trace"]
+        ])
+        self.assertTrue(all(call.args[0] == {"run_id": saved["invocation_id"]}
+                            for call in self.runs.update_one.call_args_list))
+        self.assertEqual(main.read_process(root["process_id"]), saved)
+
     def test_commit_retry_does_not_duplicate_suspend_events(self):
         root = self.start(document("Root", wait=True))
         main.schedule_once(timeout=1)  # input

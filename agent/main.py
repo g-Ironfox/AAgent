@@ -696,10 +696,18 @@ def Scheduler(timeout: int = 0) -> None:
         schedule_once(timeout=timeout)
 
 
+def rebuild_process_observability(client) -> None:
+    """Repair history left behind by a crash or MongoDB outage from Redis."""
+    for raw in client.hgetall(PROCESSTABLE).values():
+        _sync_process_observability(json.loads(raw))
+
+
 def main() -> None:
     from tools import workspace as _workspace_tools  # noqa: F401
 
-    rebuild_public_scheduler(get_connection(), PROCESSTABLE, READY_PROCESSES)
+    client = get_connection()
+    rebuild_public_scheduler(client, PROCESSTABLE, READY_PROCESSES)
+    rebuild_process_observability(client)
     logger.info('Process scheduler started')
     Scheduler()
 
