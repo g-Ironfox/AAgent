@@ -25,7 +25,7 @@ class RuntimeToolTest(unittest.TestCase):
         environment = {
             'DEEPSEEK_BASE_URL': 'http://provider.test', 'DEEPSEEK_API_KEY': 'test',
             'KIMI_BASE_URL': 'http://provider.test', 'KIMI_API_KEY': 'test',
-            'ZAI_API_KEY': 'test', 'TAVILY_API_KEYS': 'test',
+            'TAVILY_API_KEYS': 'test',
             'BOCHA_BASE_URL': 'http://provider.test', 'BOCHA_API_KEY': 'test',
         }
         spec = importlib.util.spec_from_file_location('_experiment_tool_registry', tools_dir / 'tool.py')

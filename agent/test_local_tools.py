@@ -19,10 +19,10 @@ class LocalToolRegistryTest(unittest.TestCase):
         environment = {
             "DEEPSEEK_BASE_URL": "http://provider.test", "DEEPSEEK_API_KEY": "test",
             "KIMI_BASE_URL": "http://provider.test", "KIMI_API_KEY": "test",
-            "ZAI_API_KEY": "test", "TAVILY_API_KEYS": "test",
+            "TAVILY_API_KEYS": "test",
             "BOCHA_BASE_URL": "http://provider.test", "BOCHA_API_KEY": "test",
         }
-        with patch.dict("os.environ", environment), patch("queue_client.redis_reset_tools"), \
+        with patch.dict("os.environ", environment, clear=True), patch("queue_client.redis_reset_tools"), \
              patch("queue_client.redis_register_tool"):
             spec.loader.exec_module(cls.registry)
             spec = importlib.util.spec_from_file_location("_test_workspace_registry", tools_dir / "workspace.py")
@@ -32,6 +32,12 @@ class LocalToolRegistryTest(unittest.TestCase):
 
     def test_terminal_output_is_not_registered_as_a_local_tool(self):
         self.assertNotIn("output_to_terminal", self.registry.tool_handlers)
+
+    def test_legacy_history_tool_is_not_registered(self):
+        self.assertNotIn("get_recent_records", self.registry.tool_handlers)
+        names = {schema["function"]["name"] for schema in self.registry.registered_tools}
+        self.assertNotIn("get_recent_records", names)
+        self.assertFalse(hasattr(self.registry, "get_recent_records"))
 
     def test_unknown_local_tool_raises_in_both_result_modes(self):
         for preserve_result in (False, True):

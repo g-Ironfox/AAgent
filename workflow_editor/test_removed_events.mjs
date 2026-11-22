@@ -101,8 +101,7 @@ test('Agent and Manager reject the same obsolete workflows and keep content inte
   }
 });
 
-test('published Workflow 2.0 schemas match the validator copies', () => {
-  const schemas = ['docs/protocol', 'agent', 'manager_webui'].map((dir) => JSON.parse(readFileSync(new URL('../' + dir + '/workflow_2_0.schema.json', import.meta.url), 'utf8')));
+test('published Workflow 2.0 schema matches the runtime schema', () => {
+  const schemas = ['docs/protocol', 'agent'].map((dir) => JSON.parse(readFileSync(new URL('../' + dir + '/workflow_2_0.schema.json', import.meta.url), 'utf8')));
   assert.deepEqual(schemas[0], schemas[1]);
-  assert.deepEqual(schemas[0], schemas[2]);
 });

@@ -4,7 +4,6 @@ from itertools import cycle
 
 import requests
 
-from history_repository import get_recent_history
 from queue_client import redis_register_tool, redis_reset_tools
 
 DEEPSEEK_BASE_URL = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
@@ -13,7 +12,6 @@ DEEPSEEK_API_KEY = os.environ["DEEPSEEK_API_KEY"]
 KIMI_BASE_URL = os.environ["KIMI_BASE_URL"].rstrip("/")
 KIMI_API_KEY = os.environ["KIMI_API_KEY"]
 
-ZAI_API_KEY = os.environ["ZAI_API_KEY"]
 TAVILY_API_KEYS = [
     key.strip()
     for key in os.environ["TAVILY_API_KEYS"].split(",")
@@ -116,20 +114,6 @@ def tavily_search(keyword):
             print(f"Tavily 请求失败，切换下一个 Key: {e}")
 
     return {"results": []}
-
-@tool(
-    "查询最近N条记录",
-    {
-        "type": "object",
-        "properties": {
-            "limit": {"type": "integer", "description": "要查询的记录数量"}
-        },
-        "required": ["limit"]
-    },
-    output_schema={"type": "object", "properties": {"records": {"type": "array", "items": {"type": "object"}}}}
-)
-def get_recent_records(limit):
-    return {"records": get_recent_history(limit=limit)}
 
 def bocha_search(keyword):
     url = f"{BOCHA_BASE_URL.rstrip('/')}/v1/web-search"

@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
-import sys
 from typing import Any
 from urllib.parse import quote
 
 import requests
-from pymongo import MongoClient
-from pymongo.collation import Collation
-from pymongo.errors import PyMongoError
 from workflow_contract import (
     boundary_ports,
     data_ports_for_node,
@@ -179,38 +174,6 @@ def _append_output_endpoint(
         endpoints.append(endpoint)
 
 
-def _read_workflow(workflow_name: str, *, by_id: bool = False) -> dict[str, Any]:
-    mongo_kwargs: dict[str, Any] = {
-        "host": os.getenv("MONGO_HOST", "mongodb"),
-        "port": int(os.getenv("MONGO_PORT", "27017")),
-        "serverSelectionTimeoutMS": 5000,
-    }
-    if os.getenv("MONGO_USER"):
-        mongo_kwargs.update(
-            username=os.environ["MONGO_USER"],
-            password=os.getenv("MONGO_PASS", ""),
-            authSource="admin",
-        )
-
-    database_name = os.getenv("MONGO_DATABASE", "agent")
-    collection_name = os.getenv("MONGO_WORKFLOW_COLLECTION", "workflows")
-    with MongoClient(**mongo_kwargs) as client:
-        if by_id:
-            from bson import ObjectId
-            from bson.errors import InvalidId
-
-            try:
-                query = {"_id": ObjectId(workflow_name)}
-            except (InvalidId, TypeError):
-                raise WorkflowParseError(f"workflow id invalid: {workflow_name}")
-        else:
-            query = {"name": workflow_name}
-        workflow = client[database_name][collection_name].find_one(query, {"_id": False})
-    if workflow is None:
-        raise WorkflowParseError(f"workflow not found: {workflow_name}")
-    return workflow
-
-
 def _read_workspace_workflow_record(
     selector: str, value: str, identifier: str
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -267,67 +230,5 @@ def _read_workspace_workflow_record(
     )
 
 
-def _read_workspace_workflow_file(
-    selector: str, value: str, identifier: str
-) -> dict[str, Any]:
-    mongo_kwargs: dict[str, Any] = {
-        "host": os.getenv("MONGO_HOST", "mongodb"),
-        "port": int(os.getenv("MONGO_PORT", "27017")),
-        "serverSelectionTimeoutMS": 5000,
-    }
-    if os.getenv("MONGO_USER"):
-        mongo_kwargs.update(
-            username=os.environ["MONGO_USER"],
-            password=os.getenv("MONGO_PASS", ""),
-            authSource="admin",
-        )
-    try:
-        with MongoClient(**mongo_kwargs) as client:
-            workspace = client[os.getenv("MONGO_DATABASE", "agent")][
-                os.getenv("MONGO_WORKSPACE_FILE_COLLECTION", "workspace_files")
-            ]
-            meta = workspace.find_one({"_id": "_workspace_current_state"}, {"generation": 1})
-            if meta is None or "generation" not in meta:
-                raise WorkflowParseError("workspace is not initialized")
-            generation = meta["generation"]
-            query = {selector: f"{generation}:{value}" if selector == "_id" else value, "generation": generation}
-            if selector == "name":
-                matches = list(workspace.find(
-                    query, {"content": 1}, collation=Collation(locale="simple")
-                ).limit(2))
-                if len(matches) > 1:
-                    raise WorkflowParseError(f"workflow filename is ambiguous: {identifier}")
-                file = matches[0] if matches else None
-            else:
-                file = workspace.find_one(query, {"content": 1})
-    except PyMongoError as error:
-        raise WorkflowParseError("failed to read workspace workflow file") from error
-    if file is None:
-        raise WorkflowParseError(f"workflow file not found: {identifier}")
-    try:
-        workflow = json.loads(file.get("content", ""))
-    except (ValueError, TypeError) as error:
-        raise WorkflowParseError(f"invalid workflow JSON in workspace file: {identifier}") from error
-    if not isinstance(workflow, dict):
-        raise WorkflowParseError(f"workflow file must contain a JSON object: {identifier}")
-    return workflow
-
-
-def _read_workspace_workflow(file_id: str) -> dict[str, Any]:
-    return _read_workspace_workflow_file("_id", file_id, file_id)
-
-
-def _read_workspace_workflow_by_name(file_name: str) -> dict[str, Any]:
-    """Resolve a callable workflow by its exact workspace filename."""
-    return _read_workspace_workflow_file("name", file_name, file_name)
-
-
 def _read_workspace_workflow_record_by_name(file_name: str):
     return _read_workspace_workflow_record("name", file_name, file_name)
-
-
-if __name__ =="__main__":
-    workflow_name = sys.argv[1] if len(sys.argv) > 1 else ""
-    result = parse_workflow(_read_workflow(workflow_name))
-    for i in result:
-        print(i)

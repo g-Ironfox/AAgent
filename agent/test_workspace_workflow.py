@@ -1,16 +1,10 @@
 import json
-import os
 import unittest
 from unittest.mock import Mock, call, patch
 
-from pymongo.errors import PyMongoError
+import requests
 
-from workflow_parser import (
-    WorkflowParseError,
-    _read_workspace_workflow,
-    _read_workspace_workflow_by_name,
-    _read_workspace_workflow_record_by_name,
-)
+from workflow_parser import WorkflowParseError, _read_workspace_workflow_record_by_name
 from workflow_nodes import current_workflow_process
 
 
@@ -36,111 +30,120 @@ def echo_workflow():
 
 class WorkspaceWorkflowTest(unittest.TestCase):
     def setUp(self):
-        mongo = patch("workflow_parser.MongoClient")
-        self.client = mongo.start()
-        self.addCleanup(mongo.stop)
-        self.database = self.client.return_value.__enter__.return_value.__getitem__.return_value
-        self.workspace = self.database.__getitem__.return_value
-        env = patch.dict(os.environ, {"MONGO_WORKSPACE_FILE_COLLECTION": "custom_workspace"})
+        token = current_workflow_process.set(None)
+        self.addCleanup(current_workflow_process.reset, token)
+        env = patch.dict("os.environ", {"WORKSPACE_API_URL": "http://workspace.test/"})
         env.start()
         self.addCleanup(env.stop)
+        read = patch("workflow_parser.requests.get")
+        self.read = read.start()
+        self.addCleanup(read.stop)
 
-    def test_reader_uses_current_generation_and_custom_collection(self):
+    def response(self, payload, status=200):
+        response = Mock(status_code=status)
+        response.json.return_value = payload
+        response.raise_for_status.return_value = None
+        if status >= 400:
+            response.raise_for_status.side_effect = requests.HTTPError(str(status))
+        return response
+
+    def listing(self, file_id="child-id"):
+        return self.response({"items": [{"file_id": file_id, "name": "Child.flow"}]})
+
+    def test_reader_uses_configured_workspace_api_and_exact_filename(self):
         workflow = echo_workflow()
-        self.workspace.find_one.side_effect = [{"generation": 3}, {"content": json.dumps(workflow)}]
-        self.assertEqual(_read_workspace_workflow("file-1"), workflow)
-        self.database.__getitem__.assert_called_once_with("custom_workspace")
-        self.workspace.find_one.assert_has_calls([
-            call({"_id": "_workspace_current_state"}, {"generation": 1}),
-            call({"_id": "3:file-1", "generation": 3}, {"content": 1}),
+        workflow["name"] = "different metadata name"
+        self.read.side_effect = [self.response({"items": [
+            {"file_id": "wrong-id", "name": "Other.flow"},
+            {"file_id": "child-id", "name": "Child.flow"},
+        ]}), self.response({"content": json.dumps(workflow)})]
+        loaded, permissions = _read_workspace_workflow_record_by_name("Child.flow")
+        self.assertEqual(loaded, workflow)
+        self.assertEqual(permissions, {
+            "runtime": {"read": 0, "write": 0}, "required": {"read": 0, "write": 0},
+        })
+        self.assertEqual(self.read.call_args_list, [
+            call("http://workspace.test/api/files", headers={}, timeout=(3, 15)),
+            call("http://workspace.test/api/files/child-id", headers={}, timeout=(3, 15)),
         ])
 
     def test_updates_and_checkpoint_restores_are_loaded_each_time(self):
-        self.workspace.find_one.side_effect = [
-            {"generation": 1}, {"content": '{"description":"before"}'},
-            {"generation": 1}, {"content": '{"description":"edited"}'},
-            {"generation": 2}, {"content": '{"description":"restored"}'},
-        ]
-        self.assertEqual([_read_workspace_workflow("file-1")["description"] for _ in range(3)],
-                         ["before", "edited", "restored"])
-        self.assertEqual(self.workspace.find_one.call_args.args[0], {"_id": "2:file-1", "generation": 2})
-
-    def test_reader_resolves_exact_workspace_filename_not_workflow_metadata_name(self):
-        workflow = echo_workflow()
-        workflow["name"] = "different metadata name"
-        self.workspace.find_one.return_value = {"generation": 3}
-        self.workspace.find.return_value.limit.return_value = [{"content": json.dumps(workflow)}]
-
-        self.assertEqual(_read_workspace_workflow_by_name("Child.flow"), {key: value for key, value in workflow.items() if key != "name"})
-        self.workspace.find_one.assert_called_once_with({"_id": "_workspace_current_state"}, {"generation": 1})
-        query, projection = self.workspace.find.call_args.args
-        self.assertEqual(query, {"name": "Child.flow", "generation": 3})
-        self.assertEqual(projection, {"content": 1})
-        self.assertEqual(self.workspace.find.call_args.kwargs["collation"].document["locale"], "simple")
+        self.read.side_effect = [response for value in ("before", "edited", "restored")
+                                for response in (self.listing(), self.response({
+                                    "content": json.dumps({"description": value})}))]
+        values = [_read_workspace_workflow_record_by_name("Child.flow")[0]["description"]
+                  for _ in range(3)]
+        self.assertEqual(values, ["before", "edited", "restored"])
+        self.assertEqual(self.read.call_count, 6)
 
     def test_reader_rejects_ambiguous_exact_filename(self):
-        self.workspace.find_one.return_value = {"generation": 3}
-        self.workspace.find.return_value.limit.return_value = [
-            {"content": "{}"}, {"content": "{}"},
-        ]
-
+        self.read.return_value = self.response({"items": [
+            {"file_id": "first", "name": "Child.flow"},
+            {"file_id": "second", "name": "Child.flow"},
+        ]})
         with self.assertRaisesRegex(WorkflowParseError, "filename is ambiguous: Child.flow"):
-            _read_workspace_workflow_by_name("Child.flow")
-        query, projection = self.workspace.find.call_args.args
-        self.assertEqual(query, {"name": "Child.flow", "generation": 3})
-        self.assertEqual(projection, {"content": 1})
-        self.assertEqual(self.workspace.find.call_args.kwargs["collation"].document["locale"], "simple")
-        self.workspace.find.return_value.limit.assert_called_once_with(2)
+            _read_workspace_workflow_record_by_name("Child.flow")
+        self.read.assert_called_once()
 
-    def test_deleted_file_is_not_read_from_other_generations(self):
-        self.workspace.find_one.side_effect = [{"generation": 2}, None]
+    def test_missing_or_unreadable_filename_is_not_loaded(self):
+        self.read.return_value = self.response({"items": [
+            {"file_id": "other", "name": "Other.flow"},
+        ]})
+        with self.assertRaisesRegex(WorkflowParseError, "not found or unreadable"):
+            _read_workspace_workflow_record_by_name("Child.flow")
+        self.read.assert_called_once()
+
+    def test_deleted_file_returns_not_found_without_fallback(self):
+        self.read.side_effect = [self.listing(), self.response({}, status=404)]
         with self.assertRaisesRegex(WorkflowParseError, "workflow file not found"):
-            _read_workspace_workflow("file-1")
-        self.assertEqual(self.workspace.find_one.call_count, 2)
+            _read_workspace_workflow_record_by_name("Child.flow")
+        self.assertEqual(self.read.call_count, 2)
+
+    def test_denied_file_returns_permission_error(self):
+        self.read.side_effect = [self.listing(), self.response({}, status=403)]
+        with self.assertRaisesRegex(WorkflowParseError, "read permission denied"):
+            _read_workspace_workflow_record_by_name("Child.flow")
+        self.assertEqual(self.read.call_count, 2)
 
     def test_invalid_file_content_fails_clearly(self):
-        for content in ("broken", "[]", "null", 123, None):
+        for content in ("broken", "[]", "null", "123", 123, None):
             with self.subTest(content=content):
-                self.workspace.find_one.side_effect = [{"generation": 1}, {"content": content}]
+                self.read.side_effect = [self.listing(), self.response({"content": content})]
                 with self.assertRaises(WorkflowParseError):
-                    _read_workspace_workflow("file-1")
+                    _read_workspace_workflow_record_by_name("Child.flow")
 
-    def test_uninitialized_workspace_and_database_outage_fail(self):
-        self.workspace.find_one.return_value = None
-        with self.assertRaisesRegex(WorkflowParseError, "not initialized"):
-            _read_workspace_workflow("file-1")
-        self.workspace.find_one.side_effect = PyMongoError("down")
-        with self.assertRaisesRegex(WorkflowParseError, "failed to read workspace"):
-            _read_workspace_workflow("file-1")
+    def test_workspace_api_errors_fail_without_fallback(self):
+        scenarios = [requests.ConnectionError("offline"),
+                     [self.response({}, status=503)],
+                     [self.listing(), self.response({}, status=503)]]
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario):
+                self.read.side_effect = scenario
+                with self.assertRaisesRegex(WorkflowParseError, "failed to read workspace"):
+                    _read_workspace_workflow_record_by_name("Child.flow")
 
-    def test_permission_aware_reader_uses_process_credential_and_file_id(self):
-        process = {"process_id": "p1", "_workspace_token": "secret"}
-        context_token = current_workflow_process.set(process)
-        self.addCleanup(current_workflow_process.reset, context_token)
+    def test_file_id_is_url_encoded(self):
+        self.read.side_effect = [self.listing("child/id with space"),
+                                 self.response({"content": "{}"})]
+        _read_workspace_workflow_record_by_name("Child.flow")
+        self.assertEqual(self.read.call_args.args[0],
+                         "http://workspace.test/api/files/child%2Fid%20with%20space")
+
+    def test_permission_aware_reader_forwards_process_credential_and_metadata(self):
+        token = current_workflow_process.set({"process_id": "p1", "_workspace_token": "secret"})
+        self.addCleanup(current_workflow_process.reset, token)
         workflow = echo_workflow()
-        permissions = {
-            "runtime": {"read": 4, "write": 2},
-            "required": {"read": 1, "write": 1},
-        }
-        listing = Mock()
-        listing.status_code = 200
-        listing.json.return_value = {"items": [{"file_id": "child-id", "name": "Child.flow"}]}
-        listing.raise_for_status.return_value = None
-        content = Mock()
-        content.status_code = 200
-        content.json.return_value = {
+        permissions = {"runtime": {"read": 4, "write": 2},
+                       "required": {"read": 1, "write": 1}}
+        self.read.side_effect = [self.listing(), self.response({
             "content": json.dumps(workflow), "permissions": permissions,
-        }
-        content.raise_for_status.return_value = None
-        with patch("workflow_parser.requests.get", side_effect=[listing, content]) as request:
-            loaded, loaded_permissions = _read_workspace_workflow_record_by_name("Child.flow")
-
+        })]
+        loaded, loaded_permissions = _read_workspace_workflow_record_by_name("Child.flow")
         self.assertEqual(loaded, workflow)
         self.assertEqual(loaded_permissions, permissions)
-        self.assertEqual(request.call_args_list[0].kwargs["headers"], {
-            "X-AAgent-Process-ID": "p1:secret",
-        })
-        self.assertIn("/api/files/child-id", request.call_args_list[1].args[0])
+        for request in self.read.call_args_list:
+            self.assertEqual(request.kwargs["headers"], {"X-AAgent-Process-ID": "p1:secret"})
+
 
 if __name__ == "__main__":
     unittest.main()

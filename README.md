@@ -165,7 +165,7 @@ docker compose logs -f agent webui_py
 
 | 分组 | 变量 |
 | --- | --- |
-| LLM | `DEEPSEEK_*`、`KIMI_*`、`ZAI_API_KEY`、`TAVILY_API_KEYS`、`BOCHA_*` |
+| LLM | `DEEPSEEK_*`、`KIMI_*`、`TAVILY_API_KEYS`、`BOCHA_*` |
 | 工具 Provider | QQ_API_BASE_URL、QQ_API_TOKEN（供 QQ 工具调用） |
 | 进程调度 | REDIS_*、AGENT_TOOLS_KEY、ProcessTable、ReadyProcesses、BlockedProcesses |
 | Tool | `TOOL_SERVER_URL`、`TOOL_MAX_WAIT_MS`、`TOOL_CLIENT_*`、`TOOL_PROVIDER_*`、`TOOL_MODULES` |

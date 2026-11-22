@@ -546,20 +546,6 @@ def is_valid_connection(
     ) is None
 
 
-def filter_connections(
-    connections: list[Any],
-    nodes: list[dict[str, Any]],
-    input_ports: list[dict[str, Any]],
-    output_ports: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    nodes_by_id = {node.get("id"): node for node in nodes if isinstance(node, dict)}
-    return [
-        connection
-        for connection in connections
-        if is_valid_connection(connection, nodes_by_id, input_ports, output_ports)
-    ]
-
-
 def migrate_subprocess_workflow_format(workflow: dict[str, Any]) -> dict[str, Any]:
     """Normalize legacy fields without mutation; Workflow identity comes from its file."""
     from copy import deepcopy

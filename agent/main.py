@@ -72,71 +72,9 @@ def _parse_start_time(value: str) -> datetime:
     return start_time.astimezone(timezone.utc)
 
 
-def _record_node_timing(
-    process: dict,
-    node: dict,
-    started_at: datetime,
-    finished_at: datetime,
-    duration_ms: int,
-    status: str,
-) -> None:
-    _get_process_log_collection().update_one(
-        {'process_id': process['process_id']},
-        {
-            '$setOnInsert': {
-                'process_id': process['process_id'],
-                'start_time': _parse_start_time(process['start_time']),
-                'status': 'running',
-            },
-            '$push': {
-                'nodes': {
-                    'node_id': node.get('id'),
-                    'node_name': node.get('name'),
-                    'node_type': node.get('type'),
-                    'started_at': started_at,
-                    'finished_at': finished_at,
-                    'duration_ms': duration_ms,
-                    'status': status,
-                }
-            }
-        },
-        upsert=True,
-    )
-
-
-def _record_process_completion(
-    process: dict,
-    finished_at: datetime,
-    duration_ms: int,
-    status: str = 'completed',
-) -> None:
-    _get_process_log_collection().update_one(
-        {'process_id': process['process_id']},
-        {
-            '$setOnInsert': {
-                'process_id': process['process_id'],
-                'start_time': _parse_start_time(process['start_time']),
-                'nodes': [],
-            },
-            '$set': {
-                'finished_at': finished_at,
-                'total_duration_ms': duration_ms,
-                'status': status,
-            }
-        },
-        upsert=True,
-    )
-
-
 def _initialize_process_timing(process: dict) -> None:
     _sync_process_observability(process)
     _sync_related_process_logs(process.get('terminal_process_id'))
-
-
-def _enqueue_ready_process(process_id: str) -> None:
-    client = get_connection()
-    client.srem(BLOCKED_PROCESSES, process_id)
-    client.lpush(READY_PROCESSES, process_id)
 
 
 def read_process(process_id: str) -> dict:

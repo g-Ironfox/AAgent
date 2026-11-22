@@ -1,4 +1,5 @@
 import copy
+import io
 import json
 from pathlib import Path
 import sys
@@ -12,7 +13,7 @@ from workflow_validator import WorkflowValidationError, validate_workflow
 from test_subprocess_workflow_files import empty_workflow, add_child_call
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from migrate_subprocess_workflows import migrate_content, migrate_paths, migrate_workspace, migrate_manager
+from migrate_subprocess_workflows import migrate_content, migrate_paths, migrate_workspace, main as migrate_main
 
 
 def legacy_workflow():
@@ -101,12 +102,14 @@ class WorkflowFormatMigrationTest(unittest.TestCase):
             self.assertEqual(payload["name"], "parent.flow")
             self.assertNotIn("workflow_nodes", json.loads(payload["content"]))
 
-    def test_manager_migration_normalizes_existing_records_via_metadata_endpoint(self):
-        response = Mock(); response.json.return_value = {"items": [{"file_name": "Parent"}]}
-        with patch("requests.get", return_value=response), patch("requests.patch") as write:
-            self.assertEqual(migrate_manager("http://manager", apply=True), 1)
-            self.assertEqual(write.call_args.args, ("http://manager/api/workflow/Parent/metadata",))
-            self.assertEqual(write.call_args.kwargs["json"], {})
+    def test_removed_manager_option_is_rejected_without_network_requests(self):
+        with patch("sys.stderr", new_callable=io.StringIO), \
+             patch("requests.get") as read, patch("requests.patch") as write:
+            with self.assertRaises(SystemExit) as error:
+                migrate_main(["--manager-url", "http://manager"])
+        self.assertEqual(error.exception.code, 2)
+        read.assert_not_called()
+        write.assert_not_called()
 
     def test_design_envelope_is_migrated_without_renaming_files(self):
         source = {"format": "aagent.workflow-design/1", "entrypoint": "parent.flow", "workflows": [

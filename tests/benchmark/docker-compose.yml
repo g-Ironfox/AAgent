@@ -45,7 +45,6 @@ services:
       DEEPSEEK_API_KEY: unused
       KIMI_BASE_URL: http://unused
       KIMI_API_KEY: unused
-      ZAI_API_KEY: unused
       TAVILY_API_KEYS: unused
       BOCHA_BASE_URL: http://unused
       BOCHA_API_KEY: unused

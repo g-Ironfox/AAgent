@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from pymongo import ReturnDocument
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError

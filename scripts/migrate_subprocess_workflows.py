@@ -1,5 +1,6 @@
 """Remove obsolete subprocess declarations and normalize legacy node names.
 
+Supports local files and the current workspace API.
 Fixed per-port subprocess calls still require explicit JSON rewiring."""
 from __future__ import annotations
 
@@ -89,37 +90,17 @@ def migrate_workspace(base_url, apply=False):
     return len(changes)
 
 
-def migrate_manager(base_url, apply=False):
-    import requests
-    base_url = base_url.rstrip("/")
-    response = requests.get(f"{base_url}/api/workflows", timeout=(3, 30))
-    response.raise_for_status()
-    count = 0
-    for item in response.json()["items"]:
-        url = f"{base_url}/api/workflow/{quote(item.get('file_name', item.get('name', '')), safe='')}/metadata"
-        # The metadata API rewrites nodes/references canonically and unsets the legacy field.
-        print(f"{'NORMALIZE' if apply else 'WOULD NORMALIZE'} manager:{item.get('file_name', item.get('name', ''))}")
-        if apply:
-            response = requests.patch(url, json={}, timeout=(3, 30))
-            response.raise_for_status()
-        count += 1
-    return count
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="*", help="JSON/.flow files or directories")
     parser.add_argument("--workspace-url", help="WebUI service base URL")
-    parser.add_argument("--manager-url", help="Updated manager service base URL")
     parser.add_argument("--apply", action="store_true", help="Write changes; default is a preview")
     args = parser.parse_args(argv)
-    if not (args.paths or args.workspace_url or args.manager_url):
-        parser.error("provide paths, --workspace-url or --manager-url")
+    if not (args.paths or args.workspace_url):
+        parser.error("provide paths or --workspace-url")
     count = migrate_paths(args.paths, args.apply)
     if args.workspace_url:
         count += migrate_workspace(args.workspace_url, args.apply)
-    if args.manager_url:
-        count += migrate_manager(args.manager_url, args.apply)
     print(f"{'Migrated' if args.apply else 'Planned'} {count} documents")
 
 
