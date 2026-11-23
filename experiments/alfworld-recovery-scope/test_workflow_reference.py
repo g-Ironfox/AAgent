@@ -40,7 +40,7 @@ class ReferenceTest(unittest.TestCase):
         schema = schema_bundle()
         for key in [key for key in schema["$defs"] if key.startswith("node__")]:
             del schema["$defs"][key]
-        expected = json.loads((ROOT / "agent/workflow_2_0.schema.json").read_text(encoding="utf-8"))
+        expected = json.loads((ROOT / "agent_runtime/workflow_2_0.schema.json").read_text(encoding="utf-8"))
         self.assertEqual(schema, expected)
 
     def test_policies_and_dynamic_ports(self):

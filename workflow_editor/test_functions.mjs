@@ -10,7 +10,7 @@ import { bindNodeFunctions, prepareFunctionEdit, validateFunctions } from './sta
 import { prepareStructDefinitions, remapStructReferences } from './static/workflow/domain/struct-editing.js';
 
 function fixture() {
-  const child = spawnSync(process.env.PYTHON || 'python', ['-c', 'import json,sys; sys.path.insert(0,"agent"); from test_workflow_functions import function_document; print(json.dumps(function_document(nested=True)))'], {
+  const child = spawnSync(process.env.PYTHON || 'python', ['-c', 'import json,sys; sys.path.insert(0,"agent_runtime"); from test_workflow_functions import function_document; print(json.dumps(function_document(nested=True)))'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', timeout: 30000,
   });
   assert.equal(child.status, 0, child.stderr);
@@ -33,7 +33,7 @@ test('nested functions round-trip without storing ordinary node membership', () 
   assert.equal(JSON.stringify(snapshot).includes('callee_id'), false);
   assert.equal(loadSnapshot(snapshot), true);
   assert.deepEqual(workflowSnapshot(), snapshot);
-  const child = spawnSync(process.env.PYTHON || 'python', ['-c', 'import json,sys; sys.path.insert(0,"agent"); from workflow_validator import validate_workflow; validate_workflow(json.load(sys.stdin))'], {
+  const child = spawnSync(process.env.PYTHON || 'python', ['-c', 'import json,sys; sys.path.insert(0,"agent_runtime"); from workflow_validator import validate_workflow; validate_workflow(json.load(sys.stdin))'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify(snapshot), encoding: 'utf8', timeout: 30000,
   });
   assert.equal(child.status, 0, child.stderr);

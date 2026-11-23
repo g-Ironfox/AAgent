@@ -178,7 +178,7 @@ def _read_workspace_workflow_record(
     selector: str, value: str, identifier: str
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Load workflow content and permission metadata through the guarded API."""
-    base_url = os.getenv("WORKSPACE_API_URL", "http://webui_py:8081").rstrip("/")
+    base_url = os.getenv("WORKSPACE_API_URL", "http://agent_environment:8080").rstrip("/")
     headers = {}
     try:
         from workflow_nodes import current_workflow_process

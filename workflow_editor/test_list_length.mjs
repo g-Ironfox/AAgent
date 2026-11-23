@@ -84,7 +84,7 @@ for workflow in cases["invalid"]:
     try: validate_workflow(workflow)
     except WorkflowValidationError: pass
     else: raise AssertionError("invalid list_length accepted")`;
-  for (const backend of ['agent', 'manager_webui']) {
+  for (const backend of ['agent_runtime', 'manager_webui']) {
     const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
       cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ valid, invalid }), encoding: 'utf8', timeout: 30000,
     });

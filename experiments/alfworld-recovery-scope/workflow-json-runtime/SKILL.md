@@ -6,8 +6,8 @@ description: Design and revise this experiment's AAgent Workflow 2.0 JSON using 
 # Workflow JSON design from the current implementation
 
 Use the accompanying generated node/schema reference as the language definition.
-Its catalog comes from `agent/workflow_contract.py`; its schema, semantic checks,
-compiler and execution excerpts come from the current `agent/` implementation.
+Its catalog comes from `agent_runtime/workflow_contract.py`; its schema, semantic checks,
+compiler and execution excerpts come from the current `agent_runtime/` implementation.
 This skill describes how to use that material. It does not replace the code.
 Do not import node names or ports from an older workflow skill or from memory.
 
@@ -64,7 +64,7 @@ when the evolution policy excludes them.
 
 ## Experimental main evolution and installed capabilities
 
-For this iterator, `agent/workflow_evolution.py` is an additional capability gate.
+For this iterator, `agent_runtime/workflow_evolution.py` is an additional capability gate.
 Preserve root ports, model IDs, tool declarations, and the full data dependency
 chain of existing `workspace.get_file` readers. The catalog's `main_policy` marks
 which runtime types this gate permits; existence in the catalog grants no access.

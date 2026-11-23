@@ -6,7 +6,7 @@ import test from 'node:test';
 import { createNode, portsForNode } from './static/workflow/domain/node-contract.js';
 import { isValidConnection } from './static/workflow/domain/connection-rules.js';
 import { bindStructureInspector } from './static/workflow/inspector/structure.js';
-import { workflowCanvasSvg } from '../webui_py/static/workflow_canvas.mjs';
+import { workflowCanvasSvg } from '../webui/static/workflow_canvas.mjs';
 import { loadSnapshot, state, workflowSnapshot } from './static/workflow/domain/serialization.js';
 
 function fixture(valueType = 'list-content') {
@@ -96,7 +96,7 @@ for workflow in cases["invalid"]:
     try: validate_workflow(workflow)
     except WorkflowValidationError: continue
     raise AssertionError("invalid list_slice accepted")`;
-  const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, 'agent'], {
+  const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, 'agent_runtime'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ valid, invalid }), encoding: 'utf8', timeout: 30000,
   });
   assert.ifError(result.error);

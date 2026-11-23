@@ -1,6 +1,6 @@
 **
-!webui_py/
-!webui_py/**
+!agent_environment/
+!agent_environment/**
 **/__pycache__/
 **/*.py[cod]
 **/.env

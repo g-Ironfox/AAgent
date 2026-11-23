@@ -75,7 +75,7 @@
 ## 工具契约与运行时验证补充
 
 - 工具名出现在 metadata.tools 只说明工作流声明了接口；本地分发仍必须在 tools.tool.tool_handlers 中找到可调用的函数。旧 Python 进程不会因为绑定挂载的源码更新而重新执行 @tool。缺少 handler 会在 HTTP 请求前抛出“未知工具”。
-- 参考文档的 workspace 工具 inputSchema/outputSchema 直接从 agent/tools/workspace.py 的 @tool 装饰器抽取；生成器不导入有 Redis 注册副作用的模块。契约测试另行加载真实装饰器，逐一比对抽取结果、实际注册值、迭代器端口。
+- 参考文档的 workspace 工具 inputSchema/outputSchema 直接从 agent_runtime/tools/workspace.py 的 @tool 装饰器抽取；生成器不导入有 Redis 注册副作用的模块。契约测试另行加载真实装饰器，逐一比对抽取结果、实际注册值、迭代器端口。
 - 候选校验结果 ready/unchanged/rejected 都是正常的具名输出；404/403 和 handler 缺失会抛异常，不能解释成“无需迭代”。revision 从文件读取结果以 number 传递，实际 API 值是整数；不经过 content 字符串转换。
 - 模拟模型的全流程测试可能替代工具执行器；它能验证流程顺序与写入，但不能证明注册包装函数可调用。另用 test_runtime_tools.py 检查真实注册、统一 tool 节点分发、HTTP 包装、权限身份头、URL 编码、校验和结果传递。
 - verify_runtime_tools.py 用临时只读工作流在线校验三个结果分支，使用线上 iterator 的接口和读取等级；可选 --include-recovery 以 bootstrap 的读取等级验证当前内容/稳定锚点恢复计划。后者使用 checkpoint_seq=0，不证明历史 checkpoint 回溯。探针不调用模型、不采纳候选、不修改 main/经验，完成后删除自身文件。

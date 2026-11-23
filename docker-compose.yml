@@ -1,7 +1,7 @@
 services:
-  agent:
-    build: ./agent
-    container_name: agent_aagent
+  agent_runtime:
+    build: ./agent_runtime
+    container_name: agent_runtime_aagent
     command: ["python", "main.py"]
     restart: unless-stopped
     depends_on:
@@ -9,7 +9,7 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
-      webui_py:
+      agent_environment:
         condition: service_healthy
     env_file:
       - .env
@@ -20,7 +20,7 @@ services:
       PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       TOOL_SERVER_URL: ${TOOL_SERVER_URL:-http://tool_server:8083}
-      WORKSPACE_API_URL: ${WORKSPACE_API_URL:-http://webui_py:8081}
+      WORKSPACE_API_URL: ${WORKSPACE_API_URL:-http://agent_environment:8080}
       MONGO_TERMINAL_COLLECTION: ${MONGO_TERMINAL_COLLECTION:-terminal_messages}
       MONGO_PROCESS_LOG_COLLECTION: ${MONGO_PROCESS_LOG_COLLECTION:-process_logs}
       TOOL_CLIENT_DEFAULT_WAIT_MS: ${TOOL_CLIENT_DEFAULT_WAIT_MS:-10000}
@@ -30,12 +30,12 @@ services:
     networks:
       - aagent_net
 
-  webui_py:
+  agent_environment:
     build:
       context: .
-      dockerfile: webui_py/Dockerfile
-    container_name: webui_py_aagent
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081"]
+      dockerfile: agent_environment/Dockerfile
+    container_name: agent_environment_aagent
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
     restart: unless-stopped
     depends_on:
       redis:
@@ -59,10 +59,32 @@ services:
       MONGO_PROCESS_LOG_COLLECTION: ${MONGO_PROCESS_LOG_COLLECTION:-process_logs}
       MONGO_FILE_EVENT_COLLECTION: ${MONGO_FILE_EVENT_COLLECTION:-workspace_file_events}
       MONGO_WORKSPACE_FILE_COLLECTION: ${MONGO_WORKSPACE_FILE_COLLECTION:-workspace_files}
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aagent_net
+
+  webui:
+    build:
+      context: .
+      dockerfile: webui/Dockerfile
+    container_name: webui_aagent
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081"]
+    restart: unless-stopped
+    depends_on:
+      agent_environment:
+        condition: service_healthy
+    environment:
+      AGENT_ENVIRONMENT_URL: http://agent_environment:8080
     ports:
       - "8081:8081"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz')"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -201,16 +223,16 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     depends_on:
-      webui_py:
+      agent_environment:
         condition: service_healthy
-      agent:
+      agent_runtime:
         condition: service_started
       redis:
         condition: service_healthy
       mongodb:
         condition: service_healthy
     environment:
-      AAGENT_API_URL: http://webui_py:8081
+      AAGENT_API_URL: http://agent_environment:8080
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: ${REDIS_DB:-0}
@@ -236,14 +258,14 @@ services:
     profiles: ["benchmark"]
     restart: unless-stopped
     depends_on:
-      webui_py:
+      agent_environment:
         condition: service_healthy
       redis:
         condition: service_healthy
       mongodb:
         condition: service_healthy
     environment:
-      AAGENT_API_URL: http://webui_py:8081
+      AAGENT_API_URL: http://agent_environment:8080
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: ${REDIS_DB:-0}

@@ -309,7 +309,7 @@ for case in test_cases():
 print(json.dumps(results))
 `;
   const results = [];
-  for (const backend of ['agent', 'manager_webui']) {
+  for (const backend of ['agent_runtime', 'manager_webui']) {
     const child = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
       cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', timeout: 30000,
     });

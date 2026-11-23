@@ -15,7 +15,7 @@ from uuid import uuid4
 import requests
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / 'agent'), str(ROOT / 'scripts')]
+sys.path[:0] = [str(ROOT / 'agent_runtime'), str(ROOT / 'scripts')]
 from build_tool_loop_workflow import Graph, ports
 from workflow_parser import parse_workflow
 from workflow_validator import validate_workflow

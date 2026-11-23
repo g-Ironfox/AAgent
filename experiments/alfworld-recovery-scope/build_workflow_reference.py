@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "agent"))
+sys.path.insert(0, str(ROOT / "agent_runtime"))
 from workflow_contract import (NODE_ARGUMENT_FIELDS_BY_TYPE, SUPPORTED_NODE_TYPES,
     control_ports_for_node, data_ports_for_node, connection_validation_error)
 from workflow_evolution import PURE_NODES
@@ -128,7 +128,7 @@ def schema_bundle():
     The runtime schema itself is partial: Python semantic checks are supplied
     alongside it. Do not pretend unknown property schemas specify all semantics.
     """
-    schema = json.loads((ROOT / "agent/workflow_2_0.schema.json").read_text(encoding="utf-8"))
+    schema = json.loads((ROOT / "agent_runtime/workflow_2_0.schema.json").read_text(encoding="utf-8"))
     for kind in sorted(SUPPORTED_NODE_TYPES):
         schema["$defs"]["node__" + kind] = {"allOf": [
             {"$ref": "#/$defs/node"},
@@ -192,7 +192,7 @@ def catalog(schema=None):
 
 def workspace_tool_catalog():
     """Read actual decorator contracts without importing the Redis-writing registry."""
-    path = ROOT / "agent/tools/workspace.py"
+    path = ROOT / "agent_runtime/tools/workspace.py"
     source = path.read_text(encoding="utf-8")
     tools = {}
     for function in ast.parse(source).body:
@@ -205,7 +205,7 @@ def workspace_tool_catalog():
             name = keywords.get("name", function.name)
             tools[name] = {
                 "handler": function.name,
-                "source": "agent/tools/workspace.py",
+                "source": "agent_runtime/tools/workspace.py",
                 "description": ast.literal_eval(decorator.args[0]),
                 "inputSchema": ast.literal_eval(decorator.args[1]) if len(decorator.args) > 1 else {},
                 "outputSchema": keywords.get("output_schema"),
@@ -270,16 +270,16 @@ write=4. The iterator reads this file at runtime and must not edit it.
               "a validation error. HTTP/ACL errors and missing handlers raise; they are not candidate rejection results.\n",
               "```json\n" + json.dumps(workspace_tool_catalog(), ensure_ascii=False, indent=2) + "\n```\n"]
     sources = {
-        "agent/workflow_contract.py": ["data_ports_for_node", "data_type_for_port", "control_ports_for_node", "connection_validation_error"],
-        "agent/workflow_validator.py": ["validate_workflow", "_validate_branches_in_foreach", "_infer_function_groups", "_validate_lifecycles", "_validate_node", "_validate_declared_data_inputs", "_validate_workflow_ports", "_validate_construct_content", "_validate_construct_map_content", "_validate_construct_list"],
-        "agent/workflow_functions.py": ["bind_function_interfaces"],
-        "agent/workflow_parser.py": ["parse_workflow"],
-        "agent/workflow_nodes.py": ["workflow_read_terminal_queue", "_json_content", "_deserialize_json_value", "workflow_deserialize_json", "workflow_struct_to_json", "workflow_json_to_struct", "workflow_foreach", "workflow_while_pop", "workflow_router", "_tool_arguments", "workflow_tool", "workflow_local_tool"],
-        "agent/tools/tool.py": ["tool", "execute_tool"],
-        "agent/tools/workspace.py": ["_request", "prepare_workspace_main_update", "get_file_recovery_plan"],
-        "agent/workflow_recovery.py": ["build_file_recovery_plan"],
-        "agent/workflow_evolution.py": ["_check_capabilities", "prepare_main_update"],
-        "agent/workflow_tools.py": ["validate_parameters", "validate_tool", "build_tool", "validate_construct_tool_arguments"],
+        "agent_runtime/workflow_contract.py": ["data_ports_for_node", "data_type_for_port", "control_ports_for_node", "connection_validation_error"],
+        "agent_runtime/workflow_validator.py": ["validate_workflow", "_validate_branches_in_foreach", "_infer_function_groups", "_validate_lifecycles", "_validate_node", "_validate_declared_data_inputs", "_validate_workflow_ports", "_validate_construct_content", "_validate_construct_map_content", "_validate_construct_list"],
+        "agent_runtime/workflow_functions.py": ["bind_function_interfaces"],
+        "agent_runtime/workflow_parser.py": ["parse_workflow"],
+        "agent_runtime/workflow_nodes.py": ["workflow_read_terminal_queue", "_json_content", "_deserialize_json_value", "workflow_deserialize_json", "workflow_struct_to_json", "workflow_json_to_struct", "workflow_foreach", "workflow_while_pop", "workflow_router", "_tool_arguments", "workflow_tool", "workflow_local_tool"],
+        "agent_runtime/tools/tool.py": ["tool", "execute_tool"],
+        "agent_runtime/tools/workspace.py": ["_request", "prepare_workspace_main_update", "get_file_recovery_plan"],
+        "agent_runtime/workflow_recovery.py": ["build_file_recovery_plan"],
+        "agent_runtime/workflow_evolution.py": ["_check_capabilities", "prepare_main_update"],
+        "agent_runtime/workflow_tools.py": ["validate_parameters", "validate_tool", "build_tool", "validate_construct_tool_arguments"],
     }
     parts += ["## Exact runtime semantic validation and port rules (source excerpts)\n"]
     for path, functions in sources.items():
@@ -287,7 +287,7 @@ write=4. The iterator reads this file at runtime and must not edit it.
     parts += ["## Implementation-aligned workflow-json design skill\n", skill,
               "\n## Experiment design experience\n", DESIGN_NOTES_PATH.read_text(encoding="utf-8"),
               "\n## Source fingerprints\n\n"]
-    for path in ["agent/workflow_2_0.schema.json", *sources, str(SKILL_PATH.relative_to(ROOT)).replace("\\", "/")]:
+    for path in ["agent_runtime/workflow_2_0.schema.json", *sources, str(SKILL_PATH.relative_to(ROOT)).replace("\\", "/")]:
         parts += [f"- `{path}`: `{hashlib.sha256((ROOT / path).read_bytes()).hexdigest()}`\n"]
     parts += [f"- Node types: {len(nodes)}. Regenerate with `python experiments/alfworld-recovery-scope/build_workflow_reference.py`.\n"]
     return "\n".join(parts)

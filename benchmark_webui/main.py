@@ -25,13 +25,13 @@ def create_app(store=None, upstream=None):
         try:
             if upstream:
                 return upstream()
-            response = requests.get(os.getenv("AAGENT_API_URL", "http://webui_py:8081").rstrip("/")
+            response = requests.get(os.getenv("AAGENT_API_URL", "http://agent_environment:8080").rstrip("/")
                                     + "/api/processes/workflow-options", timeout=10)
             response.raise_for_status()
             return response.json()
         except (requests.RequestException, ValueError) as error:
             log.warning("Workflow options unavailable: %s", error)
-            raise HTTPException(503, "Cannot load Workflows from webui_py") from error
+            raise HTTPException(503, "Cannot load Workflows from agent_environment") from error
 
     @asynccontextmanager
     async def lifespan(app):

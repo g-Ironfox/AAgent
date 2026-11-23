@@ -1,6 +1,6 @@
 # ALFWorld 执行器
 
-`environment.py` 管理 ALFWorld 0.4.2 / TextWorld 1.7.0 的纯文本环境和数据下载，`runner.py` 执行逐轮评测，`client.py` 使用现有 webui_py 的 HTTP 终端接口与 Workflow 通信。`benchmark_worker` 复用这些模块，并将轨迹写入 MongoDB。
+`environment.py` 管理 ALFWorld 0.4.2 / TextWorld 1.7.0 的纯文本环境和数据下载，`runner.py` 执行逐轮评测，`client.py` 使用现有 agent_environment 的 HTTP 终端接口与 Workflow 通信。`benchmark_worker` 复用这些模块，并将轨迹写入 MongoDB。
 
 现在使用 `benchmark_worker` 和 `benchmark_webui` 两个 Compose 服务，启动步骤、页面、队列与存储说明见 [Benchmark 控制台](../benchmark_webui/README.md)。原先的 `alfworld` 服务已替换，命名数据卷 `alfworld_data` 继续复用。
 
@@ -54,7 +54,7 @@ docker compose --profile benchmark run --rm --no-deps --entrypoint python -v ./d
 | --poll-interval | 0.5 | 输出轮询间隔，秒 |
 | --admissible-commands | 关闭 | 提供合法动作列表，会改变测试条件 |
 | --inputs | {} | Workflow 创建输入 JSON 对象 |
-| --api-url | http://webui_py:8081 | 后端地址 |
+| --api-url | http://agent_environment:8080 | 后端地址 |
 | --results-dir | /results | 结果文件目录 |
 
 独立 CLI 保存 manifest.json（配置、版本、游戏、结果）、episode-0000.jsonl（逐条观察和动作）、summary.json。网页发布的测试保存到 MongoDB，不会另外生成这些本地文件。
@@ -83,7 +83,7 @@ Workflow 必须通过 `output_to_terminal` 返回：
 
 ```powershell
 python -m unittest discover -s alfworld_runner -p test_runner.py
-python -m unittest discover -s agent -p test_alfworld_workflow.py
+python -m unittest discover -s agent_runtime -p test_alfworld_workflow.py
 ```
 
 数据缓存与真实环境已验证 valid_unseen 包含 134 个可运行任务。固定 look 示例可验证终端通信与正常结束，不代表模型解题能力。

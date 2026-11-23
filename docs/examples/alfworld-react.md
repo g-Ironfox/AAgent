@@ -60,7 +60,7 @@ read_terminal_queue → 取最新观察 → 解析 episode_id / step / done
 ## 验证
 
 ```powershell
-python -m unittest discover -s agent -p test_alfworld_workflow.py -v
+python -m unittest discover -s agent_runtime -p test_alfworld_workflow.py -v
 node --test workflow_editor/test_alfworld_workflow.mjs
 ```
 

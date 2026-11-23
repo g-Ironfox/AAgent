@@ -81,7 +81,7 @@ class Worker:
             versions = {name: version(name) for name in ("alfworld", "textworld", "numpy")}
             self.store.update_running(job_id, self.worker_id, {"metadata": {
                 "versions": versions, "game_files": list(games), "environment": "AlfredTWEnv"}})
-            client = self.client_factory(os.getenv("AAGENT_API_URL", "http://webui_py:8081"),
+            client = self.client_factory(os.getenv("AAGENT_API_URL", "http://agent_environment:8080"),
                                          check=self.check)
             for index in range(config.episodes):
                 self.check()

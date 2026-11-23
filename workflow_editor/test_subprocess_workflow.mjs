@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { compileLifecycles } from './static/workflow/domain/lifecycle.js';
 import { createNode, NODE_TYPES, portsForNode } from './static/workflow/domain/node-contract.js';
 import { loadSnapshot, parseWorkflowText, workflowSnapshot, migrateSubprocessWorkflowFormat } from './static/workflow/domain/serialization.js';
-import { parseWorkflowFile, editWorkflowMetadata, migrateSubprocessWorkflowFormat as migrateWorkspace } from '../webui_py/static/workflow-file.mjs';
-import { workflowCanvasSvg } from '../webui_py/static/workflow_canvas.mjs';
+import { parseWorkflowFile, editWorkflowMetadata, migrateSubprocessWorkflowFormat as migrateWorkspace } from '../webui/static/workflow-file.mjs';
+import { workflowCanvasSvg } from '../webui/static/workflow_canvas.mjs';
 
 function workflow() {
   return {

@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / 'agent'), str(ROOT / 'scripts')]
+sys.path[:0] = [str(ROOT / 'agent_runtime'), str(ROOT / 'scripts')]
 from build_evolving_iterator import build_bundle
 from build_workflow_reference import workspace_tool_catalog
 from workflow_nodes import current_workflow_process, workflow_tool
@@ -21,7 +21,7 @@ from workflow_nodes import current_workflow_process, workflow_tool
 class RuntimeToolTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        tools_dir = ROOT / 'agent/tools'
+        tools_dir = ROOT / 'agent_runtime/tools'
         environment = {
             'DEEPSEEK_BASE_URL': 'http://provider.test', 'DEEPSEEK_API_KEY': 'test',
             'KIMI_BASE_URL': 'http://provider.test', 'KIMI_API_KEY': 'test',

@@ -2,7 +2,7 @@
 
 > 类型:设计文档。
 > 性质:现行文档。
-> 归属:`agent/` + `workflow_editor/` + `manager_webui/`。
+> 归属:`agent_runtime/` + `workflow_editor/` + `manager_webui/`。
 > 协议版本:workflow 1.2。
 
 Workflow 1.2 在 1.1 的节点与连接契约上新增 `construct_event` 和 `publish_event` 节点。Workflow 定义必须将 `schema_version` 写为 `"1.2"`；Agent、管理页和编辑器只接受当前版本，不自动迁移 1.1 定义。
@@ -31,4 +31,4 @@ Workflow 1.2 在 1.1 的节点与连接契约上新增 `construct_event` 和 `pu
 
 Workflow 1.2 使用独立版本号，Event 协议仍为 1.1。当前版本清单和消费端的硬编码版本常量必须保持一致。JSON Schema 见 [workflow_1_2.schema.json](workflow_1_2.schema.json)；端口兼容、控制连接完整性及运行时输入值检查由 Agent/管理页 validator 与节点执行器实施。
 
-完整节点、端口和参数契约以 `agent/workflow_contract.py` 为准。旧 Workflow 1.1 定义需要按 1.2 契约重建或手动调整。
+完整节点、端口和参数契约以 `agent_runtime/workflow_contract.py` 为准。旧 Workflow 1.1 定义需要按 1.2 契约重建或手动调整。

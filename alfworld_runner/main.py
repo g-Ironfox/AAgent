@@ -36,7 +36,7 @@ def main():
         if name == "run":
             command.add_argument("--workflow-file-id", default=os.getenv("ALFWORLD_WORKFLOW_FILE_ID"))
             command.add_argument("--inputs", type=json.loads, default={})
-            command.add_argument("--api-url", default=os.getenv("AAGENT_API_URL", "http://webui_py:8081"))
+            command.add_argument("--api-url", default=os.getenv("AAGENT_API_URL", "http://agent_environment:8080"))
             command.add_argument("--episodes", type=positive, default=1)
             command.add_argument("--action-timeout", type=positive, default=180)
             command.add_argument("--startup-timeout", type=positive, default=60)

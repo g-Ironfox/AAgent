@@ -55,7 +55,7 @@
 
 ALFWorld 等外部适配器可以通过现有终端 HTTP 接口写入观察并按游标读取 Workflow 输出。终端输入已移除 4000 字符限制，请求体上限为 1 MiB；接口说明见 [终端 HTTP IO 接口](docs/terminal-io.md)。ALFWorld 评测已拆成 `benchmark_worker` 与 `benchmark_webui`，支持网页发布、Redis 分发、MongoDB 轨迹与结果可视化；启动和使用见 [Benchmark 控制台](benchmark_webui/README.md)，终端协议见 [ALFWorld 执行器](alfworld_runner/README.md)。
 
-`webui_py` 的 `/logs` 页面按进程展示日志，数据来自 MongoDB 的 `process_logs` 集合（可通过 `MONGO_PROCESS_LOG_COLLECTION` 配置）。每个工作流进程和终端进程都有独立记录，可查看进程 ID、父子关系、当前状态、节点轨迹和进程事件。挂起与唤醒事件包含发生时间、等待原因及关联进程 ID，涵盖终端消息和子进程退出；页面支持按状态、进程类型和关键词筛选。新增事件从更新后的运行时开始记录，旧记录不会补造历史事件。
+`webui` 的 `/logs` 页面按进程展示日志，数据来自 MongoDB 的 `process_logs` 集合（可通过 `MONGO_PROCESS_LOG_COLLECTION` 配置）。每个工作流进程和终端进程都有独立记录，可查看进程 ID、父子关系、当前状态、节点轨迹和进程事件。挂起与唤醒事件包含发生时间、等待原因及关联进程 ID，涵盖终端消息和子进程退出；页面支持按状态、进程类型和关键词筛选。新增事件从更新后的运行时开始记录，旧记录不会补造历史事件。
 
 调度可视化位于 `/scheduler`（顶部「调度」导航），支持最近 5 分钟至 24 小时和不超过 7 天的自定义时间范围。甘特图按进程展示就绪、执行、挂起及等待输入区间，结束状态用菱形标记；当前进程表独立于历史时间范围，展示所有活跃进程的状态、父进程、等待对象、累计执行时间和快照时间，可按类型、状态或关键词筛选，默认每 2 秒刷新，顶部导航栏提供最后同步时间、刷新间隔、暂停／继续和立即刷新按钮。点击进程后，右侧区域自动切换到「进程详情」标签，显示关系与调度事件；历史事件以列表按时间排列，展示中文事件名称、状态、等待对象及错误信息；可随时切回「当前进程表」，筛选和分表选择会保留。页面占满视口，时间线、进程表和进程详情在各自面板内滚动；窄屏上下排列时也按剩余高度分配空间。
 
@@ -116,11 +116,12 @@ flowchart LR
 
 | 服务 | 端口 | 说明 |
 | --- | --- | --- |
-| `webui_py` | 8081 | Agent WebUI:进程终端、进程创建、工作区与运行日志 |
+| `webui` | 8081 | FastAPI 页面服务与 `/api/*` 反向代理 |
+| `agent_environment` | 8080（容器内） | 执行环境：工作区、checkpoint、终端、进程命令及状态/日志 API |
 | `workflow_editor` | 8082 | Workflow 可视化编辑器(独立服务,只导出 JSON) |
 | `tool_server` | 8083 | 工具注册、调用、任务状态与控制台 |
 | `manager_webui` | 8084 | 管理 WebUI:Sessions、文档、模型 |
-| `agent` | — | Redis 进程调度器与工作流执行器 |
+| `agent_runtime` | — | Redis 进程调度器与工作流执行器 |
 | `tool_provider` | — | 工具实际执行方,通过 WebSocket 注册到 Tool Server |
 | `redis` / `mongodb` | — | 队列与存储,仅在 dev 配置下暴露到宿主机 |
 
@@ -136,7 +137,7 @@ flowchart LR
 Copy-Item .env.example .env
 # 编辑 .env
 docker compose up --build -d
-docker compose logs -f agent webui_py
+docker compose logs -f agent_runtime agent_environment webui
 ```
 
 启动后 Agent WebUI 在 `http://localhost:8081`,管理 WebUI 在 `http://localhost:8084`。
@@ -155,7 +156,7 @@ docker compose logs -f agent webui_py
 | `workspace.create_checkpoint` | `name` | 保存当前工作区快照 |
 | `workspace.restore_checkpoint` | `seq` | 恢复整个工作区并更新文件 revision |
 
-`seq=0` 表示空工作区，恢复到 0 会清空工作区文件。工具复用 `WORKSPACE_API_URL`（默认 `http://webui_py:8081`）访问现有 API。
+`seq=0` 表示空工作区，恢复到 0 会清空工作区文件。工具复用 `WORKSPACE_API_URL`（默认 `http://agent_environment:8080`）访问现有 API。
 
 回滚一步：先调用 `workspace.get_parent_checkpoint`（参数 `{}`），再将返回的 `parent_seq` 作为 `workspace.restore_checkpoint` 的 `seq`。第一个 checkpoint 的 `parent_seq` 为 `0`，可恢复为空工作区；当前已为空工作区时返回 `parent_seq: null`，此时没有更早的回滚目标。父序号按分支关系确定，恢复后再次查询使用新的当前 head。
 
@@ -178,28 +179,54 @@ Redis 使用两个独立数字库，两个编号必须不同：
 | `REDIS_DB` | 0 | 公共事件队列 `external_events`、终端状态 `terminal_sessions`、工具注册及工具服务数据 |
 | `REDIS_KERNEL_DB` | 1 | runtime 进程表、ready / blocked、内部终端索引、Workflow Context |
 
-WebUI 等服务只连接公共库，只有 agent 连接内核库。Agent 将精简进程状态及调度索引单向发布到公共库，供调度可视化读取。调度器非阻塞读取内核 ready 队列，每执行一个节点后处理公共库的外部事件；ready 为空时阻塞等待外部事件。当前按单个 runtime 调度循环运行。变更库编号后不自动迁移旧库中的运行状态。
+`webui` 不连接 Redis 或 MongoDB。`agent_environment` 使用公共库投递命令和读取调度投影，并只读查询内核进程表来校验工作流的 workspace 身份；`agent_runtime` 负责内核状态写入，并将精简进程状态及调度索引单向发布到公共库，供调度可视化读取。调度器非阻塞读取内核 ready 队列，每执行一个节点后处理公共库的外部事件；ready 为空时阻塞等待外部事件。当前按单个 runtime 调度循环运行。变更库编号后不自动迁移旧库中的运行状态。
+
+## 执行器与执行环境
+
+`agent_runtime` 负责工作流执行与调度；`agent_environment` 提供工作区、checkpoint、终端交互、创建/终止命令及状态/日志查询。后者接受命令后写入公共 Redis 事件队列，实际进程状态仍由执行器推进。checkpoint 仅恢复工作区文件及权限，不恢复运行中的执行状态。
+
+浏览器通过 `webui:8081` 的同源 `/api/*` 代理访问执行环境；执行器和 benchmark 直接访问 `http://agent_environment:8080`，不依赖前端在线。后端不发布宿主机端口，原有 `http://localhost:8081/api/...` 脚本入口继续兼容。前端 `/healthz` 只检查静态服务；后端 `/api/health` 检查 Redis、MongoDB 与工作区初始化，不要求执行器已经启动。
+
+当前 FileStore 依赖进程内锁和状态，`agent_environment` 必须保持单实例、单 worker。存储集合名、Redis key、API 格式及权限语义保持兼容；未携带进程身份的请求仍采用受信任管理端模型，详见 [进程与工作区文件权限](docs/process-permissions.md)。
+
+从旧版迁移时，先构建镜像，再停止旧 `agent` 执行器和旧 Python WebUI，最后启动新服务；旧 WebUI 与新执行环境不能同时写工作区。若使用 dev 覆盖配置，以下每条 Compose 命令都应加上相同的 `-f` 参数。若曾手动设置 `WORKSPACE_API_URL=http://webui_py:8081`，应更新为 `http://agent_environment:8080`。
+
+```powershell
+docker compose build agent_runtime agent_environment webui
+# 仅用于从旧版升级；全新安装跳过这行。保留旧容器便于排查，不删除数据。
+docker stop agent_aagent webui_py_aagent
+docker compose up -d agent_environment agent_runtime webui
+```
+
+隔离验收不连接日常使用的 Redis/MongoDB：
+
+```powershell
+docker compose -p aagent-environment-test -f tests/environment/docker-compose.yml up -d --build --wait
+docker compose -p aagent-environment-test -f tests/environment/docker-compose.yml run --rm verify
+docker compose -p aagent-environment-test -f tests/environment/docker-compose.yml down -v
+```
 
 ## 开发调试
 
-`docker-compose.dev.yml` 挂载宿主机源码,并让 `agent` 以 `sleep infinity` 启动,改完代码不用重建镜像,手动跑入口即可:
+`docker-compose.dev.yml` 挂载宿主机源码,并让 `agent_runtime` 以 `sleep infinity` 启动,改完代码不用重建镜像,手动跑入口即可:
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-docker compose exec agent python main.py
+docker compose exec agent_runtime python main.py
 ```
 
 发布时不要叠加这个文件。
 
-注意:生产配置 `docker-compose.yml` 里只有 `redis` / `mongodb` 有 volumes,`webui_py` / `manager_webui` / `workflow_editor` / `tool_server` 的代码都在镜像内,改完要 `docker compose up -d --build <服务>`;dev 配置下这四个服务已挂载源码目录,但静态资源引用形式是 `?v=N`,改动后仍需递增版本号才会绕过浏览器缓存。
+生产配置中应用代码和前端静态资源都在镜像内，修改后运行 `docker compose up -d --build <服务>`。dev 配置挂载 `agent_environment` 等 Python 服务源码，以及 `webui` 的源码与静态资源；Python 进程修改后需重启。WebUI HTML 使用 `no-store`，JS/CSS 使用 `no-cache`，浏览器会重新验证缓存。
 
 ## 目录结构
 
 ```
-agent/              Agent 运行时:Workflow 校验、解析、执行与节点实现
+agent_runtime/      执行器：Workflow 校验、解析、执行与调度
+agent_environment/  执行环境：工作区、checkpoint、终端、进程与日志 API
 tool_server/        工具注册与调用中心,任务状态、回调投递
 tool_provider/      实际执行工具的 Provider(QQ / Bilibili / 文档)
-webui_py/           Agent WebUI(8081)
+webui/             FastAPI 页面服务与 API 代理(8081)
 manager_webui/      管理 WebUI(8084)
 benchmark_webui/    评测控制台(8085)
 benchmark_worker/   ALFWorld 评测 worker

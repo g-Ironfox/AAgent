@@ -12,7 +12,7 @@ from tools.tool import tool
 
 
 def _request(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-    base_url = os.getenv("WORKSPACE_API_URL", "http://webui_py:8081").rstrip("/")
+    base_url = os.getenv("WORKSPACE_API_URL", "http://agent_environment:8080").rstrip("/")
     headers = dict(kwargs.pop("headers", {}))
     try:
         from workflow_nodes import current_workflow_process

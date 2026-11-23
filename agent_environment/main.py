@@ -2,13 +2,11 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
 from typing import Any
 
 import redis
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
@@ -22,7 +20,7 @@ from process_logs import create_process_logs_router
 from scheduler import create_scheduler_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("aagent.webui")
+logger = logging.getLogger("aagent.environment")
 
 MAX_TERMINAL_BODY_BYTES = 1024 * 1024
 MAX_PROCESS_BODY_BYTES = 256 * 1024
@@ -87,7 +85,7 @@ file_events: Collection = database[MONGO_FILE_EVENT_COLLECTION]
 workspace_files: Collection = database[MONGO_WORKSPACE_FILE_COLLECTION]
 file_store = FileStore(file_events, workspace_files)
 
-app = FastAPI(title="AAgent WebUI")
+app = FastAPI(title="AAgent Environment")
 
 
 @app.exception_handler(FileStoreUnavailableError)
@@ -175,8 +173,12 @@ async def request_body_guard(request: Request, call_next):
 def health():
     try:
         redis_client.ping()
-    except redis.RedisError as error:
-        return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(error)})
+        kernel_redis_client.ping()
+        mongo_client.admin.command("ping")
+        file_store.revision
+    except (redis.RedisError, PyMongoError, FileStoreUnavailableError):
+        logger.exception("environment dependencies unavailable")
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
     return {"status": "ok"}
 
 
@@ -194,49 +196,3 @@ def lookup_process(process_id: str):
 
 app.include_router(create_files_router(file_store, lookup_process))
 
-static_directory = Path(__file__).parent / "static"
-
-
-@app.get("/", include_in_schema=False)
-def home_page():
-    return RedirectResponse("/terminal.html", status_code=307)
-
-
-@app.get("/workspace", include_in_schema=False)
-def workspace_page():
-    return FileResponse(static_directory / "workspace.html", headers={"Cache-Control": "no-store"})
-
-
-@app.get("/workspace/replay", include_in_schema=False)
-def workspace_replay_page():
-    return FileResponse(static_directory / "replay.html", headers={"Cache-Control": "no-store"})
-
-
-@app.get("/logs", include_in_schema=False)
-def workflow_logs_page():
-    return FileResponse(static_directory / "workflow-logs.html", headers={"Cache-Control": "no-store"})
-
-
-@app.get("/scheduler", include_in_schema=False)
-def scheduler_page():
-    return FileResponse(static_directory / "scheduler.html", headers={"Cache-Control": "no-store"})
-
-
-@app.get("/workspace.html", include_in_schema=False)
-def old_workspace_page_url():
-    return RedirectResponse("/workspace", status_code=308)
-
-
-@app.get("/document.html", include_in_schema=False)
-def old_document_page_url():
-    return RedirectResponse("/workspace", status_code=308)
-
-
-class RevalidatingStaticFiles(StaticFiles):
-    async def get_response(self, path: str, scope: dict[str, Any]):
-        response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-store" if path.endswith(".html") else "no-cache"
-        return response
-
-
-app.mount("/", RevalidatingStaticFiles(directory=static_directory, html=True), name="static")

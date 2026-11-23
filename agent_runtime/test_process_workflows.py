@@ -15,7 +15,7 @@ from process_creation import build_workflow_process
 from workflow_nodes import WorkflowStep, workflow_read_terminal_queue
 from terminal_repository import terminal_process_context
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "webui_py"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "agent_environment"))
 from terminal import TerminalRequest, create_terminal_router
 from processes import CreateProcessRequest, create_processes_router
 

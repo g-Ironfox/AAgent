@@ -14,11 +14,11 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
-  webui:
-    image: aagent-webui_py
+  agent_environment:
+    image: aagent-agent_environment
     volumes:
-      - ../../webui_py:/app:ro
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081"]
+      - ../../agent_environment:/app:ro
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
     environment:
       REDIS_HOST: redis
       MONGO_HOST: mongodb
@@ -27,20 +27,20 @@ services:
       redis: {condition: service_healthy}
       mongodb: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
       interval: 2s
       timeout: 3s
       retries: 30
-  agent:
-    image: aagent-agent
+  agent_runtime:
+    image: aagent-agent_runtime
     volumes:
-      - ../../agent:/app:ro
+      - ../../agent_runtime:/app:ro
     command: ["python", "main.py"]
     environment:
       REDIS_HOST: redis
       MONGO_HOST: mongodb
       MONGO_DATABASE: benchmark_smoke
-      WORKSPACE_API_URL: http://webui:8081
+      WORKSPACE_API_URL: http://agent_environment:8080
       DEEPSEEK_BASE_URL: http://unused
       DEEPSEEK_API_KEY: unused
       KIMI_BASE_URL: http://unused
@@ -49,7 +49,7 @@ services:
       BOCHA_BASE_URL: http://unused
       BOCHA_API_KEY: unused
     depends_on:
-      webui: {condition: service_healthy}
+      agent_environment: {condition: service_healthy}
   benchmark_webui:
     image: aagent-benchmark-webui:local
     volumes:
@@ -60,10 +60,10 @@ services:
       REDIS_HOST: redis
       MONGO_HOST: mongodb
       MONGO_DATABASE: benchmark_smoke
-      AAGENT_API_URL: http://webui:8081
+      AAGENT_API_URL: http://agent_environment:8080
       ALFWORLD_DATA: /data/alfworld
     depends_on:
-      webui: {condition: service_healthy}
+      agent_environment: {condition: service_healthy}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8085/api/health')"]
       interval: 2s
@@ -82,7 +82,7 @@ services:
       <<: *benchmark_environment
       BENCHMARK_WORKER_CONCURRENCY: "2"
     depends_on:
-      agent: {condition: service_started}
+      agent_runtime: {condition: service_started}
       benchmark_webui: {condition: service_healthy}
   verify:
     image: aagent-benchmark-worker:local

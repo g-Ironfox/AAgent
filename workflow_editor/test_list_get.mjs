@@ -125,7 +125,7 @@ from workflow_validator import WorkflowValidationError, validate_workflow
 cases = json.load(sys.stdin)
 for workflow in cases["valid"]:
     validate_workflow(workflow)
-    if sys.argv[1] != "agent": continue
+    if sys.argv[1] != "agent_runtime": continue
     from workflow_parser import parse_workflow
     from workflow_nodes import propagate_workflow_output
     from test_support import run_scheduled_workflow
@@ -145,7 +145,7 @@ for workflow in cases["invalid"]:
     try: validate_workflow(workflow)
     except WorkflowValidationError: pass
     else: raise AssertionError("invalid list_get accepted")`;
-  for (const backend of ['agent', 'manager_webui']) {
+  for (const backend of ['agent_runtime', 'manager_webui']) {
     const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
       cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ valid, invalid }), encoding: 'utf8', timeout: 30000,
     });

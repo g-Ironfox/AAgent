@@ -49,7 +49,7 @@ test('conversion connections and empty arguments survive save/reload and backend
   assert.equal(loadSnapshot(saved), true);
   assert.deepEqual(workflowSnapshot(), saved);
   const result = spawnSync(process.env.PYTHON || 'python', ['-c',
-    'import json, sys; sys.path.insert(0, "agent"); from workflow_validator import validate_workflow; validate_workflow(json.load(sys.stdin))'], {
+    'import json, sys; sys.path.insert(0, "agent_runtime"); from workflow_validator import validate_workflow; validate_workflow(json.load(sys.stdin))'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify(saved), encoding: 'utf8', timeout: 30000,
   });
   assert.ifError(result.error);

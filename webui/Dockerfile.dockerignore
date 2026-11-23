@@ -1,0 +1,7 @@
+**
+!webui/
+!webui/**
+**/__pycache__/
+**/*.py[cod]
+**/.env
+**/.git/

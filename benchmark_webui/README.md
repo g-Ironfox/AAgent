@@ -1,6 +1,6 @@
 # Benchmark 控制台
 
-通过两个业务容器运行 ALFWorld 评测。依赖项目现有的 Redis、MongoDB、webui_py 和 Agent 调度器。
+通过两个业务容器运行 ALFWorld 评测。依赖项目现有的 Redis、MongoDB、agent_environment 和 Agent 调度器。
 
 
 数据流：
@@ -10,7 +10,7 @@
                                                     ↓
                                              benchmark_worker
                                                     ↓
-                               webui_py /api/processes 创建 Workflow 进程
+                               agent_environment /api/processes 创建 Workflow 进程
                                                     ↓
                                 现有 Agent 调度器执行 Workflow runtime
                                                     ↕ 终端 HTTP JSON 协议
@@ -57,7 +57,7 @@ python scripts/build_alfworld_workflow.py --model-id <模型ID> --output tmp/alf
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile benchmark up -d --build benchmark_worker benchmark_webui
-docker compose exec agent python main.py
+docker compose exec agent_runtime python main.py
 ```
 
 ## 页面与接口
@@ -124,7 +124,7 @@ docker compose --profile benchmark up -d --build --no-deps benchmark_worker
 | benchmark_events | 带 seq 和时间戳的 observation、action、result |
 | benchmark_workers | 每个执行子进程的心跳、任务、容器实例、slot、PID、并发数和数据状态 |
 
-完整观测与动作保存在 benchmark_events；Workflow 额外输出仍在现有终端消息集合。日志没有自动删除策略。Workflow 文件在每轮创建进程时由 webui_py 读取，运行期间请保持文件和模型配置稳定；这版不提供不可变的 Workflow/模型快照。现有 API 没有强制取消 runtime 的接口，异常时只会尽力发 done 让流程退出；自定义 Workflow 需要处理结束消息。
+完整观测与动作保存在 benchmark_events；Workflow 额外输出仍在现有终端消息集合。日志没有自动删除策略。Workflow 文件在每轮创建进程时由 agent_environment 读取，运行期间请保持文件和模型配置稳定；这版不提供不可变的 Workflow/模型快照。现有 API 没有强制取消 runtime 的接口，异常时只会尽力发 done 让流程退出；自定义 Workflow 需要处理结束消息。
 
 保留的独立 CLI 可继续运行，结果输出为文件：
 
@@ -144,7 +144,7 @@ python -m unittest discover -s alfworld_runner -p test_runner.py
 隔离的完整验收使用单独的 Redis/MongoDB/Agent/WebUI，并复用只读的文本数据卷。验收配置只启动一个 worker 容器，使用 2 个执行子进程，验证同时执行、并发上限、排队和随机种子隔离。请先构建项目的 Agent 与 WebUI 镜像，以及上述两项 benchmark 镜像：
 
 ```powershell
-docker compose build agent webui_py
+docker compose build agent_runtime agent_environment
 docker compose -p aagent-benchmark-smoke -f tests/benchmark/docker-compose.yml up -d benchmark_worker benchmark_webui
 docker compose -p aagent-benchmark-smoke -f tests/benchmark/docker-compose.yml run --rm --no-deps verify
 docker compose -p aagent-benchmark-smoke -f tests/benchmark/docker-compose.yml down --volumes

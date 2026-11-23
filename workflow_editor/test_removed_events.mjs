@@ -92,7 +92,7 @@ test('Agent and Manager reject the same obsolete workflows and keep content inte
     '    except WorkflowValidationError: continue',
     '    raise AssertionError(name)',
   ].join('\n');
-  for (const backend of ['agent', 'manager_webui']) {
+  for (const backend of ['agent_runtime', 'manager_webui']) {
     const result = spawnSync('python', ['-c', script], {
       cwd: fileURLToPath(new URL('../' + backend + '/', import.meta.url)),
       input: JSON.stringify([fixture(), ...obsolete]), encoding: 'utf8',
@@ -102,6 +102,6 @@ test('Agent and Manager reject the same obsolete workflows and keep content inte
 });
 
 test('published Workflow 2.0 schema matches the runtime schema', () => {
-  const schemas = ['docs/protocol', 'agent'].map((dir) => JSON.parse(readFileSync(new URL('../' + dir + '/workflow_2_0.schema.json', import.meta.url), 'utf8')));
+  const schemas = ['docs/protocol', 'agent_runtime'].map((dir) => JSON.parse(readFileSync(new URL('../' + dir + '/workflow_2_0.schema.json', import.meta.url), 'utf8')));
   assert.deepEqual(schemas[0], schemas[1]);
 });

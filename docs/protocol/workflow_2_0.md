@@ -1,8 +1,8 @@
 # Workflow 2.0 协议规范
 
-> 类型：协议规范。  
-> 归属：`agent/`、`manager_webui/`、`workflow_editor/`。  
-> Workflow 协议版本：`2.0`。  
+> 类型：协议规范。
+> 归属：`agent_runtime/`、`manager_webui/`、`workflow_editor/`。
+> Workflow 协议版本：`2.0`。
 > 机器可读结构定义：`workflow_2_0.schema.json`（本文为完整规范；实现本协议不要求查阅其他版本文档）。
 
 ## 1. 范围与版本

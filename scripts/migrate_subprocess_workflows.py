@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 from urllib.parse import quote
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent_runtime"))
 from workflow_contract import migrate_subprocess_workflow_format
 
 

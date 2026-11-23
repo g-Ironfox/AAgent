@@ -12,7 +12,7 @@
 
 ## 安装与运行
 
-先按 [Benchmark 控制台](../../../benchmark_webui/README.md) 启动后端、Agent 调度器、benchmark_worker 和 benchmark_webui，并准备 ALFWorld 数据。开发 Compose 配置的 Agent 容器默认执行 sleep，需另开终端执行 `docker compose exec agent python main.py`。已有调度器时无需再启动。
+先按 [Benchmark 控制台](../../../benchmark_webui/README.md) 启动后端、Agent 调度器、benchmark_worker 和 benchmark_webui，并准备 ALFWorld 数据。开发 Compose 配置的 Agent 容器默认执行 sleep，需另开终端执行 `docker compose exec agent_runtime python main.py`。已有调度器时无需再启动。
 
 模型管理中启用一个支持原生 reasoning 的模型，然后在仓库根目录执行：
 
@@ -93,8 +93,8 @@ status=completed/recovered 只说明流程执行状态，**解题成功以环境
 ## 验证
 
 ```powershell
-python -m unittest discover -s agent -p test_alfworld_bundle.py
-python -m unittest discover -s agent -p test_alfworld_generation.py
+python -m unittest discover -s agent_runtime -p test_alfworld_bundle.py
+python -m unittest discover -s agent_runtime -p test_alfworld_generation.py
 python -m unittest discover -s alfworld_runner -p test_runner.py
 node --test workflow_editor/test_alfworld_bundle.mjs
 ```

@@ -40,7 +40,7 @@
 ## 执行与持久化
 
 Workflow 的工作区工具和子 Workflow 加载请求自动携带进程身份及随机令牌。
-WebUI 从 Redis 内核库的进程表读取实际等级，校验身份，并对每次文件操作检查权限。
+`agent_environment` 从 Redis 内核库的进程表读取实际等级，校验身份，并对每次文件操作检查权限。
 文件列表仅返回该进程可读的文件；权限不足的直接文件操作返回 HTTP 403。
 无效身份、错误令牌或已结束进程的令牌同样会被拒绝。
 
@@ -60,10 +60,10 @@ checkpoint 操作分别检查三个独立开关，文件读写等级再高也不
 `restore=true` 是全工作区恢复能力，不受逐文件写等级限制，也不要求 `read` 或 `create`。恢复会移除快照之后新增的文件、恢复旧权限并重新分配文件 revision，保留已有 checkpoint 历史，但不会自动保存尚未建立 checkpoint 的当前修改，也不恢复运行中的进程状态。
 
 通用工作区事件历史接口 `/api/files/events` 仍只对管理端开放，避免原始事件快照暴露文件内容；工作流使用受过滤的 checkpoint 查询接口。
-Agent 与 WebUI 必须使用一致的 Redis 地址、`REDIS_KERNEL_DB` 及 `ProcessTable` 配置；Compose 已传入这些配置。
+`agent_runtime` 与 `agent_environment` 必须使用一致的 Redis 地址、`REDIS_KERNEL_DB` 及 `ProcessTable` 配置；Compose 已传入这些配置。
 
 ## 信任边界
 
-这是 Workflow 执行器中的应用层权限。当前 WebUI 沿用受信任管理端模型：未携带进程身份头的文件 API 请求具有管理权限。
+这是 Workflow 执行器中的应用层权限。当前执行环境 API 沿用受信任管理端模型：未携带进程身份头的文件 API 请求具有管理权限。
 因此应将管理 API、Redis 和 MongoDB 放在受信任的访问范围内；任意代码执行、外部工具自行访问 HTTP 或数据库不在这套检查的隔离范围内。
 如果要对不受信任代码建立强隔离，还需要单独的管理端认证和网络／操作系统沙箱。

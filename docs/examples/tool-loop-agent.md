@@ -36,7 +36,7 @@ From the repository root:
 python scripts/build_tool_loop_workflow.py
 ```
 
-From `agent/`:
+From `agent_runtime/`:
 
 ```powershell
 python -m unittest test_tool_loop_workflow -v

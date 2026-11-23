@@ -100,4 +100,4 @@ python scripts/install_restricted_workflows.py --model YOUR_MODEL_ID --install
 python scripts/build_restricted_workflows.py
 ```
 
-生成器仅使用标准库和现有的 Graph 构建助手，不改变执行器或 Workflow 协议。回归测试位于 `agent/test_restricted_workflows.py`，使用真实调度器、文件权限路由和内存 Redis/Mongo 替身，模型响应由 mock 提供。
+生成器仅使用标准库和现有的 Graph 构建助手，不改变执行器或 Workflow 协议。回归测试位于 `agent_runtime/test_restricted_workflows.py`，使用真实调度器、文件权限路由和内存 Redis/Mongo 替身，模型响应由 mock 提供。

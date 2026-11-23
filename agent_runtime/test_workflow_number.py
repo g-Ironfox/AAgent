@@ -117,7 +117,7 @@ class WorkflowNumberTest(unittest.TestCase):
     def test_current_schema_copies_stay_in_sync(self):
         root = Path(__file__).resolve().parents[1]
         schemas = [json.loads((root / directory / "workflow_2_0.schema.json").read_text(encoding="utf-8"))
-                   for directory in ("agent", "docs/protocol")]
+                   for directory in ("agent_runtime", "docs/protocol")]
         self.assertEqual(schemas[0], schemas[1])
 
     def test_typed_tools_keep_number_arguments_and_results(self):

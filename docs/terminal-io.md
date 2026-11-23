@@ -1,6 +1,6 @@
 # 终端 HTTP IO 接口
 
-当前接口由 `webui_py` 提供，ALFWorld 等外部适配器可以直接调用。之后拆分前后端时可沿用这组路径和消息格式。
+当前接口由 `agent_environment` 提供，ALFWorld 等内部适配器直接访问 `http://agent_environment:8080`；浏览器及宿主机脚本仍可通过 `webui:8081` 的同源代理访问相同路径和消息格式。
 
 ## 写入 Workflow 输入
 
@@ -51,7 +51,7 @@
 
 这是立即返回的轮询接口。读取不会删除历史，也不会在服务端保存消费位置。适配器处理完一批消息后保留 `next_cursor`，下一次原样传回；收到空列表时稍后继续轮询，不能将空列表视为 episode 结束。处理失败时保留旧游标，以便重读。
 
-现有 `GET /api/terminal/history` 保留原有行为，用于页面查看最近的输入和输出；自动测试应使用 `/api/terminal/output` 续读，避免反复读取最后一页历史。WebUI 启动时会创建 `(terminal_id, role, _id)` 复合索引，支持按终端增量查询。
+现有 `GET /api/terminal/history` 保留原有行为，用于页面查看最近的输入和输出；自动测试应使用 `/api/terminal/output` 续读，避免反复读取最后一页历史。执行环境启动时会创建 `(terminal_id, role, _id)` 复合索引，支持按终端增量查询。
 
 ## ALFWorld 适配约定
 

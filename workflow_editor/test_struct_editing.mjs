@@ -156,7 +156,7 @@ sys.path.insert(0, sys.argv[1])
 from workflow_validator import validate_workflow
 for workflow in json.load(sys.stdin):
     validate_workflow(workflow)
-    if sys.argv[1] == "agent":
+    if sys.argv[1] == "agent_runtime":
         from workflow_parser import parse_workflow
         from workflow_nodes import propagate_workflow_output
         from test_support import run_scheduled_workflow
@@ -164,7 +164,7 @@ for workflow in json.load(sys.stdin):
         propagate_workflow_output(graph, graph[0], "workflow:text", "Ada")
         assert run_scheduled_workflow(graph, 0) == {"result": "Ada"}
 `;
-  for (const backend of ['agent', 'manager_webui']) {
+  for (const backend of ['agent_runtime', 'manager_webui']) {
     const result = spawnSync(process.env.PYTHON || 'python', ['-c', validationScript, backend], {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
       input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,

@@ -2,7 +2,7 @@
 
 > 类型:设计文档。
 > 性质:现行文档。
-> 归属:`agent/` + `workflow_editor/` + `manager_webui/`。
+> 归属:`agent_runtime/` + `workflow_editor/` + `manager_webui/`。
 > 适用版本:平台 `4.0.6+`。
 > 协议版本:workflow 1.1。
 
@@ -70,7 +70,7 @@
 | `workflow_nodes` | 数组，可选 | 本 Workflow 调用的子 Workflow 声明；每项包含 `name`、`input_ports`、`output_ports`，调用节点须与声明的接口匹配 |
 | `remote_tools` | 数组，可选 | 远程 Tool 的名称与输入/输出端口声明；远程 Tool 节点须匹配声明 |
 
-管理页还保存描述、引用和时间等元数据；MongoDB `_id` 是存储标识，不属于连线或节点字段。协议版本由顶层 `schema_version` 表达，不再有单独的整数版本字段。可执行性的依据是 `agent/workflow_validator.py` 中的 `validate_workflow`，管理页保存时另有大小、数量和引用限制。不能只检查 JSON 能否解析就认为 Workflow 有效。
+管理页还保存描述、引用和时间等元数据；MongoDB `_id` 是存储标识，不属于连线或节点字段。协议版本由顶层 `schema_version` 表达，不再有单独的整数版本字段。可执行性的依据是 `agent_runtime/workflow_validator.py` 中的 `validate_workflow`，管理页保存时另有大小、数量和引用限制。不能只检查 JSON 能否解析就认为 Workflow 有效。
 
 ## 2. 元数据
 
@@ -82,7 +82,7 @@ Workflow 定义的顶层元数据包括 `name`、`schema_version`、`input_ports
 
 节点的基本字段是 `id`、`type`、`name`、`x`、`y` 和 `arguments`；可选的公共顶层字段包括 `workflowPorts`、`dataInputPorts`、`input_ports`、`output_ports`。节点类型相关的可配置参数必须放在 `arguments` 中，不能放到节点顶层；公共字段不能放进 `arguments`。`input` / `output` 节点的 `workflowPorts` 必须与顶层边界端口声明一致，ID 形如 `workflow:<name>`。
 
-数据连接类型包括 `content`、`message`、`event`、`list-content`、`list-message`、`list-event`、`map-content`；控制连接使用 `control`。端点必须存在且类型匹配；同一数据输入只允许一个来源，控制端口按节点规则连接。当前支持的节点类型、每类 `arguments` 和端口规则以 `agent/workflow_contract.py` 为准；具体校验以 `agent/workflow_validator.py` 为准。不能把编辑器的视觉坐标或运行时编译后的索引连接当作持久化协议的替代格式。
+数据连接类型包括 `content`、`message`、`event`、`list-content`、`list-message`、`list-event`、`map-content`；控制连接使用 `control`。端点必须存在且类型匹配；同一数据输入只允许一个来源，控制端口按节点规则连接。当前支持的节点类型、每类 `arguments` 和端口规则以 `agent_runtime/workflow_contract.py` 为准；具体校验以 `agent_runtime/workflow_validator.py` 为准。不能把编辑器的视觉坐标或运行时编译后的索引连接当作持久化协议的替代格式。
 
 ### 支持的类型与强类型约束
 
@@ -184,6 +184,6 @@ Workflow 版本采用独立的 `MAJOR.MINOR`；顶层 `schema_version` 是 1.1 �
 
 ## 5. JSON Schema
 
-Draft 2020-12 Schema 描述 Workflow 1.1 的持久化 JSON 外形，可用于编辑器、API 客户端和工具的基础结构校验，详见 [workflow_1_1.schema.json](workflow_1_1.schema.json)。节点 `arguments` 保持为对象，由 `type` 决定具体字段；节点参数、动态端口、边界节点数量、端点存在性及连线类型匹配等语义规则仍以 `agent/workflow_validator.py` 为准，JSON Schema 校验通过不代表 Workflow 可执行。
+Draft 2020-12 Schema 描述 Workflow 1.1 的持久化 JSON 外形，可用于编辑器、API 客户端和工具的基础结构校验，详见 [workflow_1_1.schema.json](workflow_1_1.schema.json)。节点 `arguments` 保持为对象，由 `type` 决定具体字段；节点参数、动态端口、边界节点数量、端点存在性及连线类型匹配等语义规则仍以 `agent_runtime/workflow_validator.py` 为准，JSON Schema 校验通过不代表 Workflow 可执行。
 
 顶层允许管理页附加描述、引用、时间及存储元数据；这些元数据不改变 Workflow 定义本身。Schema 中 `workflowPorts` 用于边界节点的持久化端口快照，`input_ports` / `output_ports` 在不同节点类型上的语义仍由节点契约解释。

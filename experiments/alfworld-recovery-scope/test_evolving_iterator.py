@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / "agent"), str(ROOT / "scripts")]
+sys.path[:0] = [str(ROOT / "agent_runtime"), str(ROOT / "scripts")]
 import main
 import test_alfworld_bundle as base
 import test_restricted_workflows as support

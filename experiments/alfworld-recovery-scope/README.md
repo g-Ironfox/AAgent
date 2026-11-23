@@ -96,7 +96,7 @@ python experiments/alfworld-recovery-scope/build_evolving_iterator.py --from-bun
 
 ### Generate, install, and test
 
-Runtime support was added in `agent/workflow_evolution.py` and registered as `workspace.prepare_main_update` in `agent/tools/workspace.py`. Restart/rebuild the agent with these files **before running the new iterator**. Merely importing a `.flow` does not register a tool. For the standard Docker deployment, `docker compose up -d --build agent` rebuilds this service; plan the restart around any active tasks. With the development override, the container starts `sleep infinity` and the scheduler is launched manually; restarting that container alone does not start `python main.py`. Check the live tool registry for `workspace.prepare_main_update` before treating the iterator as ready. This repository change does not by itself replace already installed workspace files or restart services.
+Runtime support was added in `agent_runtime/workflow_evolution.py` and registered as `workspace.prepare_main_update` in `agent_runtime/tools/workspace.py`. Restart/rebuild the agent with these files **before running the new iterator**. Merely importing a `.flow` does not register a tool. For the standard Docker deployment, `docker compose up -d --build agent_runtime` rebuilds this service; plan the restart around any active tasks. With the development override, the container starts `sleep infinity` and the scheduler is launched manually; restarting that container alone does not start `python main.py`. Check the live tool registry for `workspace.prepare_main_update` before treating the iterator as ready. This repository change does not by itself replace already installed workspace files or restart services.
 
 Install a **fresh isolated prefix** (six files, including the reference; all main/experience/recovery/reference IDs are bound automatically):
 
@@ -120,7 +120,7 @@ Re-upload/update the iterator with revision checking. Later upgrades preserve th
 
 ```powershell
 python -m unittest discover -s experiments/alfworld-recovery-scope -p "test_*.py" -v
-python -m unittest discover -s agent -p test_workspace_tools.py -v
+python -m unittest discover -s agent_runtime -p test_workspace_tools.py -v
 ```
 
 Tests use real workflow parsing/scheduling and workspace ACL/revision handling with an in-memory store and mocked LLM. They include an actual graph-node insertion, its adoption and use in the next episode, runtime reference/skill delivery, all runtime node schemas and declaration samples, compiled complete skill examples, obsolete-node rejection, saved experience after missing-tool/model failures, low-read/high-write reference ACLs, missing-reference fail-closed behavior, invalid/no-op proposals, concurrent edits and checkpoint failure. They are not a claim of improved ALFWorld task success.

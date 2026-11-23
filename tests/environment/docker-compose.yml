@@ -1,0 +1,76 @@
+# Isolated execution-environment acceptance stack; no production volumes or queues.
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  mongodb:
+    image: mongo:8
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  agent_environment:
+    image: aagent-agent_environment
+    build:
+      context: ../..
+      dockerfile: agent_environment/Dockerfile
+    environment:
+      REDIS_HOST: redis
+      MONGO_HOST: mongodb
+      MONGO_DATABASE: environment_acceptance
+    depends_on:
+      redis: {condition: service_healthy}
+      mongodb: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
+      interval: 2s
+      timeout: 10s
+      retries: 30
+  agent_runtime:
+    image: aagent-agent_runtime
+    build: ../../agent_runtime
+    command: ["python", "main.py"]
+    environment:
+      REDIS_HOST: redis
+      MONGO_HOST: mongodb
+      MONGO_DATABASE: environment_acceptance
+      WORKSPACE_API_URL: http://agent_environment:8080
+      DEEPSEEK_BASE_URL: http://unused
+      DEEPSEEK_API_KEY: unused
+      KIMI_BASE_URL: http://unused
+      KIMI_API_KEY: unused
+      TAVILY_API_KEYS: unused
+      BOCHA_BASE_URL: http://unused
+      BOCHA_API_KEY: unused
+    depends_on:
+      agent_environment: {condition: service_healthy}
+  webui:
+    image: aagent-webui
+    build:
+      context: ../..
+      dockerfile: webui/Dockerfile
+    environment:
+      AGENT_ENVIRONMENT_URL: http://agent_environment:8080
+    depends_on:
+      agent_environment: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/healthz')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  verify:
+    image: aagent-agent_environment
+    profiles: ["verify"]
+    entrypoint: ["python", "-m", "unittest", "discover", "-s", "/verification", "-p", "test_*.py", "-v"]
+    volumes:
+      - .:/verification:ro
+      - ../../docs/examples:/examples:ro
+    environment:
+      ENVIRONMENT_INTEGRATION: "1"
+      ENVIRONMENT_URL: http://agent_environment:8080
+      WEBUI_URL: http://webui:8081

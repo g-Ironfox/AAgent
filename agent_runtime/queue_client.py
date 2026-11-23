@@ -1,4 +1,4 @@
-# agent/queue_client.py
+# agent_runtime/queue_client.py
 import json
 import os
 

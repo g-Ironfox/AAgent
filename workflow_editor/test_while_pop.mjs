@@ -65,7 +65,7 @@ test('while_pop round-trips all list types and ID modes through both backends', 
     }
   }
   const script = `import json, sys\nsys.path.insert(0, sys.argv[1])\nfrom workflow_validator import validate_workflow\nfor workflow in json.load(sys.stdin): validate_workflow(workflow)`;
-  for (const backend of ['agent', 'manager_webui']) {
+  for (const backend of ['agent_runtime', 'manager_webui']) {
     const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
       cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
     });

@@ -4247,7 +4247,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
 {
   "workspace.list_files": {
     "handler": "list_workspace_files",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "列出工作区文件（不包含文件内容）",
     "inputSchema": {
       "type": "object",
@@ -4275,7 +4275,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.get_file": {
     "handler": "get_workspace_file",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "读取工作区文件内容和 revision",
     "inputSchema": {
       "type": "object",
@@ -4296,7 +4296,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.create_file": {
     "handler": "create_workspace_file",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "在工作区创建文件",
     "inputSchema": {
       "type": "object",
@@ -4322,7 +4322,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.update_file": {
     "handler": "update_workspace_file",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "更新工作区文件名称或内容；必须使用最近读取到的 revision",
     "inputSchema": {
       "type": "object",
@@ -4359,7 +4359,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.delete_file": {
     "handler": "delete_workspace_file",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "删除工作区文件；必须使用最近读取到的 revision",
     "inputSchema": {
       "type": "object",
@@ -4397,7 +4397,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.list_checkpoints": {
     "handler": "list_workspace_checkpoints",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "分页列出工作区 checkpoint，可按文件筛选；使用 next_before_seq 获取下一页",
     "inputSchema": {
       "type": "object",
@@ -4446,7 +4446,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.checkpoint_tree": {
     "handler": "get_workspace_checkpoint_tree",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "读取工作区 checkpoint 分支树及当前 head_seq",
     "inputSchema": {
       "type": "object",
@@ -4477,7 +4477,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.get_parent_checkpoint": {
     "handler": "get_parent_workspace_checkpoint",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "获取 checkpoint 的父序号用于回滚；省略 seq 时查询当前 head。parent_seq=0 表示空工作区，可传给 restore_checkpoint；null 表示已无父 checkpoint",
     "inputSchema": {
       "type": "object",
@@ -4512,7 +4512,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.checkpoint_diff": {
     "handler": "get_workspace_checkpoint_diff",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "读取 checkpoint 相对于父 checkpoint 的文件差异；seq=0 表示空工作区",
     "inputSchema": {
       "type": "object",
@@ -4555,7 +4555,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.create_checkpoint": {
     "handler": "create_workspace_checkpoint",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "为当前工作区全部文件创建命名 checkpoint",
     "inputSchema": {
       "type": "object",
@@ -4577,7 +4577,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.restore_checkpoint": {
     "handler": "restore_workspace_checkpoint",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "将整个工作区恢复到指定 checkpoint，文件 revision 会更新；seq=0 会清空工作区",
     "inputSchema": {
       "type": "object",
@@ -4598,7 +4598,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.get_file_recovery_plan": {
     "handler": "get_file_recovery_plan",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "读取指定文件的逐级恢复计划：沿 checkpoint 当前分支跳过重复版本，以固定 stable 文件为底线；只读取，不执行恢复",
     "inputSchema": {
       "type": "object",
@@ -4661,7 +4661,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
   },
   "workspace.prepare_main_update": {
     "handler": "prepare_workspace_main_update",
-    "source": "agent/tools/workspace.py",
+    "source": "agent_runtime/tools/workspace.py",
     "description": "只读校验 ALFWorld main 候选：检查版本、Workflow 2.0 编译、接口及只读能力边界，不执行也不写入候选",
     "inputSchema": {
       "type": "object",
@@ -4719,7 +4719,7 @@ Workflow content ports carry strings; number ports carry numeric values. The rev
 
 ## Exact runtime semantic validation and port rules (source excerpts)
 
-### agent/workflow_contract.py
+### agent_runtime/workflow_contract.py
 
 ```python
 def data_ports_for_node(
@@ -5065,7 +5065,7 @@ def connection_validation_error(
         return "connection does not match the node contract"
 ```
 
-### agent/workflow_validator.py
+### agent_runtime/workflow_validator.py
 
 ```python
 def validate_workflow(workflow: dict[str, Any]) -> None:
@@ -5977,7 +5977,7 @@ def _validate_construct_list(node: dict[str, Any], structs: dict[str, Any] | Non
         )
 ```
 
-### agent/workflow_functions.py
+### agent_runtime/workflow_functions.py
 
 ```python
 def bind_function_interfaces(workflow: dict[str, Any]) -> dict[str, Any]:
@@ -6027,7 +6027,7 @@ def bind_function_interfaces(workflow: dict[str, Any]) -> dict[str, Any]:
     return workflow
 ```
 
-### agent/workflow_parser.py
+### agent_runtime/workflow_parser.py
 
 ```python
 def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
@@ -6122,7 +6122,7 @@ def parse_workflow(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     return linked_nodes
 ```
 
-### agent/workflow_nodes.py
+### agent_runtime/workflow_nodes.py
 
 ```python
 def workflow_read_terminal_queue(current_id: int, workflow_map: WorkflowMap) -> int | WorkflowStep:
@@ -6318,7 +6318,7 @@ def workflow_local_tool(current_id: int, workflow_map: WorkflowMap) -> int:
     return next_successor(node)
 ```
 
-### agent/tools/tool.py
+### agent_runtime/tools/tool.py
 
 ```python
 def tool(description, parameters=None, name=None, output_schema=None):
@@ -6361,11 +6361,11 @@ def execute_tool(id,tool,args,preserve_result=False):
     return str(result)
 ```
 
-### agent/tools/workspace.py
+### agent_runtime/tools/workspace.py
 
 ```python
 def _request(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-    base_url = os.getenv("WORKSPACE_API_URL", "http://webui_py:8081").rstrip("/")
+    base_url = os.getenv("WORKSPACE_API_URL", "http://agent_environment:8080").rstrip("/")
     headers = dict(kwargs.pop("headers", {}))
     try:
         from workflow_nodes import current_workflow_process
@@ -6416,7 +6416,7 @@ def get_file_recovery_plan(file_id: str, stable_file_id: str, checkpoint_seq: in
     return build_file_recovery_plan(file_id, stable_file_id, checkpoint_seq, _request)
 ```
 
-### agent/workflow_recovery.py
+### agent_runtime/workflow_recovery.py
 
 ```python
 def build_file_recovery_plan(file_id, stable_file_id, checkpoint_seq, request):
@@ -6457,7 +6457,7 @@ def build_file_recovery_plan(file_id, stable_file_id, checkpoint_seq, request):
     return {"versions": versions}
 ```
 
-### agent/workflow_evolution.py
+### agent_runtime/workflow_evolution.py
 
 ```python
 def _check_capabilities(current: dict[str, Any], candidate: dict[str, Any]) -> None:
@@ -6538,7 +6538,7 @@ def prepare_main_update(current: dict[str, Any], revision: int, proposal: str) -
     return result
 ```
 
-### agent/workflow_tools.py
+### agent_runtime/workflow_tools.py
 
 ```python
 def validate_parameters(schema: Any) -> None:
@@ -6612,8 +6612,8 @@ description: Design and revise this experiment's AAgent Workflow 2.0 JSON using 
 # Workflow JSON design from the current implementation
 
 Use the accompanying generated node/schema reference as the language definition.
-Its catalog comes from `agent/workflow_contract.py`; its schema, semantic checks,
-compiler and execution excerpts come from the current `agent/` implementation.
+Its catalog comes from `agent_runtime/workflow_contract.py`; its schema, semantic checks,
+compiler and execution excerpts come from the current `agent_runtime/` implementation.
 This skill describes how to use that material. It does not replace the code.
 Do not import node names or ports from an older workflow skill or from memory.
 
@@ -6670,7 +6670,7 @@ when the evolution policy excludes them.
 
 ## Experimental main evolution and installed capabilities
 
-For this iterator, `agent/workflow_evolution.py` is an additional capability gate.
+For this iterator, `agent_runtime/workflow_evolution.py` is an additional capability gate.
 Preserve root ports, model IDs, tool declarations, and the full data dependency
 chain of existing `workspace.get_file` readers. The catalog's `main_policy` marks
 which runtime types this gate permits; existence in the catalog grants no access.
@@ -6817,7 +6817,7 @@ Compilation does not establish provider availability or better ALFWorld behavior
 ## 工具契约与运行时验证补充
 
 - 工具名出现在 metadata.tools 只说明工作流声明了接口；本地分发仍必须在 tools.tool.tool_handlers 中找到可调用的函数。旧 Python 进程不会因为绑定挂载的源码更新而重新执行 @tool。缺少 handler 会在 HTTP 请求前抛出“未知工具”。
-- 参考文档的 workspace 工具 inputSchema/outputSchema 直接从 agent/tools/workspace.py 的 @tool 装饰器抽取；生成器不导入有 Redis 注册副作用的模块。契约测试另行加载真实装饰器，逐一比对抽取结果、实际注册值、迭代器端口。
+- 参考文档的 workspace 工具 inputSchema/outputSchema 直接从 agent_runtime/tools/workspace.py 的 @tool 装饰器抽取；生成器不导入有 Redis 注册副作用的模块。契约测试另行加载真实装饰器，逐一比对抽取结果、实际注册值、迭代器端口。
 - 候选校验结果 ready/unchanged/rejected 都是正常的具名输出；404/403 和 handler 缺失会抛异常，不能解释成“无需迭代”。revision 从文件读取结果以 number 传递，实际 API 值是整数；不经过 content 字符串转换。
 - 模拟模型的全流程测试可能替代工具执行器；它能验证流程顺序与写入，但不能证明注册包装函数可调用。另用 test_runtime_tools.py 检查真实注册、统一 tool 节点分发、HTTP 包装、权限身份头、URL 编码、校验和结果传递。
 - verify_runtime_tools.py 用临时只读工作流在线校验三个结果分支，使用线上 iterator 的接口和读取等级；可选 --include-recovery 以 bootstrap 的读取等级验证当前内容/稳定锚点恢复计划。后者使用 checkpoint_seq=0，不证明历史 checkpoint 回溯。探针不调用模型、不采纳候选、不修改 main/经验，完成后删除自身文件。
@@ -6826,28 +6826,28 @@ Compilation does not establish provider availability or better ALFWorld behavior
 ## Source fingerprints
 
 
-- `agent/workflow_2_0.schema.json`: `980e150af00b929ba52b9f24fc54939202c13911ef2b0056f90c0820e7a139e0`
+- `agent_runtime/workflow_2_0.schema.json`: `980e150af00b929ba52b9f24fc54939202c13911ef2b0056f90c0820e7a139e0`
 
-- `agent/workflow_contract.py`: `e1dc2cb70258d93c35d5aecf6aa64190b24aba1c1db5a43e1761591c06afffe8`
+- `agent_runtime/workflow_contract.py`: `e1dc2cb70258d93c35d5aecf6aa64190b24aba1c1db5a43e1761591c06afffe8`
 
-- `agent/workflow_validator.py`: `3d65dce379e5265377917a65fdbfbd143472a32de722fff26bda088029d49a74`
+- `agent_runtime/workflow_validator.py`: `3d65dce379e5265377917a65fdbfbd143472a32de722fff26bda088029d49a74`
 
-- `agent/workflow_functions.py`: `caaa24e2f7ac351cc03ba15a0aa4250bd16bafe7708318014992542388576ae6`
+- `agent_runtime/workflow_functions.py`: `caaa24e2f7ac351cc03ba15a0aa4250bd16bafe7708318014992542388576ae6`
 
-- `agent/workflow_parser.py`: `56a0512115f454f7b9996d2e33953c51afd616ec2702773f93951fa4bee66d33`
+- `agent_runtime/workflow_parser.py`: `bd3c938f285b7e30c3e741507c7e087cbbc833449413693d9d3080c1b865f4eb`
 
-- `agent/workflow_nodes.py`: `733fec5ad3887ab743114cc39199612bee7ad086bbbc66b9229452b19c463800`
+- `agent_runtime/workflow_nodes.py`: `733fec5ad3887ab743114cc39199612bee7ad086bbbc66b9229452b19c463800`
 
-- `agent/tools/tool.py`: `5b4aa5b6adefdbaf65abb6f6daf5feeeee94f3a0a864d31beb43fe7b46d5d62c`
+- `agent_runtime/tools/tool.py`: `5b4aa5b6adefdbaf65abb6f6daf5feeeee94f3a0a864d31beb43fe7b46d5d62c`
 
-- `agent/tools/workspace.py`: `b4c64789580a9fde270531c284154617aca1f939e1e9ffe65fad2d69101d5463`
+- `agent_runtime/tools/workspace.py`: `ced4f86d4462ae8c59ea407dfe2e186db4e23d9af7eb4373e3bef263c27d12bb`
 
-- `agent/workflow_recovery.py`: `e1ab5cc9768a573f9405053c174b4b4248ec4bcdd36e6339c9f67434b00045a2`
+- `agent_runtime/workflow_recovery.py`: `e1ab5cc9768a573f9405053c174b4b4248ec4bcdd36e6339c9f67434b00045a2`
 
-- `agent/workflow_evolution.py`: `ef8caad6f78d9d963f1e899ecf280a3233792e0334ef7655eb9415fdc4534b8f`
+- `agent_runtime/workflow_evolution.py`: `ef8caad6f78d9d963f1e899ecf280a3233792e0334ef7655eb9415fdc4534b8f`
 
-- `agent/workflow_tools.py`: `11784cfae7e315899ced6c266de5c9710ac6293d743e1e45c8010a1f8654dc87`
+- `agent_runtime/workflow_tools.py`: `11784cfae7e315899ced6c266de5c9710ac6293d743e1e45c8010a1f8654dc87`
 
-- `experiments/alfworld-recovery-scope/workflow-json-runtime/SKILL.md`: `83ec746ea87827997d66d1b1718f14a618b559fe166c3bb0172f76a932038736`
+- `experiments/alfworld-recovery-scope/workflow-json-runtime/SKILL.md`: `400535500a17f7c70edbd52acfc210810fa6f9cd3108902e63cc0e37d9923e4c`
 
 - Node types: 40. Regenerate with `python experiments/alfworld-recovery-scope/build_workflow_reference.py`.
