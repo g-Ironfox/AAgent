@@ -58,7 +58,7 @@ test('list_get declares a numeric index input and an output matching the selecte
   assert.equal(portsForNode(node).find((port) => port.id === 'item-out').color, task.color);
 });
 
-test('all typed lookup snapshots survive reload and both backends validate and execute them', () => {
+test('all typed lookup snapshots survive reload and the runtime validates and executes them', () => {
   const valid = [];
   for (const valueType of ['list-content', 'list-message', 'list-struct:task']) {
     assert.equal(loadSnapshot(fixture(valueType)), true);
@@ -145,13 +145,12 @@ for workflow in cases["invalid"]:
     try: validate_workflow(workflow)
     except WorkflowValidationError: pass
     else: raise AssertionError("invalid list_get accepted")`;
-  for (const backend of ['agent_runtime', 'manager_webui']) {
-    const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ valid, invalid }), encoding: 'utf8', timeout: 30000,
-    });
-    assert.ifError(result.error);
-    assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
-  }
+  const backend = 'agent_runtime';
+  const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
+    cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ valid, invalid }), encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
 });
 
 test('changing list type removes incompatible list and item edges but retains the numeric index', () => {

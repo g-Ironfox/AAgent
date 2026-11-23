@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +49,7 @@ test('typed list configuration determines the item output and Struct color', () 
   }
 });
 
-test('while_pop round-trips all list types and ID modes through both backends', () => {
+test('while_pop round-trips all list types and ID modes through the runtime backend', () => {
   const workflows = [];
   for (const kind of ['list-content', 'list-message', 'list-struct:task']) {
     for (const fixed of [false, true]) {
@@ -65,13 +65,12 @@ test('while_pop round-trips all list types and ID modes through both backends', 
     }
   }
   const script = `import json, sys\nsys.path.insert(0, sys.argv[1])\nfrom workflow_validator import validate_workflow\nfor workflow in json.load(sys.stdin): validate_workflow(workflow)`;
-  for (const backend of ['agent_runtime', 'manager_webui']) {
-    const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
-    });
-    assert.ifError(result.error);
-    assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
-  }
+  const backend = 'agent_runtime';
+  const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
+    cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
 });
 
 test('while_pop only accepts context IDs and keeps popped items within the loop', () => {

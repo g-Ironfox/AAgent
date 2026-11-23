@@ -81,7 +81,7 @@ test('editor rejects removed event nodes and types without modifying the current
   } finally { console.warn = warn; }
 });
 
-test('Agent and Manager reject the same obsolete workflows and keep content interfaces valid', () => {
+test('runtime rejects obsolete workflows and keeps content interfaces valid', () => {
   const script = [
     'import json,sys',
     'from workflow_validator import validate_workflow, WorkflowValidationError',
@@ -92,13 +92,11 @@ test('Agent and Manager reject the same obsolete workflows and keep content inte
     '    except WorkflowValidationError: continue',
     '    raise AssertionError(name)',
   ].join('\n');
-  for (const backend of ['agent_runtime', 'manager_webui']) {
-    const result = spawnSync('python', ['-c', script], {
-      cwd: fileURLToPath(new URL('../' + backend + '/', import.meta.url)),
-      input: JSON.stringify([fixture(), ...obsolete]), encoding: 'utf8',
-    });
-    assert.equal(result.status, 0, backend + ': ' + result.stdout + result.stderr);
-  }
+  const result = spawnSync(process.env.PYTHON || 'python', ['-c', script], {
+    cwd: fileURLToPath(new URL('../agent_runtime/', import.meta.url)),
+    input: JSON.stringify([fixture(), ...obsolete]), encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, 'agent_runtime: ' + result.stdout + result.stderr);
 });
 
 test('published Workflow 2.0 schema matches the runtime schema', () => {

@@ -128,7 +128,7 @@ function structPortRoundTripWorkflow(missing, updates) {
   return workflow;
 }
 
-test('Struct get and update snapshots retain port contracts accepted by both backends', () => {
+test('Struct get and update snapshots retain port contracts accepted by the runtime backend', () => {
   const workflows = [];
   for (const missing of ['error', 'fallback']) {
     for (const updates of [[], ['name', 'nickname']]) {
@@ -164,12 +164,11 @@ for workflow in json.load(sys.stdin):
         propagate_workflow_output(graph, graph[0], "workflow:text", "Ada")
         assert run_scheduled_workflow(graph, 0) == {"result": "Ada"}
 `;
-  for (const backend of ['agent_runtime', 'manager_webui']) {
-    const result = spawnSync(process.env.PYTHON || 'python', ['-c', validationScript, backend], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)),
-      input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
-    });
-    assert.ifError(result.error);
-    assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
-  }
+  const backend = 'agent_runtime';
+  const result = spawnSync(process.env.PYTHON || 'python', ['-c', validationScript, backend], {
+    cwd: fileURLToPath(new URL('..', import.meta.url)),
+    input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
 });

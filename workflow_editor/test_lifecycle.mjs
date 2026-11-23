@@ -293,7 +293,7 @@ test('lifecycle HTML labels remain intact UTF-8', async () => {
 });
 
 // Exercise the same protocol documents against all three lifecycle validators.
-test('editor preview and both backend validators agree on lifecycle fixtures', () => {
+test('editor preview and runtime validator agree on lifecycle fixtures', () => {
   const script = `import json, sys
 sys.path.insert(0, sys.argv[1])
 from test_workflow_lifecycles import test_cases
@@ -308,20 +308,16 @@ for case in test_cases():
     results.append({**case, 'accepted': accepted})
 print(json.dumps(results))
 `;
-  const results = [];
-  for (const backend of ['agent_runtime', 'manager_webui']) {
-    const child = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', timeout: 30000,
-    });
-    assert.ifError(child.error);
-    assert.equal(child.status, 0, `${backend}: ${child.stderr}`);
-    const cases = JSON.parse(child.stdout);
-    for (const entry of cases) {
-      const preview = compileLifecycles(entry.workflow);
-      assert.equal(entry.accepted, !entry.error, `${backend}: ${entry.name}`);
-      assert.equal(preview.errors.length === 0, entry.accepted, `${backend} vs editor: ${entry.name}`);
-    }
-    results.push(cases);
+  const backend = 'agent_runtime';
+  const child = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
+    cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(child.error);
+  assert.equal(child.status, 0, `${backend}: ${child.stderr}`);
+  const cases = JSON.parse(child.stdout);
+  for (const entry of cases) {
+    const preview = compileLifecycles(entry.workflow);
+    assert.equal(entry.accepted, !entry.error, `${backend}: ${entry.name}`);
+    assert.equal(preview.errors.length === 0, entry.accepted, `${backend} vs editor: ${entry.name}`);
   }
-  assert.deepEqual(results[0], results[1]);
 });

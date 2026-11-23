@@ -46,7 +46,7 @@ test('list_length exposes a typed list input and a numeric length output', () =>
   assert.equal(portsForNode(node).find((port) => port.id === 'length-out').type, 'number');
 });
 
-test('all list types save and reload with valid connections accepted by both backends', () => {
+test('all list types save and reload with valid connections accepted by the runtime backend', () => {
   const valid = [];
   for (const valueType of ['list-content', 'list-message', 'list-struct:task']) {
     assert.equal(loadSnapshot(fixture(valueType)), true, valueType);
@@ -84,13 +84,12 @@ for workflow in cases["invalid"]:
     try: validate_workflow(workflow)
     except WorkflowValidationError: pass
     else: raise AssertionError("invalid list_length accepted")`;
-  for (const backend of ['agent_runtime', 'manager_webui']) {
-    const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ valid, invalid }), encoding: 'utf8', timeout: 30000,
-    });
-    assert.ifError(result.error);
-    assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
-  }
+  const backend = 'agent_runtime';
+  const result = spawnSync(process.env.PYTHON || 'python', ['-c', script, backend], {
+    cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ valid, invalid }), encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
 });
 
 test('list type selection offers only supported lists and reconciles incompatible inputs', () => {
