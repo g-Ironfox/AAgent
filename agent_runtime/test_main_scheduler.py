@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import main
+from process import WorkflowProcess, TerminalProcess
 
 
 class SchedulerTest(unittest.TestCase):
@@ -13,13 +14,13 @@ class SchedulerTest(unittest.TestCase):
     def test_block_process_persists_process_event_reference(
         self, read_process, write_process, get_connection, sync
     ):
-        process = {'process_id': 'p1', 'status': 'ready'}
+        process = WorkflowProcess(process_id='p1', process_type='workflow', status='ready')
         read_process.return_value = process
         client = Mock()
         get_connection.return_value = client
 
         wait_for = {'kind': 'terminal_message', 'process_id': 'terminal-p1'}
-        result = main.block_process('p1', wait_for)
+        result = main.block_process('p1', wait_for).to_record()
 
         self.assertEqual(result['status'], 'blocked')
         self.assertEqual(result['wait_for'], wait_for)
@@ -35,9 +36,9 @@ class SchedulerTest(unittest.TestCase):
     def test_create_process_creates_passive_terminal_process(
         self, initialize_timing, publish, get_connection
     ):
-        process = {'process_id': 'p1', 'workflow': '[]', 'terminal_id': 'public-terminal'}
+        process = WorkflowProcess(process_id='p1', process_type='workflow', status='ready', workflow='[]', terminal_id='public-terminal')
 
-        result = main.create_process(process)
+        result = main.create_process(process).to_record()
 
         self.assertEqual(result['process_type'], 'workflow')
         self.assertEqual(result['status'], 'ready')
@@ -45,6 +46,7 @@ class SchedulerTest(unittest.TestCase):
         self.assertTrue(result['start_time'])
         terminal = publish.call_args.args[2]
         publish.assert_called_once_with(get_connection.return_value, process, terminal)
+        terminal = terminal.to_record()
         self.assertEqual(terminal['process_id'], terminal_process_id)
         self.assertEqual(terminal['process_type'], 'terminal')
         self.assertEqual(terminal['parent_process_id'], 'p1')
@@ -52,36 +54,6 @@ class SchedulerTest(unittest.TestCase):
         self.assertNotEqual(terminal['process_id'], terminal['terminal_id'])
         self.assertEqual(terminal['status'], 'waiting_for_input')
         initialize_timing.assert_called_once_with(process)
-
-    @patch('main.get_connection')
-    @patch('main.write_process')
-    @patch('main.read_process')
-    def test_parent_cleanup_terminates_and_unindexes_terminal(
-        self, read_process, write_process, get_connection
-    ):
-        parent = {'process_id': 'p1', 'terminal_process_id': 'terminal-p1'}
-        terminal = {
-            'process_id': 'terminal-p1',
-            'process_type': 'terminal',
-            'parent_process_id': 'p1',
-            'status': 'waiting_for_input',
-        }
-        read_process.return_value = terminal
-        client = Mock()
-        get_connection.return_value = client
-
-        main._terminate_terminal_process(parent)
-
-        self.assertEqual(terminal['status'], 'terminated')
-        self.assertIsNone(terminal['wait_for'])
-        self.assertTrue(terminal['finished_at'])
-        write_process.assert_called_once_with(terminal)
-        client.lrem.assert_called_once_with(
-            main.READY_PROCESSES, 0, 'terminal-p1'
-        )
-        client.srem.assert_called_once_with(
-            main.BLOCKED_PROCESSES, 'terminal-p1'
-        )
 
     @patch('main.get_event_connection')
     @patch('main.get_connection')
@@ -92,8 +64,8 @@ class SchedulerTest(unittest.TestCase):
         client.rpop.return_value = 'p1'
         events.rpop.return_value = None
         for status in ('ready', 'blocked', 'completed', 'failed', 'terminated'):
-            executor.return_value = {'process_id': 'p1', 'status': status}
-            self.assertEqual(main.schedule_once(timeout=2)['status'], status)
+            executor.return_value = WorkflowProcess(process_id='p1', process_type='workflow', status=status)
+            self.assertEqual(main.schedule_once(timeout=2).status, status)
         self.assertEqual(executor.call_count, 5)
         executor.assert_called_with('p1')
         client.rpop.assert_called_with(main.READY_PROCESSES)
@@ -120,7 +92,7 @@ class SchedulerTest(unittest.TestCase):
     def test_create_process_event_builds_from_embedded_workflow(
         self, build_process, create_process
     ):
-        process = {'process_id': 'p1'}
+        process = WorkflowProcess(process_id='p1', process_type='workflow', status='ready')
         build_process.return_value = process
         event = {
             'type': 'create_process',

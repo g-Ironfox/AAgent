@@ -4,51 +4,34 @@ import secrets
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from process_repository import record_process_event
+from process import WorkflowProcess, TerminalProcess
 from process_permissions import snapshot_process_permissions
 
 
-def initialize_process_pair(process: dict) -> dict:
-    """Initialize the supplied workflow process and return its passive terminal."""
-    if not isinstance(process, dict):
-        raise ValueError('process must be a dictionary')
-    process_id = process.get('process_id')
-    if not isinstance(process_id, str) or not process_id:
-        raise ValueError('process_id must be a non-empty string')
+def initialize_process_pair(process: WorkflowProcess) -> TerminalProcess:
     now = datetime.now(timezone.utc).isoformat()
-    terminal_id = process.get('terminal_id')
-    if not isinstance(terminal_id, str) or not terminal_id.strip():
-        raise ValueError('terminal_id must be a non-empty string')
-    terminal_process_id = uuid4().hex
-    process['process_type'] = 'workflow'
-    process.setdefault('root_process_id', process_id)
-    process.setdefault('invocation_id', process_id)
-    process.setdefault('ancestor_invocation_ids', [])
-    process.setdefault('context_ids', [])
-    process.setdefault('active_duration_ms', 0)
-    process.setdefault('node_trace', [])
-    process.setdefault('pending_call', None)
-    process['start_time'] = now
-    process['status'] = 'ready'
-    process['wait_for'] = None
-    process['terminal_process_id'] = terminal_process_id
-    process['terminal_id'] = terminal_id
+    process.process_type = "workflow"
+    process.root_process_id = process.root_process_id or process.process_id
+    process.invocation_id = process.invocation_id or process.process_id
+    process.start_time = now
+    process.status = "ready"
+    process.wait_for = None
+    process.terminal_process_id = uuid4().hex
 
-    terminal_process = {
-        'process_id': terminal_process_id,
-        'process_type': 'terminal',
-        'parent_process_id': process_id,
-        'root_process_id': process['root_process_id'],
-        'workflow_name': process.get('workflow_name'),
-        'terminal_id': terminal_id,
-        'start_time': now,
-        'status': 'waiting_for_input',
-        'wait_for': {'kind': 'terminal_message'},
-        'input_queue': [],
-    }
+    terminal_process = TerminalProcess(
+        process_id=process.terminal_process_id,
+        process_type="terminal",
+        parent_process_id=process.process_id,
+        root_process_id=process.root_process_id,
+        workflow_name=process.workflow_name,
+        terminal_id=process.terminal_id,
+        start_time=now,
+        status="waiting_for_input",
+        wait_for={"kind": "terminal_message"},
+    )
 
-    record_process_event(process, 'created')
-    record_process_event(terminal_process, 'created')
+    process.record_event("created")
+    terminal_process.record_event("created")
     return terminal_process
 
 
@@ -59,7 +42,7 @@ def build_workflow_process(
     file_name: str,
     terminal_id: str,
     permissions: dict | None = None,
-) -> dict:
+) -> WorkflowProcess:
     from workflow_nodes import propagate_workflow_output, workflow_execution_timeout_ms
     from workflow_parser import parse_workflow
     from workflow_structs import validate_struct_definitions, validate_value
@@ -92,19 +75,20 @@ def build_workflow_process(
         value = inputs.get(port["name"])
         input_values[port["name"]] = value
         propagate_workflow_output(workflow, input_node, port["id"], value)
-    return {
-        "process_id": uuid4().hex,
-        "parent_process_id": "user_interface",
-        "workflow_file_id": file_id,
-        "permissions": process_permissions,
-        "_workspace_token": secrets.token_urlsafe(32),
-        "workflow_name": file_name,
-        "execution_timeout_ms": workflow_execution_timeout_ms(document),
-        "workflow_file": file_name,
-        "call_stack": [file_name],
-        "input": input_values,
-        "workflow": json.dumps(workflow, ensure_ascii=False, allow_nan=False),
-        "current_node_id": -1,
-        "control_port": None,
-        "terminal_id": terminal_id,
-    }
+    return WorkflowProcess(
+        process_id=uuid4().hex,
+        process_type="workflow",
+        status="ready",
+        parent_process_id="user_interface",
+        workflow_file_id=file_id,
+        permissions=process_permissions,
+        _workspace_token=secrets.token_urlsafe(32),
+        workflow_name=file_name,
+        execution_timeout_ms=workflow_execution_timeout_ms(document),
+        workflow_file=file_name,
+        call_stack=[file_name],
+        input=input_values,
+        workflow=json.dumps(workflow, ensure_ascii=False, allow_nan=False),
+        current_node_id=-1,
+        terminal_id=terminal_id,
+    )

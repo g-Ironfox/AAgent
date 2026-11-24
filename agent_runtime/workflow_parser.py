@@ -186,10 +186,8 @@ def _read_workspace_workflow_record(
         process = current_workflow_process.get()
     except ImportError:
         process = None
-    if process and process.get("process_id"):
-        headers["X-AAgent-Process-ID"] = (
-            f"{process['process_id']}:{process['_workspace_token']}"
-        )
+    if process:
+        headers["X-AAgent-Process-ID"] = f"{process.process_id}:{process._workspace_token}"
     try:
         if selector == "name":
             response = requests.get(f"{base_url}/api/files", headers=headers, timeout=(3, 15))

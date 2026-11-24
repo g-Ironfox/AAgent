@@ -4,6 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from process import WorkflowProcess
 from workflow_contract import migrate_subprocess_workflow_format
 from workflow_nodes import WorkflowStep, current_workflow_process, workflow_spawn_and_wait_subprocess
 from workflow_parser import WorkflowParseError, parse_workflow
@@ -38,7 +39,7 @@ def add_child_call(workflow, name="Child.flow"):
 
 class SubprocessWorkflowTest(unittest.TestCase):
     def setUp(self):
-        token = current_workflow_process.set({"process_id": "parent", "invocation_id": "parent"})
+        token = current_workflow_process.set(WorkflowProcess(process_id="parent", process_type="workflow", status="running", invocation_id="parent", root_process_id="parent"))
         self.addCleanup(current_workflow_process.reset, token)
         self.parent = empty_workflow()
         add_child_call(self.parent)
@@ -67,7 +68,7 @@ class SubprocessWorkflowTest(unittest.TestCase):
         self.read.assert_not_called()
 
     def test_child_process_uses_target_workflow_permissions_without_parent_cap(self):
-        current_workflow_process.get()["permissions"] = {
+        current_workflow_process.get().permissions = {
             "runtime": {"read": 1, "write": 0},
         }
         target_permissions = {
@@ -78,24 +79,24 @@ class SubprocessWorkflowTest(unittest.TestCase):
 
         child = self.execute().child_process
 
-        self.assertEqual(child["permissions"], {
+        self.assertEqual(child.permissions, {
             "runtime": target_permissions["runtime"],
             "checkpoints": {"read": False, "create": False, "restore": False},
         })
-        self.assertNotEqual(child["permissions"]["runtime"], current_workflow_process.get()["permissions"]["runtime"])
-        self.assertTrue(child["_workspace_token"])
+        self.assertNotEqual(child.permissions["runtime"], current_workflow_process.get().permissions["runtime"])
+        self.assertTrue(child._workspace_token)
         self.assertEqual(set(self.graph[1]["data_inputs"]), {"workflow-file", "arguments-json"})
         self.assertEqual(set(self.graph[1]["data_outputs"]), {"result-json", "error-json"})
 
     def test_checkpoint_permissions_come_from_child_file_not_parent(self):
         parent_flags = {"read": False, "create": True, "restore": False}
         target_flags = {"read": True, "create": False, "restore": True}
-        current_workflow_process.get()["permissions"] = {"checkpoints": parent_flags}
+        current_workflow_process.get().permissions = {"checkpoints": parent_flags}
         self.read.return_value = (empty_workflow("Child"), {"checkpoints": target_flags})
         child = self.execute().child_process
-        self.assertEqual(child["permissions"]["checkpoints"], target_flags)
+        self.assertEqual(child.permissions["checkpoints"], target_flags)
         target_flags["restore"] = False
-        self.assertTrue(child["permissions"]["checkpoints"]["restore"])
+        self.assertTrue(child.permissions["checkpoints"]["restore"])
         self.assertFalse(parent_flags["restore"])
 
     def branched_parent(self):
@@ -169,15 +170,15 @@ class SubprocessWorkflowTest(unittest.TestCase):
         execute.assert_not_called()
         self.assertIsInstance(step, WorkflowStep)
         child = step.child_process
-        self.assertEqual(step.wait_for, {"kind": "process_exit", "process_id": child["process_id"]})
-        self.assertEqual(child["parent_process_id"], "parent")
-        self.assertEqual(child["ancestor_invocation_ids"], ["parent"])
-        self.assertEqual(child["call_stack"], ["Parent.flow", "Child.flow"])
-        self.assertEqual(child["current_node_id"], -1)
+        self.assertEqual(step.wait_for, {"kind": "process_exit", "process_id": child.process_id})
+        self.assertEqual(child.parent_process_id, "parent")
+        self.assertEqual(child.ancestor_invocation_ids, ["parent"])
+        self.assertEqual(child.call_stack, ["Parent.flow", "Child.flow"])
+        self.assertEqual(child.current_node_id, -1)
 
     def test_filename_is_dynamic_and_keeps_exact_workspace_identity(self):
         self.set_inputs("其他文件.flow")
-        self.assertEqual(self.execute().child_process["workflow_file"], "其他文件.flow")
+        self.assertEqual(self.execute().child_process.workflow_file, "其他文件.flow")
         self.read.assert_called_once_with("其他文件.flow")
 
     def test_arguments_are_validated_against_current_target_and_copied_to_input(self):
@@ -185,8 +186,8 @@ class SubprocessWorkflowTest(unittest.TestCase):
         self.read.return_value[0]["input_ports"] = ports
         self.set_inputs(arguments=json.dumps({"items": ['引号"', "换行\n"], "limit": 3}))
         child = self.execute().child_process
-        self.assertEqual(child["input"], {"items": ['引号"', "换行\n"], "limit": 3})
-        self.assertEqual(self.graph[1]["data_inputs"]["arguments-json"][2], json.dumps(child["input"]))
+        self.assertEqual(child.input, {"items": ['引号"', "换行\n"], "limit": 3})
+        self.assertEqual(self.graph[1]["data_inputs"]["arguments-json"][2], json.dumps(child.input))
 
     def test_unknown_argument_and_wrong_types_fail_before_child_creation(self):
         self.read.return_value[0]["input_ports"] = [{"name": "count", "type": "number"}]
@@ -198,7 +199,7 @@ class SubprocessWorkflowTest(unittest.TestCase):
 
     def test_missing_optional_arguments_remain_unset(self):
         self.read.return_value[0]["input_ports"] = [{"name": "count", "type": "number"}]
-        self.assertEqual(self.execute().child_process["input"], {"count": None})
+        self.assertEqual(self.execute().child_process.input, {"count": None})
 
     def test_invalid_call_inputs_fail_before_loading_target(self):
         for filename, arguments in ((None, "{}"), (" ", "{}"), ("a" * 201, "{}"), ("Child.flow", None), ("Child.flow", "[]"), ("Child.flow", "null"), ("Child.flow", "bad")):

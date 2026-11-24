@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import Mock, call, patch
 
 import requests
+from process import WorkflowProcess
 
 from workflow_parser import WorkflowParseError, _read_workspace_workflow_record_by_name
 from workflow_nodes import current_workflow_process
@@ -130,7 +131,7 @@ class WorkspaceWorkflowTest(unittest.TestCase):
                          "http://workspace.test/api/files/child%2Fid%20with%20space")
 
     def test_permission_aware_reader_forwards_process_credential_and_metadata(self):
-        token = current_workflow_process.set({"process_id": "p1", "_workspace_token": "secret"})
+        token = current_workflow_process.set(WorkflowProcess(process_id="p1", process_type="workflow", status="running", _workspace_token="secret"))
         self.addCleanup(current_workflow_process.reset, token)
         workflow = echo_workflow()
         permissions = {"runtime": {"read": 4, "write": 2},

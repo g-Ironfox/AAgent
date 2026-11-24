@@ -88,7 +88,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
             process = self.start(example_workflow(), inputs={"task": "Find and inspect a file"})
             self.drain()
 
-        final = main.read_process(process["process_id"])
+        final = main.read_process(process["process_id"]).to_record()
         self.assertEqual(final["status"], "completed", final.get("error"))
         self.assertEqual(model.call_count, 2)
         self.assertEqual(self.execute.call_count, 2)
@@ -135,7 +135,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
             process = self.start(example_workflow(), inputs={"task": "List workspace files"})
             self.drain()
 
-        final = main.read_process(process["process_id"])
+        final = main.read_process(process["process_id"]).to_record()
         self.assertEqual(final["status"], "completed", final.get("error"))
         self.assertEqual(request.call_count, 2)
         self.execute.assert_called_once_with("invoke_tool", "workspace.list_files", {}, preserve_result=True)
@@ -150,7 +150,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
             process = self.start(example_workflow(), inputs={"task": "Read a file"})
             self.drain()
 
-        final = main.read_process(process["process_id"])
+        final = main.read_process(process["process_id"]).to_record()
         self.assertEqual(final["status"], "completed", final.get("error"))
         self.assertEqual(model.call_count, 2)
         self.execute.assert_called_once()
@@ -169,7 +169,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
         ]) as model:
             process = self.start(example_workflow(), inputs={"task": "Inspect a file"})
             self.drain()
-            waiting = main.read_process(process["process_id"])
+            waiting = main.read_process(process["process_id"]).to_record()
             self.assertEqual(waiting["status"], "blocked", waiting.get("error"))
             self.assertEqual(waiting["active_function_id"], "run_one_tool")
             self.assertEqual(model.call_count, 1)
@@ -178,7 +178,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
             self.send(waiting, text="src/settings.py")
             self.drain()
 
-        final = main.read_process(process["process_id"])
+        final = main.read_process(process["process_id"]).to_record()
         self.assertEqual(final["status"], "completed", final.get("error"))
         self.assertEqual(model.call_count, 2)
         self.execute.assert_not_called()
@@ -196,7 +196,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
         ]) as model:
             process = self.start(example_workflow(), inputs={"task": "Inspect a file"})
             self.drain()
-            waiting = main.read_process(process["process_id"])
+            waiting = main.read_process(process["process_id"]).to_record()
             self.assertEqual(waiting["status"], "blocked", waiting.get("error"))
             self.assertEqual(model.call_count, 1)
             self.assertEqual(len(waiting["function_stack"]), 2)
@@ -204,7 +204,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
             self.send(waiting, text="Please include its configuration")
             self.drain()
 
-            waiting = main.read_process(process["process_id"])
+            waiting = main.read_process(process["process_id"]).to_record()
             self.assertEqual(waiting["status"], "blocked", waiting.get("error"))
             self.assertEqual(model.call_count, 2)
             first_observation = model.call_args.args[0][-1]
@@ -216,7 +216,7 @@ class ToolLoopWorkflowTest(unittest.TestCase):
             self.send(waiting, text="Only configuration")
             self.drain()
 
-        final = main.read_process(process["process_id"])
+        final = main.read_process(process["process_id"]).to_record()
         self.assertEqual(final["status"], "completed", final.get("error"))
         self.assertEqual(model.call_count, 4)
         history = model.call_args_list[2].args[0]

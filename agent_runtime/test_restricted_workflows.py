@@ -74,11 +74,11 @@ class RestrictedWorkflowTest(unittest.TestCase):
 
     def identity(self):
         process = current_workflow_process.get()
-        return process["process_id"] + ":" + process["_workspace_token"]
+        return process.process_id + ":" + process._workspace_token
 
     def execute_tool(self, node_id, name, arguments, preserve_result=False):
         process = current_workflow_process.get()
-        self.executed.append((process["workflow_name"], name, copy.deepcopy(arguments)))
+        self.executed.append((process.workflow_name, name, copy.deepcopy(arguments)))
         identity = self.identity()
         if name == "workspace.list_files":
             response = self.endpoint("")(identity)
@@ -87,7 +87,7 @@ class RestrictedWorkflowTest(unittest.TestCase):
         elif name == "workspace.create_file":
             response = self.endpoint("", "POST")(FileRequest(**arguments), identity)
         elif name == "workspace.update_file":
-            if self.fail_update and process["workflow_name"].endswith("-iterator.flow"):
+            if self.fail_update and process.workflow_name.endswith("-iterator.flow"):
                 raise RuntimeError("simulated experience revision conflict")
             arguments = dict(arguments)
             file_id = arguments.pop("file_id")
@@ -125,7 +125,7 @@ class RestrictedWorkflowTest(unittest.TestCase):
         file = self.store.get_file(self.by_role["bootstrap"]["file_id"])
         process = build_workflow_process(json.loads(file["content"]), {"task": task}, file["file_id"], file["name"],
                                          "restricted-terminal", file["permissions"])
-        return main.create_process(process)
+        return main.create_process(process).to_record()
 
     def drain(self):
         for _ in range(2000):
@@ -279,7 +279,7 @@ class RestrictedWorkflowTest(unittest.TestCase):
         def execute(node_id, name, arguments, preserve_result=False):
             nonlocal failed
             process = current_workflow_process.get()
-            if not failed and node_id == "read_experience" and process["workflow_name"].endswith("-main.flow"):
+            if not failed and node_id == "read_experience" and process.workflow_name.endswith("-main.flow"):
                 failed = True
                 raise RuntimeError("experience temporarily unavailable")
             return self.execute_tool(node_id, name, arguments, preserve_result)

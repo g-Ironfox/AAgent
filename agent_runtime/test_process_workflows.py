@@ -11,6 +11,7 @@ from test_support import MemoryRedis, json_subprocess_fixture
 import main
 import process_repository as r
 import scheduler_projection as projection
+from process import WorkflowProcess
 from process_creation import build_workflow_process
 from workflow_nodes import WorkflowStep, workflow_read_terminal_queue
 from terminal_repository import terminal_process_context
@@ -96,7 +97,7 @@ class ProcessWorkflowTest(unittest.TestCase):
             "Root.flow",
             "terminal-root",
         )
-        return main.create_process(process)
+        return main.create_process(process).to_record()
 
     def test_root_process_takes_workflow_runtime_levels(self):
         workflow_permissions = {
@@ -107,11 +108,11 @@ class ProcessWorkflowTest(unittest.TestCase):
             document("Root"), {"text": "hello"}, "root-file", "Root.flow",
             "terminal-root", workflow_permissions,
         )
-        self.assertEqual(process["permissions"], {
+        self.assertEqual(process.permissions, {
             "runtime": workflow_permissions["runtime"],
             "checkpoints": {"read": False, "create": False, "restore": False},
         })
-        self.assertTrue(process["_workspace_token"])
+        self.assertTrue(process._workspace_token)
 
     def test_missing_or_negative_execution_timeout_is_unlimited(self):
         for value in (None, -1):
@@ -120,11 +121,12 @@ class ProcessWorkflowTest(unittest.TestCase):
                 if value is not None:
                     workflow["metadata"]["max_execution_time_seconds"] = value
                 process = self.start(workflow)
-                self.assertIsNone(process["execution_timeout_ms"])
-                process["active_duration_ms"] = 200001
+                process = main.read_process(process["process_id"])
+                self.assertIsNone(process.execution_timeout_ms)
+                process.active_duration_ms = 200001
                 main.write_process(process)
                 self.drain()
-                self.assertEqual(main.read_process(process["process_id"])["status"], "completed")
+                self.assertEqual(main.read_process(process.process_id).status, "completed")
 
     def test_root_checkpoint_permissions_are_snapshotted_and_preserved_when_claimed(self):
         flags = {"read": True, "create": False, "restore": True}
@@ -133,11 +135,11 @@ class ProcessWorkflowTest(unittest.TestCase):
             "terminal-root", {"checkpoints": flags},
         )
         flags["restore"] = False
-        self.assertEqual(process["permissions"]["checkpoints"], {"read": True, "create": False, "restore": True})
+        self.assertEqual(process.permissions["checkpoints"], {"read": True, "create": False, "restore": True})
         root = main.create_process(process)
-        claimed, acquired = r.claim_process(self.redis, root["process_id"])
+        claimed, acquired = r.claim_process(self.redis, root.process_id)
         self.assertTrue(acquired)
-        self.assertEqual(claimed["permissions"], process["permissions"])
+        self.assertEqual(claimed.permissions, process.permissions)
 
     def drain(self):
         results = []
@@ -193,16 +195,35 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(self.terminal_session(root)["status"], "open")
         self.assert_database_isolation()
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.assertEqual(main.read_process(root["process_id"]).status, "blocked")
 
         self.submit(TerminalRequest(content="continue", terminal_id="terminal-root"))
-        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.assertEqual(main.read_process(root["process_id"]).status, "blocked")
         self.assertIsNone(main.schedule_once(timeout=1))
-        self.assertEqual(main.read_process(root["process_id"])["status"], "ready")
+        self.assertEqual(main.read_process(root["process_id"]).status, "ready")
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(root["process_id"]).status, "completed")
         self.assertEqual(self.terminal_session(root)["status"], "closed")
         self.assert_database_isolation()
+
+    def test_reused_terminal_belongs_to_new_root(self):
+        old_root = self.start(document("Old"))
+        self.drain()
+        self.assertEqual(self.terminal_session(old_root)["status"], "closed")
+
+        root = self.start(document("New", wait=True))
+        self.drain()
+        session = self.terminal_session(root)
+        self.assertEqual(session["status"], "open")
+        self.assertEqual(session["start_time"], root["start_time"])
+        self.assertEqual(
+            self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]),
+            root["terminal_process_id"],
+        )
+        self.send(root)
+        self.drain()
+        self.assertEqual(main.read_process(root["process_id"]).status, "completed")
+        self.assertEqual(self.terminal_session(root)["status"], "closed")
 
     def test_public_terminal_stays_open_after_child_exit_and_closes_with_root(self):
         self.documents = {"Child.flow": document("Child", wait=True)}
@@ -216,8 +237,8 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(self.terminal_session(root)["workflow_name"], "Child.flow")
         self.send(child)
         self.drain()
-        self.assertEqual(main.read_process(child["process_id"])["status"], "completed")
-        self.assertEqual(main.read_process(child["terminal_process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(child["process_id"]).status, "completed")
+        self.assertEqual(main.read_process(child["terminal_process_id"]).status, "completed")
         session = self.terminal_session(root)
         self.assertEqual(session["status"], "open")
         self.assertEqual(session["workflow_name"], "Root.flow")
@@ -230,7 +251,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.drain()
         session = self.terminal_session(root)
         self.assertEqual(session["status"], "closed")
-        self.assertEqual(session["closed_at"], main.read_process(root["process_id"])["finished_at"])
+        self.assertEqual(session["closed_at"], main.read_process(root["process_id"]).finished_at)
         self.assertIsNone(self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]))
 
     def test_child_cancellation_keeps_public_terminal_open_until_root_fails(self):
@@ -257,8 +278,8 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(self.sessions()["sessions"], [closed])
         self.assertIsNotNone(closed["closed_at"])
         self.assertIsNone(self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]))
-        claimed["status"] = "ready"
-        r.commit_process(self.redis, claimed)
+        claimed.status = "ready"
+        r.commit_execution_slice(self.redis, claimed)
         self.assertEqual(self.terminal_session(root), closed)
 
     def test_root_identity_and_self_recursion_use_the_external_filename(self):
@@ -271,7 +292,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(root["call_stack"], ["Root.flow"])
         with self.assertLogs(main.logger, level="ERROR"):
             self.drain()
-        process = main.read_process(root["process_id"])
+        process = main.read_process(root["process_id"]).to_record()
         self.assertEqual(process["status"], "failed")
         self.assertIn("Root.flow -> Root.flow", process["error"])
         self.assertEqual(len(self.workflows()), 1)
@@ -293,7 +314,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(len({item["terminal_process_id"] for item in processes.values()}), 3)
         # The public terminal ID routes to the currently active descendant wait.
         self.send(root)
-        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.assertEqual(main.read_process(root["process_id"]).status, "blocked")
         self.assertEqual(self.redis.lists[r.READY_PROCESSES], [leaf["process_id"]])
         self.send(leaf)
         self.send(leaf)
@@ -303,7 +324,7 @@ class ProcessWorkflowTest(unittest.TestCase):
             self.assertEqual(process["status"], "completed")
             self.assertEqual(process["result"], {"text": "hello"})
             self.assertIsNone(process["pending_call"])
-            self.assertEqual(main.read_process(process["terminal_process_id"])["status"], "completed")
+            self.assertEqual(main.read_process(process["terminal_process_id"]).status, "completed")
             self.assertTrue(all(entry["status"] == "completed" or
                                 (entry["node_type"] == "read_terminal_queue" and entry["status"] == "waiting")
                                 for entry in process["node_trace"]))
@@ -402,7 +423,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         self.assert_public_matches_kernel()
         self.send(child)
-        while main.read_process(child["process_id"])["status"] != "completed":
+        while main.read_process(child["process_id"]).status != "completed":
             main.schedule_once(timeout=1)
         self.assertEqual(self.public_process(root["process_id"])["status"], "ready")
         self.assertIsNone(self.public_process(root["process_id"])["wait_for"])
@@ -415,8 +436,8 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assert_public_matches_kernel()
         r.terminate_process_tree(self.redis, root["process_id"])
         before = self.public_process(root["process_id"])
-        claimed["status"] = "ready"
-        r.commit_process(self.redis, claimed)
+        claimed.status = "ready"
+        r.commit_execution_slice(self.redis, claimed)
         self.assertEqual(self.public_process(root["process_id"]), before)
         self.assert_public_matches_kernel()
 
@@ -426,7 +447,11 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.public_redis.hset(projection.PUBLIC_PROCESSES, "stale", "{}")
         self.public_redis.lpush(projection.PUBLIC_TABLES["ready"], "stale")
         self.public_redis.sadd(projection.PUBLIC_TABLES["blocked"], "stale")
-        self.redis.before_execute = lambda: main.write_process({**main.read_process(first["process_id"]), "workflow_name": "Changed"})
+        def update_workflow_name():
+            process = main.read_process(first["process_id"])
+            process.workflow_name = "Changed"
+            main.write_process(process)
+        self.redis.before_execute = update_workflow_name
         projection.rebuild_public_scheduler(self.redis, r.PROCESSTABLE, r.READY_PROCESSES)
         self.assert_public_matches_kernel()
         self.assertEqual(self.public_process(first["process_id"])["workflow_name"], "Changed")
@@ -435,7 +460,9 @@ class ProcessWorkflowTest(unittest.TestCase):
     def test_record_only_write_does_not_reorder_the_public_ready_queue(self):
         first = self.start(document("First"))
         self.start(document("Second"))
-        main.write_process({**main.read_process(first["process_id"]), "workflow_name": "Changed"})
+        process = main.read_process(first["process_id"])
+        process.workflow_name = "Changed"
+        main.write_process(process)
         self.assert_public_matches_kernel()
 
     def test_empty_projection_rebuild_marks_an_initialized_empty_runtime(self):
@@ -462,7 +489,7 @@ class ProcessWorkflowTest(unittest.TestCase):
                               json.dumps({"process_id": root["process_id"], "status": "terminated"}))
         self.public_redis.delete(projection.PUBLIC_TABLES["ready"])
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(root["process_id"]).status, "completed")
         self.assert_public_matches_kernel()
 
     def test_scheduling_events_capture_each_dispatch_and_return_to_ready(self):
@@ -484,8 +511,8 @@ class ProcessWorkflowTest(unittest.TestCase):
         root = self.start(document("Root"))
         with patch("main.SCHEDULER_TIME_SLICE_MS", 500):
             result = main.schedule_once(timeout=1)
-        self.assertEqual(result["status"], "completed")
-        saved = main.read_process(root["process_id"])
+        self.assertEqual(result.status, "completed")
+        saved = main.read_process(root["process_id"]).to_record()
         self.assertEqual([entry["node_id"] for entry in saved["node_trace"]], ["in", "out"])
         self.assertEqual([event["event"] for event in saved["events"]],
                          ["created", "started", "completed"])
@@ -499,7 +526,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(self.latest_log(root["process_id"])["wait_for"],
                          {"kind": "process_exit", "process_id": child["process_id"]})
         self.send(child)
-        while main.read_process(child["process_id"])["status"] != "completed":
+        while main.read_process(child["process_id"]).status != "completed":
             main.schedule_once(timeout=1)
         parent_log = self.latest_log(root["process_id"])
         self.assertEqual(parent_log["status"], "ready")
@@ -513,7 +540,7 @@ class ProcessWorkflowTest(unittest.TestCase):
             self.drain()
             self.send(root)
             self.drain()
-        saved = main.read_process(root["process_id"])
+        saved = main.read_process(root["process_id"]).to_record()
         self.assertEqual(saved["status"], "completed")
         self.assertEqual([item["event"] for item in saved["events"]],
                          ["created", "started", "yielded", "resumed", "blocked", "woken", "resumed", "yielded", "resumed", "completed"])
@@ -548,7 +575,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         with self.assertLogs("main", level="ERROR"):
             root = self.start(document("Root"))
             self.drain()
-        saved = main.read_process(root["process_id"])
+        saved = main.read_process(root["process_id"]).to_record()
         self.logs.update_one.side_effect = None
         self.logs.reset_mock()
 
@@ -566,7 +593,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         ])
         self.assertTrue(all(call.args[0] == {"run_id": saved["invocation_id"]}
                             for call in self.runs.update_one.call_args_list))
-        self.assertEqual(main.read_process(root["process_id"]), saved)
+        self.assertEqual(main.read_process(root["process_id"]).to_record(), saved)
 
     def test_startup_recovery_keeps_scheduler_state_when_mongo_scan_is_unavailable(self):
         from pymongo.errors import ServerSelectionTimeoutError
@@ -577,7 +604,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         with self.assertLogs("main", level="ERROR"):
             main.rebuild_process_observability(self.redis)
         self.assertEqual(self.redis.hgetall(r.PROCESSTABLE), saved)
-        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.assertEqual(main.read_process(root["process_id"]).status, "blocked")
         self.logs.find_one_and_update.assert_not_called()
 
     def test_commit_retry_does_not_duplicate_suspend_events(self):
@@ -585,11 +612,11 @@ class ProcessWorkflowTest(unittest.TestCase):
         main.schedule_once(timeout=1)  # input
         claimed, ok = r.claim_process(self.redis, root["process_id"])
         self.assertTrue(ok)
-        claimed.update(status="blocked", wait_for={"kind": "terminal_message", "process_id": root["terminal_process_id"]})
+        claimed.block({"kind": "terminal_message", "process_id": root["terminal_process_id"]})
         self.redis.before_execute = lambda: main.write_process(main.read_process(root["process_id"]))
-        committed = r.commit_process(self.redis, claimed)
-        self.assertEqual([item["event"] for item in committed["events"]].count("blocked"), 1)
-        self.assertEqual(main.read_process(root["process_id"])["events"], committed["events"])
+        committed = r.commit_execution_slice(self.redis, claimed)
+        self.assertEqual([item["event"] for item in committed.events].count("blocked"), 1)
+        self.assertEqual(main.read_process(root["process_id"]).events, committed.events)
 
     def test_pending_call_resumes_after_target_is_modified(self):
         self.assert_pending_call_resumes_after_target_changes("modify")
@@ -610,7 +637,7 @@ class ProcessWorkflowTest(unittest.TestCase):
 
         self.send(child)
         for _ in range(10):
-            if main.read_process(child["process_id"])["status"] == "completed":
+            if main.read_process(child["process_id"]).status == "completed":
                 break
             main.schedule_once(timeout=1)
         else:
@@ -642,7 +669,7 @@ class ProcessWorkflowTest(unittest.TestCase):
                    side_effect=AssertionError("resume must not reload target")):
             self.send(child)
             self.drain()
-        restored = main.read_process(root["process_id"])
+        restored = main.read_process(root["process_id"]).to_record()
         self.assertEqual(restored["status"], "completed")
         self.assertEqual(restored["result"], {"text": text})
         self.assertIsNone(restored["pending_call"])
@@ -657,15 +684,15 @@ class ProcessWorkflowTest(unittest.TestCase):
         for _ in range(100):
             main.schedule_once(timeout=1)
             completed = main.read_process(child["process_id"])
-            if completed["status"] == "completed":
+            if completed.status == "completed":
                 break
         else:
             self.fail("child did not complete")
-        completed["result"] = {"text": 123}
+        completed.result = {"text": 123}
         main.write_process(completed)
         with self.assertLogs("main", level="ERROR"):
             self.drain()
-        restored = main.read_process(root["process_id"])
+        restored = main.read_process(root["process_id"]).to_record()
         self.assertEqual(restored["status"], "failed")
         self.assertEqual(len(self.workflows()), 2)
 
@@ -673,7 +700,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.documents = {"Child.flow": document("Child", wait=True)}
         root = self.start(document("Root", "Child.flow"))
         self.drain()
-        parent = main.read_process(root["process_id"])
+        parent = main.read_process(root["process_id"]).to_record()
         compiled = json.loads(parent["workflow"])
         pending_node_id = parent["pending_call"]["node_id"]
         pending_node = next(node for node in compiled if node["id"] == pending_node_id)
@@ -681,7 +708,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         self.send(child)
         self.drain()
-        restored = main.read_process(root["process_id"])
+        restored = main.read_process(root["process_id"]).to_record()
         self.assertEqual(restored["status"], "completed")
         self.assertEqual(restored["result"], {"text": "hello"})
         self.assertEqual(len(self.workflows()), 2)
@@ -703,10 +730,10 @@ class ProcessWorkflowTest(unittest.TestCase):
         return doc
 
     def assert_handled_child_exit(self, root, child, expected_status):
-        restored = main.read_process(root["process_id"])
+        restored = main.read_process(root["process_id"]).to_record()
         self.assertEqual(restored["status"], "completed")
         self.assertIsNone(restored["pending_call"])
-        self.assertNotIn("error", restored)
+        self.assertIsNone(restored["error"])
         details = json.loads(restored["result"]["text"])
         self.assertEqual(details["workflow_file"], child["workflow_file"])
         self.assertEqual(details["process_id"], child["process_id"])
@@ -730,8 +757,9 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.drain()
         child, = [item for item in self.workflows() if item["workflow_name"] == "Child.flow"]
         self.assertEqual(child["status"], "blocked")
-        child["active_duration_ms"] = child["execution_timeout_ms"]
-        main.write_process(child)
+        child_process = main.read_process(child["process_id"])
+        child_process.active_duration_ms = child_process.execution_timeout_ms
+        main.write_process(child_process)
         self.send(child)
 
         with self.assertLogs("main", level="ERROR"):
@@ -752,10 +780,10 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertIn("non-empty text", details["error"])
         self.assertEqual(len(self.workflows()), 2)
         self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
-        before = main.read_process(root["process_id"])
+        before = main.read_process(root["process_id"]).to_record()
         self.redis.lpush(r.READY_PROCESSES, root["process_id"])
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"]), before)
+        self.assertEqual(main.read_process(root["process_id"]).to_record(), before)
         self.assertEqual(len(self.workflows()), 2)
 
     def test_parent_can_wait_for_another_terminal_message_after_handling_child_failure(self):
@@ -771,7 +799,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.send(child)
         with self.assertLogs("main", level="ERROR"):
             self.drain()
-        waiting = main.read_process(root["process_id"])
+        waiting = main.read_process(root["process_id"]).to_record()
         self.assertEqual(waiting["status"], "blocked")
         self.assertIsNone(waiting["pending_call"])
         self.assertEqual(waiting["wait_for"], {"kind": "terminal_message", "process_id": root["terminal_process_id"]})
@@ -787,7 +815,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.drain()
         child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         main.terminate_process(child["process_id"])
-        self.assertEqual(main.read_process(root["process_id"])["status"], "ready")
+        self.assertEqual(main.read_process(root["process_id"]).status, "ready")
         self.drain()
         self.assert_handled_child_exit(root, child, "terminated")
         self.assertEqual(len(self.workflows()), 2)
@@ -805,11 +833,11 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.output.reset_mock()
         root = self.start(doc)
         steps = self.drain()
-        saved = main.read_process(root["process_id"])
+        saved = main.read_process(root["process_id"]).to_record()
         self.assertEqual(saved["status"], "completed")
         self.assertIsNone(saved["pending_call"])
         self.assertIsNone(saved["wait_for"])
-        self.assertNotIn("error", saved)
+        self.assertIsNone(saved["error"])
         details = json.loads(saved["result"]["text"])
         self.assertEqual(set(details), {"workflow_file", "process_id", "status", "error"})
         self.assertEqual(details["workflow_file"], filename)
@@ -817,7 +845,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(details["status"], "failed")
         self.assertIn(expected, details["error"])
         self.assertEqual(len(self.workflows()), previous_count + 1)
-        self.assertTrue(all(item["status"] != "blocked" for item in steps))
+        self.assertTrue(all(item.status != "blocked" for item in steps))
         self.output.assert_called_once_with(
             saved["result"]["text"], terminal_id=root["terminal_id"],
             terminal_process_id=root["terminal_process_id"],
@@ -862,7 +890,7 @@ class ProcessWorkflowTest(unittest.TestCase):
                 root = self.start(self.parent_with_call_arguments(arguments, handle_error=False))
                 with self.assertLogs("main", level="ERROR"):
                     self.drain()
-                saved = main.read_process(root["process_id"])
+                saved = main.read_process(root["process_id"]).to_record()
                 self.assertEqual(saved["status"], "failed")
                 self.assertIn(expected, saved["error"])
                 self.assertIsNone(saved["pending_call"])
@@ -872,15 +900,15 @@ class ProcessWorkflowTest(unittest.TestCase):
                    side_effect=WorkflowParseError("Workflow file not found: Missing.flow")):
             with self.assertLogs("main", level="ERROR"):
                 self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "failed")
-        self.assertIn("file not found", main.read_process(root["process_id"])["error"])
+        self.assertEqual(main.read_process(root["process_id"]).status, "failed")
+        self.assertIn("file not found", main.read_process(root["process_id"]).error)
         self.output.assert_not_called()
 
     def test_successful_child_ignores_connected_error_branch(self):
         self.documents = {"Child.flow": document("Child")}
         root = self.start(self.parent_with_child_error_handler())
         self.drain()
-        saved = main.read_process(root["process_id"])
+        saved = main.read_process(root["process_id"]).to_record()
         self.assertEqual(saved["status"], "completed")
         self.assertEqual(saved["result"], {"text": "hello"})
         self.output.assert_not_called()
@@ -916,7 +944,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         for process in self.workflows():
             self.assertEqual(process["status"], "failed")
             self.assertIn("non-empty text", process["error"])
-        self.assertIn(leaf["process_id"], main.read_process(root["process_id"])["error"])
+        self.assertIn(leaf["process_id"], main.read_process(root["process_id"]).error)
         self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
 
     def test_cancel_root_cancels_descendants_and_fences_late_commits(self):
@@ -928,9 +956,9 @@ class ProcessWorkflowTest(unittest.TestCase):
         claimed, ok = r.claim_process(self.redis, child["process_id"])
         self.assertTrue(ok)
         main.terminate_process(root["process_id"])
-        claimed["status"] = "ready"
-        saved = r.commit_process(self.redis, claimed)
-        self.assertEqual(saved["status"], "terminated")
+        claimed.status = "ready"
+        saved = r.commit_execution_slice(self.redis, claimed)
+        self.assertEqual(saved.status, "terminated")
         self.assertTrue(all(item["status"] == "terminated" for item in self.workflows()))
         self.assertFalse(self.redis.lists[r.READY_PROCESSES])
         self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
@@ -953,7 +981,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         }))
         result = main.read_process(child["process_id"])
 
-        self.assertEqual(result["status"], "killed")
+        self.assertEqual(result.status, "killed")
         workflows = self.workflows()
         terminals = [json.loads(raw) for raw in self.redis.hgetall(r.PROCESSTABLE).values()
                      if json.loads(raw).get("process_type") == "terminal"]
@@ -966,8 +994,8 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertIsNone(self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]))
         self.assertFalse(self.redis.lists[r.READY_PROCESSES])
         self.assertFalse(self.redis.sets[r.BLOCKED_PROCESSES])
-        claimed["status"] = "ready"
-        self.assertEqual(r.commit_process(self.redis, claimed)["status"], "killed")
+        claimed.status = "ready"
+        self.assertEqual(r.commit_execution_slice(self.redis, claimed).status, "killed")
 
     def test_cancel_child_wakes_parent_and_propagates_failure(self):
         self.documents = {"Child.flow": document("Child", wait=True)}
@@ -975,7 +1003,7 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.drain()
         child = next(item for item in self.workflows() if item["workflow_name"] == "Child.flow")
         main.terminate_process(child["process_id"])
-        self.assertEqual(main.read_process(root["process_id"])["status"], "ready")
+        self.assertEqual(main.read_process(root["process_id"]).status, "ready")
         self.assertEqual(
             self.redis.hget(r.TERMINAL_INDEX, root["terminal_id"]),
             root["terminal_process_id"],
@@ -984,45 +1012,45 @@ class ProcessWorkflowTest(unittest.TestCase):
         self.assertEqual(self.latest_log(child["process_id"])["status"], "terminated")
         with self.assertLogs("main", level="ERROR"):
             self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "failed")
+        self.assertEqual(main.read_process(root["process_id"]).status, "failed")
 
     def test_wait_does_not_count_wall_time_toward_execution_timeout(self):
         root = self.start(document("Root", wait=True))
         self.drain()
         saved = main.read_process(root["process_id"])
-        saved["start_time"] = "2020-01-01T00:00:00+00:00"
+        saved.start_time = "2020-01-01T00:00:00+00:00"
         main.write_process(saved)
-        self.send(saved)
+        self.send(saved.to_record())
         self.drain()
-        self.assertEqual(main.read_process(saved["process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(saved.process_id).status, "completed")
 
     def test_stale_queue_entries_never_execute_blocked_or_completed_nodes(self):
         root = self.start(document("Root", wait=True))
         self.drain()
         process_id = root["process_id"]
-        before = main.read_process(process_id)
+        before = main.read_process(process_id).to_record()
         self.redis.lpush(r.READY_PROCESSES, process_id)
         self.drain()
-        self.assertEqual(main.read_process(process_id), before)
+        self.assertEqual(main.read_process(process_id).to_record(), before)
         self.send(root)
         self.drain()
-        before = main.read_process(process_id)
+        before = main.read_process(process_id).to_record()
         self.redis.lpush(r.READY_PROCESSES, process_id)
         self.drain()
-        self.assertEqual(main.read_process(process_id), before)
+        self.assertEqual(main.read_process(process_id).to_record(), before)
 
     def test_wakeup_retry_preserves_concurrent_process_update(self):
         root = self.start(document("Root", wait=True))
         self.drain()
         def concurrent_update():
             saved = main.read_process(root["process_id"])
-            saved["test_marker"] = "preserved"
+            saved.workflow_name = "Concurrent.flow"
             main.write_process(saved)
         self.redis.before_execute = concurrent_update
         self.send(root)
         saved = main.read_process(root["process_id"])
-        self.assertEqual(saved["test_marker"], "preserved")
-        self.assertEqual([item["event"] for item in saved["events"]].count("woken"), 1)
+        self.assertEqual(saved.workflow_name, "Concurrent.flow")
+        self.assertEqual([item["event"] for item in saved.events].count("woken"), 1)
         self.assertEqual(self.redis.lists[r.READY_PROCESSES], [root["process_id"]])
 
     def test_context_scope_survives_nested_process_scheduling_and_cleanup(self):
@@ -1047,19 +1075,20 @@ class ProcessWorkflowTest(unittest.TestCase):
         child = next(item for item in self.workflows() if item["workflow_name"] == "Leaf")
         self.send(child)
         self.drain()
-        self.assertEqual(main.read_process(process["process_id"])["result"], {"items": ["parent", "child"]})
+        self.assertEqual(main.read_process(process["process_id"]).result, {"items": ["parent", "child"]})
         self.assertFalse(any(key.startswith("workflow-context:") for key in self.redis.hashes))
 
     def test_timeout_on_active_execution_fails_process_and_cleans_contexts(self):
         workflow = document("Root")
         workflow["metadata"]["max_execution_time_seconds"] = 1
-        root = self.start(workflow)
-        self.assertEqual(root["execution_timeout_ms"], 1000)
-        root["active_duration_ms"] = 1000
+        root_record = self.start(workflow)
+        root = main.read_process(root_record["process_id"])
+        self.assertEqual(root.execution_timeout_ms, 1000)
+        root.active_duration_ms = 1000
         main.write_process(root)
         with self.assertLogs("main", level="ERROR"):
             self.drain()
-        saved = main.read_process(root["process_id"])
+        saved = main.read_process(root.process_id).to_record()
         self.assertEqual(saved["status"], "failed")
         self.assertIn("exceeded 1 seconds", saved["error"])
         self.assertFalse(self.redis.lists[r.READY_PROCESSES])
@@ -1071,15 +1100,19 @@ class ProcessWorkflowTest(unittest.TestCase):
             {"type": "output"}, {"type": "output"},
         ]
         self.assertEqual(main._next_process_node(
-            {"current_node_id": -1, "control_port": None},
+            WorkflowProcess(process_id="cursor", process_type="workflow", status="ready",
+                            current_node_id=-1, control_port=None),
             [{"type": "input"}, *workflow],
         ), 0)
         from workflow_nodes import execute_node
         execute_node(0, workflow)
-        process = {"current_node_id": 0, "control_port": workflow[0]["_selected_control_port"]}
-        self.assertEqual(process["control_port"], "branch-yes")
+        process = WorkflowProcess(
+            process_id="cursor", process_type="workflow", status="ready",
+            current_node_id=0, control_port=workflow[0]["_selected_control_port"],
+        )
+        self.assertEqual(process.control_port, "branch-yes")
         self.assertEqual(main._next_process_node(process, workflow), 1)
-        self.assertNotIn("next_node_id", process)
+        self.assertIsNone(getattr(process, "next_node_id", None))
 
     def test_wait_node_requires_scheduler_and_process_terminal(self):
         node = {"id": "wait", "type": "read_terminal_queue", "successors": {"next": 1}}

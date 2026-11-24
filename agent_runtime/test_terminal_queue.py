@@ -38,7 +38,7 @@ class TerminalQueueTest(unittest.TestCase):
     workflows = support.ProcessWorkflowTest.workflows
 
     def queue(self, process):
-        return main.read_process(process["terminal_process_id"])["input_queue"]
+        return main.read_process(process["terminal_process_id"]).input_queue
 
     def test_old_nodes_removed_from_contract_handler_and_validation(self):
         for kind in ("read_terminal_input", "wait_terminal_event"):
@@ -57,7 +57,7 @@ class TerminalQueueTest(unittest.TestCase):
         self.assertEqual(self.redis.lists[repository.READY_PROCESSES], [root["process_id"]])
         with patch("terminal_repository.get_terminal_collection", side_effect=AssertionError("history read")):
             self.drain()
-        saved = main.read_process(root["process_id"])
+        saved = main.read_process(root["process_id"]).to_record()
         self.assertEqual(saved["status"], "completed", saved.get("error"))
         self.assertEqual(saved["result"], {"batch0": ["first", "second\nline"]})
         self.assertEqual(self.queue(root), [])
@@ -67,7 +67,7 @@ class TerminalQueueTest(unittest.TestCase):
     def test_empty_queue_blocks_and_resume_retries_the_read_once(self):
         root = self.start(queue_document())
         self.drain()
-        blocked = main.read_process(root["process_id"])
+        blocked = main.read_process(root["process_id"]).to_record()
         self.assertEqual(blocked["status"], "blocked")
         self.assertEqual(blocked["current_node_id"], 0)
         self.assertEqual(blocked["wait_for"], {"kind": "terminal_message", "process_id": root["terminal_process_id"]})
@@ -75,7 +75,7 @@ class TerminalQueueTest(unittest.TestCase):
         self.send(root, "two")
         self.assertEqual(self.redis.lists[repository.READY_PROCESSES], [root["process_id"]])
         self.drain()
-        final = main.read_process(root["process_id"])
+        final = main.read_process(root["process_id"]).to_record()
         self.assertEqual(final["result"], {"batch0": ["one", "two"]})
         self.assertEqual(sum(e["event"] == "woken" for e in final["events"]), 1)
 
@@ -90,11 +90,11 @@ class TerminalQueueTest(unittest.TestCase):
             root = self.start(queue_document(reads=2))
             self.send(root, "old")
             self.drain()
-            self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+            self.assertEqual(main.read_process(root["process_id"]).status, "blocked")
             self.assertEqual(self.queue(root), [])
             self.send(root, "new")
             self.drain()
-            self.assertEqual(main.read_process(root["process_id"])["result"],
+            self.assertEqual(main.read_process(root["process_id"]).result,
                              {"batch0": ["old"], "batch1": ["new"]})
 
     def test_read_consumes_and_propagates_before_workflow_commit(self):
@@ -117,7 +117,7 @@ class TerminalQueueTest(unittest.TestCase):
             main.schedule_once(timeout=1)
         self.assertEqual(observed, ["read0"])
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["result"], {"batch0": ["immediate"]})
+        self.assertEqual(main.read_process(root["process_id"]).result, {"batch0": ["immediate"]})
 
     def test_read_before_subprocess_wait_consumes_input(self):
         self.documents["Child.flow"] = support.document("Child", wait=True)
@@ -132,7 +132,7 @@ class TerminalQueueTest(unittest.TestCase):
         self.send(root, "parent input")
         with patch("main.SCHEDULER_TIME_SLICE_MS", 500):
             self.drain()
-        saved = main.read_process(root["process_id"])
+        saved = main.read_process(root["process_id"]).to_record()
         self.assertEqual(saved["status"], "blocked")
         self.assertEqual(saved["wait_for"]["kind"], "process_exit")
         self.assertEqual(self.queue(root), [])
@@ -157,10 +157,10 @@ class TerminalQueueTest(unittest.TestCase):
             return outcome
         with patch("main.execute_node", side_effect=concurrent_input):
             result = main.schedule_once(timeout=1)
-        self.assertEqual(result["status"], "ready")
-        self.assertIsNone(result["wait_for"])
+        self.assertEqual(result.status, "ready")
+        self.assertIsNone(result.wait_for)
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["result"], {"batch0": ["racing input"]})
+        self.assertEqual(main.read_process(root["process_id"]).result, {"batch0": ["racing input"]})
 
     def test_input_appended_during_consumption_is_kept_for_next_read(self):
         root = self.start(queue_document(reads=2))
@@ -173,11 +173,11 @@ class TerminalQueueTest(unittest.TestCase):
             return outcome
         with patch("main.execute_node", side_effect=concurrent_input):
             result = main.schedule_once(timeout=1)
-        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result.status, "ready")
         self.assertEqual(self.queue(root), ["later batch"])
-        self.assertNotIn("_terminal_input_batch", result)
+        self.assertNotIn("_terminal_input_batch", result.to_record())
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["result"],
+        self.assertEqual(main.read_process(root["process_id"]).result,
                          {"batch0": ["first batch"], "batch1": ["later batch"]})
 
     def test_enqueue_retry_does_not_duplicate_messages_or_wakeups(self):
@@ -187,14 +187,14 @@ class TerminalQueueTest(unittest.TestCase):
         self.send(root, "once")
         self.assertEqual(self.queue(root), ["once"])
         self.assertEqual(self.redis.lists[repository.READY_PROCESSES], [root["process_id"]])
-        saved = main.read_process(root["process_id"])
+        saved = main.read_process(root["process_id"]).to_record()
         self.assertEqual(sum(e["event"] == "woken" for e in saved["events"]), 1)
 
     def test_failed_commit_does_not_restore_consumed_input(self):
         root = self.start(queue_document())
         self.send(root, "consume immediately")
         main.schedule_once(timeout=1)
-        with patch("main.commit_process", side_effect=RuntimeError("commit unavailable")):
+        with patch("main.commit_execution_slice", side_effect=RuntimeError("commit unavailable")):
             with self.assertRaisesRegex(RuntimeError, "commit unavailable"):
                 main.schedule_once(timeout=1)
         self.assertEqual(self.queue(root), [])
@@ -205,9 +205,10 @@ class TerminalQueueTest(unittest.TestCase):
         claimed, acquired = repository.claim_process(self.redis, root["process_id"])
         self.assertTrue(acquired)
         stale = copy.deepcopy(claimed)
-        stale.update(status="ready", execution_id="stale")
-        saved = repository.commit_process(self.redis, stale)
-        self.assertEqual(saved["execution_id"], claimed["execution_id"])
+        stale.mark_ready()
+        stale.execution_id = "stale"
+        saved = repository.commit_execution_slice(self.redis, stale)
+        self.assertEqual(saved.execution_id, claimed.execution_id)
         self.assertEqual(self.queue(root), ["keep"])
 
     def test_parent_and_child_with_shared_public_terminal_have_separate_buffers(self):
@@ -223,7 +224,7 @@ class TerminalQueueTest(unittest.TestCase):
         self.assertEqual(self.queue(child), ["child input"])
         self.assertEqual(self.queue(root), ["parent input"])
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(root["process_id"]).status, "completed")
 
     def test_termination_clears_buffer_and_late_events_do_not_recreate_it(self):
         root = self.start(queue_document())
@@ -242,7 +243,7 @@ class TerminalQueueTest(unittest.TestCase):
         with self.assertLogs("main", level="WARNING"):
             main.handle_external_event(self.redis, json.dumps({"type": "terminal_message", "terminal_id": root["terminal_id"]}))
         self.assertEqual(self.queue(root), [])
-        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.assertEqual(main.read_process(root["process_id"]).status, "blocked")
 
 
 class TerminalQueueMigrationTest(unittest.TestCase):

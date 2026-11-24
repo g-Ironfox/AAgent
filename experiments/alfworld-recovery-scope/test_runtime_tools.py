@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / 'agent_runtime'), str(ROOT / 'scripts')]
 from build_evolving_iterator import build_bundle
 from build_workflow_reference import workspace_tool_catalog
+from process import WorkflowProcess
 from workflow_nodes import current_workflow_process, workflow_tool
 
 
@@ -83,7 +84,7 @@ class RuntimeToolTest(unittest.TestCase):
 
     @patch.dict('os.environ', {'WORKSPACE_API_URL': 'http://workspace.test/'})
     def test_actual_dispatch_returns_unchanged_and_sends_acl_identity(self):
-        token = current_workflow_process.set({'process_id': 'probe-process', '_workspace_token': 'probe-token'})
+        token = current_workflow_process.set(WorkflowProcess(process_id='probe-process', process_type='workflow', status='running', _workspace_token='probe-token'))
         try:
             with patch.object(self.workspace.requests, 'request', return_value=self.response(self.current)) as request:
                 result = self.invoke(self.current['content'])

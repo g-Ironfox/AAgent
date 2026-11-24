@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from uuid import uuid4
 
+from process import WorkflowProcess
 from process_permissions import snapshot_process_permissions
 from workflow_contract import is_number_value, node_argument, tool_parameter_names, tool_parameter_type
 
@@ -22,7 +23,7 @@ class WorkflowStep:
     """A node's durable scheduling request, committed by the process executor."""
 
     wait_for: dict[str, str]
-    child_process: dict[str, Any] | None = None
+    child_process: WorkflowProcess | None = None
 
 
 @dataclass
@@ -214,8 +215,7 @@ def workflow_read_terminal_queue(current_id: int, workflow_map: WorkflowMap) -> 
     from terminal_repository import current_terminal_process_id
 
     terminal_process_id = current_terminal_process_id.get()
-    process = current_workflow_process.get()
-    if not terminal_process_id or process is None:
+    if not terminal_process_id:
         raise ValueError("read_terminal_queue requires a process terminal")
     node = workflow_map[current_id]
     successor = next_successor(node)
@@ -1001,7 +1001,7 @@ def workflow_spawn_and_wait_subprocess(current_id: int, workflow_map: WorkflowMa
     return step
 
 
-def _prepare_subprocess_call(process: dict[str, Any], parent_node: dict[str, Any]) -> WorkflowStep:
+def _prepare_subprocess_call(process: WorkflowProcess, parent_node: dict[str, Any]) -> WorkflowStep:
     from workflow_parser import _read_workspace_workflow_record_by_name, parse_workflow
     from workflow_validator import validate_workflow
     from workflow_structs import validate_value
@@ -1052,26 +1052,25 @@ def _prepare_subprocess_call(process: dict[str, Any], parent_node: dict[str, Any
         propagate_workflow_output(child_map, child_input, port["id"], value)
 
     child_id = uuid4().hex
-    child = {
-        "process_id": child_id,
-        "parent_process_id": process["process_id"],
-        "root_process_id": process.get("root_process_id", process["process_id"]),
-        "terminal_id": process.get("terminal_id"),
-        "workflow_name": workflow_file,
-        "workflow_file": workflow_file,
-        "execution_timeout_ms": workflow_execution_timeout_ms(workflow_document),
-        "permissions": snapshot_process_permissions(workflow_permissions),
-        "_workspace_token": secrets.token_urlsafe(32),
-        "call_stack": next_call_stack,
-        "ancestor_invocation_ids": [
-            *process.get("ancestor_invocation_ids", []),
-            process["invocation_id"],
-        ],
-        "workflow": json.dumps(child_map, ensure_ascii=False, allow_nan=False),
-        "current_node_id": WORKFLOW_END,
-        "control_port": None,
-        "input": child_inputs,
-    }
+    child = WorkflowProcess(
+        process_id=child_id,
+        process_type="workflow",
+        status="ready",
+        parent_process_id=process.process_id,
+        root_process_id=process.root_process_id or process.process_id,
+        terminal_id=process.terminal_id,
+        workflow_name=workflow_file,
+        workflow_file=workflow_file,
+        execution_timeout_ms=workflow_execution_timeout_ms(workflow_document),
+        permissions=snapshot_process_permissions(workflow_permissions),
+        _workspace_token=secrets.token_urlsafe(32),
+        call_stack=next_call_stack,
+        ancestor_invocation_ids=[*process.ancestor_invocation_ids, process.invocation_id],
+        workflow=json.dumps(child_map, ensure_ascii=False, allow_nan=False),
+        current_node_id=WORKFLOW_END,
+        control_port=None,
+        input=child_inputs,
+    )
     return WorkflowStep(
         {"kind": "process_exit", "process_id": child_id},
         child,

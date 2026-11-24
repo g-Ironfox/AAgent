@@ -25,7 +25,7 @@ class AlfworldWorkflowTest(unittest.TestCase):
         self.send(process, json.dumps({"type": "observation", "episode_id": "e1", "step": step,
                                        "text": text, "done": done}))
         self.drain()
-        saved = main.read_process(process["process_id"])
+        saved = main.read_process(process["process_id"]).to_record()
         self.assertNotEqual(saved["status"], "failed", saved.get("error"))
         return saved
 
@@ -38,7 +38,7 @@ class AlfworldWorkflowTest(unittest.TestCase):
     def test_smoke_workflow_waits_emits_matching_actions_then_exits(self):
         root = self.start(build_workflow(), inputs={})
         self.drain()
-        self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+        self.assertEqual(main.read_process(root["process_id"]).status, "blocked")
         self.output.assert_not_called()
         for step in range(2):
             self.assertEqual(self.observe(root, step)["status"], "blocked")
@@ -89,7 +89,7 @@ class AlfworldWorkflowTest(unittest.TestCase):
         with patch.dict("sys.modules", {"llm": SimpleNamespace(chat_with_model=model)}):
             root = self.start(build_workflow(model_id, react=True), inputs={})
             self.drain()
-            self.assertEqual(main.read_process(root["process_id"])["status"], "blocked")
+            self.assertEqual(main.read_process(root["process_id"]).status, "blocked")
             model.assert_not_called()
             self.output.assert_not_called()
             for step, (decision, observation) in enumerate(zip(decisions, observations)):

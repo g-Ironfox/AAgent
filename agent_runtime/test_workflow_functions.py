@@ -1,4 +1,4 @@
-﻿"""Function contracts, invocation isolation, and durable scheduler stack coverage."""
+"""Function contracts, invocation isolation, and durable scheduler stack coverage."""
 import copy
 import json
 import unittest
@@ -156,7 +156,7 @@ class FunctionProcessTest(unittest.TestCase):
         doc['connections'].append(edge('in', 'out', 'workflow:text', 'workflow:text', 'content'))
         process = self.start(doc)
         self.drain()
-        final = main.read_process(process['process_id'])
+        final = main.read_process(process['process_id']).to_record()
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'hello'})
 
@@ -177,7 +177,7 @@ class FunctionProcessTest(unittest.TestCase):
                                edge('inner', 'done'), edge('done', 'Aout'), edge('done', 'Aout', 'content-out', 'function:text', 'content')]
         process = self.start(doc, inputs={'text': ['a', 'b']})
         self.drain()
-        final = main.read_process(process['process_id'])
+        final = main.read_process(process['process_id']).to_record()
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'done'})
         self.assertEqual(sum(t['node_id'] == 'body' for t in final['node_trace']), 2)
@@ -198,7 +198,7 @@ class FunctionProcessTest(unittest.TestCase):
                                edge('Ain', 'Aout'), edge('Ain', 'Aout', 'function:value', 'function:value', 'struct:Record')]
         process = self.start(doc)
         self.drain()
-        final = main.read_process(process['process_id'])
+        final = main.read_process(process['process_id']).to_record()
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': '{}'})
 
@@ -223,7 +223,7 @@ class FunctionProcessTest(unittest.TestCase):
                                edge('Bin', 'Bsecond', 'function:text', 'function:text', 'content')]
         process = self.start(doc, inputs={'text': 'parent unchanged', 'items': ['one', 'two']})
         self.drain()
-        final = main.read_process(process['process_id'])
+        final = main.read_process(process['process_id']).to_record()
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'parent unchanged'})
         self.assertEqual([call.args[0] for call in self.output.call_args_list], ['one', 'two'])
@@ -252,11 +252,11 @@ class FunctionProcessTest(unittest.TestCase):
         doc['metadata']['functions'][1]['name'] = 'Inner function'
         process = self.start(doc, text='nested')
         records = self.drain()
-        final = main.read_process(process['process_id'])
+        final = main.read_process(process['process_id']).to_record()
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'nested'})
         self.assertEqual(final['function_stack'], [])
-        self.assertTrue(any(len(p.get('function_stack', [])) == 2 for p in records))
+        self.assertTrue(any(len(p.function_stack) == 2 for p in records))
         function_traces = [t for t in final['node_trace'] if t.get('function_id')]
         ids = {}
         for fid, name in [('A', 'Outer function'), ('B', 'Inner function')]:
@@ -274,7 +274,7 @@ class FunctionProcessTest(unittest.TestCase):
     def test_wait_inside_nested_function_survives_resume(self):
         process = self.start(function_document(nested=True, wait=True))
         self.drain()
-        waiting = main.read_process(process['process_id'])
+        waiting = main.read_process(process['process_id']).to_record()
         self.assertEqual(waiting['status'], 'blocked', waiting.get('error'))
         self.assertEqual(waiting['active_function_id'], 'B')
         self.assertEqual(len(waiting['function_stack']), 2)
@@ -283,7 +283,7 @@ class FunctionProcessTest(unittest.TestCase):
         self.assertNotEqual(inner_call_id, outer_call_id)
         self.send(waiting)
         self.drain()
-        final = main.read_process(process['process_id'])
+        final = main.read_process(process['process_id']).to_record()
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'hello'})
         for fid, call_id in [('A', outer_call_id), ('B', inner_call_id)]:
@@ -294,7 +294,7 @@ class FunctionProcessTest(unittest.TestCase):
         self.documents['child.flow'] = support.document('child')
         process = self.start(function_document(nested=True, subprocess=True))
         self.drain()
-        final = main.read_process(process['process_id'])
+        final = main.read_process(process['process_id']).to_record()
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'hello'})
         self.assertEqual(len(self.workflows()), 2)
@@ -340,14 +340,14 @@ class FunctionProcessTest(unittest.TestCase):
             # The fixture uses one-node slices, serializing both caller frames.
             for _ in range(10):
                 main.schedule_once(timeout=1)
-                waiting = main.read_process(process['process_id'])
+                waiting = main.read_process(process['process_id']).to_record()
                 if waiting.get('active_function_id') == 'B':
                     break
             else:
                 self.fail('nested function was not entered')
         else:
             self.drain()
-            waiting = main.read_process(process['process_id'])
+            waiting = main.read_process(process['process_id']).to_record()
             self.assertEqual(waiting['status'], 'blocked')
         self.assertEqual(waiting['active_function_id'], 'B')
         self.assertEqual(len(waiting['function_stack']), 2)
@@ -364,7 +364,7 @@ class FunctionProcessTest(unittest.TestCase):
         # Both function returns and their Context operations run without a yield.
         with patch('main.SCHEDULER_TIME_SLICE_MS', 500):
             self.drain()
-        final = main.read_process(process['process_id'])
+        final = main.read_process(process['process_id']).to_record()
         self.assertEqual(final['status'], 'completed', final.get('error'))
         self.assertEqual(final['result'], {'text': 'hello'})
         self.assertEqual(final['function_stack'], [])

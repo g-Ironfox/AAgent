@@ -46,7 +46,7 @@ class AlfworldBundleTest(unittest.TestCase):
         file = self.store.get_file(self.by_role["bootstrap"]["file_id"])
         process = build_workflow_process(json.loads(file["content"]), {}, file["file_id"], file["name"],
                                          terminal, file["permissions"])
-        return main.create_process(process)
+        return main.create_process(process).to_record()
 
     def observe(self, root, step, *, done=False, success=False, reason=None):
         observation = {"type": "observation", "episode_id": root["terminal_id"], "step": step,

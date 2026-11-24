@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from redis.exceptions import WatchError
 
+from process import WorkflowProcess
 from redis_client import REDIS_KERNEL_DB, REDIS_PUBLIC_DB
 
 
@@ -195,15 +196,21 @@ def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=
     if shim:
         graph.append({"id": "test-input-" + uuid4().hex, "type": "input",
                       "successors": {"next": start}, "data_inputs": {}, "data_outputs": {}})
-    process = {
-        "process_id": uuid4().hex, "parent_process_id": "user_interface",
-        "terminal_id": uuid4().hex,
-        "workflow_name": name, "workflow_file": name, "call_stack": call_stack or [name],
-        "workflow": json.dumps(graph, ensure_ascii=False, allow_nan=False),
-        "current_node_id": -1, "control_port": None, "input": inputs,
-    }
-    if execution_timeout_ms is not None:
-        process["execution_timeout_ms"] = execution_timeout_ms
+    process = WorkflowProcess(
+        process_id=uuid4().hex,
+        process_type="workflow",
+        status="ready",
+        parent_process_id="user_interface",
+        terminal_id=uuid4().hex,
+        workflow_name=name,
+        workflow_file=name,
+        call_stack=call_stack or [name],
+        workflow=json.dumps(graph, ensure_ascii=False, allow_nan=False),
+        current_node_id=-1,
+        control_port=None,
+        input=inputs,
+        execution_timeout_ms=execution_timeout_ms,
+    )
     redis = MemoryRedis()
     errors = []
     execute_node = main.execute_node
@@ -227,7 +234,7 @@ def run_scheduled_workflow(workflow_map, start=0, *, workflow_name=None, inputs=
                 break
         else:
             raise AssertionError(f"scheduler did not quiesce after {max_steps} steps")
-        saved = json.loads(redis.hget(PROCESSTABLE, process["process_id"]))
+        saved = json.loads(redis.hget(PROCESSTABLE, process.process_id))
     committed_graph = json.loads(saved["workflow"])
     workflow_map[:] = committed_graph[:-1] if shim else committed_graph
     if saved["status"] == "failed":

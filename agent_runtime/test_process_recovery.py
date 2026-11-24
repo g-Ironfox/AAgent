@@ -9,6 +9,7 @@ from pymongo import ReturnDocument
 from redis.exceptions import BusyLoadingError, ConnectionError
 
 from test_support import MemoryRedis
+from process import WorkflowProcess
 from process_repository import PROCESSTABLE, TERMINAL_INDEX, TERMINAL_SESSIONS, TERMINAL_STATUSES
 from process_recovery import LOSS_REASON, reconcile_lost_processes
 from redis_client import REDIS_PUBLIC_DB
@@ -33,6 +34,10 @@ class LostProcessRecoveryTest(unittest.TestCase):
         p = {"_id": pid, "process_id": pid, "process_type": "workflow", "status": status,
              "workflow_name": "Root.flow", "root_process_id": "root", "terminal_id": "session",
              "invocation_id": "invocation-" + pid, "start_time": self.stamp,
+             "terminal_process_id": None, "parent_process_id": None,
+             "call_stack": [], "output": {"text": "keep output"},
+             "active_duration_ms": 37, "current_node_id": 4,
+             "finished_at": None,
              "observed_at": self.stamp + timedelta(seconds=2), "input": {"text": "keep input"},
              "nodes": [{"node_id": "llm", "started_at": self.stamp}],
              "events": [{"event": "started", "status": status, "timestamp": self.stamp.isoformat()}],
@@ -80,12 +85,21 @@ class LostProcessRecoveryTest(unittest.TestCase):
             self.assertEqual(run["status"], "lost")
             self.assertEqual(run["finished_at"], self.documents[run["process_id"]]["finished_at"])
             self.assertIsNone(run["duration_ms"])
+            source = self.documents[run["process_id"]]
+            self.assertEqual(run["node_trace"], source["nodes"])
+            self.assertEqual(run["output"], source["output"])
+            self.assertEqual(run["input"], source["input"])
+            self.assertEqual(run["active_duration_ms"], source["active_duration_ms"])
         self.assertEqual(self.logs.find_one_and_update.call_args.kwargs["return_document"], ReturnDocument.AFTER)
 
     def test_partial_loss_keeps_surviving_process_and_its_session(self):
         root = self.add("root", status="blocked")
         self.add("child", parent_process_id="root")
-        self.redis.hset(PROCESSTABLE, "root", json.dumps({"process_id": "root", "status": "blocked", "terminal_id": "session"}))
+        surviving = WorkflowProcess(
+            process_id="root", process_type="workflow", status="blocked",
+            root_process_id="root", terminal_id="session", start_time=self.stamp.isoformat(),
+        )
+        self.redis.hset(PROCESSTABLE, "root", json.dumps(surviving.to_record()))
         self.public.hset(TERMINAL_SESSIONS, "session", '{"status":"open"}')
         reconcile_lost_processes(self.redis, self.logs)
         self.assertEqual(self.documents["root"], root)
@@ -95,16 +109,23 @@ class LostProcessRecoveryTest(unittest.TestCase):
 
     def test_new_active_run_on_same_terminal_is_not_closed_by_old_loss(self):
         self.add("root")
-        self.redis.hset(PROCESSTABLE, "new-root", json.dumps({"process_id": "new-root", "status": "ready", "terminal_id": "session"}))
+        newer = WorkflowProcess(
+            process_id="new-root", process_type="workflow", status="ready",
+            root_process_id="new-root", terminal_id="session", start_time=self.stamp.isoformat(),
+        )
+        self.redis.hset(PROCESSTABLE, "new-root", json.dumps(newer.to_record()))
         self.public.hset(TERMINAL_SESSIONS, "session", '{"status":"open"}')
         reconcile_lost_processes(self.redis, self.logs)
         self.assertEqual(self.public.hget(TERMINAL_SESSIONS, "session"), '{"status":"open"}')
 
     def test_newer_completed_run_on_same_terminal_keeps_its_session(self):
         self.add("root")
-        newer = {"process_id": "new-root", "root_process_id": "new-root", "status": "completed",
-                 "terminal_id": "session", "start_time": (self.stamp + timedelta(hours=1)).isoformat()}
-        self.redis.hset(PROCESSTABLE, "new-root", json.dumps(newer))
+        newer = WorkflowProcess(
+            process_id="new-root", process_type="workflow", root_process_id="new-root",
+            status="completed", terminal_id="session",
+            start_time=(self.stamp + timedelta(hours=1)).isoformat(),
+        )
+        self.redis.hset(PROCESSTABLE, "new-root", json.dumps(newer.to_record()))
         self.public.hset(TERMINAL_SESSIONS, "session", '{"status":"closed","workflow_status":"completed"}')
         reconcile_lost_processes(self.redis, self.logs)
         self.assertEqual(json.loads(self.public.hget(TERMINAL_SESSIONS, "session"))["workflow_status"], "completed")
@@ -118,6 +139,30 @@ class LostProcessRecoveryTest(unittest.TestCase):
         self.assertEqual(session["workflow_name"], "New.flow")
         self.assertEqual(session["start_time"], (self.stamp + timedelta(hours=1)).isoformat())
         self.assertEqual(session["closed_at"], self.documents["new-root"]["finished_at"].isoformat())
+
+    def test_replayed_child_uses_root_closure_metadata_in_any_scan_order(self):
+        root_finished = self.stamp + timedelta(minutes=1)
+        child_finished = self.stamp + timedelta(minutes=2)
+        for root_first in (True, False):
+            with self.subTest(root_first=root_first):
+                self.documents.clear()
+                roots = [
+                    ("root", {"workflow_name": "Root.flow", "finished_at": root_finished}),
+                    ("child", {"workflow_name": "Child.flow", "parent_process_id": "root",
+                               "finished_at": child_finished}),
+                ]
+                for process_id, details in (roots if root_first else reversed(roots)):
+                    self.add(process_id, status="lost", **details)
+                reconcile_lost_processes(self.redis, self.logs)
+                session = json.loads(self.public.hget(TERMINAL_SESSIONS, "session"))
+                self.assertEqual(session["workflow_name"], "Root.flow")
+                self.assertEqual(session["closed_at"], root_finished.isoformat())
+                self.assertEqual(session["start_time"], self.stamp.isoformat())
+                before = copy.deepcopy(self.documents)
+                reconcile_lost_processes(self.redis, self.logs)
+                self.assertEqual(self.documents, before)
+                self.assertEqual(json.loads(self.public.hget(TERMINAL_SESSIONS, "session")), session)
+        self.logs.find_one_and_update.assert_not_called()
 
     def test_replay_keeps_finish_timestamp_and_events_and_retries_derived_records(self):
         self.add("root")
@@ -161,15 +206,15 @@ class LostProcessRecoveryTest(unittest.TestCase):
         self.runs.assert_not_called()
         self.assertFalse(self.public.hgetall(TERMINAL_SESSIONS))
 
-    def test_closed_history_is_excluded_and_missing_legacy_invocation_uses_process_id(self):
+    def test_closed_history_is_excluded_and_invocation_identity_is_preserved(self):
         for status in ("completed", "failed", "terminated"):
             self.add(status, status=status)
-        self.add("root", invocation_id=None)
+        self.add("root")
         reconcile_lost_processes(self.redis, self.logs)
         self.assertEqual(self.logs.find_one_and_update.call_count, 1)
         query = self.logs.find.call_args.args[0]
         self.assertEqual(query["$or"][0]["status"]["$nin"], sorted(TERMINAL_STATUSES))
-        self.assertEqual(self.runs.call_args.args[0]["run_id"], "root")
+        self.assertEqual(self.runs.call_args.args[0]["run_id"], "invocation-root")
         for status in ("completed", "failed", "terminated"):
             self.assertEqual(self.documents[status]["status"], status)
 

@@ -192,12 +192,12 @@ class EvolutionIntegrationTest(unittest.TestCase):
     def execute_tool(self, node_id, name, arguments, preserve_result=False):
         if name == "workspace.update_file" and arguments.get("file_id") == self.by_role["main"]["file_id"]:
             process = current_workflow_process.get()
-            self.main_write_levels.append((process["permissions"]["runtime"]["write"], self.file("main")["permissions"]["required"]["write"]))
+            self.main_write_levels.append((process.permissions["runtime"]["write"], self.file("main")["permissions"]["required"]["write"]))
         if name == "workspace.prepare_main_update":
             if self.deny_validation:
                 raise ValueError("Unknown tool: workspace.prepare_main_update")
             process = current_workflow_process.get()
-            self.executed.append((process["workflow_name"], name, copy.deepcopy(arguments)))
+            self.executed.append((process.workflow_name, name, copy.deepcopy(arguments)))
             current = self.unwrap(self.endpoint("/{file_id}")(arguments["file_id"], self.identity()))
             return prepare_main_update(current, arguments["revision"], arguments["proposal"])
         if name == "workspace.create_checkpoint" and "before main evolution" in arguments["name"]:

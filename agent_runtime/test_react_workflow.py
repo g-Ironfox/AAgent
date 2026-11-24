@@ -88,7 +88,7 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         self.fail("scheduler failed to quiesce")
 
     def assert_waiting(self, process_id, expected_calls, tool=False):
-        waiting = main.read_process(process_id)
+        waiting = main.read_process(process_id).to_record()
         self.assertEqual(waiting["status"], "blocked", waiting.get("error"))
         self.assertEqual(waiting["active_function_id"], "review_tool" if tool else "react_turn")
         self.assertEqual(len(waiting["function_stack"]), 2 if tool else 1)
@@ -131,7 +131,7 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
             {"role": "user", "content": "Observation: logs show a missing configuration file"},
         ])
         self.reply(waiting, "DONE")
-        final = main.read_process(process["process_id"])
+        final = main.read_process(process["process_id"]).to_record()
         self.assertEqual(final["status"], "completed", final.get("error"))
         self.assertEqual(final["function_stack"], [])
         self.assertEqual(final["result"], {})
@@ -146,7 +146,7 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         self.drain()
         waiting = self.assert_waiting(process["process_id"], 1)
         self.reply(waiting, "DONE")
-        final = main.read_process(process["process_id"])
+        final = main.read_process(process["process_id"]).to_record()
         self.assertEqual(final["status"], "completed", final.get("error"))
         self.assertEqual(self.model.call_count, 1)
         self.assertFalse(any(t["node_id"] in {"queue_after_text", "queue_after_tools"}
@@ -178,7 +178,7 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         self.assertEqual(messages[-1]["tool_call_id"], "call_1")
         self.assertEqual(json.loads(messages[-1]["content"]), {"items": [], "revision": 1})
         self.reply(waiting, "DONE")
-        self.assertEqual(main.read_process(process["process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(process["process_id"]).status, "completed")
         self.execute.assert_called_once()
 
     def test_rejection_is_an_observation_and_never_executes(self):
@@ -216,7 +216,7 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         self.assertEqual(observation["tool_call_id"], "call_1")
         self.assertEqual(json.loads(observation["content"])["error"]["message"], "provider unavailable")
         self.reply(waiting, "DONE")
-        self.assertEqual(main.read_process(process["process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(process["process_id"]).status, "completed")
 
     def test_invalid_arguments_are_reported_without_executing_tool(self):
         self.model.side_effect = [("Lookup", "", [tool_call(arguments="[]")]), ("Fix arguments", "", [])]
@@ -252,7 +252,7 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         self.assertIn("Skip the second source", messages[-1]["content"])
         self.execute.assert_called_once()
         self.reply(waiting, "DONE")
-        self.assertEqual(main.read_process(process["process_id"])["status"], "completed")
+        self.assertEqual(main.read_process(process["process_id"]).status, "completed")
 
     def test_done_cancels_remaining_calls_in_batch(self):
         self.model.side_effect = [(None, "", [tool_call("call_1"), tool_call("call_2"), tool_call("call_3")])]
@@ -263,7 +263,7 @@ class ReactHumanInLoopProcessTest(unittest.TestCase):
         waiting = self.assert_waiting(process["process_id"], 1, tool=True)
         self.assertIn('"call_2"', self.output.call_args_list[-1].args[0])
         self.reply(waiting, "DONE")
-        final = main.read_process(process["process_id"])
+        final = main.read_process(process["process_id"]).to_record()
         self.assertEqual(final["status"], "completed", final.get("error"))
         self.execute.assert_called_once()
         self.assertEqual(self.model.call_count, 1)

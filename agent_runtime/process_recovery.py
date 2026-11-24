@@ -1,10 +1,11 @@
-"""Close durable observations whose runtime records were lost before startup."""
+"""Close durable observations whose runtime process records were lost."""
 import json
 from datetime import datetime, timezone
 
 from pymongo import ReturnDocument
 
-from process_repository import PROCESSTABLE, TERMINAL_INDEX, TERMINAL_SESSIONS, TERMINAL_STATUSES
+from process import Process, WorkflowProcess, TerminalProcess, TERMINAL_STATUSES
+from process_repository import PROCESSTABLE, TERMINAL_INDEX, TERMINAL_SESSIONS
 from redis_client import REDIS_KERNEL_DB, REDIS_PUBLIC_DB
 from workflow_run_repository import record_process_workflow_run
 
@@ -15,59 +16,83 @@ def _iso(value):
     return value.isoformat() if isinstance(value, datetime) else value
 
 
-def _start_time(process):
-    value = process.get("start_time")
-    if value is None:
-        return datetime.min.replace(tzinfo=timezone.utc)
-    if isinstance(value, str):
-        value = datetime.fromisoformat(value)
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+def _observation_process(document: dict) -> Process:
+    """Map the Mongo observation schema to runtime fields at the storage boundary."""
+    process_class = {"workflow": WorkflowProcess, "terminal": TerminalProcess}[document["process_type"]]
+    return process_class(
+        process_id=document["process_id"],
+        process_type=document["process_type"],
+        status=document["status"],
+        parent_process_id=document["parent_process_id"],
+        root_process_id=document["root_process_id"],
+        terminal_id=document["terminal_id"],
+        terminal_process_id=document["terminal_process_id"],
+        invocation_id=document["invocation_id"],
+        workflow_name=document["workflow_name"],
+        start_time=_iso(document["start_time"]),
+        finished_at=_iso(document["finished_at"]),
+        wait_for=document["wait_for"],
+        call_stack=document["call_stack"],
+        events=document["events"],
+        input=document["input"],
+        result=document["output"],
+        node_trace=document["nodes"],
+        active_duration_ms=document["active_duration_ms"],
+        current_node_id=document["current_node_id"],
+        error=document.get("error"),
+    )
 
 
-def _finalize_lost_process(client, process, records, recovered):
+def _start_time(process: Process):
+    return datetime.fromisoformat(process.start_time)
+
+
+def _finalize_lost_process(
+    client, process: Process, records: dict[str, Process], recovered: dict[str, Process],
+):
     """Replay derived records even if a previous recovery stopped halfway through."""
-    if process.get("process_type", "workflow") == "workflow" and process.get("workflow_name"):
+    if process.process_type == "workflow":
         record_process_workflow_run({
-            "run_id": process.get("invocation_id") or process["process_id"],
-            "process_id": process["process_id"],
-            "parent_process_id": process.get("parent_process_id"),
-            "root_process_id": process.get("root_process_id"),
-            "workflow_name": process["workflow_name"],
-            "call_stack": process.get("call_stack", []),
-            "started_at": process.get("start_time"),
-            "finished_at": process["finished_at"],
+            "run_id": process.invocation_id,
+            "process_id": process.process_id,
+            "parent_process_id": process.parent_process_id,
+            "root_process_id": process.root_process_id,
+            "workflow_name": process.workflow_name,
+            "call_stack": process.call_stack,
+            "started_at": _start_time(process),
+            "finished_at": datetime.fromisoformat(process.finished_at),
             "duration_ms": None,
-            "active_duration_ms": process.get("active_duration_ms", 0),
+            "active_duration_ms": process.active_duration_ms,
             "status": "lost",
-            "input": process.get("input", {}),
-            "output": process.get("output", {}),
-            "node_trace": process.get("nodes", []),
-            "error": process.get("error"),
+            "input": process.input,
+            "output": process.result,
+            "node_trace": process.node_trace,
+            "error": process.error,
         })
-    # Child and terminal observations use the root's metadata when available.
-    # This keeps a session's name and closure time stable regardless of scan order.
-    process = recovered.get(process.get("root_process_id"), process)
-    terminal_id = process.get("terminal_id")
+
+    root = recovered.get(process.root_process_id, process)
+    terminal_id = root.terminal_id
     if not terminal_id:
         return
-    roots = [p for p in recovered.values() if p.get("terminal_id") == terminal_id
-             and p.get("process_type", "workflow") == "workflow"
-             and p.get("root_process_id", p["process_id"]) == p["process_id"]]
+    roots = [p for p in recovered.values() if p.terminal_id == terminal_id and p.is_root]
     if roots:
-        process = max(roots, key=_start_time)
-    if process.get("root_process_id", process["process_id"]) in records:
+        root = max(roots, key=_start_time)
+    if root.root_process_id in records:
         return
-    # Keep a surviving active owner or a newer completed run on this terminal.
-    if any(record.get("terminal_id") == terminal_id and (
-            record.get("status") not in TERMINAL_STATUSES
-            or (record.get("process_type", "workflow") == "workflow"
-                and record.get("root_process_id", record["process_id"]) == record["process_id"]
-                and _start_time(record) >= _start_time(process))) for record in records.values()):
+    if any(record.terminal_id == terminal_id and (
+            record.is_active
+            or (record.is_root and _start_time(record) >= _start_time(root)))
+            for record in records.values()):
         return
+
     session = {
-        "terminal_id": terminal_id, "status": "closed",
-        "start_time": _iso(process.get("start_time")), "closed_at": _iso(process["finished_at"]),
-        "workflow_name": process.get("workflow_name"), "workflow_status": "lost", "wait_kind": None,
+        "terminal_id": terminal_id,
+        "status": "closed",
+        "start_time": root.start_time,
+        "closed_at": root.finished_at,
+        "workflow_name": root.workflow_name,
+        "workflow_status": "lost",
+        "wait_kind": None,
     }
     with client.pipeline(transaction=True) as pipe:
         pipe.hdel(TERMINAL_INDEX, terminal_id)
@@ -78,35 +103,31 @@ def _finalize_lost_process(client, process, records, recovered):
 
 
 def reconcile_lost_processes(client, logs):
-    """Run under the single runtime owner before any scheduling or event handling.
-
-    Redis must answer successfully: connection/loading errors are never evidence
-    of an empty kernel. finished_at records when the loss was detected.
-    """
-    records = {pid: json.loads(raw) for pid, raw in client.hgetall(PROCESSTABLE).items()}
+    """Reconcile missing runtime records against durable process observations."""
+    records = {pid: Process.from_record(json.loads(raw))
+               for pid, raw in client.hgetall(PROCESSTABLE).items()}
     query = {"$or": [
         {"status": {"$nin": sorted(TERMINAL_STATUSES)}, "finished_at": None},
         {"status": "lost"},
     ]}
     recovered = {}
-    for process in logs.find(query):
-        pid = process.get("process_id")
-        # Recheck against Redis before modifying history, rather than relying
-        # only on the earlier snapshot used to protect surviving terminal owners.
-        if not isinstance(pid, str) or not pid or client.hexists(PROCESSTABLE, pid):
+    for document in logs.find(query):
+        process_id = document["process_id"]
+        # Recheck the authoritative state before changing durable observations.
+        if client.hexists(PROCESSTABLE, process_id):
             continue
-        if process.get("status") != "lost":
+        if document["status"] != "lost":
             detected_at = datetime.now(timezone.utc)
-            process = logs.find_one_and_update(
-                {"_id": process["_id"], "status": process.get("status"),
-                 "observed_at": process.get("observed_at"), "finished_at": None},
+            document = logs.find_one_and_update(
+                {"_id": document["_id"], "status": document["status"],
+                 "observed_at": document["observed_at"], "finished_at": None},
                 {"$set": {"status": "lost", "finished_at": detected_at, "wait_for": None},
                  "$push": {"events": {"event": "lost", "status": "lost",
                                        "timestamp": detected_at.isoformat(), "reason": LOSS_REASON}}},
                 return_document=ReturnDocument.AFTER,
             )
-            if process is None:  # Another observer changed this record in the meantime.
+            if document is None:
                 continue
-        recovered[pid] = process
+        recovered[process_id] = _observation_process(document)
     for process in recovered.values():
         _finalize_lost_process(client, process, records, recovered)
