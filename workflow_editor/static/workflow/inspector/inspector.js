@@ -4,9 +4,10 @@ import { nodeById, state } from '../domain/serialization.js';
 import { createIntegrationInspector } from './integrations.js';
 import { bindStructureInspector } from './structure.js';
 import { setRuntimeStyles } from '../domain/runtime-styles.js';
+import { bindNodeFunctions } from '../domain/functions.js';
 
-export function createInspector(elements, editor, markChanged) {
-  const context = { elements, editor, markChanged, renderInspector, renderInterfaceContract };
+export function createInspector(elements, editor, markChanged, { reloadModels } = {}) {
+  const context = { elements, editor, markChanged, renderInspector, renderInterfaceContract, reloadModels };
   const integrations = createIntegrationInspector(context);
 
   function renderInspector() {
@@ -18,6 +19,32 @@ export function createInspector(elements, editor, markChanged) {
     elements.inspectorType.textContent = node.type.toUpperCase();
     const template = document.querySelector(`#${node.type}InspectorTemplate`);
     elements.inspectorContent.replaceChildren(template.content.cloneNode(true));
+    const functions = state.metadata.functions || [];
+    if (['function_input', 'function_output'].includes(node.type)) {
+      const section = document.createElement('section');
+      section.className = 'inspector-section form-section';
+      const label = document.createElement('label');
+      label.textContent = '函数';
+      const select = document.createElement('select');
+      for (const fn of functions) select.add(new Option(fn.name, fn.id));
+      select.value = node.function_id || '';
+      select.disabled = true;
+      label.append(select);
+      section.append(label);
+      elements.inspectorContent.prepend(section);
+    }
+    const target = elements.inspectorContent.querySelector('[data-function-target]');
+    if (target) {
+      target.replaceChildren(...functions.map((fn) => new Option(fn.name, fn.id)));
+      target.value = node.callee_id;
+      target.addEventListener('change', () => {
+        node.callee_id = target.value;
+        bindNodeFunctions(state.nodes, functions);
+        reconcileConnections(state);
+        markChanged();
+        editor.renderWorkflow();
+      });
+    }
     if (node.type === 'input') {
       renderInterfaceContract(node);
       return;
@@ -25,6 +52,7 @@ export function createInspector(elements, editor, markChanged) {
     integrations.prepare(node);
     renderInterfaceContract(node);
     for (const field of elements.inspectorContent.querySelectorAll('[data-field]')) {
+      if (node.type === 'list_get' && ['index_source', 'index'].includes(field.dataset.field)) continue;
       field.value = node[field.dataset.field] || '';
       field.addEventListener('input', () => {
         node[field.dataset.field] = field.value;
@@ -85,21 +113,6 @@ export function createInspector(elements, editor, markChanged) {
     mount.replaceChildren(component);
   }
 
-  function setWorkflowNodes(references) {
-    const workflowNodes = references.filter((reference) => typeof reference.name === 'string' && reference.name);
-    elements.workflowNodeLibrary.hidden = workflowNodes.length === 0;
-    elements.workflowNodeLibrary.replaceChildren(...workflowNodes.map((reference) => {
-      const button = document.createElement('button');
-      button.className = 'library-item workflow-library-item';
-      button.type = 'button';
-      button.dataset.addWorkflowNode = reference.name;
-      button.innerHTML = '<span class="node-symbol workflow-symbol" aria-hidden="true">WF</span><div><strong></strong><small></small></div><span class="add-symbol" aria-hidden="true">+</span>';
-      button.querySelector('strong').textContent = reference.name;
-      button.querySelector('small').textContent = `${(reference.input_ports || []).length} 输入 / ${(reference.output_ports || []).length} 输出`;
-      return button;
-    }));
-  }
-
   function setRemoteToolReferences(references) {
     integrations.setRemoteToolReferences(references);
   }
@@ -108,8 +121,10 @@ export function createInspector(elements, editor, markChanged) {
   return {
     renderInspector,
     setModels: integrations.setModels,
+    setModelLoadState: integrations.setModelLoadState,
     setLocalTools: integrations.setLocalTools,
+    setMetadataTools: integrations.setMetadataTools,
     setRemoteToolReferences,
-    setWorkflowNodes,
+    setRemoteToolSchemas: integrations.setRemoteToolSchemas,
   };
 }

@@ -86,30 +86,6 @@ export function fetchModels() {
   return request('/api/models');
 }
 
-export function fetchWorkflows() {
-  return request('/api/workflows');
-}
-
-export function fetchEventCatalog() {
-  return request('/api/event-catalog');
-}
-
-export function fetchWorkflow(name) {
-  return request(`/api/workflow/${encodeURIComponent(name)}`);
-}
-
-export function renameWorkflow(currentName, name, workflowNodes = undefined) {
-  return request(`/api/workflow/${encodeURIComponent(currentName)}/metadata`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, ...(workflowNodes ? { workflow_nodes: workflowNodes } : {}) }),
-  });
-}
-
-export function deleteWorkflow(name) {
-  return request(`/api/workflow/${encodeURIComponent(name)}`, { method: 'DELETE' });
-}
-
 export function createModel(model) {
   return request('/api/models', {
     method: 'POST',
@@ -129,12 +105,3 @@ export function updateModel(modelId, model) {
 export function deleteModel(modelId) {
   return request(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
 }
-
-export function uploadWorkflow(name, workflow, overwrite = false) {
-  return request(`/api/workflow/${encodeURIComponent(name)}`, {
-    method: overwrite ? 'PUT' : 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(workflow),
-  });
-}
-

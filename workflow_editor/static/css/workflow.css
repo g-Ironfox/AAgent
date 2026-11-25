@@ -1,3 +1,3 @@
-@import url('./workflow/layout.css');
-@import url('./workflow/canvas.css');
+@import url('./workflow/layout.css?v=26');
+@import url('./workflow/canvas.css?v=23');
 @import url('./workflow/inspector.css');

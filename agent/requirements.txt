@@ -1,6 +1,0 @@
-pymongo
-requests
-redis
-jsonschema==4.25.1
-ffmpeg-python
-pydub

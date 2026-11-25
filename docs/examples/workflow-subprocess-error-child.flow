@@ -1,0 +1,123 @@
+{
+  "schema_version": "2.0",
+  "description": "先将 name 输出到终端（必须非空），再返回问候语。空 name 触发子进程运行错误，用于演示父进程错误分支。",
+  "input_ports": [
+    {
+      "name": "name",
+      "type": "content"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "reply",
+      "type": "content"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "input",
+      "type": "input",
+      "name": "输入",
+      "x": 40,
+      "y": 160,
+      "workflowPorts": [
+        {
+          "id": "workflow:name",
+          "name": "name",
+          "type": "content"
+        }
+      ]
+    },
+    {
+      "id": "print-name",
+      "type": "output_to_terminal",
+      "name": "打印非空 name",
+      "x": 320,
+      "y": 160
+    },
+    {
+      "id": "greeting",
+      "type": "construct_content",
+      "name": "生成问候语",
+      "x": 620,
+      "y": 160,
+      "dataInputPorts": [
+        "name-in"
+      ],
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "你好，"
+          },
+          {
+            "type": "port",
+            "port_id": "name-in"
+          },
+          {
+            "type": "fixed",
+            "value": "！"
+          }
+        ]
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "name": "输出",
+      "x": 920,
+      "y": 160,
+      "workflowPorts": [
+        {
+          "id": "workflow:reply",
+          "name": "reply",
+          "type": "content"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "input",
+      "fromPortId": "control-out",
+      "toId": "print-name",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "greeting",
+      "fromPortId": "control-out",
+      "toId": "output",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "input",
+      "fromPortId": "workflow:name",
+      "toId": "greeting",
+      "toPortId": "name-in",
+      "type": "content"
+    },
+    {
+      "fromId": "greeting",
+      "fromPortId": "content-out",
+      "toId": "output",
+      "toPortId": "workflow:reply",
+      "type": "content"
+    },
+    {
+      "fromId": "print-name",
+      "fromPortId": "control-out",
+      "toId": "greeting",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "input",
+      "fromPortId": "workflow:name",
+      "toId": "print-name",
+      "toPortId": "content-in",
+      "type": "content"
+    }
+  ]
+}

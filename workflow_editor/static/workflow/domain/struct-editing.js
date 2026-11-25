@@ -39,7 +39,7 @@ export function remapStructReferences(workflow, idMap) {
   const listPortIds = new Map();
   remapPorts(workflow.input_ports);
   remapPorts(workflow.output_ports);
-  for (const reference of [...(workflow.workflow_nodes || []), ...(workflow.remote_tools || [])]) {
+  for (const reference of [...(workflow.remote_tools || []), ...(workflow.metadata?.tools || []), ...(workflow.metadata?.functions || [])]) {
     remapPorts(reference.input_ports);
     remapPorts(reference.output_ports);
   }

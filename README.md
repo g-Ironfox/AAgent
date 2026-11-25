@@ -1,21 +1,28 @@
 # AAgent
+用OS的思路做Workflow调度。内核隔离!
+
+
 高可塑性且具备工业级弹性优化(对mcp进行了魔改)的智能体"平台",希望通过这个框架对多个技术进行探索,比如(功能分化的)multiagents支持不同于以往的一问一答交互模式而是由事件驱动架构启发的长程(reAct)与瞬时任务合理调度的零等待自由交互,以及workflow的可塑性支持Agent自演进的探索,未来我也期待从数学的角度探索mcts的规划、上下文压缩、马尔科夫链决策等与llm的结合。  
 
 目前思路(暂时):Agent中的部分操作是模式化可以通过规则(workflow)及其执行器来实现的,而不需要占用宝贵的llm throughput。进一步的,我把Agent建模为大部分的规则操作加上少部分的关键判断。
 
 ## 产品介绍
 
-以 **事件驱动与 Workflow 画布**为中心的个人 Agent 平台。不同事件源通过适配器写入统一主队列,Agent 将事件交给可视化编排的 Workflow 处理,再通过分布式 Tool Server 调用本地或远程工具。
+以 **进程调度与 Workflow 画布**为中心的个人 Agent 平台。用户通过 WebUI 创建工作流进程；Agent 调度器从 Redis 就绪列表读取可运行进程，并逐节点执行。Workflow 通过分布式 Tool Server 调用本地或远程工具。
 
-QQ 和 WebUI Terminal 都只是当前已经实现的事件源,并不是系统入口的固定边界。新的聊天平台、Webhook、定时任务或业务系统可以在适配器中直接生成标准 `workflow` Event 并写入主队列,无需修改 Workflow 执行器。
+每个工作流进程创建时都会分配独立的终端进程。终端消息历史按终端 ID 保存在 MongoDB，供 WebUI 展示；内核在各终端进程的 Redis 状态中独立缓冲未消费输入。进程记录和就绪/阻塞状态也保存在 Redis。
+
+工作区文件支持独立的运行权限和访问权限；Workflow 进程从所执行的文件取得读写等级，新建文件继承创建进程的等级。配置与继承规则见 [进程与文件权限](docs/process-permissions.md)。
+
+固定的引导、任务主流程和经验迭代器示例，以及权限初始化安装脚本，见 [固定工作流与经验迭代](docs/examples/restricted-agent/README.md)。
 
 设计上强调:
 
-- **可扩展** — 事件源、Workflow 节点与 Tool Provider 分别沿输入、编排和能力三个方向独立扩展;QQ 与 Terminal 只是两个现有适配器。
-- **弹性** — 队列、Agent、Tool Server、Provider、WebUI 都是独立进程与容器,可以单独重启、水平扩展或替换实现。
-- **灵活编排** — Workflow 不是固定的线性流水线:路由、循环、可变 Context、工具调用和子 Workflow 可以组合成复杂控制流,包括 ReAct 风格的“思考 → 行动 → 观察 → 再思考”。
+- **可扩展** — 进程输入、Workflow 节点与 Tool Provider 分别沿调度、编排和能力三个方向扩展。
+- **弹性** — Agent、Tool Server、Provider、WebUI 都是独立进程与容器,可以单独重启或替换实现。
+- **灵活编排** — Workflow 不是固定的线性流水线:路由、循环、可变 Context、工具调用和子进程 Workflow 文件可以组合成复杂控制流,包括 ReAct 风格的“思考 → 行动 → 观察 → 再思考”。
 - **可自定义** — 业务能力由画布编排,节点、端口和状态都显式可见;多数流程变化不需要修改执行器代码。
-- **易于调试** — 事件与每个节点的出入参全量落库,WebUI 里可以直接看历史、看正在执行的事件、看队列里还在等什么。
+- **易于调试** — WebUI 可按进程查看终端消息和工作流运行日志。
 
 > 项目仍在过渡期,架构持续调整中。设计与实现冲突时以源码为准;`docs/废弃旧文档/` 里的方案已不代表当前行为。
 
@@ -31,32 +38,49 @@ QQ 和 WebUI Terminal 都只是当前已经实现的事件源,并不是系统入
 
 ### 为什么是 Workflow
 
-这里的 Workflow 不只是把几个 API 串起来,而是 Agent 的控制流语言。Router 可以按运行结果选择路径,foreach 可以展开任务,Context 可以跨节点积累状态,控制流可以成环,子 Workflow 可以把一段能力封装后再次组合。节点之间的连接同时表达执行顺序和数据依赖,因此复杂行为仍然可以被追踪、替换和复用。
+这里的 Workflow 不只是把几个 API 串起来,而是 Agent 的控制流语言。Router 可以按运行结果选择路径,foreach 可以展开任务,Context 可以跨节点积累状态,控制流可以成环,子进程 Workflow 文件可以把一段能力封装后再次组合。节点之间的连接同时表达执行顺序和数据依赖,因此复杂行为仍然可以被追踪、替换和复用。
 
 这些能力可以组合出不少巧妙的模式:
 
-- **ReAct** — workflow 单次完成 LLM、工具和 Context, 连续发布事件调用自身实现循环 ; 通过 history召回 让每轮 observation 回到下一轮 reasoning,退出条件由 Router 显式控制。
+- **ReAct** — 在 Workflow 内使用 while_pop、Context、LLM 和工具节点执行多轮推理，停止条件由业务结果和显式控制流决定。
 - **动态计划** — 根据中间结果选择、跳过或重复步骤,而不是在代码里写死一条执行路径。
-- **能力组合** — 把不同工具和子 Workflow 作为独立能力单元,按任务动态选择和编排。
-- **Multi-Agent** — 未来可以把不同角色建模为可复用的 Agent Workflow,通过事件、共享 Context 和子 Workflow 调用完成委派、协作、复核与交叉验证。比如与用户对接和长任务的分工。
+- **能力组合** — 把不同工具和子进程 Workflow 文件作为独立能力单元,按任务动态选择和编排。
+- **Multi-Agent** — 未来可以把不同角色建模为可复用的 Agent Workflow,通过事件、共享 Context 和拉起并等待子进程完成委派、协作、复核与交叉验证。比如与用户对接和长任务的分工。
 
 更重要的是,事件源和 Workflow 解耦后,一次长任务不必表现为“发出请求,等待最终答案”。未来可以把计划变化、阶段结果、工具进度、Agent 间交接和需要用户决策的节点持续转化为事件,让 Terminal、聊天平台或其他客户端呈现可追踪、可介入、可继续的交互过程。这是 AAgent 希望探索的体验:复杂执行发生在后台,但用户始终看得见进度,并能在恰当的时机参与。
 
 ### 运行与调试
 
-终端页把输入直接投进主队列,配合事件流可以逐个节点核对输入输出。
+终端消息保存在 MongoDB 的 `terminal_messages` 集合（可通过 `MONGO_TERMINAL_COLLECTION` 配置），并按进程终端隔离。用户输入保存历史后，通过携带正文的终端事件进入内核，再追加到当前活跃终端进程的 Redis `input_queue`。`read_terminal_queue` 按顺序消费全部未读消息，队列为空时挂起，唤醒后重试读取；消费和工作流进度原子提交。Workflow 执行 `output_to_terminal` 节点时，将 Agent 输出追加到对应终端。
 
-| 事件流 | 终端 |
-| --- | --- |
-| ![事件流](docs/images/event-stream.png) | ![终端](docs/images/terminal.png) |
+ALFWorld 等外部适配器可以通过现有终端 HTTP 接口写入观察并按游标读取 Workflow 输出。终端输入已移除 4000 字符限制，请求体上限为 1 MiB；接口说明见 [终端 HTTP IO 接口](docs/terminal-io.md)。ALFWorld 评测已拆成 `benchmark_worker` 与 `benchmark_webui`，支持网页发布、Redis 分发、MongoDB 轨迹与结果可视化；启动和使用见 [Benchmark 控制台](benchmark_webui/README.md)，终端协议见 [ALFWorld 执行器](alfworld_runner/README.md)。
+
+`webui` 的 `/logs` 页面按进程展示日志，数据来自 MongoDB 的 `process_logs` 集合（可通过 `MONGO_PROCESS_LOG_COLLECTION` 配置）。每个工作流进程和终端进程都有独立记录，可查看进程 ID、父子关系、当前状态、节点轨迹和进程事件。挂起与唤醒事件包含发生时间、等待原因及关联进程 ID，涵盖终端消息和子进程退出；页面支持按状态、进程类型和关键词筛选。新增事件从更新后的运行时开始记录，旧记录不会补造历史事件。
+
+调度可视化位于 `/scheduler`（顶部「调度」导航），支持最近 5 分钟至 24 小时和不超过 7 天的自定义时间范围。甘特图按进程展示就绪、执行、挂起及等待输入区间，结束状态用菱形标记；当前进程表独立于历史时间范围，展示所有活跃进程的状态、父进程、等待对象、累计执行时间和快照时间，可按类型、状态或关键词筛选，默认每 2 秒刷新，顶部导航栏提供最后同步时间、刷新间隔、暂停／继续和立即刷新按钮。点击进程后，右侧区域自动切换到「进程详情」标签，显示关系与调度事件；历史事件以列表按时间排列，展示中文事件名称、状态、等待对象及错误信息；可随时切回「当前进程表」，筛选和分表选择会保留。页面占满视口，时间线、进程表和进程详情在各自面板内滚动；窄屏上下排列时也按剩余高度分配空间。
+
+调度页通过只读 `GET /api/scheduler` 接口读取公开 Redis 的当前状态与 MongoDB 的历史事件，不访问 Redis 内核库。页面可分别查看全部活跃进程、就绪队列、运行表、阻塞表和等待输入表；就绪队列按下一次执行的顺序排列并标出位置。历史窗口最多加载 500 条记录，当前表最多显示 1000 条，超过时页面明确提示，概览计数仍覆盖全部活跃进程。任一数据源故障时，另一部分仍可显示。运行时新增逐节点的 `resumed`（再次调度）和 `yielded`（返回就绪）事件，并为快照写入 `observed_at`；WebUI 与 Agent 应一起重新构建。旧记录缺少逐次调度事件时仅展示已有生命周期区间并标注精度限制，不把整段生命周期当成实际执行占用。快照时间表示最近一次状态同步时间，进程长时间等待时不会持续更新。
+
+Agent 在创建、调度、挂起、唤醒、结束及取消进程的事务中，单向同步公开进程投影和索引；公开投影只含 ID、关系、状态、等待对象和计时字段，不发布 Workflow 执行图、Context、输入输出或事件正文。同步与内核提交复用同一个 Redis 实例的跨库事务，取消后的迟到提交不会重新发布旧状态，连接在事务结束前恢复内核库。启动时从内核重建公开投影，清理残留记录并保留就绪队列顺序，同时从内核补同步 MongoDB 进程日志。启动自检发现 MongoDB 未结束记录在内核中已不存在时，将其标为 `lost`（运行状态丢失），保留节点日志并关闭对应的失效终端会话；`finished_at` 复用为启动自检发现丢失的时间，事件记录原因 `runtime_state_lost`，甘特图在该时间截止。已有结束状态为 `completed`（完成）、`failed`（执行失败）、`terminated`（主动终止），`error` 字段保存错误详情。Redis 不可用或仍在加载时不会按空库判定丢失。运行时不会读取公开投影来决定调度。
+
+公开键前缀由 Agent 与 WebUI 共用的 `PUBLIC_SCHEDULER_PREFIX` 配置，默认为 `aagent:scheduler`：
+
+| 公开键后缀 | 类型 | 内容 |
+| --- | --- | --- |
+| `:processes` | Hash | 进程 ID → 精简状态 JSON，含已结束进程的最后状态 |
+| `:ready` | List | 就绪队列，沿用 LPUSH/RPOP，API 返回顺序为下一次执行在前 |
+| `:running` | Set | 正在执行的进程 ID |
+| `:blocked` | Set | 挂起进程 ID |
+| `:waiting_for_input` | Set | 等待输入的终端进程 ID |
+| `:meta` | Hash | 投影初始化时间与最近提交时间；不是运行时心跳 |
+
+![进程终端](docs/images/terminal.png)
 
 ### 管理
 
-管理 WebUI 负责 Workflow 的落地(编辑器只导出 JSON)、契约快照、依赖关系和 LLM 模型注册表。
+管理 WebUI 提供 Sessions、文档和 LLM 模型注册表管理。Workflow 文件在工作区中管理，并通过 Workflow 编辑器设计和导出。
 
-| Workflow 管理 | 模型注册表 |
-| --- | --- |
-| ![Workflow 管理](docs/images/workflow-manager.png) | ![模型注册表](docs/images/model-registry.png) |
+![模型注册表](docs/images/model-registry.png)
 
 ### Tool Server
 
@@ -70,45 +94,34 @@ Tool Server 的详细介绍、接口配置与调用示例、完整功能演示�
 
 ```mermaid
 flowchart LR
-    subgraph Sources[可扩展事件源]
-        QQ[QQ / NapCat]
-        Terminal[WebUI Terminal]
-        Future[Webhook / 定时任务 / 其他平台]
-    end
-    QQ -->|WebSocket| QQAdapter[QQ 事件适配器]
-    QQAdapter -->|筛选并转换 Event| MainQueue[(统一主队列)]
-    Terminal -->|terminal Event| MainQueue
-    Future -.->|适配为 workflow Event| MainQueue
-    MainQueue -->|BRPOP| Agent[agent / task_worker]
-    Agent --> Workflow[绑定选定的 Workflow]
-    Workflow -->|HTTP: sync / async| ToolServer[tool_server]
-    ToolServer -->|同步结果 / task_id| Workflow
-    ToolServer <-->|WebSocket| Provider[tool_provider]
-    Provider --> Ext[QQ · Bilibili · 文档 · ...]
-    ToolServer -->|LPUSH callback Event| CallbackQueue[(专用回调队列)]
-    CallbackQueue --> CallbackAdapter[业务回调消费者 / 适配器]
-    CallbackAdapter -.->|可选:转为 workflow Event| MainQueue
-    Agent -->|写入| History[(MongoDB 事件历史)]
-    Agent -->|LPUSH workflow / response| MainQueue
+    WebUI[WebUI 创建进程] -->|写入进程和就绪列表| Redis[(Redis 进程表)]
+    Redis --> Scheduler[Agent 调度器]
+    Scheduler --> Executor[Workflow 执行器]
+    Executor -->|等待终端输入| Blocked[阻塞进程集合]
+    Terminal[进程专属终端] --> Messages[(MongoDB 展示历史)]
+    Terminal -->|携带正文的输入事件| Scheduler
+    Scheduler --> Buffer[Redis 终端进程缓冲区]
+    Buffer -->|读取并消费，空时等待| Executor
+    Executor -->|sync / async| ToolServer[tool_server]
+    ToolServer --> Provider[tool_provider]
+    Executor --> Logs[(MongoDB 进程运行日志)]
 ```
 
-- **事件源适配器** 负责接入外部输入并写入 `main_agent_queue`;新增来源优先直接生成 `event_type: "workflow"` 的标准 Event,其 payload 字段与画布 Input 端口同名即可进入现有执行链路。
-- **QQ** 是其中一个实现:`qqbot` 搬运 OneBot 事件到 `qq:events`(`LPUSH` / `BLPOP`,所以是 LIFO),`qqbot_consumer` 负责存档、筛选目标用户私聊并转发到主队列。
-- **WebUI Terminal** 是另一个实现:它直接构造 `terminal` Event 并以 `RPUSH` 写入主队列,因此当前任务结束后会优先被 `BRPOP` 取走。
-- **agent** 只依赖 Event 协议和主队列。当前内置 handler 会把 `qq` / `terminal` 转换成 `workflow` Event;新事件源直接产出 `workflow` Event 时,无需让 worker 了解其界面或传输协议。
-- **tool_server** 不只是被动返回结果:远程异步工具会先把 `task_id` 交还 Workflow,任务到达终态后还可以通过 outbox 向节点指定的 Redis 队列 `LPUSH` callback Event。回调类型由 `TOOL_CALLBACK_EVENT_TYPES` 限制,默认是 `async_result`。
-- **回调也是事件源**:专用消费者可以保存进度、通知客户端,也可以把回调适配成新的 `workflow` Event 再次进入编排,从而承接长任务续跑、阶段反馈和 Agent 间异步协作。当前主 worker 没有 `async_result` handler,所以原始回调不能直接写入 `main_agent_queue`,必须使用专用队列和对应消费者。
+- **进程表** 保存在 Redis；就绪进程由调度器逐个取出执行，阻塞进程等待其 wait_for 指定的进程结束或终端消息。
+- **终端** 是进程专属的被动进程。创建工作流进程时同时创建终端；用户从 WebUI 选择终端后可发送和查看消息。消息正文由内核保存到终端进程缓冲区，并自动唤醒正在等待该终端的工作流。提前输入会保留到读取节点执行，父子终端进程的缓冲区独立。
+- **Workflow** 在进程上下文内执行，output_to_terminal 将输出写入当前进程关联的终端。
+- **tool_server** 管理工具注册、调用和异步任务状态。它的独立回调 outbox 不属于 Agent 进程调度队列。
 
 ## 服务与端口
 
 | 服务 | 端口 | 说明 |
 | --- | --- | --- |
-| `webui_py` | 8081 | Agent WebUI:事件流、终端、绑定、运行状态 |
+| `webui` | 8081 | FastAPI 页面服务与 `/api/*` 反向代理 |
+| `agent_environment` | 8080（容器内） | 执行环境：工作区、checkpoint、终端、进程命令及状态/日志 API |
 | `workflow_editor` | 8082 | Workflow 可视化编辑器(独立服务,只导出 JSON) |
 | `tool_server` | 8083 | 工具注册、调用、任务状态与控制台 |
-| `manager_webui` | 8084 | 管理 WebUI:Workflow、文档、模型 |
-| `agent` | — | 工作流执行器,主队列消费者 |
-| `qqbot` / `qqbot_consumer` | — | 可选的 QQ 事件源:OneBot 接入与 Event 适配 |
+| `manager_webui` | 8084 | 管理 WebUI:Sessions、文档、模型 |
+| `agent_runtime` | — | Redis 进程调度器与工作流执行器 |
 | `tool_provider` | — | 工具实际执行方,通过 WebSocket 注册到 Tool Server |
 | `redis` / `mongodb` | — | 队列与存储,仅在 dev 配置下暴露到宿主机 |
 
@@ -118,16 +131,34 @@ flowchart LR
 2. 复制环境变量模板并填写当前启用服务所需的配置;
 3. 构建并启动服务。
 
-QQ 不是必需入口。仅在启用 QQ 事件源时,才需要部署 NapNeko/NapCatQQ 并填写 `.env` 中的 `QQ_*` 配置;不启用时可以直接使用 WebUI Terminal 产生事件。
+进程由 Agent WebUI 创建；每个进程拥有独立终端，无需配置全局终端或事件绑定。
 
 ```powershell
 Copy-Item .env.example .env
 # 编辑 .env
 docker compose up --build -d
-docker compose logs -f agent qqbot
+docker compose logs -f agent_runtime agent_environment webui
 ```
 
 启动后 Agent WebUI 在 `http://localhost:8081`,管理 WebUI 在 `http://localhost:8084`。
+
+在 Agent WebUI 工作区保存 Workflow 2.0 文件后，打开终端页创建进程并选择该工作流。创建请求直接携带 workflow_file_id 和输入值；调度器从 Redis 就绪列表执行进程。`spawn_and_wait_subprocess` 节点从 `workflow-file` 和 `arguments-json` 输入接收精确工作区文件名与 JSON 参数，等待子进程退出后从 `result-json` 返回 JSON 对象；无需声明子 Workflow metadata。连接可选的 `error-out` 分支后，子进程失败或终止会唤醒父进程并通过 `error-json` 返回错误内容；参数 JSON 无效、参数不符合子流程接口、目标 Workflow 文件不存在等调用前错误也进入同一分支，此时 `process_id` 为 `null`，不会创建子进程；未连接时继续传播失败。
+
+工作区 checkpoint API 同时注册为 Local Tool，可在工具目录中选择：
+
+| 工具名 | 参数 | 用途 |
+| --- | --- | --- |
+| `workspace.list_checkpoints` | `before_seq?`、`limit?`（默认 50，范围 1–100）、`file_id?` | 分页列表，返回 `items`、`has_more`、`next_before_seq` |
+| `workspace.checkpoint_tree` | 无 | 分支树和当前 `head_seq` |
+| `workspace.get_parent_checkpoint` | `seq?`（默认当前 head） | 返回 `seq` 和 `parent_seq`，按分支祖先查询回滚目标 |
+| `workspace.checkpoint_diff` | `seq` | 相对于父 checkpoint 的文件差异 |
+| `workspace.get_file_recovery_plan` | `file_id`、`stable_file_id`、`checkpoint_seq` | 只读查询当前分支上的不同文件旧版本，以 stable 为底线，返回有序恢复候选 |
+| `workspace.create_checkpoint` | `name` | 保存当前工作区快照 |
+| `workspace.restore_checkpoint` | `seq` | 恢复整个工作区并更新文件 revision |
+
+`seq=0` 表示空工作区，恢复到 0 会清空工作区文件。工具复用 `WORKSPACE_API_URL`（默认 `http://agent_environment:8080`）访问现有 API。
+
+回滚一步：先调用 `workspace.get_parent_checkpoint`（参数 `{}`），再将返回的 `parent_seq` 作为 `workspace.restore_checkpoint` 的 `seq`。第一个 checkpoint 的 `parent_seq` 为 `0`，可恢复为空工作区；当前已为空工作区时返回 `parent_seq: null`，此时没有更早的回滚目标。父序号按分支关系确定，恢复后再次查询使用新的当前 head。
 
 ### 环境变量
 
@@ -135,35 +166,71 @@ docker compose logs -f agent qqbot
 
 | 分组 | 变量 |
 | --- | --- |
-| LLM | `DEEPSEEK_*`、`KIMI_*`、`ZAI_API_KEY`、`TAVILY_API_KEYS`、`BOCHA_*` |
-| QQ | `QQ_API_BASE_URL`、`QQ_API_TOKEN`、`QQ_WS_URI`、`QQ_WS_TOKEN`、`QQ_TARGET_USER_ID`、`QQ_BOT_ID` |
-| 队列 | `REDIS_*`、`QQ_QUEUE_NAME`、`MAIN_AGENT_QUEUE_NAME`、`AGENT_TOOLS_KEY`、`AGENT_WORKER_STATUS_KEY` |
+| LLM | `DEEPSEEK_*`、`KIMI_*`、`TAVILY_API_KEYS`、`BOCHA_*` |
+| 工具 Provider | QQ_API_BASE_URL、QQ_API_TOKEN（供 QQ 工具调用） |
+| 进程调度 | REDIS_*、AGENT_TOOLS_KEY、ProcessTable、ReadyProcesses、BlockedProcesses |
 | Tool | `TOOL_SERVER_URL`、`TOOL_MAX_WAIT_MS`、`TOOL_CLIENT_*`、`TOOL_PROVIDER_*`、`TOOL_MODULES` |
 | 存储 | `MONGO_*` 及各集合名 |
 
+Redis 使用两个独立数字库，两个编号必须不同：
+
+| 配置 | 默认库 | 数据 |
+| --- | --- | --- |
+| `REDIS_DB` | 0 | 公共事件队列 `external_events`、终端状态 `terminal_sessions`、工具注册及工具服务数据 |
+| `REDIS_KERNEL_DB` | 1 | runtime 进程表、ready / blocked、内部终端索引、Workflow Context |
+
+`webui` 不连接 Redis 或 MongoDB。`agent_environment` 使用公共库投递命令和读取调度投影，并只读查询内核进程表来校验工作流的 workspace 身份；`agent_runtime` 负责内核状态写入，并将精简进程状态及调度索引单向发布到公共库，供调度可视化读取。调度器非阻塞读取内核 ready 队列，每执行一个节点后处理公共库的外部事件；ready 为空时阻塞等待外部事件。当前按单个 runtime 调度循环运行。变更库编号后不自动迁移旧库中的运行状态。
+
+## 执行器与执行环境
+
+`agent_runtime` 负责工作流执行与调度；`agent_environment` 提供工作区、checkpoint、终端交互、创建/终止命令及状态/日志查询。后者接受命令后写入公共 Redis 事件队列，实际进程状态仍由执行器推进。checkpoint 仅恢复工作区文件及权限，不恢复运行中的执行状态。
+
+浏览器通过 `webui:8081` 的同源 `/api/*` 代理访问执行环境；执行器和 benchmark 直接访问 `http://agent_environment:8080`，不依赖前端在线。后端不发布宿主机端口，原有 `http://localhost:8081/api/...` 脚本入口继续兼容。前端 `/healthz` 只检查静态服务；后端 `/api/health` 检查 Redis、MongoDB 与工作区初始化，不要求执行器已经启动。
+
+当前 FileStore 依赖进程内锁和状态，`agent_environment` 必须保持单实例、单 worker。存储集合名、Redis key、API 格式及权限语义保持兼容；未携带进程身份的请求仍采用受信任管理端模型，详见 [进程与工作区文件权限](docs/process-permissions.md)。
+
+从旧版迁移时，先构建镜像，再停止旧 `agent` 执行器和旧 Python WebUI，最后启动新服务；旧 WebUI 与新执行环境不能同时写工作区。若使用 dev 覆盖配置，以下每条 Compose 命令都应加上相同的 `-f` 参数。若曾手动设置 `WORKSPACE_API_URL=http://webui_py:8081`，应更新为 `http://agent_environment:8080`。
+
+```powershell
+docker compose build agent_runtime agent_environment webui
+# 仅用于从旧版升级；全新安装跳过这行。保留旧容器便于排查，不删除数据。
+docker stop agent_aagent webui_py_aagent
+docker compose up -d agent_environment agent_runtime webui
+```
+
+隔离验收不连接日常使用的 Redis/MongoDB：
+
+```powershell
+docker compose -p aagent-environment-test -f tests/environment/docker-compose.yml up -d --build --wait
+docker compose -p aagent-environment-test -f tests/environment/docker-compose.yml run --rm verify
+docker compose -p aagent-environment-test -f tests/environment/docker-compose.yml down -v
+```
+
 ## 开发调试
 
-`docker-compose.dev.yml` 挂载宿主机源码,并让 `agent` / `qqbot` / `qqbot_consumer` 以 `sleep infinity` 启动,改完代码不用重建镜像,手动跑入口即可:
+`docker-compose.dev.yml` 挂载宿主机源码,并让 `agent_runtime` 以 `sleep infinity` 启动,改完代码不用重建镜像,手动跑入口即可:
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-docker compose exec agent python task_worker.py
+docker compose exec agent_runtime python main.py
 ```
 
 发布时不要叠加这个文件。
 
-注意:生产配置 `docker-compose.yml` 里只有 `redis` / `mongodb` 有 volumes,`webui_py` / `manager_webui` / `workflow_editor` / `tool_server` 的代码都在镜像内,改完要 `docker compose up -d --build <服务>`;dev 配置下这四个服务已挂载源码目录,但静态资源引用形式是 `?v=N`,改动后仍需递增版本号才会绕过浏览器缓存。
+生产配置中应用代码和前端静态资源都在镜像内，修改后运行 `docker compose up -d --build <服务>`。dev 配置挂载 `agent_environment` 等 Python 服务源码，以及 `webui` 的源码与静态资源；Python 进程修改后需重启。WebUI HTML 使用 `no-store`，JS/CSS 使用 `no-cache`，浏览器会重新验证缓存。
 
 ## 目录结构
 
 ```
-agent/              Agent 运行时:Workflow 校验、解析、执行与节点实现
-qqbot/              可选 QQ 事件源:监听 OneBot WebSocket
-qqbot_consumer/     QQ Event 适配器:存档 + 筛选转发到主队列
+agent_runtime/      执行器：Workflow 校验、解析、执行与调度
+agent_environment/  执行环境：工作区、checkpoint、终端、进程与日志 API
 tool_server/        工具注册与调用中心,任务状态、回调投递
 tool_provider/      实际执行工具的 Provider(QQ / Bilibili / 文档)
-webui_py/           Agent WebUI(8081)
+webui/             FastAPI 页面服务与 API 代理(8081)
 manager_webui/      管理 WebUI(8084)
+benchmark_webui/    评测控制台(8085)
+benchmark_worker/   ALFWorld 评测 worker
+benchmark_common/   任务配置与 Redis/MongoDB 存储
 workflow_editor/    Workflow 编辑器(8082)
 docs/               设计文档、审查记录与 README 图片
 data/               Redis / MongoDB 持久化数据(不提交)

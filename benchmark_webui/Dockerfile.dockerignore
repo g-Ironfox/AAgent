@@ -1,0 +1,10 @@
+**
+!benchmark_common
+!benchmark_common/*.py
+!benchmark_common/requirements.txt
+!benchmark_webui
+!benchmark_webui/*.py
+!benchmark_webui/requirements.txt
+!benchmark_webui/Dockerfile
+!benchmark_webui/static
+!benchmark_webui/static/**

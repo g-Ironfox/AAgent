@@ -2,7 +2,7 @@
 
 > 类型:设计文档。
 > 性质:现行文档。
-> 归属:`agent/` + `workflow_editor/` + `manager_webui/`。
+> 归属:`agent_runtime/` + `workflow_editor/` + `manager_webui/`。
 > 协议版本:workflow 1.3。
 
 ## 1. 范围与版本

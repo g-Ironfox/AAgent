@@ -1,0 +1,1132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aagent.local/protocol/workflow/2.0/schema.json",
+  "title": "AAgent Workflow 2.0",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "input_ports",
+    "output_ports",
+    "nodes",
+    "connections"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "description": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "max_execution_time_seconds": {
+          "type": "integer",
+          "description": "Maximum cumulative active execution time in seconds; negative values disable the limit."
+        },
+        "structs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "color",
+              "fields"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Struct type identifier. The editor saves the user-entered name as both id and name; legacy definitions with a separate name remain supported.",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "name": {
+                "type": "string",
+                "description": "The editor saves the same value as id. Receivers preserve a different legacy display name and resolve type references using id.",
+                "minLength": 1
+              },
+              "color": {
+                "type": "string",
+                "pattern": "^#[0-9A-Fa-f]{6}$"
+              },
+              "list_color": {
+                "type": "string",
+                "description": "Optional color for list-struct:<id>; defaults to color for older workflows.",
+                "pattern": "^#[0-9A-Fa-f]{6}$"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "type",
+                    "required"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/toolDependency"
+          }
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/function"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "input_ports": {
+      "$ref": "#/$defs/ports"
+    },
+    "output_ports": {
+      "$ref": "#/$defs/ports"
+    },
+    "remote_tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/toolContract"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/connection"
+      }
+    }
+  },
+  "$defs": {
+    "port": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^(content|number|list-content|map-content|struct:[A-Za-z_][A-Za-z0-9_]*|list-struct:[A-Za-z_][A-Za-z0-9_]*)$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/port"
+      }
+    },
+    "toolContract": {
+      "type": "object",
+      "required": [
+        "name",
+        "input_ports",
+        "output_ports"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_ports": {
+          "$ref": "#/$defs/ports"
+        },
+        "output_ports": {
+          "$ref": "#/$defs/ports"
+        }
+      },
+      "additionalProperties": false
+    },
+    "mapMapping": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "key",
+            "value"
+          ],
+          "properties": {
+            "key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value_source": {
+              "const": "fixed"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "key",
+            "value_source",
+            "port_id"
+          ],
+          "properties": {
+            "key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value_source": {
+              "const": "port"
+            },
+            "port_id": {
+              "type": "string",
+              "minLength": 1,
+              "not": {
+                "enum": [
+                  "control-in",
+                  "control-out"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "input",
+            "output",
+            "router",
+            "construct_message",
+            "construct_content",
+            "construct_map_content",
+            "map_content_get",
+            "number_to_content",
+            "output_to_terminal",
+            "read_terminal_queue",
+            "deserialize_json",
+            "construct_list",
+            "list_append",
+            "list_length",
+            "list_get",
+            "list_slice",
+            "foreach",
+            "while_pop",
+            "llm",
+            "local_tool",
+            "remote_sync_tool",
+            "remote_async_tool",
+            "json_tool",
+            "context_create",
+            "context_read",
+            "context_write",
+            "session_create",
+            "session_read",
+            "session_write",
+            "spawn_and_wait_subprocess",
+            "construct_struct",
+            "struct_get",
+            "struct_update",
+            "struct_to_json",
+            "json_to_struct",
+            "tool",
+            "function_input",
+            "function_output",
+            "function_call",
+            "construct_tool"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "arguments": {
+          "type": "object",
+          "properties": {
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "not": {
+                      "const": "branch$others"
+                    }
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "function_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The target function of a function_call node."
+            }
+          }
+        },
+        "workflowPorts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "$ref": "#/$defs/port/properties/type"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "dataInputPorts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "input_ports": {
+          "$ref": "#/$defs/ports"
+        },
+        "output_ports": {
+          "$ref": "#/$defs/ports"
+        },
+        "function_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifies the function for function_input/function_output. Ordinary node membership is inferred from control flow during validation; legacy body labels are ignored."
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "router"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "required": [
+                  "branches"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "branches": {
+                    "$ref": "#/$defs/node/properties/arguments/properties/branches"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "construct_map_content"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "mappings"
+                ],
+                "properties": {
+                  "mappings": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/mapMapping"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "context_create",
+                  "context_read",
+                  "context_write",
+                  "struct_to_json",
+                  "json_to_struct"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "content",
+                          "number",
+                          "map-content",
+                          "list-content"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^(struct|list-struct):[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  },
+                  "context_id_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
+                  },
+                  "context_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "else": {
+            "if": {
+              "properties": {
+                "type": {
+                  "not": {
+                    "enum": [
+                      "while_pop",
+                      "list_length",
+                      "list_get",
+                      "list_slice"
+                    ]
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "properties": {
+                    "value_type": {
+                      "enum": [
+                        "content",
+                        "number",
+                        "map-content",
+                        "list-content"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "not": {
+            "properties": {
+              "type": {
+                "not": {
+                  "enum": [
+                    "context_read",
+                    "context_write",
+                    "while_pop"
+                  ]
+                }
+              },
+              "arguments": {
+                "required": [
+                  "context_id_source"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "arguments"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tool"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "tool",
+                  "parameters",
+                  "outputs"
+                ],
+                "properties": {
+                  "tool": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/toolPorts"
+                  },
+                  "outputs": {
+                    "$ref": "#/$defs/toolPorts"
+                  },
+                  "mode": {
+                    "const": "sync"
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "callback": {
+                    "type": "null"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "while_pop"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  },
+                  "position": {
+                    "enum": [
+                      "start",
+                      "end"
+                    ],
+                    "default": "end"
+                  },
+                  "context_id_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ],
+                    "default": "port"
+                  },
+                  "context_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "context_id_source": {
+                          "const": "fixed"
+                        }
+                      },
+                      "required": [
+                        "context_id_source"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "context_id"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list_length"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list_slice"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  },
+                  "start_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
+                  },
+                  "start": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "stop_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
+                  },
+                  "stop": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "step_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
+                  },
+                  "step": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "not": {
+                      "const": 0
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list_get"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "value_type"
+                ],
+                "properties": {
+                  "value_type": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "list-content"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^list-struct:[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    ]
+                  },
+                  "index_source": {
+                    "enum": [
+                      "port",
+                      "fixed"
+                    ]
+                  },
+                  "index": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "index_source": {
+                          "const": "fixed"
+                        }
+                      },
+                      "required": [
+                        "index_source"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "index"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "function_input",
+                  "function_output"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "function_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "function_call"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "arguments"
+            ],
+            "properties": {
+              "arguments": {
+                "required": [
+                  "function_id"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "construct_tool"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "type": "object",
+                "properties": {
+                  "tool_name_source": {
+                    "enum": [
+                      "fixed",
+                      "port"
+                    ]
+                  },
+                  "description_source": {
+                    "enum": [
+                      "fixed",
+                      "port"
+                    ]
+                  },
+                  "schema_source": {
+                    "enum": [
+                      "fixed",
+                      "port"
+                    ]
+                  },
+                  "required_source": {
+                    "enum": [
+                      "fixed",
+                      "port"
+                    ]
+                  },
+                  "tool_name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "schema": {
+                    "type": [
+                      "object",
+                      "string"
+                    ]
+                  },
+                  "required": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "uniqueItems": true
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "llm"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "properties": {
+                  "tools_source": {
+                    "enum": [
+                      "declared",
+                      "definitions"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "connection": {
+      "type": "object",
+      "required": [
+        "fromId",
+        "fromPortId",
+        "toId",
+        "toPortId",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fromId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fromPortId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toPortId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "anyOf": [
+            {
+              "enum": [
+                "control",
+                "content",
+                "number",
+                "list-content",
+                "map-content"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(struct|list-struct):[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "toolDependency": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind",
+        "input_ports",
+        "output_ports"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "remote"
+          ]
+        },
+        "input_ports": {
+          "$ref": "#/$defs/toolPorts"
+        },
+        "output_ports": {
+          "$ref": "#/$defs/toolPorts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "toolPorts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "not": {
+              "enum": [
+                "control-in",
+                "control-out"
+              ]
+            }
+          },
+          "type": {
+            "enum": [
+              "content",
+              "number",
+              "map-content",
+              "list-content"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "function": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "input_ports",
+        "output_ports"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_ports": {
+          "$ref": "#/$defs/ports"
+        },
+        "output_ports": {
+          "$ref": "#/$defs/ports"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

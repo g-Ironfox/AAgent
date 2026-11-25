@@ -1,0 +1,7 @@
+{
+  "platform": "4.2.0",
+  "protocol": {
+    "event": "1.0",
+    "workflow": "2.0"
+  }
+}

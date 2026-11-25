@@ -1,0 +1,266 @@
+import { finalStatuses, statusLabels, timestamp, formatDuration, waitLabel, matches, buildSegments, isPrecise } from './scheduler-data.mjs';
+
+const el = Object.fromEntries(['lastRefresh', 'pauseButton', 'refreshState', 'refreshButton', 'summary', 'range', 'customRange', 'startTime', 'endTime', 'applyRange', 'typeFilter', 'statusFilter', 'searchInput', 'interval', 'warning', 'limits', 'gantt', 'timeWindow', 'timelineCount', 'timelineNote', 'processTable', 'tableTabs', 'tableEmpty', 'tableCount', 'details', 'detailContent', 'processTablePanel', 'processTableTab', 'processDetailsTab'].map(id => [id, document.getElementById(id)]));
+let snapshot = null, selectedId = null, timer = null, controller = null, requestId = 0;
+let customWindow = null, tableView = 'all', paused = false, selectedRecord = null;
+const dateFormat = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const timeFormat = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+function date(value) { const time = timestamp(value); return time === null ? '未记录' : dateFormat.format(time); }
+function node(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+function stateClass(status) { return Object.hasOwn(statusLabels, status) ? status : 'unknown'; }
+function badge(status) { return node('span', 'badge ' + stateClass(status), statusLabels[status] || status || '未知'); }
+function filter() { return { type: el.typeFilter.value, status: el.statusFilter.value, search: el.searchInput.value.trim() }; }
+function records() {
+  const map = new Map((snapshot?.items || []).map(item => [item.process_id, item]));
+  for (const item of snapshot?.active_items || []) map.set(item.process_id, { ...map.get(item.process_id), ...item });
+  return map;
+}
+function name(process) { return process.workflow_name || (process.process_type === 'terminal' ? '终端进程' : '工作流进程'); }
+function selectPanel(panel) {
+  const showDetails = panel === 'details';
+  el.processTablePanel.hidden = showDetails;
+  el.details.hidden = !showDetails;
+  el.tableCount.hidden = showDetails;
+  for (const [tab, selected] of [[el.processTableTab, !showDetails], [el.processDetailsTab, showDetails]]) {
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
+}
+function openProcess(process) {
+  selectedId = process.process_id;
+  selectedRecord = process;
+  renderDetails();
+  selectPanel('details');
+}
+function processButton(process, className = '') {
+  const button = node('button', className); button.type = 'button';
+  button.append(node('strong', '', name(process)), node('small', '', process.process_id));
+  button.title = name(process) + ' · ' + process.process_id;
+  button.addEventListener('click', () => openProcess(process));
+  return button;
+}
+function renderSummary() {
+  const items = snapshot.active_items || [];
+  const cards = [['', '当前活跃进程', snapshot.active_count], ['running', '运行中', snapshot.status_counts?.running ?? items.filter(p => p.status === 'running').length], ['ready', '就绪', snapshot.status_counts?.ready ?? items.filter(p => p.status === 'ready').length], ['blocked', '已挂起', snapshot.status_counts?.blocked ?? items.filter(p => p.status === 'blocked').length], ['waiting_for_input', '等待输入', snapshot.status_counts?.waiting_for_input ?? items.filter(p => p.status === 'waiting_for_input').length]];
+  el.summary.replaceChildren(...cards.map(([status, label, count], index) => {
+    const card = node('div', 'summary-card ' + status);
+    card.append(node('span', '', label), node('strong', '', snapshot.current_available === false ? '—' : String(count)));
+    return card;
+  }));
+}
+function renderTimeline() {
+  const start = timestamp(snapshot.start), end = timestamp(snapshot.end), span = end - start;
+  const items = (snapshot.items || []).filter(p => {
+    const created = timestamp(p.start_time), finished = timestamp(p.finished_at);
+    return created !== null && created <= end && (finished === null || finished >= start) && matches(p, filter());
+  }).sort((a, b) => timestamp(a.start_time) - timestamp(b.start_time) || a.process_id.localeCompare(b.process_id));
+  el.timeWindow.textContent = date(start) + ' — ' + date(end) + ' · 本地时间';
+  el.timelineCount.textContent = items.length + ' 个进程';
+  if (snapshot.history_available === false) { el.gantt.replaceChildren(node('p', 'empty', '历史日志不可用，当前进程表仍可独立查看')); return; }
+  if (!items.length) { el.gantt.replaceChildren(node('p', 'empty', '所选时间范围内没有符合条件的进程记录')); return; }
+  const axisRow = node('div', 'axis-row'); axisRow.append(node('div', 'axis-label', '进程 / 工作流'));
+  const axis = node('div', 'axis');
+  for (let i = 0; i <= 5; i++) { const tick = node('span', 'tick', timeFormat.format(start + span * i / 5)); tick.style.left = (i * 20) + '%'; axis.append(tick); }
+  axisRow.append(axis);
+  const rows = items.map(process => {
+    const row = node('div', 'gantt-row'); row.append(processButton(process, 'gantt-label'));
+    const track = node('div', 'track');
+    for (const segment of buildSegments(process, start, end)) {
+      if (segment.status === 'ready') continue;
+      const bar = node('button', 'segment ' + stateClass(segment.status) + (segment.point ? ' point' : ''));
+      bar.type = 'button'; bar.style.left = ((segment.start - start) / span * 100) + '%';
+      if (!segment.point) bar.style.width = ((segment.end - segment.start) / span * 100) + '%';
+      const label = (statusLabels[segment.status] || segment.status) + ' · ' + date(segment.start) + (segment.point ? '' : ' — ' + date(segment.end) + ' · ' + formatDuration(segment.end - segment.start)) + (segment.wait ? ' · ' + waitLabel(segment.wait) : '');
+      bar.title = label; bar.setAttribute('aria-label', name(process) + ' · ' + label);
+      bar.addEventListener('click', () => openProcess(process));
+      track.append(bar);
+    }
+    row.append(track); return row;
+  });
+  el.gantt.replaceChildren(axisRow, ...rows);
+  el.timelineNote.textContent = '色块表示调度状态的持续时间，菱形表示结束事件。悬停可查看时间与等待原因，点击进程可查看详情。' + (items.some(p => p.process_type !== 'terminal' && !isPrecise(p)) ? ' 部分旧记录仅有生命周期事件，无法还原每次调度；斜纹表示未知状态，连续运行色块不代表连续占用执行器。' : '');
+}
+function renderTable() {
+  const order = { running: 0, ready: 1, blocked: 2, waiting_for_input: 3 };
+  const readyPositions = new Map((snapshot.process_tables?.ready || []).map((id, index) => [id, index]));
+  const items = (snapshot.active_items || []).filter(p => !finalStatuses.has(p.status) && (tableView === 'all' || p.status === tableView) && matches(p, filter())).sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4) || (a.status === 'ready' && b.status === 'ready' ? (readyPositions.get(a.process_id) ?? Infinity) - (readyPositions.get(b.process_id) ?? Infinity) : 0) || (timestamp(a.start_time) || 0) - (timestamp(b.start_time) || 0));
+  el.processTable.replaceChildren(...items.map(process => {
+    const row = node('tr'); const identity = node('td'); identity.append(processButton(process));
+    const type = node('td', '', process.process_type === 'terminal' ? '终端' : '工作流'); const state = node('td'); state.append(badge(process.status));
+    if (process.status === 'ready' && readyPositions.has(process.process_id)) state.append(node('small', '', '就绪队列第 ' + (readyPositions.get(process.process_id) + 1) + ' 位'));
+    const parent = node('td', 'mono id-cell', process.parent_process_id || '—'); parent.title = process.parent_process_id || '';
+    const wait = node('td', 'id-cell', waitLabel(process.wait_for)); wait.title = waitLabel(process.wait_for);
+    const observed = node('td', '', date(process.observed_at));
+    const observedTime = timestamp(process.observed_at);
+    if (observedTime !== null) observed.title = '距本次获取 ' + formatDuration(Math.max(0, timestamp(snapshot.fetched_at) - observedTime)) + '；进程无状态变化时快照时间不会更新';
+    row.append(identity, type, state, parent, wait, node('td', '', formatDuration(process.active_duration_ms)), node('td', '', date(process.start_time)), observed);
+    return row;
+  }));
+  el.tableEmpty.hidden = items.length > 0;
+  el.tableEmpty.textContent = snapshot.current_available === false ? '公开 Redis 进程投影暂不可用，请确认 Agent 已更新并启动' : '当前没有符合筛选条件的活跃进程';
+  el.tableCount.textContent = snapshot.current_available === false ? '状态不可用' : items.length + ' / ' + snapshot.active_count + ' 个活跃进程';
+}
+const eventLabels = { resumed: '再次调度', yielded: '返回就绪', created: '创建', started: '开始执行', blocked: '挂起', woken: '唤醒', completed: '完成', failed: '失败', terminated: '终止', lost: '发现运行状态丢失' };
+function eventDescription(event) {
+  if (event.event !== 'woken' && !event.wait_for) return '';
+  const source = event.wait_for || {};
+  const labels = event.event === 'woken'
+    ? { terminal_message: '终端消息到达', process_exit: '子进程退出' }
+    : { terminal_message: '等待终端消息', process_exit: '等待子进程退出' };
+  return (labels[source.kind] || source.kind || '事件到达') + (source.process_id ? ' · ' + source.process_id : '');
+}
+function renderEventList(events) {
+  if (!events.length) return node('p', 'empty', '此记录暂无历史调度事件');
+  const list = node('ol', 'scheduler-events');
+  const ordered = events.map((event, index) => ({ event, index, time: timestamp(event.timestamp) ?? Infinity }))
+    .sort((a, b) => (a.time === b.time ? a.index - b.index : a.time - b.time));
+  for (const { event } of ordered) {
+    const row = node('li', 'scheduler-event');
+    const time = node('time', 'scheduler-event-time', date(event.timestamp));
+    if (timestamp(event.timestamp) !== null) time.setAttribute('datetime', event.timestamp);
+    row.append(time, node('strong', 'scheduler-event-name', eventLabels[event.event] || event.event || '未知事件'), badge(event.status));
+    const details = [];
+    const description = eventDescription(event);
+    if (description) details.push(description);
+    if (event.node_id != null) details.push('节点 · ' + event.node_id);
+    if (event.reason) details.push('原因 · ' + event.reason);
+    if (details.length) row.append(node('span', 'scheduler-event-detail', details.join('；')));
+    if (event.error) row.append(node('span', 'scheduler-event-error', typeof event.error === 'string' ? event.error : JSON.stringify(event.error)));
+    list.append(row);
+  }
+  return list;
+}
+function renderDetails() {
+  const current = records().get(selectedId);
+  if (current) selectedRecord = current;
+  const process = current || selectedRecord;
+  if (!process) {
+    el.detailContent.replaceChildren(node('p', 'empty', '点击甘特图或进程表中的进程，在此查看详情'));
+    return;
+  }
+  const grid = node('dl', 'detail-grid');
+  for (const [label, value] of [['进程 ID', process.process_id], ['名称', name(process)], ['当前状态', statusLabels[process.status] || process.status], ['类型', process.process_type || 'workflow'], ['父进程', process.parent_process_id || '—'], ['根进程', process.root_process_id || '—'], ['终端', process.terminal_id || '—'], ['等待对象', waitLabel(process.wait_for)], ['累计执行', formatDuration(process.active_duration_ms)], ['最近节点', process.current_node_id ?? '—'], ['创建时间', date(process.start_time)], [process.status === 'lost' ? '结束时间（自检发现）' : '结束时间', date(process.finished_at)], ['快照时间', date(process.observed_at)]]) {
+    const item = node('div'); item.append(node('dt', '', label), node('dd', '', value)); grid.append(item);
+  }
+  const history = process.events || [];
+  const events = node('details', 'scheduler-event-section');
+  events.open = Array.from(el.detailContent.children).find(child => child.tagName.toLowerCase() === 'details')?.open ?? true;
+  events.append(node('summary', '', '历史调度事件 · ' + history.length), renderEventList(history));
+  const link = node('a', 'process-log-link', '打开进程日志'); link.href = '/logs';
+  const notice = node('p', 'detail-snapshot-note', '该进程已不在本次快照中，以下保留上次获取的详情。');
+  notice.hidden = Boolean(current);
+  const actions = node('div', 'process-detail-actions');
+  if (current && process.process_type !== 'terminal' && !finalStatuses.has(process.status)) {
+    const kill = node('button', 'kill-process-button', '强制结束整棵进程树');
+    kill.type = 'button';
+    kill.addEventListener('click', async () => {
+      if (!window.confirm('强制结束该进程所属的根进程、全部子进程及其终端？')) return;
+      kill.disabled = true;
+      try {
+        const response = await fetch('/api/processes/' + encodeURIComponent(process.process_id) + '/kill', { method: 'POST' });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+        el.refreshState.textContent = '强制结束请求已提交';
+        await refresh();
+      } catch (error) {
+        el.warning.textContent = '强制结束失败：' + error.message;
+        el.warning.hidden = false;
+        kill.disabled = false;
+      }
+    });
+    actions.append(kill);
+  }
+  actions.append(link);
+  el.detailContent.replaceChildren(notice, grid, events, actions);
+}
+function render() {
+  if (!snapshot) return;
+  renderSummary(); renderTimeline(); renderTable(); renderDetails();
+  const notices = [];
+  if (snapshot.history_truncated) notices.push('时间范围内共有 ' + snapshot.history_count + ' 个进程，历史图仅加载最近 500 条；可缩小时间范围。');
+  if (snapshot.active_truncated) notices.push('活跃进程超过 1000 条，当前表仅显示前 1000 条；概览计数涵盖所有活跃进程。');
+  el.limits.textContent = notices.join(' '); el.limits.hidden = !notices.length;
+}
+function schedule() {
+  clearTimeout(timer);
+  const interval = Number(el.interval.value);
+  if (!paused && interval > 0) timer = setTimeout(refresh, interval);
+}
+async function refresh() {
+  const id = ++requestId;
+  clearTimeout(timer); controller?.abort(); controller = new AbortController();
+  const now = Date.now();
+  const selectedWindow = el.range.value === 'custom' ? customWindow : { start: now - Number(el.range.value), end: now };
+  if (!selectedWindow) { el.warning.textContent = '请设置开始和结束时间后点击应用。'; el.warning.hidden = false; schedule(); return; }
+  el.refreshButton.disabled = true;
+  const params = new URLSearchParams({ start: new Date(selectedWindow.start).toISOString(), end: new Date(selectedWindow.end).toISOString(), limit: '500' });
+  const activeController = controller;
+  const timeout = setTimeout(() => activeController.abort(), 15000);
+  try {
+    const response = await fetch('/api/scheduler?' + params, { cache: 'no-store', signal: controller.signal });
+    const body = await response.json();
+    if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : '请求失败（' + response.status + '）');
+    if (id !== requestId) return;
+    snapshot = body; el.warning.textContent = (body.warnings || []).join('；'); el.warning.hidden = !body.warnings?.length;
+    el.lastRefresh.textContent = timeFormat.format(timestamp(body.fetched_at));
+    el.refreshState.textContent = paused ? '自动刷新已暂停' : '自动刷新已开启';
+    render();
+  } catch (error) {
+    if (id !== requestId) return;
+    el.warning.textContent = '调度数据加载失败：' + (error.name === 'AbortError' ? '请求超时' : error.message) + (snapshot ? '。当前保留上次成功获取的数据。' : '');
+    el.warning.hidden = false; el.refreshState.textContent = '同步失败';
+  } finally {
+    clearTimeout(timeout);
+    if (id === requestId) { el.refreshButton.disabled = false; schedule(); }
+  }
+}
+for (const button of el.tableTabs.children) button.addEventListener('click', () => {
+  tableView = button.dataset.table;
+  for (const tab of el.tableTabs.children) tab.setAttribute('aria-pressed', String(tab === button));
+  if (snapshot) renderTable();
+});
+for (const element of [el.typeFilter, el.statusFilter]) element.addEventListener('change', render);
+el.searchInput.addEventListener('input', render);
+el.refreshButton.addEventListener('click', refresh);
+el.interval.addEventListener('change', schedule);
+el.pauseButton.addEventListener('click', () => {
+  paused = !paused;
+  el.pauseButton.classList.toggle('active', paused);
+  el.pauseButton.querySelector('.pause-icon').classList.toggle('play', paused);
+  el.pauseButton.title = paused ? '继续自动刷新' : '暂停自动刷新';
+  el.pauseButton.setAttribute('aria-label', el.pauseButton.title);
+  el.pauseButton.setAttribute('aria-pressed', String(paused));
+  el.refreshState.textContent = paused ? '自动刷新已暂停' : '自动刷新已开启';
+  if (paused) schedule(); else refresh();
+});
+const panelTabs = [el.processTableTab, el.processDetailsTab];
+for (const [index, tab] of panelTabs.entries()) {
+  tab.addEventListener('click', () => selectPanel(index === 0 ? 'table' : 'details'));
+  tab.addEventListener('keydown', event => {
+    let next;
+    if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = 1;
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') next = 1 - index;
+    else return;
+    event.preventDefault();
+    selectPanel(next === 0 ? 'table' : 'details');
+    panelTabs[next].focus();
+  });
+}
+el.range.addEventListener('change', () => { el.customRange.hidden = el.range.value !== 'custom'; if (el.range.value !== 'custom' || customWindow) refresh(); });
+el.applyRange.addEventListener('click', () => {
+  const start = timestamp(el.startTime.value), end = timestamp(el.endTime.value);
+  if (start === null || end === null || end <= start || end - start > 7 * 86400000 || end > Date.now()) {
+    el.warning.textContent = '请选择有效的本地时间范围：开始早于结束、跨度不超过 7 天，且结束时间不晚于现在。'; el.warning.hidden = false; return;
+  }
+  customWindow = { start, end }; refresh();
+});
+function localInput(time) { const value = new Date(time); return new Date(time - value.getTimezoneOffset() * 60000).toISOString().slice(0, 19); }
+el.startTime.value = localInput(Date.now() - 900000); el.endTime.value = localInput(Date.now());
+selectPanel('table');
+refresh();

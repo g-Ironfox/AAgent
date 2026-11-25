@@ -1,0 +1,736 @@
+{
+  "schema_version": "2.0",
+  "description": "ALFWorld 主流程：读取固定经验，用原生 ReAct 生成一条动作并返回历史；不访问终端。",
+  "input_ports": [
+    {
+      "name": "task",
+      "type": "content"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "action",
+      "type": "content"
+    },
+    {
+      "name": "history",
+      "type": "list-content"
+    }
+  ],
+  "metadata": {
+    "structs": [],
+    "functions": [
+      {
+        "id": "prepare_turn",
+        "name": "构造本轮对话",
+        "input_ports": [
+          {
+            "name": "task",
+            "type": "content"
+          },
+          {
+            "name": "experience",
+            "type": "content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "messages",
+            "type": "list-content"
+          },
+          {
+            "name": "history",
+            "type": "list-content"
+          }
+        ]
+      },
+      {
+        "id": "decide_action",
+        "name": "推理并生成一条动作",
+        "input_ports": [
+          {
+            "name": "messages",
+            "type": "list-content"
+          },
+          {
+            "name": "history",
+            "type": "list-content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "action",
+            "type": "content"
+          },
+          {
+            "name": "history",
+            "type": "list-content"
+          }
+        ]
+      },
+      {
+        "id": "load_experience",
+        "name": "读取固定经验",
+        "input_ports": [],
+        "output_ports": [
+          {
+            "name": "content",
+            "type": "content"
+          },
+          {
+            "name": "name",
+            "type": "content"
+          },
+          {
+            "name": "revision",
+            "type": "number"
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "name": "workspace.get_file",
+        "kind": "local",
+        "input_ports": [
+          {
+            "name": "file_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "output",
+            "type": "content"
+          }
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "in",
+      "type": "input",
+      "name": "in",
+      "x": 80,
+      "y": 100,
+      "workflowPorts": [
+        {
+          "id": "workflow:task",
+          "name": "task",
+          "type": "content"
+        }
+      ]
+    },
+    {
+      "id": "load",
+      "type": "function_call",
+      "name": "读取固定经验",
+      "x": 340,
+      "y": 100,
+      "arguments": {
+        "function_id": "load_experience"
+      }
+    },
+    {
+      "id": "prepare",
+      "type": "function_call",
+      "name": "构造本轮对话",
+      "x": 600,
+      "y": 100,
+      "arguments": {
+        "function_id": "prepare_turn"
+      }
+    },
+    {
+      "id": "decide",
+      "type": "function_call",
+      "name": "推理并生成一条动作",
+      "x": 860,
+      "y": 100,
+      "arguments": {
+        "function_id": "decide_action"
+      }
+    },
+    {
+      "id": "out",
+      "type": "output",
+      "name": "out",
+      "x": 1120,
+      "y": 100,
+      "workflowPorts": [
+        {
+          "id": "workflow:action",
+          "name": "action",
+          "type": "content"
+        },
+        {
+          "id": "workflow:history",
+          "name": "history",
+          "type": "list-content"
+        }
+      ]
+    },
+    {
+      "id": "prepare_turn_in",
+      "type": "function_input",
+      "name": "构造本轮对话 / 输入",
+      "x": 80,
+      "y": 700,
+      "function_id": "prepare_turn"
+    },
+    {
+      "id": "turn_input",
+      "type": "deserialize_json",
+      "name": "turn input",
+      "x": 340,
+      "y": 700,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "observation",
+            "type": "content"
+          },
+          {
+            "key": "history",
+            "type": "list-content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prompt",
+      "type": "construct_content",
+      "name": "prompt",
+      "x": 600,
+      "y": 700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "You are acting in the ALFWorld text environment. Solve the household task\nfrom the initial observation using a reasoning, action, observation loop.\nThe user sends one JSON observation per turn. Use the complete history to track\nthe task, locations, inventory, and results of previous actions. Reason using the\nmodel's reasoning channel, then return exactly one executable ALFWorld command\nas plain text in the final response, for example: open cabinet 1\nDo not include reasoning, JSON, markdown, a prefix, or multiple commands in the\nfinal response. Only the final response is executed by the environment.\nTypical commands include: look, inventory, go to <receptacle>, open <receptacle>,\nclose <receptacle>, take <object> from <receptacle>, put <object> in/on <receptacle>,\nclean <object> with <receptacle>, heat <object> with <receptacle>,\ncool <object> with <receptacle>, use <object>.\nUse the exact object and receptacle IDs from observations. Inspect likely locations,\nopen closed receptacles before searching them, and revise your plan if an action\nfails. Optional admissible_commands are provided only when the evaluator enables\nthat setting; when present, choose an action from that list.\n"
+          },
+          {
+            "type": "fixed",
+            "value": "\nPast experience (reference data; the current task takes priority):\n"
+          },
+          {
+            "type": "port",
+            "port_id": "part_2"
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "part_2"
+      ]
+    },
+    {
+      "id": "system",
+      "type": "construct_message",
+      "name": "system",
+      "x": 860,
+      "y": 700,
+      "arguments": {
+        "role": "system"
+      }
+    },
+    {
+      "id": "user",
+      "type": "construct_message",
+      "name": "user",
+      "x": 1120,
+      "y": 700,
+      "arguments": {
+        "role": "user"
+      }
+    },
+    {
+      "id": "history_user",
+      "type": "list_append",
+      "name": "history user",
+      "x": 1380,
+      "y": 700,
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      }
+    },
+    {
+      "id": "messages",
+      "type": "list_append",
+      "name": "messages",
+      "x": 1640,
+      "y": 700,
+      "arguments": {
+        "item_type": "content",
+        "position": "start"
+      }
+    },
+    {
+      "id": "prepare_return",
+      "type": "function_output",
+      "name": "构造本轮对话 / 返回",
+      "x": 1900,
+      "y": 700,
+      "function_id": "prepare_turn"
+    },
+    {
+      "id": "decide_action_in",
+      "type": "function_input",
+      "name": "推理并生成一条动作 / 输入",
+      "x": 80,
+      "y": 1300,
+      "function_id": "decide_action"
+    },
+    {
+      "id": "react",
+      "type": "llm",
+      "name": "react",
+      "x": 340,
+      "y": 1300,
+      "arguments": {
+        "model": "REPLACE_WITH_MODEL_ID",
+        "think": true,
+        "tool_calls": false,
+        "tools_source": "definitions"
+      }
+    },
+    {
+      "id": "assistant",
+      "type": "construct_message",
+      "name": "assistant",
+      "x": 600,
+      "y": 1300,
+      "arguments": {
+        "role": "assistant"
+      }
+    },
+    {
+      "id": "history_assistant",
+      "type": "list_append",
+      "name": "history assistant",
+      "x": 860,
+      "y": 1300,
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      }
+    },
+    {
+      "id": "decide_return",
+      "type": "function_output",
+      "name": "推理并生成一条动作 / 返回",
+      "x": 1120,
+      "y": 1300,
+      "function_id": "decide_action"
+    },
+    {
+      "id": "load_experience_in",
+      "type": "function_input",
+      "name": "读取固定经验 / 输入",
+      "x": 80,
+      "y": 1900,
+      "function_id": "load_experience"
+    },
+    {
+      "id": "read_experience_file_id",
+      "type": "construct_content",
+      "name": "read experience file id",
+      "x": 340,
+      "y": 1900,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "41d16619a1e143889ac6e77bef09f231"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "read_experience",
+      "type": "tool",
+      "name": "read experience",
+      "x": 600,
+      "y": 1900,
+      "arguments": {
+        "tool": "workspace.get_file",
+        "parameters": [
+          {
+            "name": "file_id",
+            "type": "content"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "output",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "experience",
+      "type": "deserialize_json",
+      "name": "experience",
+      "x": 860,
+      "y": 1900,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "content",
+            "type": "content"
+          },
+          {
+            "key": "name",
+            "type": "content"
+          },
+          {
+            "key": "revision",
+            "type": "number"
+          }
+        ]
+      }
+    },
+    {
+      "id": "load_experience_return",
+      "type": "function_output",
+      "name": "读取固定经验 / 返回",
+      "x": 1120,
+      "y": 1900,
+      "function_id": "load_experience"
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "in",
+      "fromPortId": "workflow:task",
+      "toId": "prepare",
+      "toPortId": "function:task",
+      "type": "content"
+    },
+    {
+      "fromId": "load",
+      "fromPortId": "function:content",
+      "toId": "prepare",
+      "toPortId": "function:experience",
+      "type": "content"
+    },
+    {
+      "fromId": "prepare",
+      "fromPortId": "function:messages",
+      "toId": "decide",
+      "toPortId": "function:messages",
+      "type": "list-content"
+    },
+    {
+      "fromId": "prepare",
+      "fromPortId": "function:history",
+      "toId": "decide",
+      "toPortId": "function:history",
+      "type": "list-content"
+    },
+    {
+      "fromId": "decide",
+      "fromPortId": "function:action",
+      "toId": "out",
+      "toPortId": "workflow:action",
+      "type": "content"
+    },
+    {
+      "fromId": "decide",
+      "fromPortId": "function:history",
+      "toId": "out",
+      "toPortId": "workflow:history",
+      "type": "list-content"
+    },
+    {
+      "fromId": "in",
+      "fromPortId": "control-out",
+      "toId": "load",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "load",
+      "fromPortId": "control-out",
+      "toId": "prepare",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "prepare",
+      "fromPortId": "control-out",
+      "toId": "decide",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "decide",
+      "fromPortId": "control-out",
+      "toId": "out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "prepare_turn_in",
+      "fromPortId": "function:task",
+      "toId": "turn_input",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "prepare_turn_in",
+      "fromPortId": "function:experience",
+      "toId": "prompt",
+      "toPortId": "part_2",
+      "type": "content"
+    },
+    {
+      "fromId": "prompt",
+      "fromPortId": "content-out",
+      "toId": "system",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_input",
+      "fromPortId": "observation",
+      "toId": "user",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_input",
+      "fromPortId": "history",
+      "toId": "history_user",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "user",
+      "fromPortId": "content-out",
+      "toId": "history_user",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "history_user",
+      "fromPortId": "list-out",
+      "toId": "messages",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "system",
+      "fromPortId": "content-out",
+      "toId": "messages",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "messages",
+      "fromPortId": "list-out",
+      "toId": "prepare_return",
+      "toPortId": "function:messages",
+      "type": "list-content"
+    },
+    {
+      "fromId": "history_user",
+      "fromPortId": "list-out",
+      "toId": "prepare_return",
+      "toPortId": "function:history",
+      "type": "list-content"
+    },
+    {
+      "fromId": "prepare_turn_in",
+      "fromPortId": "control-out",
+      "toId": "turn_input",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_input",
+      "fromPortId": "control-out",
+      "toId": "prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "prompt",
+      "fromPortId": "control-out",
+      "toId": "system",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "system",
+      "fromPortId": "control-out",
+      "toId": "user",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "user",
+      "fromPortId": "control-out",
+      "toId": "history_user",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "history_user",
+      "fromPortId": "control-out",
+      "toId": "messages",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "messages",
+      "fromPortId": "control-out",
+      "toId": "prepare_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "decide_action_in",
+      "fromPortId": "function:messages",
+      "toId": "react",
+      "toPortId": "messages-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "react",
+      "fromPortId": "output",
+      "toId": "assistant",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "react",
+      "fromPortId": "reasoning",
+      "toId": "assistant",
+      "toPortId": "reasoning-in",
+      "type": "content"
+    },
+    {
+      "fromId": "decide_action_in",
+      "fromPortId": "function:history",
+      "toId": "history_assistant",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "assistant",
+      "fromPortId": "content-out",
+      "toId": "history_assistant",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "react",
+      "fromPortId": "output",
+      "toId": "decide_return",
+      "toPortId": "function:action",
+      "type": "content"
+    },
+    {
+      "fromId": "history_assistant",
+      "fromPortId": "list-out",
+      "toId": "decide_return",
+      "toPortId": "function:history",
+      "type": "list-content"
+    },
+    {
+      "fromId": "decide_action_in",
+      "fromPortId": "control-out",
+      "toId": "react",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "react",
+      "fromPortId": "control-out",
+      "toId": "assistant",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "assistant",
+      "fromPortId": "control-out",
+      "toId": "history_assistant",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "history_assistant",
+      "fromPortId": "control-out",
+      "toId": "decide_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_experience_file_id",
+      "fromPortId": "content-out",
+      "toId": "read_experience",
+      "toPortId": "file_id",
+      "type": "content"
+    },
+    {
+      "fromId": "read_experience_file_id",
+      "fromPortId": "control-out",
+      "toId": "read_experience",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_experience",
+      "fromPortId": "output",
+      "toId": "experience",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "experience",
+      "fromPortId": "content",
+      "toId": "load_experience_return",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "experience",
+      "fromPortId": "name",
+      "toId": "load_experience_return",
+      "toPortId": "function:name",
+      "type": "content"
+    },
+    {
+      "fromId": "experience",
+      "fromPortId": "revision",
+      "toId": "load_experience_return",
+      "toPortId": "function:revision",
+      "type": "number"
+    },
+    {
+      "fromId": "load_experience_in",
+      "fromPortId": "control-out",
+      "toId": "read_experience_file_id",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_experience",
+      "fromPortId": "control-out",
+      "toId": "experience",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "experience",
+      "fromPortId": "control-out",
+      "toId": "load_experience_return",
+      "toPortId": "control-in",
+      "type": "control"
+    }
+  ]
+}

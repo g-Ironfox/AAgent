@@ -1,3 +1,4 @@
+import { createLifecyclePreview } from './domain/lifecycle-preview.js';
 import { portsForNode } from './domain/node-contract.js';
 import { deleteNode, state } from './domain/serialization.js';
 import { setRuntimeStyles } from './domain/runtime-styles.js';
@@ -6,6 +7,7 @@ export function createWorkflowEditor(elements, markChanged) {
   const editorState = { selectedId: 'input', connectionDrag: null };
   let connectionSequence = 0;
   let renderInspector = () => {};
+  const lifecyclePreview = createLifecyclePreview(elements, state);
 
   function setInspectorRenderer(renderer) {
     renderInspector = renderer;
@@ -44,8 +46,11 @@ export function createWorkflowEditor(elements, markChanged) {
 
   function compatiblePort(port, drag) {
     const targetDirection = drag.targetDirection || (drag.direction === 'output' ? 'input' : 'output');
+    const source = state.nodes.find((node) => node.id === drag.anchorNodeId);
+    const target = state.nodes.find((node) => node.id === port?.dataset.nodeId);
     return Boolean(
       port
+      && source && target
       && port.dataset.portType === drag.type
       && port.dataset.portDirection === targetDirection
       && port.dataset.nodeId !== drag.anchorNodeId,
@@ -205,7 +210,8 @@ export function createWorkflowEditor(elements, markChanged) {
     const ports = portsForNode(node);
     const inputs = ports.filter((port) => port.direction === 'input');
     const outputs = ports.filter((port) => port.direction === 'output');
-    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_message: 'M', construct_content: 'C', construct_map_content: 'MAP', construct_struct: 'S+', struct_get: 'S?', struct_update: 'S±', struct_to_json: 'S→', json_to_struct: '→S', map_content_get: 'GET', deserialize_json: 'J/', split_event: 'E/', construct_event: 'E+', publish_event: 'E!', construct_list: 'L', list_append: 'L+', foreach: 'FE', history: 'H', local_tool: 'LT', remote_sync_tool: 'RS', remote_async_tool: 'RA', context_create: 'C+', context_read: 'CR', context_write: 'CW', session_create: 'S+', session_read: 'SR', session_write: 'SW', workflow: 'WF' };
+    const symbols = { input: 'IN', output: 'OUT', router: 'R', construct_tool: 'T+', construct_message: 'M', construct_content: 'C', construct_map_content: 'MAP', construct_struct: 'S+', struct_get: 'S?', struct_update: 'S±', struct_to_json: 'S→', json_to_struct: '→S', map_content_get: 'GET', number_to_content: 'N→C', deserialize_json: 'J/', output_to_terminal: 'TERM', read_terminal_queue: 'T<', construct_list: 'L', list_append: 'L+', list_length: 'LEN', list_get: 'L[]', list_slice: 'L[:]', foreach: 'FE', while_pop: 'WP', tool: 'T', json_tool: 'J-T', local_tool: 'LT', remote_sync_tool: 'RS', remote_async_tool: 'RA', context_create: 'C+', context_read: 'CR', context_write: 'CW', session_create: 'S+', session_read: 'SR', session_write: 'SW', spawn_and_wait_subprocess: 'WF' };
+    Object.assign(symbols, { function_input: 'F-IN', function_output: 'F-OUT', function_call: 'F()' });
     element.type = 'button';
     element.className = `flow-node ${node.type}${node.id === editorState.selectedId ? ' selected' : ''}`;
     setRuntimeStyles(element, `node-position:${node.id}`, { left: `${node.x}px`, top: `${node.y}px` });
@@ -214,10 +220,16 @@ export function createWorkflowEditor(elements, markChanged) {
     head.className = 'flow-node-head';
     head.innerHTML = `<span class="node-symbol ${node.type}-symbol">${symbols[node.type] || 'L'}</span><span><strong></strong><small></small></span>`;
     head.querySelector('strong').textContent = node.name;
-    head.querySelector('small').textContent = node.type.toUpperCase();
+    head.querySelector('small').textContent = node.type.toUpperCase() + (node.function_id ? ` · ${node.function_id}` : '');
+    head.querySelector('small').title = head.querySelector('small').textContent;
     const body = document.createElement('span');
     body.className = 'flow-node-body';
-    setRuntimeStyles(body, `node-body:${node.id}`, { height: `${Math.max(70, 8 + Math.max(inputs.length, outputs.length) * 28)}px` });
+    const portCount = Math.max(inputs.length, outputs.length);
+    const bodyHeight = node.type === 'read_terminal_queue'
+      // Match the 8px top inset below the final 12px port as well.
+      ? 28 + Math.max(0, portCount - 1) * 28
+      : Math.max(70, 8 + portCount * 28);
+    setRuntimeStyles(body, `node-body:${node.id}`, { height: `${bodyHeight}px` });
     for (const port of ports) {
       const portElement = document.createElement('span');
       const row = port.direction === 'input' ? inputs.indexOf(port) : outputs.indexOf(port);
@@ -236,6 +248,7 @@ export function createWorkflowEditor(elements, markChanged) {
       body.append(portElement);
     }
     element.append(head, body);
+    lifecyclePreview.decorateNode(element, node);
     element.addEventListener('click', () => selectNode(node.id));
     element.querySelectorAll('.node-port').forEach((port) => bindConnectionPort(port, node));
     bindNodeDrag(element, node);
@@ -243,6 +256,7 @@ export function createWorkflowEditor(elements, markChanged) {
   }
 
   function renderNodes() {
+    lifecyclePreview.invalidate();
     elements.nodeLayer.replaceChildren(...state.nodes.map(createNodeUI));
     const renderedNodes = Array.from(elements.nodeLayer.querySelectorAll('.flow-node'));
     const maxX = Math.max(1800, ...renderedNodes.map((element) => element.offsetLeft + element.offsetWidth + 20));
@@ -277,6 +291,7 @@ export function createWorkflowEditor(elements, markChanged) {
       path.setAttribute('class', `connection-path ${connection.type}`);
       setConnectionColor(path, connection.type, `connection-color:${connection.id}`);
       path.setAttribute('d', connectionPath(start, end));
+      lifecyclePreview.decorateConnection(path, connection);
       paths.push(path);
     }
     if (editorState.connectionDrag) {
@@ -364,10 +379,29 @@ export function createWorkflowEditor(elements, markChanged) {
     renderConnections();
   }
 
+  function invalidateLifecycles() {
+    if (lifecyclePreview.invalidate()) {
+      renderNodes();
+      renderConnections();
+    }
+  }
+
+  elements.compileLifecyclesButton?.addEventListener('click', () => {
+    lifecyclePreview.compile();
+    renderNodes();
+    renderConnections();
+  });
+  elements.clearLifecyclesButton?.addEventListener('click', () => {
+    lifecyclePreview.clear();
+    renderNodes();
+    renderConnections();
+  });
+
   bindCanvasPan();
   bindDeleteKey();
   return {
     editorState,
+    invalidateLifecycles,
     deleteSelectedNode,
     ensureSelection,
     renderConnections,

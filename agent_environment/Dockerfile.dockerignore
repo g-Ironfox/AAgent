@@ -1,0 +1,7 @@
+**
+!agent_environment/
+!agent_environment/**
+**/__pycache__/
+**/*.py[cod]
+**/.env
+**/.git/

@@ -1,0 +1,341 @@
+{
+  "schema_version": "2.0",
+  "description": "终端输入非空 name 正常返回问候语；无效 JSON、参数不符合接口、子流程文件不存在或子进程报错时，父进程接收 error-json 并打印错误后结束。",
+  "input_ports": [],
+  "output_ports": [
+    {
+      "name": "reply",
+      "type": "content"
+    },
+    {
+      "name": "child_result_json",
+      "type": "content"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "input",
+      "type": "input",
+      "name": "开始",
+      "x": 40,
+      "y": 100,
+      "workflowPorts": []
+    },
+    {
+      "id": "prompt",
+      "type": "construct_content",
+      "name": "输入提示",
+      "x": 320,
+      "y": 100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "输入 {\"name\":\"小明\"} 走成功分支；输入 {\"name\":\"\"} 让子进程报错；输入 not json 或 {\"name\":123} 测试调用前错误，错误均返回父流程。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "show-prompt",
+      "type": "output_to_terminal",
+      "name": "打印提示",
+      "x": 600,
+      "y": 100
+    },
+    {
+      "id": "read-input",
+      "type": "read_terminal_queue",
+      "name": "读取终端消息缓冲区",
+      "x": 880,
+      "y": 440
+    },
+    {
+      "id": "last-input",
+      "type": "list_get",
+      "name": "取最后一条消息",
+      "x": 600,
+      "y": 440,
+      "arguments": {
+        "value_type": "list-content",
+        "index_source": "fixed",
+        "index": -1
+      }
+    },
+    {
+      "id": "child-file",
+      "type": "construct_content",
+      "name": "子流程文件名",
+      "x": 320,
+      "y": 440,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "workflow-subprocess-error-child.flow"
+          }
+        ]
+      }
+    },
+    {
+      "id": "call-child",
+      "type": "spawn_and_wait_subprocess",
+      "name": "调用子流程",
+      "x": 40,
+      "y": 440,
+      "arguments": {}
+    },
+    {
+      "id": "parse-result",
+      "type": "deserialize_json",
+      "name": "读取 reply",
+      "x": 40,
+      "y": 780,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "reply",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "show-reply",
+      "type": "output_to_terminal",
+      "name": "打印返回结果",
+      "x": 320,
+      "y": 780
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "name": "结束",
+      "x": 600,
+      "y": 780,
+      "workflowPorts": [
+        {
+          "id": "workflow:reply",
+          "name": "reply",
+          "type": "content"
+        },
+        {
+          "id": "workflow:child_result_json",
+          "name": "child_result_json",
+          "type": "content"
+        }
+      ]
+    },
+    {
+      "id": "parse-error",
+      "type": "deserialize_json",
+      "name": "读取子进程错误",
+      "x": 40,
+      "y": 1140,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "error",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "print-error",
+      "type": "output_to_terminal",
+      "name": "父终端打印错误",
+      "x": 320,
+      "y": 1140
+    },
+    {
+      "id": "error-output",
+      "type": "output",
+      "name": "错误处理结束",
+      "x": 600,
+      "y": 1140,
+      "workflowPorts": [
+        {
+          "id": "workflow:reply",
+          "name": "reply",
+          "type": "content"
+        },
+        {
+          "id": "workflow:child_result_json",
+          "name": "child_result_json",
+          "type": "content"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "input",
+      "fromPortId": "control-out",
+      "toId": "prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "prompt",
+      "fromPortId": "control-out",
+      "toId": "show-prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "show-prompt",
+      "fromPortId": "control-out",
+      "toId": "read-input",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read-input",
+      "fromPortId": "control-out",
+      "toId": "last-input",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "last-input",
+      "fromPortId": "control-out",
+      "toId": "child-file",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "child-file",
+      "fromPortId": "control-out",
+      "toId": "call-child",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "control-out",
+      "toId": "parse-result",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "parse-result",
+      "fromPortId": "control-out",
+      "toId": "show-reply",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "show-reply",
+      "fromPortId": "control-out",
+      "toId": "output",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "prompt",
+      "fromPortId": "content-out",
+      "toId": "show-prompt",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "read-input",
+      "fromPortId": "list-out",
+      "toId": "last-input",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "last-input",
+      "fromPortId": "item-out",
+      "toId": "call-child",
+      "toPortId": "arguments-json",
+      "type": "content"
+    },
+    {
+      "fromId": "child-file",
+      "fromPortId": "content-out",
+      "toId": "call-child",
+      "toPortId": "workflow-file",
+      "type": "content"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "result-json",
+      "toId": "parse-result",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "parse-result",
+      "fromPortId": "reply",
+      "toId": "show-reply",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "parse-result",
+      "fromPortId": "reply",
+      "toId": "output",
+      "toPortId": "workflow:reply",
+      "type": "content"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "result-json",
+      "toId": "output",
+      "toPortId": "workflow:child_result_json",
+      "type": "content"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "error-out",
+      "toId": "parse-error",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "parse-error",
+      "fromPortId": "control-out",
+      "toId": "print-error",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "print-error",
+      "fromPortId": "control-out",
+      "toId": "error-output",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "error-json",
+      "toId": "parse-error",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "parse-error",
+      "fromPortId": "error",
+      "toId": "print-error",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "parse-error",
+      "fromPortId": "error",
+      "toId": "error-output",
+      "toPortId": "workflow:reply",
+      "type": "content"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "error-json",
+      "toId": "error-output",
+      "toPortId": "workflow:child_result_json",
+      "type": "content"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AAgent 调度可视化</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/scheduler.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/terminal.html" aria-label="AAgent 终端"><span class="brand-mark" aria-hidden="true">A</span><span class="brand-name"><strong>AAgent</strong><small>SCHEDULER</small></span></a>
+    <div class="top-actions">
+      <nav class="page-nav" aria-label="页面导航"><a href="/terminal.html">终端</a><a href="/workspace">工作区</a><a href="/workspace/replay">检查点</a><a href="/logs">日志</a><a class="active" href="/scheduler" aria-current="page">调度</a></nav>
+      <div class="sync-meta topbar-sync" role="status">
+        <span>最后同步</span>
+        <strong id="lastRefresh">同步中</strong>
+        <small id="refreshState">自动刷新已开启</small>
+      </div>
+      <label class="interval" title="自动刷新间隔"><span>刷新</span><select id="interval" aria-label="自动刷新间隔"><option value="500">0.5s</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option></select></label>
+      <button id="pauseButton" class="icon-button" type="button" title="暂停自动刷新" aria-label="暂停自动刷新" aria-pressed="false"><span class="pause-icon" aria-hidden="true"></span></button>
+      <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+    </div>
+  </header>
+  <main class="scheduler-main">
+    <header class="page-heading">
+      <h1>调度可视化</h1>
+      <section class="summary-grid" aria-label="当前进程概览" id="summary"></section>
+    </header>
+    <section class="toolbar" aria-label="调度筛选">
+      <label>时间范围<select id="range"><option value="300000">最近 5 分钟</option><option value="900000" selected>最近 15 分钟</option><option value="3600000">最近 1 小时</option><option value="21600000">最近 6 小时</option><option value="86400000">最近 24 小时</option><option value="custom">自定义</option></select></label>
+      <div id="customRange" class="custom-range" hidden><label>开始<input id="startTime" type="datetime-local" step="1"></label><label>结束<input id="endTime" type="datetime-local" step="1"></label><button type="button" id="applyRange">应用</button></div>
+      <label>类型<select id="typeFilter"><option value="all">全部进程</option><option value="workflow">工作流</option><option value="terminal">终端</option></select></label>
+      <label>状态<select id="statusFilter"><option value="all">全部状态</option><option value="running">运行中</option><option value="ready">就绪</option><option value="blocked">已挂起</option><option value="waiting_for_input">等待输入</option><option value="completed">已完成</option><option value="failed">失败</option><option value="terminated">已终止</option><option value="killed">已强制终止</option><option value="lost">运行状态丢失</option></select></label>
+      <label class="search-label">搜索<input id="searchInput" type="search" placeholder="进程 ID、工作流、终端或父进程" autocomplete="off"></label>
+    </section>
+    <div id="warning" class="notice warning" role="alert" hidden></div>
+    <div id="limits" class="notice" hidden></div>
+    <div class="scheduler-columns">
+      <section class="panel" aria-labelledby="ganttTitle">
+        <header class="panel-heading"><div><h2 id="ganttTitle">进程时间线</h2><p id="timeWindow">正在加载时间范围…</p></div><span id="timelineCount" class="muted"></span></header>
+        <div class="legend" aria-label="甘特图图例"><span class="running">运行</span><span class="blocked">挂起</span><span class="waiting_for_input">等待输入</span><span class="completed">完成</span><span class="failed">失败</span><span class="terminated">终止</span><span class="killed">强制终止</span><span class="lost">状态丢失</span></div>
+        <div class="timeline-scroll"><div id="gantt" class="gantt"></div></div>
+        <p id="timelineNote" class="panel-note">色块表示调度状态的持续时间。悬停可查看时间与等待原因，点击进程可查看详情。</p>
+      </section>
+      <section class="panel process-panel" aria-label="进程表与详情">
+        <header class="panel-heading process-panel-heading">
+          <div class="panel-tabs" role="tablist" aria-label="进程查看方式">
+            <button id="processTableTab" type="button" role="tab" aria-selected="true" aria-controls="processTablePanel" tabindex="0">当前进程表</button>
+            <button id="processDetailsTab" type="button" role="tab" aria-selected="false" aria-controls="details" tabindex="-1">进程详情</button>
+          </div>
+          <span id="tableCount" class="muted"></span>
+        </header>
+        <div id="processTablePanel" role="tabpanel" aria-labelledby="processTableTab" tabindex="0">
+          <p class="panel-description">来自公开 Redis 的实时进程投影；与历史时间范围独立。</p>
+          <div id="tableTabs" class="table-tabs" role="group" aria-label="查看进程表"><button type="button" data-table="all" aria-pressed="true">全部活跃</button><button type="button" data-table="ready" aria-pressed="false">就绪队列</button><button type="button" data-table="running" aria-pressed="false">运行表</button><button type="button" data-table="blocked" aria-pressed="false">阻塞表</button><button type="button" data-table="waiting_for_input" aria-pressed="false">等待输入表</button></div>
+          <div class="table-scroll"><table><thead><tr><th>进程 / 工作流</th><th>类型</th><th>状态</th><th>父进程</th><th>等待对象</th><th>累计执行</th><th>创建时间</th><th>快照时间</th></tr></thead><tbody id="processTable"></tbody></table></div>
+          <p id="tableEmpty" class="empty" hidden>当前没有符合筛选条件的活跃进程</p>
+        </div>
+        <div id="details" class="details" role="tabpanel" aria-labelledby="processDetailsTab" tabindex="0" hidden>
+          <div id="detailContent"><p class="empty">点击甘特图或进程表中的进程，在此查看详情</p></div>
+        </div>
+      </section>
+    </div>
+    <footer>当前状态：公开 Redis · 历史甘特图：MongoDB · 投影单向发布，不读取调度内核</footer>
+  </main>
+  <script type="module" src="/scheduler.js"></script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createWorkflowEditor } from './static/workflow/editor.js';
+import { portsForNode } from './static/workflow/domain/node-contract.js';
 import { state } from './static/workflow/domain/serialization.js';
 
 test('editor renders Struct and list connections with independent colors and legacy fallback', () => {
@@ -69,5 +70,16 @@ test('editor renders Struct and list connections with independent colors and leg
     else globalThis.document = previousDocument;
     state.metadata = previousMetadata;
     state.connections = previousConnections;
+  }
+});
+
+test('List append Struct item and list ports use their declared colors', () => {
+  for (const listColor of ['#3976A8', undefined]) {
+    const definition = { id: 'profile', color: '#3A7D68', list_color: listColor };
+    const ports = portsForNode({ type: 'list_append', item_type: 'struct:profile', _structs: [definition] });
+    assert.equal(ports.find((port) => port.id === 'item-in').color, definition.color);
+    for (const id of ['list-in', 'list-out']) {
+      assert.equal(ports.find((port) => port.id === id).color, listColor || definition.color, id);
+    }
   }
 });

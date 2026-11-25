@@ -270,7 +270,7 @@ function openInvoke(tool) {
   renderSchema(elements.outputSchemaView, tool.outputSchema, "output");
   elements.callbackInput.checked = false;
   elements.callbackOptions.hidden = true;
-  elements.callbackQueueInput.value = "main_agent_queue";
+  elements.callbackQueueInput.value = "tool:callback:events";
   elements.callbackEventTypeInput.value = "async_result";
   elements.callbackWorkingInput.checked = true;
   elements.callbackCompletedInput.checked = true;

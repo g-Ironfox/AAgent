@@ -1,0 +1,2462 @@
+{
+  "schema_version": "2.0",
+  "description": "ReAct with native tool calls, per-call human approval, durable history and function-scoped branches.",
+  "input_ports": [
+    {
+      "name": "task",
+      "type": "content"
+    }
+  ],
+  "output_ports": [],
+  "metadata": {
+    "structs": [
+      {
+        "id": "ToolCallCount",
+        "name": "ToolCallCount",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "count",
+            "type": "number",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "CallFunction",
+        "name": "CallFunction",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "name",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "arguments",
+            "type": "content",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "ToolCall",
+        "name": "ToolCall",
+        "color": "#3976A8",
+        "fields": [
+          {
+            "name": "id",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "type",
+            "type": "content",
+            "required": true
+          },
+          {
+            "name": "function",
+            "type": "struct:CallFunction",
+            "required": true
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "id": "append_history",
+        "name": "append_history",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "message",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "queue_turn",
+        "name": "queue_turn",
+        "input_ports": [
+          {
+            "name": "tokens_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "build_assistant",
+        "name": "build_assistant",
+        "input_ports": [
+          {
+            "name": "content",
+            "type": "content"
+          },
+          {
+            "name": "reasoning",
+            "type": "content"
+          },
+          {
+            "name": "calls",
+            "type": "list-content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "message",
+            "type": "content"
+          }
+        ]
+      },
+      {
+        "id": "record_tool_result",
+        "name": "record_tool_result",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "call_id",
+            "type": "content"
+          },
+          {
+            "name": "content",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "execute_reviewed_tool",
+        "name": "execute_reviewed_tool",
+        "input_ports": [
+          {
+            "name": "name",
+            "type": "content"
+          },
+          {
+            "name": "arguments",
+            "type": "content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "observation",
+            "type": "content"
+          }
+        ]
+      },
+      {
+        "id": "review_tool",
+        "name": "review_tool",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "stop_id",
+            "type": "content"
+          },
+          {
+            "name": "call",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      },
+      {
+        "id": "react_turn",
+        "name": "react_turn",
+        "input_ports": [
+          {
+            "name": "history_id",
+            "type": "content"
+          },
+          {
+            "name": "tokens_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": []
+      }
+    ],
+    "tools": [
+      {
+        "name": "workspace.list_files",
+        "kind": "local",
+        "input_ports": [],
+        "output_ports": [
+          {
+            "name": "items",
+            "type": "list-content"
+          },
+          {
+            "name": "revision",
+            "type": "number"
+          }
+        ]
+      },
+      {
+        "name": "workspace.get_file",
+        "kind": "local",
+        "input_ports": [
+          {
+            "name": "file_id",
+            "type": "content"
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "output",
+            "type": "content"
+          }
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "in",
+      "type": "input",
+      "name": "in",
+      "x": 80,
+      "y": 100,
+      "workflowPorts": [
+        {
+          "id": "workflow:task",
+          "name": "task",
+          "type": "content"
+        }
+      ]
+    },
+    {
+      "id": "system_prompt",
+      "type": "construct_content",
+      "name": "system prompt",
+      "x": 340,
+      "y": 100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "You are a ReAct assistant. Respond in the user's language. Briefly explain your next step and use the provided tools when useful. Every tool call requires the human to reply APPROVE before execution. A rejection is returned as a tool observation. Never claim a proposed call has already run. Ask the user for feedback when no tool is needed. The user can end the run with DONE. Use only the provided tool names and their exact argument schemas."
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "system",
+      "type": "construct_message",
+      "name": "system",
+      "x": 600,
+      "y": 100,
+      "arguments": {
+        "role": "system"
+      }
+    },
+    {
+      "id": "task_message",
+      "type": "construct_message",
+      "name": "task message",
+      "x": 860,
+      "y": 100,
+      "arguments": {
+        "role": "user"
+      }
+    },
+    {
+      "id": "initial_history",
+      "type": "construct_list",
+      "name": "initial history",
+      "x": 1120,
+      "y": 100,
+      "arguments": {
+        "item_type": "content",
+        "initial_value_count": 2
+      },
+      "dataInputPorts": [
+        "content-in-0",
+        "content-in-1"
+      ]
+    },
+    {
+      "id": "create_history",
+      "type": "context_create",
+      "name": "create history",
+      "x": 1380,
+      "y": 100,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "start_token",
+      "type": "construct_content",
+      "name": "start token",
+      "x": 1640,
+      "y": 100,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "next"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "initial_tokens",
+      "type": "construct_list",
+      "name": "initial tokens",
+      "x": 1900,
+      "y": 100,
+      "arguments": {
+        "item_type": "content",
+        "initial_value_count": 1
+      },
+      "dataInputPorts": [
+        "content-in-0"
+      ]
+    },
+    {
+      "id": "create_tokens",
+      "type": "context_create",
+      "name": "create tokens",
+      "x": 2160,
+      "y": 100,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "turn_gate",
+      "type": "while_pop",
+      "name": "turn gate",
+      "x": 2420,
+      "y": 100,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "call_turn",
+      "type": "function_call",
+      "name": "call turn",
+      "x": 2680,
+      "y": 100,
+      "arguments": {
+        "function_id": "react_turn"
+      }
+    },
+    {
+      "id": "out",
+      "type": "output",
+      "name": "out",
+      "x": 2940,
+      "y": 100,
+      "workflowPorts": []
+    },
+    {
+      "id": "append_history_in",
+      "type": "function_input",
+      "name": "append history in",
+      "x": 80,
+      "y": 700,
+      "function_id": "append_history"
+    },
+    {
+      "id": "history_read",
+      "type": "context_read",
+      "name": "history read",
+      "x": 340,
+      "y": 700,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "history_append",
+      "type": "list_append",
+      "name": "history append",
+      "x": 600,
+      "y": 700,
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      }
+    },
+    {
+      "id": "history_write",
+      "type": "context_write",
+      "name": "history write",
+      "x": 860,
+      "y": 700,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "history_return",
+      "type": "function_output",
+      "name": "history return",
+      "x": 1120,
+      "y": 700,
+      "function_id": "append_history"
+    },
+    {
+      "id": "queue_turn_in",
+      "type": "function_input",
+      "name": "queue turn in",
+      "x": 80,
+      "y": 1300,
+      "function_id": "queue_turn"
+    },
+    {
+      "id": "tokens_read",
+      "type": "context_read",
+      "name": "tokens read",
+      "x": 340,
+      "y": 1300,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "next_token",
+      "type": "construct_content",
+      "name": "next token",
+      "x": 600,
+      "y": 1300,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "next"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "tokens_append",
+      "type": "list_append",
+      "name": "tokens append",
+      "x": 860,
+      "y": 1300,
+      "arguments": {
+        "item_type": "content",
+        "position": "end"
+      }
+    },
+    {
+      "id": "tokens_write",
+      "type": "context_write",
+      "name": "tokens write",
+      "x": 1120,
+      "y": 1300,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "tokens_return",
+      "type": "function_output",
+      "name": "tokens return",
+      "x": 1380,
+      "y": 1300,
+      "function_id": "queue_turn"
+    },
+    {
+      "id": "build_assistant_in",
+      "type": "function_input",
+      "name": "build assistant in",
+      "x": 80,
+      "y": 1900,
+      "function_id": "build_assistant"
+    },
+    {
+      "id": "build_message",
+      "type": "construct_message",
+      "name": "build message",
+      "x": 340,
+      "y": 1900,
+      "arguments": {
+        "role": "assistant"
+      }
+    },
+    {
+      "id": "build_return",
+      "type": "function_output",
+      "name": "build return",
+      "x": 600,
+      "y": 1900,
+      "function_id": "build_assistant"
+    },
+    {
+      "id": "record_tool_result_in",
+      "type": "function_input",
+      "name": "record tool result in",
+      "x": 80,
+      "y": 2500,
+      "function_id": "record_tool_result"
+    },
+    {
+      "id": "result_message",
+      "type": "construct_message",
+      "name": "result message",
+      "x": 340,
+      "y": 2500,
+      "arguments": {
+        "role": "tool"
+      }
+    },
+    {
+      "id": "result_save",
+      "type": "function_call",
+      "name": "result save",
+      "x": 600,
+      "y": 2500,
+      "arguments": {
+        "function_id": "append_history"
+      }
+    },
+    {
+      "id": "result_return",
+      "type": "function_output",
+      "name": "result return",
+      "x": 860,
+      "y": 2500,
+      "function_id": "record_tool_result"
+    },
+    {
+      "id": "execute_reviewed_tool_in",
+      "type": "function_input",
+      "name": "execute reviewed tool in",
+      "x": 80,
+      "y": 3100,
+      "function_id": "execute_reviewed_tool"
+    },
+    {
+      "id": "execute_tool",
+      "type": "json_tool",
+      "name": "execute tool",
+      "x": 340,
+      "y": 3100
+    },
+    {
+      "id": "execute_success",
+      "type": "function_output",
+      "name": "execute success",
+      "x": 600,
+      "y": 3100,
+      "function_id": "execute_reviewed_tool"
+    },
+    {
+      "id": "execute_error",
+      "type": "function_output",
+      "name": "execute error",
+      "x": 860,
+      "y": 3100,
+      "function_id": "execute_reviewed_tool"
+    },
+    {
+      "id": "review_tool_in",
+      "type": "function_input",
+      "name": "review tool in",
+      "x": 80,
+      "y": 3700,
+      "function_id": "review_tool"
+    },
+    {
+      "id": "review_parse",
+      "type": "json_to_struct",
+      "name": "review parse",
+      "x": 340,
+      "y": 3700,
+      "arguments": {
+        "value_type": "struct:ToolCall"
+      }
+    },
+    {
+      "id": "review_id",
+      "type": "struct_get",
+      "name": "review id",
+      "x": 600,
+      "y": 3700,
+      "arguments": {
+        "struct_id": "ToolCall",
+        "field": "id"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "review_function",
+      "type": "struct_get",
+      "name": "review function",
+      "x": 860,
+      "y": 3700,
+      "arguments": {
+        "struct_id": "ToolCall",
+        "field": "function"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "review_name",
+      "type": "struct_get",
+      "name": "review name",
+      "x": 1120,
+      "y": 3700,
+      "arguments": {
+        "struct_id": "CallFunction",
+        "field": "name"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "review_args",
+      "type": "struct_get",
+      "name": "review args",
+      "x": 1380,
+      "y": 3700,
+      "arguments": {
+        "struct_id": "CallFunction",
+        "field": "arguments"
+      },
+      "dataInputPorts": [
+        "struct-in"
+      ]
+    },
+    {
+      "id": "review_stop",
+      "type": "context_read",
+      "name": "review stop",
+      "x": 1640,
+      "y": 3700,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "review_stop_route",
+      "type": "router",
+      "name": "review stop route",
+      "x": 1900,
+      "y": 3700,
+      "arguments": {
+        "branches": [
+          {
+            "id": "stopped",
+            "name": "DONE"
+          }
+        ]
+      }
+    },
+    {
+      "id": "review_skipped",
+      "type": "construct_content",
+      "name": "review skipped",
+      "x": 2160,
+      "y": 3700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "Cancelled: user ended this run; this tool was not executed."
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "review_skip_save",
+      "type": "function_call",
+      "name": "review skip save",
+      "x": 2420,
+      "y": 3700,
+      "arguments": {
+        "function_id": "record_tool_result"
+      }
+    },
+    {
+      "id": "review_skip_return",
+      "type": "function_output",
+      "name": "review skip return",
+      "x": 2680,
+      "y": 3700,
+      "function_id": "review_tool"
+    },
+    {
+      "id": "review_prompt",
+      "type": "construct_content",
+      "name": "review prompt",
+      "x": 2940,
+      "y": 3700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "Tool request (full call):\n"
+          },
+          {
+            "type": "port",
+            "port_id": "value"
+          },
+          {
+            "type": "fixed",
+            "value": "\nReply APPROVE to execute this exact call; DONE to end; any other reply rejects it and is sent back as feedback."
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "value"
+      ]
+    },
+    {
+      "id": "review_show",
+      "type": "output_to_terminal",
+      "name": "review show",
+      "x": 3200,
+      "y": 3700
+    },
+    {
+      "id": "review_inputs",
+      "type": "read_terminal_queue",
+      "name": "review inputs",
+      "x": 3460,
+      "y": 3700
+    },
+    {
+      "id": "review_latest",
+      "type": "list_get",
+      "name": "review latest",
+      "x": 3720,
+      "y": 3700,
+      "arguments": {
+        "value_type": "list-content",
+        "index_source": "fixed",
+        "index": -1
+      }
+    },
+    {
+      "id": "review_decision",
+      "type": "router",
+      "name": "review decision",
+      "x": 3980,
+      "y": 3700,
+      "arguments": {
+        "branches": [
+          {
+            "id": "approve",
+            "name": "APPROVE"
+          },
+          {
+            "id": "done",
+            "name": "DONE"
+          }
+        ]
+      }
+    },
+    {
+      "id": "review_execute",
+      "type": "function_call",
+      "name": "review execute",
+      "x": 4240,
+      "y": 3700,
+      "arguments": {
+        "function_id": "execute_reviewed_tool"
+      }
+    },
+    {
+      "id": "review_show_result",
+      "type": "output_to_terminal",
+      "name": "review show result",
+      "x": 4500,
+      "y": 3700
+    },
+    {
+      "id": "review_approved_save",
+      "type": "function_call",
+      "name": "review approved save",
+      "x": 4760,
+      "y": 3700,
+      "arguments": {
+        "function_id": "record_tool_result"
+      }
+    },
+    {
+      "id": "review_approved_return",
+      "type": "function_output",
+      "name": "review approved return",
+      "x": 5020,
+      "y": 3700,
+      "function_id": "review_tool"
+    },
+    {
+      "id": "review_done",
+      "type": "construct_content",
+      "name": "review done",
+      "x": 5280,
+      "y": 3700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "DONE"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "review_set_stop",
+      "type": "context_write",
+      "name": "review set stop",
+      "x": 5540,
+      "y": 3700,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "review_cancelled",
+      "type": "construct_content",
+      "name": "review cancelled",
+      "x": 5800,
+      "y": 3700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "Cancelled: user ended this run; this tool was not executed."
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "review_cancel_save",
+      "type": "function_call",
+      "name": "review cancel save",
+      "x": 6060,
+      "y": 3700,
+      "arguments": {
+        "function_id": "record_tool_result"
+      }
+    },
+    {
+      "id": "review_cancel_return",
+      "type": "function_output",
+      "name": "review cancel return",
+      "x": 6320,
+      "y": 3700,
+      "function_id": "review_tool"
+    },
+    {
+      "id": "review_rejected",
+      "type": "construct_content",
+      "name": "review rejected",
+      "x": 6580,
+      "y": 3700,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "Rejected by human; tool was not executed. Feedback: "
+          },
+          {
+            "type": "port",
+            "port_id": "value"
+          },
+          {
+            "type": "fixed",
+            "value": ""
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "value"
+      ]
+    },
+    {
+      "id": "review_reject_save",
+      "type": "function_call",
+      "name": "review reject save",
+      "x": 6840,
+      "y": 3700,
+      "arguments": {
+        "function_id": "record_tool_result"
+      }
+    },
+    {
+      "id": "review_reject_return",
+      "type": "function_output",
+      "name": "review reject return",
+      "x": 7100,
+      "y": 3700,
+      "function_id": "review_tool"
+    },
+    {
+      "id": "react_turn_in",
+      "type": "function_input",
+      "name": "react turn in",
+      "x": 80,
+      "y": 4300,
+      "function_id": "react_turn"
+    },
+    {
+      "id": "read_for_llm",
+      "type": "context_read",
+      "name": "read for llm",
+      "x": 340,
+      "y": 4300,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "llm",
+      "type": "llm",
+      "name": "llm",
+      "x": 600,
+      "y": 4300,
+      "arguments": {
+        "model": "REPLACE_WITH_MODEL_ID",
+        "think": true,
+        "tool_calls": true,
+        "tools": [
+          "workspace.list_files",
+          "workspace.get_file"
+        ]
+      }
+    },
+    {
+      "id": "normalize_content",
+      "type": "construct_content",
+      "name": "normalize content",
+      "x": 860,
+      "y": 4300,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": ""
+          },
+          {
+            "type": "port",
+            "port_id": "value"
+          },
+          {
+            "type": "fixed",
+            "value": ""
+          }
+        ]
+      },
+      "dataInputPorts": [
+        "value"
+      ]
+    },
+    {
+      "id": "assistant_message",
+      "type": "function_call",
+      "name": "assistant message",
+      "x": 1120,
+      "y": 4300,
+      "arguments": {
+        "function_id": "build_assistant"
+      }
+    },
+    {
+      "id": "save_assistant",
+      "type": "function_call",
+      "name": "save assistant",
+      "x": 1380,
+      "y": 4300,
+      "arguments": {
+        "function_id": "append_history"
+      }
+    },
+    {
+      "id": "turn_count",
+      "type": "list_length",
+      "name": "tool call count",
+      "x": 1640,
+      "y": 4300,
+      "arguments": {
+        "value_type": "list-content"
+      }
+    },
+    {
+      "id": "turn_count_value",
+      "type": "construct_struct",
+      "name": "turn count value",
+      "x": 1900,
+      "y": 4300,
+      "arguments": {
+        "struct_id": "ToolCallCount"
+      },
+      "dataInputPorts": [
+        "count"
+      ]
+    },
+    {
+      "id": "turn_count_json",
+      "type": "struct_to_json",
+      "name": "turn count json",
+      "x": 2160,
+      "y": 4300,
+      "arguments": {
+        "value_type": "struct:ToolCallCount"
+      }
+    },
+    {
+      "id": "turn_count_text",
+      "type": "deserialize_json",
+      "name": "turn count text",
+      "x": 2420,
+      "y": 4300,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "count",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "turn_kind",
+      "type": "router",
+      "name": "turn kind",
+      "x": 2680,
+      "y": 4300,
+      "arguments": {
+        "branches": [
+          {
+            "id": "text",
+            "name": "0"
+          }
+        ]
+      }
+    },
+    {
+      "id": "show_proposal",
+      "type": "output_to_terminal",
+      "name": "show proposal",
+      "x": 2940,
+      "y": 4300
+    },
+    {
+      "id": "read_human",
+      "type": "read_terminal_queue",
+      "name": "read human",
+      "x": 3200,
+      "y": 4300
+    },
+    {
+      "id": "latest_human",
+      "type": "list_get",
+      "name": "latest human",
+      "x": 3460,
+      "y": 4300,
+      "arguments": {
+        "value_type": "list-content",
+        "index_source": "fixed",
+        "index": -1
+      }
+    },
+    {
+      "id": "done_gate",
+      "type": "router",
+      "name": "done gate",
+      "x": 3720,
+      "y": 4300,
+      "arguments": {
+        "branches": [
+          {
+            "id": "done",
+            "name": "DONE"
+          }
+        ]
+      }
+    },
+    {
+      "id": "turn_done",
+      "type": "function_output",
+      "name": "turn done",
+      "x": 3980,
+      "y": 4300,
+      "function_id": "react_turn"
+    },
+    {
+      "id": "observation_message",
+      "type": "construct_message",
+      "name": "observation message",
+      "x": 4240,
+      "y": 4300,
+      "arguments": {
+        "role": "user"
+      }
+    },
+    {
+      "id": "save_observation",
+      "type": "function_call",
+      "name": "save observation",
+      "x": 4500,
+      "y": 4300,
+      "arguments": {
+        "function_id": "append_history"
+      }
+    },
+    {
+      "id": "queue_after_text",
+      "type": "function_call",
+      "name": "queue after text",
+      "x": 4760,
+      "y": 4300,
+      "arguments": {
+        "function_id": "queue_turn"
+      }
+    },
+    {
+      "id": "turn_continue",
+      "type": "function_output",
+      "name": "turn continue",
+      "x": 5020,
+      "y": 4300,
+      "function_id": "react_turn"
+    },
+    {
+      "id": "turn_stop_initial",
+      "type": "construct_content",
+      "name": "turn stop initial",
+      "x": 5280,
+      "y": 4300,
+      "arguments": {
+        "append_items": [
+          {
+            "type": "fixed",
+            "value": "continue"
+          }
+        ]
+      },
+      "dataInputPorts": []
+    },
+    {
+      "id": "turn_stop_context",
+      "type": "context_create",
+      "name": "turn stop context",
+      "x": 5540,
+      "y": 4300,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "turn_calls",
+      "type": "foreach",
+      "name": "turn calls",
+      "x": 5800,
+      "y": 4300,
+      "arguments": {
+        "item_type": "content"
+      }
+    },
+    {
+      "id": "review_each_tool",
+      "type": "function_call",
+      "name": "review each tool",
+      "x": 6060,
+      "y": 4300,
+      "arguments": {
+        "function_id": "review_tool"
+      }
+    },
+    {
+      "id": "turn_stop_read",
+      "type": "context_read",
+      "name": "turn stop read",
+      "x": 6320,
+      "y": 4300,
+      "arguments": {
+        "value_type": "content"
+      }
+    },
+    {
+      "id": "turn_stop_route",
+      "type": "router",
+      "name": "turn stop route",
+      "x": 6580,
+      "y": 4300,
+      "arguments": {
+        "branches": [
+          {
+            "id": "done",
+            "name": "DONE"
+          }
+        ]
+      }
+    },
+    {
+      "id": "turn_tools_done",
+      "type": "function_output",
+      "name": "turn tools done",
+      "x": 6840,
+      "y": 4300,
+      "function_id": "react_turn"
+    },
+    {
+      "id": "queue_after_tools",
+      "type": "function_call",
+      "name": "queue after tools",
+      "x": 7100,
+      "y": 4300,
+      "arguments": {
+        "function_id": "queue_turn"
+      }
+    },
+    {
+      "id": "turn_tools_continue",
+      "type": "function_output",
+      "name": "turn tools continue",
+      "x": 7360,
+      "y": 4300,
+      "function_id": "react_turn"
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "system_prompt",
+      "fromPortId": "content-out",
+      "toId": "system",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "in",
+      "fromPortId": "workflow:task",
+      "toId": "task_message",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "system",
+      "fromPortId": "content-out",
+      "toId": "initial_history",
+      "toPortId": "content-in-0",
+      "type": "content"
+    },
+    {
+      "fromId": "task_message",
+      "fromPortId": "content-out",
+      "toId": "initial_history",
+      "toPortId": "content-in-1",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_history",
+      "fromPortId": "list-out",
+      "toId": "create_history",
+      "toPortId": "initial-value",
+      "type": "list-content"
+    },
+    {
+      "fromId": "start_token",
+      "fromPortId": "content-out",
+      "toId": "initial_tokens",
+      "toPortId": "content-in-0",
+      "type": "content"
+    },
+    {
+      "fromId": "initial_tokens",
+      "fromPortId": "list-out",
+      "toId": "create_tokens",
+      "toPortId": "initial-value",
+      "type": "list-content"
+    },
+    {
+      "fromId": "create_tokens",
+      "fromPortId": "context-id",
+      "toId": "turn_gate",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "create_history",
+      "fromPortId": "context-id",
+      "toId": "call_turn",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "create_tokens",
+      "fromPortId": "context-id",
+      "toId": "call_turn",
+      "toPortId": "function:tokens_id",
+      "type": "content"
+    },
+    {
+      "fromId": "in",
+      "fromPortId": "control-out",
+      "toId": "system_prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "system_prompt",
+      "fromPortId": "control-out",
+      "toId": "system",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "system",
+      "fromPortId": "control-out",
+      "toId": "task_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "task_message",
+      "fromPortId": "control-out",
+      "toId": "initial_history",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_history",
+      "fromPortId": "control-out",
+      "toId": "create_history",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "create_history",
+      "fromPortId": "control-out",
+      "toId": "start_token",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "start_token",
+      "fromPortId": "control-out",
+      "toId": "initial_tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "initial_tokens",
+      "fromPortId": "control-out",
+      "toId": "create_tokens",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "create_tokens",
+      "fromPortId": "control-out",
+      "toId": "turn_gate",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_gate",
+      "fromPortId": "loop-out",
+      "toId": "call_turn",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call_turn",
+      "fromPortId": "control-out",
+      "toId": "turn_gate",
+      "toPortId": "loop-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_gate",
+      "fromPortId": "control-out",
+      "toId": "out",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "append_history_in",
+      "fromPortId": "function:history_id",
+      "toId": "history_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "history_read",
+      "fromPortId": "value-out",
+      "toId": "history_append",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "append_history_in",
+      "fromPortId": "function:message",
+      "toId": "history_append",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "append_history_in",
+      "fromPortId": "function:history_id",
+      "toId": "history_write",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "history_append",
+      "fromPortId": "list-out",
+      "toId": "history_write",
+      "toPortId": "value-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "append_history_in",
+      "fromPortId": "control-out",
+      "toId": "history_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "history_read",
+      "fromPortId": "control-out",
+      "toId": "history_append",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "history_append",
+      "fromPortId": "control-out",
+      "toId": "history_write",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "history_write",
+      "fromPortId": "control-out",
+      "toId": "history_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "queue_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "tokens_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "tokens_read",
+      "fromPortId": "value-out",
+      "toId": "tokens_append",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "next_token",
+      "fromPortId": "content-out",
+      "toId": "tokens_append",
+      "toPortId": "item-in",
+      "type": "content"
+    },
+    {
+      "fromId": "queue_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "tokens_write",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "tokens_append",
+      "fromPortId": "list-out",
+      "toId": "tokens_write",
+      "toPortId": "value-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "queue_turn_in",
+      "fromPortId": "control-out",
+      "toId": "tokens_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_read",
+      "fromPortId": "control-out",
+      "toId": "next_token",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "next_token",
+      "fromPortId": "control-out",
+      "toId": "tokens_append",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_append",
+      "fromPortId": "control-out",
+      "toId": "tokens_write",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "tokens_write",
+      "fromPortId": "control-out",
+      "toId": "tokens_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:content",
+      "toId": "build_message",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:reasoning",
+      "toId": "build_message",
+      "toPortId": "reasoning-in",
+      "type": "content"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "function:calls",
+      "toId": "build_message",
+      "toPortId": "tool-calls-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "build_message",
+      "fromPortId": "content-out",
+      "toId": "build_return",
+      "toPortId": "function:message",
+      "type": "content"
+    },
+    {
+      "fromId": "build_assistant_in",
+      "fromPortId": "control-out",
+      "toId": "build_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "build_message",
+      "fromPortId": "control-out",
+      "toId": "build_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "record_tool_result_in",
+      "fromPortId": "function:content",
+      "toId": "result_message",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "record_tool_result_in",
+      "fromPortId": "function:call_id",
+      "toId": "result_message",
+      "toPortId": "tool-call-id-in",
+      "type": "content"
+    },
+    {
+      "fromId": "record_tool_result_in",
+      "fromPortId": "function:history_id",
+      "toId": "result_save",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "result_message",
+      "fromPortId": "content-out",
+      "toId": "result_save",
+      "toPortId": "function:message",
+      "type": "content"
+    },
+    {
+      "fromId": "record_tool_result_in",
+      "fromPortId": "control-out",
+      "toId": "result_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "result_message",
+      "fromPortId": "control-out",
+      "toId": "result_save",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "result_save",
+      "fromPortId": "control-out",
+      "toId": "result_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "execute_reviewed_tool_in",
+      "fromPortId": "function:name",
+      "toId": "execute_tool",
+      "toPortId": "tool-name",
+      "type": "content"
+    },
+    {
+      "fromId": "execute_reviewed_tool_in",
+      "fromPortId": "function:arguments",
+      "toId": "execute_tool",
+      "toPortId": "arguments-json",
+      "type": "content"
+    },
+    {
+      "fromId": "execute_tool",
+      "fromPortId": "result-json",
+      "toId": "execute_success",
+      "toPortId": "function:observation",
+      "type": "content"
+    },
+    {
+      "fromId": "execute_tool",
+      "fromPortId": "error-json",
+      "toId": "execute_error",
+      "toPortId": "function:observation",
+      "type": "content"
+    },
+    {
+      "fromId": "execute_reviewed_tool_in",
+      "fromPortId": "control-out",
+      "toId": "execute_tool",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "execute_tool",
+      "fromPortId": "control-out",
+      "toId": "execute_success",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "execute_tool",
+      "fromPortId": "error-out",
+      "toId": "execute_error",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "function:call",
+      "toId": "review_parse",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "review_parse",
+      "fromPortId": "value-out",
+      "toId": "review_id",
+      "toPortId": "struct-in",
+      "type": "struct:ToolCall"
+    },
+    {
+      "fromId": "review_parse",
+      "fromPortId": "value-out",
+      "toId": "review_function",
+      "toPortId": "struct-in",
+      "type": "struct:ToolCall"
+    },
+    {
+      "fromId": "review_function",
+      "fromPortId": "value-out",
+      "toId": "review_name",
+      "toPortId": "struct-in",
+      "type": "struct:CallFunction"
+    },
+    {
+      "fromId": "review_function",
+      "fromPortId": "value-out",
+      "toId": "review_args",
+      "toPortId": "struct-in",
+      "type": "struct:CallFunction"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "function:stop_id",
+      "toId": "review_stop",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_stop",
+      "fromPortId": "value-out",
+      "toId": "review_stop_route",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "control-out",
+      "toId": "review_parse",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_parse",
+      "fromPortId": "control-out",
+      "toId": "review_id",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_id",
+      "fromPortId": "control-out",
+      "toId": "review_function",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_function",
+      "fromPortId": "control-out",
+      "toId": "review_name",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_name",
+      "fromPortId": "control-out",
+      "toId": "review_args",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_args",
+      "fromPortId": "control-out",
+      "toId": "review_stop",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_stop",
+      "fromPortId": "control-out",
+      "toId": "review_stop_route",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "function:history_id",
+      "toId": "review_skip_save",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_id",
+      "fromPortId": "value-out",
+      "toId": "review_skip_save",
+      "toPortId": "function:call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_skipped",
+      "fromPortId": "content-out",
+      "toId": "review_skip_save",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "review_stop_route",
+      "fromPortId": "stopped",
+      "toId": "review_skipped",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_skipped",
+      "fromPortId": "control-out",
+      "toId": "review_skip_save",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_skip_save",
+      "fromPortId": "control-out",
+      "toId": "review_skip_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "function:call",
+      "toId": "review_prompt",
+      "toPortId": "value",
+      "type": "content"
+    },
+    {
+      "fromId": "review_prompt",
+      "fromPortId": "content-out",
+      "toId": "review_show",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "review_inputs",
+      "fromPortId": "list-out",
+      "toId": "review_latest",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "review_latest",
+      "fromPortId": "item-out",
+      "toId": "review_decision",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "review_stop_route",
+      "fromPortId": "branch$others",
+      "toId": "review_prompt",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_prompt",
+      "fromPortId": "control-out",
+      "toId": "review_show",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_show",
+      "fromPortId": "control-out",
+      "toId": "review_inputs",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_inputs",
+      "fromPortId": "control-out",
+      "toId": "review_latest",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_latest",
+      "fromPortId": "control-out",
+      "toId": "review_decision",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_name",
+      "fromPortId": "value-out",
+      "toId": "review_execute",
+      "toPortId": "function:name",
+      "type": "content"
+    },
+    {
+      "fromId": "review_args",
+      "fromPortId": "value-out",
+      "toId": "review_execute",
+      "toPortId": "function:arguments",
+      "type": "content"
+    },
+    {
+      "fromId": "review_execute",
+      "fromPortId": "function:observation",
+      "toId": "review_show_result",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "function:history_id",
+      "toId": "review_approved_save",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_id",
+      "fromPortId": "value-out",
+      "toId": "review_approved_save",
+      "toPortId": "function:call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_execute",
+      "fromPortId": "function:observation",
+      "toId": "review_approved_save",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "review_decision",
+      "fromPortId": "approve",
+      "toId": "review_execute",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_execute",
+      "fromPortId": "control-out",
+      "toId": "review_show_result",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_show_result",
+      "fromPortId": "control-out",
+      "toId": "review_approved_save",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_approved_save",
+      "fromPortId": "control-out",
+      "toId": "review_approved_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "function:stop_id",
+      "toId": "review_set_stop",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_done",
+      "fromPortId": "content-out",
+      "toId": "review_set_stop",
+      "toPortId": "value-in",
+      "type": "content"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "function:history_id",
+      "toId": "review_cancel_save",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_id",
+      "fromPortId": "value-out",
+      "toId": "review_cancel_save",
+      "toPortId": "function:call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_cancelled",
+      "fromPortId": "content-out",
+      "toId": "review_cancel_save",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "review_decision",
+      "fromPortId": "done",
+      "toId": "review_done",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_done",
+      "fromPortId": "control-out",
+      "toId": "review_set_stop",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_set_stop",
+      "fromPortId": "control-out",
+      "toId": "review_cancelled",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_cancelled",
+      "fromPortId": "control-out",
+      "toId": "review_cancel_save",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_cancel_save",
+      "fromPortId": "control-out",
+      "toId": "review_cancel_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_latest",
+      "fromPortId": "item-out",
+      "toId": "review_rejected",
+      "toPortId": "value",
+      "type": "content"
+    },
+    {
+      "fromId": "review_tool_in",
+      "fromPortId": "function:history_id",
+      "toId": "review_reject_save",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_id",
+      "fromPortId": "value-out",
+      "toId": "review_reject_save",
+      "toPortId": "function:call_id",
+      "type": "content"
+    },
+    {
+      "fromId": "review_rejected",
+      "fromPortId": "content-out",
+      "toId": "review_reject_save",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "review_decision",
+      "fromPortId": "branch$others",
+      "toId": "review_rejected",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_rejected",
+      "fromPortId": "control-out",
+      "toId": "review_reject_save",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_reject_save",
+      "fromPortId": "control-out",
+      "toId": "review_reject_return",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "react_turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "read_for_llm",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "read_for_llm",
+      "fromPortId": "value-out",
+      "toId": "llm",
+      "toPortId": "messages-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "output",
+      "toId": "normalize_content",
+      "toPortId": "value",
+      "type": "content"
+    },
+    {
+      "fromId": "normalize_content",
+      "fromPortId": "content-out",
+      "toId": "assistant_message",
+      "toPortId": "function:content",
+      "type": "content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "reasoning",
+      "toId": "assistant_message",
+      "toPortId": "function:reasoning",
+      "type": "content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "tool_calls",
+      "toId": "assistant_message",
+      "toPortId": "function:calls",
+      "type": "list-content"
+    },
+    {
+      "fromId": "react_turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "save_assistant",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "assistant_message",
+      "fromPortId": "function:message",
+      "toId": "save_assistant",
+      "toPortId": "function:message",
+      "type": "content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "tool_calls",
+      "toId": "turn_count",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "turn_count",
+      "fromPortId": "length-out",
+      "toId": "turn_count_value",
+      "toPortId": "count",
+      "type": "number"
+    },
+    {
+      "fromId": "turn_count_value",
+      "fromPortId": "struct-out",
+      "toId": "turn_count_json",
+      "toPortId": "value-in",
+      "type": "struct:ToolCallCount"
+    },
+    {
+      "fromId": "turn_count_json",
+      "fromPortId": "content-out",
+      "toId": "turn_count_text",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_count",
+      "fromPortId": "control-out",
+      "toId": "turn_count_value",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_count_value",
+      "fromPortId": "control-out",
+      "toId": "turn_count_json",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_count_json",
+      "fromPortId": "control-out",
+      "toId": "turn_count_text",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_count_text",
+      "fromPortId": "count",
+      "toId": "turn_kind",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "react_turn_in",
+      "fromPortId": "control-out",
+      "toId": "read_for_llm",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_for_llm",
+      "fromPortId": "control-out",
+      "toId": "llm",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "control-out",
+      "toId": "normalize_content",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "normalize_content",
+      "fromPortId": "control-out",
+      "toId": "assistant_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "assistant_message",
+      "fromPortId": "control-out",
+      "toId": "save_assistant",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_assistant",
+      "fromPortId": "control-out",
+      "toId": "turn_count",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_count_text",
+      "fromPortId": "control-out",
+      "toId": "turn_kind",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "normalize_content",
+      "fromPortId": "content-out",
+      "toId": "show_proposal",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "read_human",
+      "fromPortId": "list-out",
+      "toId": "latest_human",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "latest_human",
+      "fromPortId": "item-out",
+      "toId": "done_gate",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "done_gate",
+      "fromPortId": "done",
+      "toId": "turn_done",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "latest_human",
+      "fromPortId": "item-out",
+      "toId": "observation_message",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "react_turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "save_observation",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "observation_message",
+      "fromPortId": "content-out",
+      "toId": "save_observation",
+      "toPortId": "function:message",
+      "type": "content"
+    },
+    {
+      "fromId": "react_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "queue_after_text",
+      "toPortId": "function:tokens_id",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_kind",
+      "fromPortId": "text",
+      "toId": "show_proposal",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "show_proposal",
+      "fromPortId": "control-out",
+      "toId": "read_human",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "read_human",
+      "fromPortId": "control-out",
+      "toId": "latest_human",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "latest_human",
+      "fromPortId": "control-out",
+      "toId": "done_gate",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "done_gate",
+      "fromPortId": "branch$others",
+      "toId": "observation_message",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "observation_message",
+      "fromPortId": "control-out",
+      "toId": "save_observation",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "save_observation",
+      "fromPortId": "control-out",
+      "toId": "queue_after_text",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "queue_after_text",
+      "fromPortId": "control-out",
+      "toId": "turn_continue",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_stop_initial",
+      "fromPortId": "content-out",
+      "toId": "turn_stop_context",
+      "toPortId": "initial-value",
+      "type": "content"
+    },
+    {
+      "fromId": "llm",
+      "fromPortId": "tool_calls",
+      "toId": "turn_calls",
+      "toPortId": "list-in",
+      "type": "list-content"
+    },
+    {
+      "fromId": "react_turn_in",
+      "fromPortId": "function:history_id",
+      "toId": "review_each_tool",
+      "toPortId": "function:history_id",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_stop_context",
+      "fromPortId": "context-id",
+      "toId": "review_each_tool",
+      "toPortId": "function:stop_id",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_calls",
+      "fromPortId": "item-out",
+      "toId": "review_each_tool",
+      "toPortId": "function:call",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_stop_context",
+      "fromPortId": "context-id",
+      "toId": "turn_stop_read",
+      "toPortId": "context-id",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_stop_read",
+      "fromPortId": "value-out",
+      "toId": "turn_stop_route",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "react_turn_in",
+      "fromPortId": "function:tokens_id",
+      "toId": "queue_after_tools",
+      "toPortId": "function:tokens_id",
+      "type": "content"
+    },
+    {
+      "fromId": "turn_kind",
+      "fromPortId": "branch$others",
+      "toId": "turn_stop_initial",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_stop_initial",
+      "fromPortId": "control-out",
+      "toId": "turn_stop_context",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_stop_context",
+      "fromPortId": "control-out",
+      "toId": "turn_calls",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_calls",
+      "fromPortId": "loop-out",
+      "toId": "review_each_tool",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "review_each_tool",
+      "fromPortId": "control-out",
+      "toId": "turn_calls",
+      "toPortId": "loop-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_calls",
+      "fromPortId": "control-out",
+      "toId": "turn_stop_read",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_stop_read",
+      "fromPortId": "control-out",
+      "toId": "turn_stop_route",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_stop_route",
+      "fromPortId": "done",
+      "toId": "turn_tools_done",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "turn_stop_route",
+      "fromPortId": "branch$others",
+      "toId": "queue_after_tools",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "queue_after_tools",
+      "fromPortId": "control-out",
+      "toId": "turn_tools_continue",
+      "toPortId": "control-in",
+      "type": "control"
+    }
+  ]
+}

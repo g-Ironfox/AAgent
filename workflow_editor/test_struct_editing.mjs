@@ -35,8 +35,8 @@ test('swapping names remaps nested Struct and list types exactly once', () => {
   assert.deepEqual(structs[2].fields.map((item) => item.type), ['struct:B', 'list-struct:A']);
   const workflow = {
     nodes: [
-      { id: 'keep_me', type: 'workflow', input_ports: [{ name: 'one', type: 'struct:A' }] },
-      { id: 'serialized', type: 'workflow', arguments: { workflow_name: 'child' }, output_ports: [{ name: 'many', type: 'list-struct:B' }] },
+      { id: 'keep_me', type: "spawn_and_wait_subprocess", input_ports: [{ name: 'one', type: 'struct:A' }] },
+      { id: 'serialized', type: "spawn_and_wait_subprocess", arguments: { workflow_file: 'child' }, output_ports: [{ name: 'many', type: 'list-struct:B' }] },
       { id: 'tool', type: 'local_tool', parameters: ['struct:A'] },
       { id: 'literal', type: 'construct_content', append_items: [{ type: 'fixed', value: 'struct:A' }] },
     ],
@@ -128,7 +128,7 @@ function structPortRoundTripWorkflow(missing, updates) {
   return workflow;
 }
 
-test('Struct get and update snapshots retain port contracts accepted by both backends', () => {
+test('Struct get and update snapshots retain port contracts accepted by the runtime backend', () => {
   const workflows = [];
   for (const missing of ['error', 'fallback']) {
     for (const updates of [[], ['name', 'nickname']]) {
@@ -142,7 +142,7 @@ test('Struct get and update snapshots retain port contracts accepted by both bac
           `${original.name}: ${id}`,
         );
       }
-      assert.deepEqual(snapshot.connections, original.connections);
+      assert.deepEqual(snapshot.connections, original.connections.map(({ id, ...connection }) => connection));
       assert.equal(loadSnapshot(snapshot), true);
       assert.deepEqual(workflowSnapshot(), snapshot);
       workflows.push(original, snapshot);
@@ -156,19 +156,19 @@ sys.path.insert(0, sys.argv[1])
 from workflow_validator import validate_workflow
 for workflow in json.load(sys.stdin):
     validate_workflow(workflow)
-    if sys.argv[1] == "agent":
+    if sys.argv[1] == "agent_runtime":
         from workflow_parser import parse_workflow
-        from workflow_nodes import propagate_workflow_output, run_workflow_map
+        from workflow_nodes import propagate_workflow_output
+        from test_support import run_scheduled_workflow
         graph = parse_workflow(workflow)
         propagate_workflow_output(graph, graph[0], "workflow:text", "Ada")
-        assert run_workflow_map(graph, 0) == {"result": "Ada"}
+        assert run_scheduled_workflow(graph, 0) == {"result": "Ada"}
 `;
-  for (const backend of ['agent', 'manager_webui']) {
-    const result = spawnSync(process.env.PYTHON || 'python', ['-c', validationScript, backend], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)),
-      input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
-    });
-    assert.ifError(result.error);
-    assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
-  }
+  const backend = 'agent_runtime';
+  const result = spawnSync(process.env.PYTHON || 'python', ['-c', validationScript, backend], {
+    cwd: fileURLToPath(new URL('..', import.meta.url)),
+    input: JSON.stringify(workflows), encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, `${backend}: ${result.stderr}`);
 });

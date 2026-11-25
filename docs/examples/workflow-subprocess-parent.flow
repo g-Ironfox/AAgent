@@ -1,0 +1,145 @@
+{
+  "schema_version": "2.0",
+  "description": "通过独立子进程节点传入 JSON 参数，解析返回 JSON，并保留原始返回文本。",
+  "input_ports": [
+    {
+      "name": "child_file",
+      "type": "content"
+    },
+    {
+      "name": "arguments_json",
+      "type": "content"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "reply",
+      "type": "content"
+    },
+    {
+      "name": "child_result_json",
+      "type": "content"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "input",
+      "type": "input",
+      "name": "输入",
+      "x": 40,
+      "y": 160,
+      "workflowPorts": [
+        {
+          "id": "workflow:child_file",
+          "name": "child_file",
+          "type": "content"
+        },
+        {
+          "id": "workflow:arguments_json",
+          "name": "arguments_json",
+          "type": "content"
+        }
+      ]
+    },
+    {
+      "id": "call-child",
+      "type": "spawn_and_wait_subprocess",
+      "name": "调用子流程",
+      "x": 340,
+      "y": 160,
+      "arguments": {}
+    },
+    {
+      "id": "parse-result",
+      "type": "deserialize_json",
+      "name": "读取 reply",
+      "x": 660,
+      "y": 160,
+      "arguments": {
+        "outputs": [
+          {
+            "key": "reply",
+            "type": "content"
+          }
+        ]
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "name": "输出",
+      "x": 960,
+      "y": 160,
+      "workflowPorts": [
+        {
+          "id": "workflow:reply",
+          "name": "reply",
+          "type": "content"
+        },
+        {
+          "id": "workflow:child_result_json",
+          "name": "child_result_json",
+          "type": "content"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "fromId": "input",
+      "fromPortId": "control-out",
+      "toId": "call-child",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "control-out",
+      "toId": "parse-result",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "parse-result",
+      "fromPortId": "control-out",
+      "toId": "output",
+      "toPortId": "control-in",
+      "type": "control"
+    },
+    {
+      "fromId": "input",
+      "fromPortId": "workflow:child_file",
+      "toId": "call-child",
+      "toPortId": "workflow-file",
+      "type": "content"
+    },
+    {
+      "fromId": "input",
+      "fromPortId": "workflow:arguments_json",
+      "toId": "call-child",
+      "toPortId": "arguments-json",
+      "type": "content"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "result-json",
+      "toId": "parse-result",
+      "toPortId": "content-in",
+      "type": "content"
+    },
+    {
+      "fromId": "call-child",
+      "fromPortId": "result-json",
+      "toId": "output",
+      "toPortId": "workflow:child_result_json",
+      "type": "content"
+    },
+    {
+      "fromId": "parse-result",
+      "fromPortId": "reply",
+      "toId": "output",
+      "toPortId": "workflow:reply",
+      "type": "content"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+alfworld==0.4.2
+textworld[pddl]==1.7.0
+numpy==1.26.4
+requests==2.32.5
+PyYAML==6.0.3
+tqdm==4.67.1
+termcolor==3.2.0

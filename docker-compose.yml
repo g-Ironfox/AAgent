@@ -1,92 +1,90 @@
 services:
-  agent:
-    build: ./agent
-    container_name: agent_aagent
-    command: ["python", "task_worker.py"]
+  agent_runtime:
+    build: ./agent_runtime
+    container_name: agent_runtime_aagent
+    command: ["python", "main.py"]
     restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
       mongodb:
         condition: service_healthy
+      agent_environment:
+        condition: service_healthy
     env_file:
       - .env
     environment:
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_KERNEL_DB: ${REDIS_KERNEL_DB:-1}
+      ProcessTable: ${ProcessTable:-processtable}
+      PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       TOOL_SERVER_URL: ${TOOL_SERVER_URL:-http://tool_server:8083}
+      WORKSPACE_API_URL: ${WORKSPACE_API_URL:-http://agent_environment:8080}
+      MONGO_TERMINAL_COLLECTION: ${MONGO_TERMINAL_COLLECTION:-terminal_messages}
+      MONGO_PROCESS_LOG_COLLECTION: ${MONGO_PROCESS_LOG_COLLECTION:-process_logs}
       TOOL_CLIENT_DEFAULT_WAIT_MS: ${TOOL_CLIENT_DEFAULT_WAIT_MS:-10000}
       TOOL_CLIENT_MAX_WAIT_MS: ${TOOL_CLIENT_MAX_WAIT_MS:-10000}
       MONGO_SESSION_COLLECTION: ${MONGO_SESSION_COLLECTION:-sessions}
+      MONGO_WORKSPACE_FILE_COLLECTION: ${MONGO_WORKSPACE_FILE_COLLECTION:-workspace_files}
     networks:
       - aagent_net
 
-  qqbot:
-    build: ./qqbot
-    container_name: qqbot_aagent
-    command: ["python", "listener.py"]
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      QQ_QUEUE_NAME: ${QQ_QUEUE_NAME:-qq:events}
-    networks:
-      - aagent_net
-
-  qqbot_consumer:
-    build: ./qqbot_consumer
-    container_name: qqbot_consumer_aagent
-    command: ["python", "queue_consumer.py"]
+  agent_environment:
+    build:
+      context: .
+      dockerfile: agent_environment/Dockerfile
+    container_name: agent_environment_aagent
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
     restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
       mongodb:
         condition: service_healthy
-    env_file:
-      - .env
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      QQ_QUEUE_NAME: ${QQ_QUEUE_NAME:-qq:events}
-      MAIN_AGENT_QUEUE_NAME: ${MAIN_AGENT_QUEUE_NAME:-main_agent_queue}
-      QQ_WORKER_STATUS_KEY: ${QQ_WORKER_STATUS_KEY:-qq:worker:status}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_KERNEL_DB: ${REDIS_KERNEL_DB:-1}
+      ProcessTable: ${ProcessTable:-processtable}
+      PUBLIC_SCHEDULER_PREFIX: ${PUBLIC_SCHEDULER_PREFIX:-aagent:scheduler}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_USER: ${MONGO_USER}
       MONGO_PASS: ${MONGO_PASS}
       MONGO_DATABASE: ${MONGO_DATABASE:-agent}
-      QQ_HISTORY_COLLECTION: ${QQ_HISTORY_COLLECTION:-qq_event_history}
+      MONGO_TERMINAL_COLLECTION: ${MONGO_TERMINAL_COLLECTION:-terminal_messages}
+      MONGO_PROCESS_LOG_COLLECTION: ${MONGO_PROCESS_LOG_COLLECTION:-process_logs}
+      MONGO_FILE_EVENT_COLLECTION: ${MONGO_FILE_EVENT_COLLECTION:-workspace_file_events}
+      MONGO_WORKSPACE_FILE_COLLECTION: ${MONGO_WORKSPACE_FILE_COLLECTION:-workspace_files}
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks:
       - aagent_net
 
-  webui_py:
-    build: ./webui_py
-    container_name: webui_py_aagent
+  webui:
+    build:
+      context: .
+      dockerfile: webui/Dockerfile
+    container_name: webui_aagent
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081"]
     restart: unless-stopped
     depends_on:
-      redis:
-        condition: service_healthy
-      mongodb:
+      agent_environment:
         condition: service_healthy
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      MAIN_AGENT_QUEUE_NAME: ${MAIN_AGENT_QUEUE_NAME:-main_agent_queue}
-      AGENT_WORKER_STATUS_KEY: ${AGENT_WORKER_STATUS_KEY:-aagent:worker:status}
-      MONGO_HOST: mongodb
-      MONGO_PORT: 27017
-      MONGO_USER: ${MONGO_USER}
-      MONGO_PASS: ${MONGO_PASS}
-      MONGO_DATABASE: ${MONGO_DATABASE:-agent}
-      MONGO_HISTORY_COLLECTION: ${MONGO_HISTORY_COLLECTION:-event_history}
+      AGENT_ENVIRONMENT_URL: http://agent_environment:8080
     ports:
       - "8081:8081"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz')"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -106,9 +104,8 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
-      TOOL_CLIENT_MAX_WAIT_MS: ${TOOL_CLIENT_MAX_WAIT_MS:-10000}
-      TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS: ${TOOL_CLIENT_MAX_ASYNC_TIMEOUT_MS:-3600000}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_USER: ${MONGO_USER}
@@ -116,7 +113,6 @@ services:
       MONGO_DATABASE: ${MONGO_DATABASE:-agent}
       MONGO_DOCUMENT_COLLECTION: ${MONGO_DOCUMENT_COLLECTION:-documents}
       MONGO_MODEL_COLLECTION: ${MONGO_MODEL_COLLECTION:-models}
-      MONGO_WORKFLOW_COLLECTION: ${MONGO_WORKFLOW_COLLECTION:-workflows}
       MONGO_SESSION_COLLECTION: ${MONGO_SESSION_COLLECTION:-sessions}
     ports:
       - "8084:8084"
@@ -140,6 +136,8 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       AGENT_TOOLS_KEY: ${AGENT_TOOLS_KEY:-aagent:tools}
       TOOL_SERVER_URL: ${TOOL_SERVER_URL:-http://tool_server:8083}
       MONGO_HOST: mongodb
@@ -215,6 +213,79 @@ services:
     networks:
       - aagent_net
 
+  benchmark_worker:
+    build:
+      context: .
+      dockerfile: benchmark_worker/Dockerfile
+    image: aagent-benchmark-worker:local
+    profiles: ["benchmark"]
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      agent_environment:
+        condition: service_healthy
+      agent_runtime:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      AAGENT_API_URL: http://agent_environment:8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      BENCHMARK_QUEUE: ${BENCHMARK_QUEUE:-aagent:benchmark:jobs}
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASS: ${MONGO_PASS}
+      MONGO_DATABASE: ${MONGO_DATABASE:-agent}
+      BENCHMARK_WORKER_CONCURRENCY: ${BENCHMARK_WORKER_CONCURRENCY:-4}
+      ALFWORLD_DATA: /data/alfworld
+    volumes:
+      - alfworld_data:/data/alfworld
+    networks:
+      - aagent_net
+
+  benchmark_webui:
+    build:
+      context: .
+      dockerfile: benchmark_webui/Dockerfile
+    image: aagent-benchmark-webui:local
+    profiles: ["benchmark"]
+    restart: unless-stopped
+    depends_on:
+      agent_environment:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      AAGENT_API_URL: http://agent_environment:8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      BENCHMARK_QUEUE: ${BENCHMARK_QUEUE:-aagent:benchmark:jobs}
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASS: ${MONGO_PASS}
+      MONGO_DATABASE: ${MONGO_DATABASE:-agent}
+    ports:
+      - "${BENCHMARK_WEBUI_PORT:-8085}:8085"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aagent_net
+
   redis:
     image: redis:7-alpine
     container_name: redis_aagent
@@ -251,3 +322,6 @@ services:
 networks:
   aagent_net:
     driver: bridge
+
+volumes:
+  alfworld_data:

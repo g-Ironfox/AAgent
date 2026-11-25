@@ -1,0 +1,1298 @@
+import unittest
+from unittest.mock import patch
+
+from workflow_contract import is_valid_connection
+from workflow_parser import parse_workflow
+from workflow_parser import WORKFLOW_SCHEMA_VERSION, WorkflowParseError
+from test_support import run_scheduled_workflow
+from workflow_nodes import (
+    workflow_construct_map_content,
+    workflow_map_content_get,
+    workflow_construct_list,
+    workflow_construct_message,
+    workflow_deserialize_json,
+    workflow_llm,
+    workflow_router,
+)
+from workflow_validator import WorkflowValidationError, validate_workflow
+
+
+def callable_workflow_fixture() -> dict:
+    return {
+        "schema_version": WORKFLOW_SCHEMA_VERSION,
+        "name": "callable_fixture",
+        "input_ports": [{"name": "query", "type": "content"}],
+        "output_ports": [{"name": "result", "type": "content"}],
+        "nodes": [
+            {
+                "id": "input",
+                "type": "input",
+                "name": "Input",
+                "workflowPorts": [{"id": "workflow:query", "name": "query", "type": "content"}],
+            },
+            {
+                "id": "call-summary",
+                "type": "spawn_and_wait_subprocess",
+                "name": "Summary",
+                "arguments": {},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "name": "Output",
+                "workflowPorts": [{"id": "workflow:result", "name": "result", "type": "content"}],
+            },
+        ],
+        "connections": [
+            {"id": "control-input-call", "fromId": "input", "fromPortId": "control-out", "toId": "call-summary", "toPortId": "control-in", "type": "control"},
+            {"id": "control-call-output", "fromId": "call-summary", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
+            {"id": "query-input-call", "fromId": "input", "fromPortId": "workflow:query", "toId": "call-summary", "toPortId": "arguments-json", "type": "content"},
+            {"id": "result-call-output", "fromId": "call-summary", "fromPortId": "result-json", "toId": "output", "toPortId": "workflow:result", "type": "content"},
+        ],
+    }
+
+
+class SubprocessWorkflowFileNodeTest(unittest.TestCase):
+
+    def test_validator_rejects_workflow_without_schema_version(self):
+        workflow = callable_workflow_fixture()
+        del workflow["schema_version"]
+
+        with self.assertRaisesRegex(
+            WorkflowValidationError,
+            f"workflow.schema_version must be {WORKFLOW_SCHEMA_VERSION}",
+        ):
+            validate_workflow(workflow)
+
+        with self.assertRaisesRegex(
+            WorkflowParseError,
+            "unsupported workflow schema_version: None",
+        ):
+            parse_workflow(workflow)
+
+    def test_validator_rejects_workflow_with_different_schema_version(self):
+        # 升级 Workflow 协议时，同步更新旧版和未来版样例，确保两者都不是当前版本。
+        for version in ("1.0", "1.1", "1.6", "1.8"):
+            with self.subTest(version=version):
+                workflow = callable_workflow_fixture()
+                workflow["schema_version"] = version
+
+                with self.assertRaisesRegex(
+                    WorkflowValidationError,
+                    f"workflow.schema_version must be {WORKFLOW_SCHEMA_VERSION}",
+                ):
+                    validate_workflow(workflow)
+
+                with self.assertRaisesRegex(
+                    WorkflowParseError,
+                    f"unsupported workflow schema_version: '{version}'",
+                ):
+                    parse_workflow(workflow)
+
+    def test_construct_message_role_port_requires_content_connection(self):
+        nodes_by_id = {
+            "input": {
+                "id": "input",
+                "type": "input",
+                "workflowPorts": [
+                    {"id": "workflow:role", "name": "role", "type": "message"}
+                ],
+            },
+            "message": {
+                "id": "message",
+                "type": "construct_message",
+                "arguments": {"role_source": "port", "role": "user"},
+            },
+        }
+        connection = {
+            "fromId": "input",
+            "fromPortId": "workflow:role",
+            "toId": "message",
+            "toPortId": "role-in",
+            "type": "message",
+        }
+
+        self.assertFalse(
+            is_valid_connection(
+                connection,
+                nodes_by_id,
+                [{"name": "role", "type": "message"}],
+                [],
+            )
+        )
+
+    def test_validator_reads_construct_list_item_type_from_arguments(self):
+        workflow = {
+            "schema_version": WORKFLOW_SCHEMA_VERSION,
+            "name": "list_fixture",
+            "input_ports": [{"name": "value", "type": "content"}],
+            "output_ports": [{"name": "values", "type": "list-content"}],
+            "nodes": [
+                {
+                    "id": "input",
+                    "type": "input",
+                    "workflowPorts": [
+                        {
+                            "id": "workflow:value",
+                            "name": "value",
+                            "type": "content",
+                        }
+                    ],
+                },
+                {
+                    "id": "list",
+                    "type": "construct_list",
+                    "arguments": {
+                        "item_type": "content",
+                        "initial_value_count": 1,
+                    },
+                    "dataInputPorts": ["content-in-0"],
+                },
+                {
+                    "id": "output",
+                    "type": "output",
+                    "workflowPorts": [
+                        {
+                            "id": "workflow:values",
+                            "name": "values",
+                            "type": "list-content",
+                        }
+                    ],
+                },
+            ],
+            "connections": [
+                {
+                    "fromId": "input",
+                    "fromPortId": "control-out",
+                    "toId": "list",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "fromId": "list",
+                    "fromPortId": "control-out",
+                    "toId": "output",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "fromId": "input",
+                    "fromPortId": "workflow:value",
+                    "toId": "list",
+                    "toPortId": "content-in-0",
+                    "type": "content",
+                },
+                {
+                    "fromId": "list",
+                    "fromPortId": "list-out",
+                    "toId": "output",
+                    "toPortId": "workflow:values",
+                    "type": "list-content",
+                },
+            ],
+        }
+
+        validate_workflow(workflow)
+
+    def test_llm_accepts_list_message_input(self):
+        workflow = {
+            "schema_version": WORKFLOW_SCHEMA_VERSION,
+            "name": "llm_fixture",
+            "input_ports": [{"name": "messages", "type": "list-content"}],
+            "output_ports": [],
+            "nodes": [
+                {
+                    "id": "input",
+                    "type": "input",
+                    "workflowPorts": [
+                        {
+                            "id": "workflow:messages",
+                            "name": "messages",
+                            "type": "list-content",
+                        }
+                    ],
+                },
+                {
+                    "id": "llm",
+                    "type": "llm",
+                    "arguments": {
+                        "model": "",
+                        "think": False,
+                        "tool_calls": False,
+                        "tools": [],
+                    },
+                },
+                {"id": "output", "type": "output", "workflowPorts": []},
+            ],
+            "connections": [
+                {
+                    "fromId": "input",
+                    "fromPortId": "control-out",
+                    "toId": "llm",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "fromId": "llm",
+                    "fromPortId": "control-out",
+                    "toId": "output",
+                    "toPortId": "control-in",
+                    "type": "control",
+                },
+                {
+                    "fromId": "input",
+                    "fromPortId": "workflow:messages",
+                    "toId": "llm",
+                    "toPortId": "messages-in",
+                    "type": "list-content",
+                },
+            ],
+        }
+
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+
+        self.assertEqual(
+            parsed[1]["data_inputs"]["messages-in"],
+            [0, "workflow:messages", None],
+        )
+
+        workflow["metadata"] = {"tools": [
+            {"name": "local_echo", "kind": "local", "input_ports": [], "output_ports": []},
+            {"name": "remote_echo", "kind": "remote", "input_ports": [], "output_ports": []},
+        ]}
+        workflow["nodes"][1]["arguments"]["tool_calls"] = True
+        parsed = parse_workflow(workflow)
+        self.assertEqual(parsed[1]["data_inputs"]["available-tools-in"], [None, None, None])
+        self.assertEqual(parsed[1]["_metadata_tools"], [
+            {"name": "local_echo", "kind": "local"},
+            {"name": "remote_echo", "kind": "remote"},
+        ])
+
+        workflow["input_ports"][0]["type"] = "content"
+        workflow["nodes"][0]["workflowPorts"][0]["type"] = "content"
+        workflow["connections"][2]["type"] = "content"
+        with self.assertRaisesRegex(
+            WorkflowValidationError,
+            "llm messages-in input requires list-content data",
+        ):
+            validate_workflow(workflow)
+
+    def test_validator_and_parser_accept_map_content_nodes(self):
+        workflow = {
+            "schema_version": WORKFLOW_SCHEMA_VERSION,
+            "name": "map_content_fixture",
+            "input_ports": [{"name": "key", "type": "content"}],
+            "output_ports": [{"name": "result", "type": "content"}],
+            "nodes": [
+                {
+                    "id": "input",
+                    "type": "input",
+                    "workflowPorts": [
+                        {"id": "workflow:key", "name": "key", "type": "content"}
+                    ],
+                },
+                {
+                    "id": "construct",
+                    "type": "construct_map_content",
+                    "arguments": {"mappings": [{"key": "done", "value": "已完成"}]},
+                },
+                {"id": "get", "type": "map_content_get"},
+                {
+                    "id": "output",
+                    "type": "output",
+                    "workflowPorts": [
+                        {"id": "workflow:result", "name": "result", "type": "content"}
+                    ],
+                },
+            ],
+            "connections": [
+                {"fromId": "input", "fromPortId": "control-out", "toId": "construct", "toPortId": "control-in", "type": "control"},
+                {"fromId": "construct", "fromPortId": "control-out", "toId": "get", "toPortId": "control-in", "type": "control"},
+                {"fromId": "get", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
+                {"fromId": "construct", "fromPortId": "map-out", "toId": "get", "toPortId": "map-in", "type": "map-content"},
+                {"fromId": "input", "fromPortId": "workflow:key", "toId": "get", "toPortId": "key-in", "type": "content"},
+                {"fromId": "get", "fromPortId": "content-out", "toId": "output", "toPortId": "workflow:result", "type": "content"},
+            ],
+        }
+
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+
+        self.assertEqual(parsed[2]["data_inputs"]["map-in"], [1, "map-out", None])
+        self.assertEqual(parsed[2]["data_inputs"]["key-in"], [0, "workflow:key", None])
+
+    def test_validator_rejects_removed_event_nodes(self):
+        from workflow_nodes import nodes_map
+        for node_type in ("split_event", "construct_event", "publish_event", "history"):
+            with self.subTest(node_type=node_type):
+                workflow = callable_workflow_fixture()
+                workflow["nodes"][1] = {"id": "removed", "type": node_type, "arguments": {}}
+                with self.assertRaisesRegex(WorkflowValidationError, "nodes.1.type"):
+                    validate_workflow(workflow)
+                self.assertNotIn(node_type, nodes_map)
+
+    def test_removed_event_values_are_rejected_before_context_or_session_storage(self):
+        from workflow_context_repository import WorkflowContextError, create_context
+        from workflow_session_repository import WorkflowSessionError, create_session
+        from workflow_nodes import _deserialize_json_value
+        for value_type, value in (("event", {"event_type": "message", "payload": {}}),
+                                  ("list-event", [{"event_type": "message", "payload": {}}])):
+            with self.subTest(value_type=value_type):
+                with self.assertRaises(ValueError):
+                    _deserialize_json_value(value, value_type)
+                with patch("workflow_context_repository.get_connection") as connection:
+                    with self.assertRaises(WorkflowContextError):
+                        create_context("invocation", value_type, value)
+                    connection.assert_not_called()
+                with patch("workflow_session_repository.get_session_collection") as collection:
+                    with self.assertRaises(WorkflowSessionError):
+                        create_session(value_type, value)
+                    collection.assert_not_called()
+
+    def test_parser_uses_named_control_flow_dictionaries(self):
+        workflow = {
+            "schema_version": WORKFLOW_SCHEMA_VERSION,
+            "name": "router_fixture",
+            "input_ports": [],
+            "output_ports": [],
+            "nodes": [
+                {"id": "input", "type": "input", "workflowPorts": []},
+                {
+                    "id": "router",
+                    "type": "router",
+                    "arguments": {
+                        "branches": [
+                            {"id": "route-yes", "name": "yes"},
+                            {"id": "route-no", "name": "no"},
+                        ],
+                    },
+                },
+                {"id": "foreach", "type": "foreach", "arguments": {"item_type": "content"}},
+                {"id": "output", "type": "output", "workflowPorts": []},
+            ],
+            "connections": [
+                {"fromId": "input", "fromPortId": "control-out", "toId": "router", "toPortId": "control-in", "type": "control"},
+                {"fromId": "router", "fromPortId": "route-yes", "toId": "foreach", "toPortId": "control-in", "type": "control"},
+                {"fromId": "router", "fromPortId": "route-no", "toId": "output", "toPortId": "control-in", "type": "control"},
+                {"fromId": "router", "fromPortId": "branch$others", "toId": "output", "toPortId": "control-in", "type": "control"},
+                {"fromId": "foreach", "fromPortId": "loop-out", "toId": "foreach", "toPortId": "loop-in", "type": "control"},
+                {"fromId": "foreach", "fromPortId": "control-out", "toId": "output", "toPortId": "control-in", "type": "control"},
+            ],
+        }
+
+        parsed = parse_workflow(workflow)
+
+        self.assertEqual(parsed[0]["successors"], {"next": 1})
+        self.assertEqual(parsed[1]["predecessors"], {"last": [0]})
+        self.assertEqual(
+            parsed[1]["successors"],
+            {"branch-yes": 2, "branch-no": 3, "branch$others": 3},
+        )
+        self.assertNotIn("branches", parsed[1])
+        self.assertEqual(
+            parsed[1]["arguments"]["branches"],
+            [
+                {"id": "route-yes", "name": "yes"},
+                {"id": "route-no", "name": "no"},
+            ],
+        )
+        self.assertEqual(
+            parsed[1]["successors"]["branch$others"],
+            3,
+        )
+        self.assertEqual(
+            parsed[2]["predecessors"], {"last": [1], "continue": [2]}
+        )
+        self.assertEqual(parsed[2]["successors"], {"item": 2, "next": 3})
+        self.assertEqual(parsed[3]["predecessors"], {"last": [1, 1, 2]})
+
+    def test_validator_rejects_duplicate_router_branch_names(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].insert(
+            1,
+            {
+                "id": "router",
+                "type": "router",
+                "arguments": {
+                    "branches": [
+                        {"id": "route-a", "name": "same"},
+                        {"id": "route-b", "name": "same"},
+                    ],
+                },
+            },
+        )
+
+        with self.assertRaisesRegex(WorkflowValidationError, "duplicate names"):
+            validate_workflow(workflow)
+
+    def test_validator_requires_builtin_router_fallback_connection(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].insert(1, {
+            "id": "router", "type": "router", "arguments": {"branches": []},
+        })
+        workflow["connections"][0]["toId"] = "router"
+        with self.assertRaisesRegex(WorkflowValidationError, r"output:branch\$others"):
+            validate_workflow(workflow)
+
+    def test_router_with_only_builtin_fallback_compiles_and_executes(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].insert(1, {
+            "id": "router", "type": "router", "arguments": {"branches": []},
+        })
+        workflow["connections"][0]["toId"] = "router"
+        workflow["connections"].append({
+            "fromId": "router", "fromPortId": "branch$others", "toId": "call-summary",
+            "toPortId": "control-in", "type": "control",
+        })
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+        parsed[1]["data_inputs"]["content-in"][2] = "unmatched"
+        self.assertEqual(parsed[1]["successors"], {"branch$others": 2})
+        self.assertEqual(workflow_router(1, parsed), 2)
+
+    def test_validator_rejects_builtin_fallback_in_user_branches(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].insert(1, {
+            "id": "router", "type": "router", "arguments": {"branches": [
+                {"id": "branch$others", "name": "fallback"},
+            ]},
+        })
+        with self.assertRaises(WorkflowValidationError):
+            validate_workflow(workflow)
+
+    def test_router_allows_regular_branch_named_other(self):
+        workflow = callable_workflow_fixture()
+        router = {
+            "id": "router",
+            "type": "router",
+            "arguments": {"branches": [
+                {"id": "route-other", "name": "其它"},
+            ]},
+        }
+        workflow["nodes"].insert(1, router)
+        workflow["connections"][0]["toId"] = "router"
+        workflow["connections"].extend([
+            {"fromId": "router", "fromPortId": "route-other", "toId": "call-summary", "toPortId": "control-in", "type": "control"},
+            {"fromId": "router", "fromPortId": "branch$others", "toId": "output", "toPortId": "control-in", "type": "control"},
+        ])
+        fallback = {**workflow["nodes"][-1], "id": "fallback-output"}
+        workflow["nodes"].append(fallback)
+        workflow["connections"][-1]["toId"] = "fallback-output"
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+        self.assertEqual(parsed[1]["successors"], {"branch-其它": 2, "branch$others": 4})
+        parsed[1]["data_inputs"]["content-in"][2] = "其它"
+        self.assertEqual(workflow_router(1, parsed), 2)
+        parsed[1]["data_inputs"]["content-in"][2] = "unmatched"
+        self.assertEqual(workflow_router(1, parsed), 4)
+
+    def test_router_requires_input_even_with_builtin_fallback(self):
+        node = {
+            "id": "router", "successors": {"branch$others": 1},
+            "data_inputs": {"content-in": [None, None, None]},
+        }
+        with self.assertRaisesRegex(ValueError, "router input is missing"):
+            workflow_router(0, [node, {}])
+
+    def test_router_named_branch_cannot_collide_with_fallback_key(self):
+        for name in ("others", "branch$others"):
+            with self.subTest(name=name):
+                node = {
+                    "id": "router", "successors": {f"branch-{name}": 1, "branch$others": 2},
+                    "data_inputs": {"content-in": [0, "content-in", name]},
+                }
+                self.assertEqual(workflow_router(0, [node, {}, {}]), 1)
+
+    def test_router_uses_otherwise_branch_for_unmatched_value(self):
+        node = {
+            "id": "router",
+            "successors": {"branch-yes": 1, "branch$others": 2},
+            "data_inputs": {"content-in": [0, "content-in", "maybe"]},
+        }
+        self.assertEqual(workflow_router(0, [node, {}, {}]), 2)
+
+    def test_router_prefers_matching_branch_over_otherwise(self):
+        node = {
+            "id": "router",
+            "successors": {"branch-yes": 1, "branch$others": 2},
+            "data_inputs": {"content-in": [0, "content-in", "yes"]},
+        }
+        self.assertEqual(workflow_router(0, [node, {}, {}]), 1)
+
+    def test_validator_rejects_non_integer_workflow_timeout(self):
+        for value in (1.5, True, "10"):
+            with self.subTest(value=value):
+                workflow = callable_workflow_fixture()
+                workflow["metadata"] = {"max_execution_time_seconds": value}
+                with self.assertRaisesRegex(
+                    WorkflowValidationError,
+                    "metadata.max_execution_time_seconds",
+                ):
+                    validate_workflow(workflow)
+
+    def test_validator_accepts_integer_workflow_timeouts(self):
+        for value in (-1, 0, 300):
+            with self.subTest(value=value):
+                workflow = callable_workflow_fixture()
+                workflow["metadata"] = {"max_execution_time_seconds": value}
+                validate_workflow(workflow)
+
+    def test_validator_rejects_flattened_node_arguments(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][1]["workflow_file"] = "Summary"
+
+        with self.assertRaisesRegex(WorkflowValidationError, "Additional properties are not allowed"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_removed_tool_call_node(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][1] = {
+            "id": "tool-call",
+            "type": "tool_call",
+            "name": "Tool Call",
+            "arguments": {},
+        }
+
+        with self.assertRaisesRegex(WorkflowValidationError, "nodes.1.type"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_shared_fields_inside_arguments(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][1]["arguments"]["input_ports"] = []
+
+        with self.assertRaisesRegex(WorkflowValidationError, "shared fields must be top-level"):
+            validate_workflow(workflow)
+
+    def test_validator_and_parser_accept_callable_workflow_ports(self):
+        workflow = callable_workflow_fixture()
+
+        validate_workflow(workflow)
+        parsed = parse_workflow(workflow)
+
+        self.assertEqual(parsed[1]["data_inputs"]["arguments-json"], [0, "workflow:query", None])
+        self.assertEqual(parsed[1]["data_outputs"]["result-json"], [[2, "workflow:result"]])
+        self.assertEqual(parsed[1]["arguments"], {})
+        self.assertNotIn("input_ports", parsed[1])
+        self.assertNotIn("output_ports", parsed[1])
+        self.assertEqual(parsed[0]["workflowPorts"], [{"id": "workflow:query", "name": "query", "type": "content"}])
+        self.assertEqual(parsed[2]["workflowPorts"], [{"id": "workflow:result", "name": "result", "type": "content"}])
+
+    def test_validator_rejects_wrong_callable_workflow_port_type(self):
+        workflow = callable_workflow_fixture()
+        workflow["connections"][2]["type"] = "list-content"
+
+        with self.assertRaisesRegex(
+            WorkflowValidationError, "workflow input port workflow:query requires content data"
+        ):
+            validate_workflow(workflow)
+
+    def test_parser_filters_connection_invalidated_by_metadata(self):
+        workflow = callable_workflow_fixture()
+        workflow["connections"].append({
+            "id": "stale",
+            "fromId": "input",
+            "fromPortId": "workflow:stale",
+            "toId": "call-summary",
+            "toPortId": "workflow:stale",
+            "type": "content",
+        })
+
+        with self.assertRaisesRegex(WorkflowValidationError, "unknown data port"):
+            validate_workflow(workflow)
+
+    def test_validator_filters_unknown_callable_output_input(self):
+        workflow = callable_workflow_fixture()
+        workflow["connections"][3]["toPortId"] = "content-in"
+
+        with self.assertRaisesRegex(WorkflowValidationError, "unknown data port"):
+            validate_workflow(workflow)
+
+    def test_validator_filters_legacy_input_content_output(self):
+        workflow = callable_workflow_fixture()
+        workflow["connections"][2]["fromPortId"] = "content-out"
+
+        with self.assertRaisesRegex(WorkflowValidationError, "unknown data port"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_boundary_without_workflow_ports(self):
+        workflow = callable_workflow_fixture()
+        del workflow["nodes"][0]["workflowPorts"]
+
+        with self.assertRaisesRegex(WorkflowValidationError, "workflowPorts"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_boundary_ports_that_differ_from_metadata(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"][0]["workflowPorts"] = []
+
+        with self.assertRaisesRegex(WorkflowValidationError, "workflowPorts"):
+            validate_workflow(workflow)
+
+    def test_validator_requires_boundary_metadata(self):
+        workflow = callable_workflow_fixture()
+        del workflow["input_ports"]
+
+        with self.assertRaisesRegex(WorkflowValidationError, "input_ports.*required property"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_multiple_input_nodes(self):
+        workflow = callable_workflow_fixture()
+        workflow["nodes"].append({
+            "id": "input-duplicate",
+            "type": "input",
+            "name": "Input duplicate",
+            "workflowPorts": [{"id": "workflow:query", "name": "query", "type": "content"}],
+        })
+
+        with self.assertRaisesRegex(WorkflowValidationError, "exactly one input"):
+            validate_workflow(workflow)
+
+    def test_validator_rejects_removed_subprocess_interface_snapshots(self):
+        for field in ("input_ports", "output_ports"):
+            with self.subTest(field=field):
+                workflow = callable_workflow_fixture()
+                workflow["nodes"][1][field] = []
+                with self.assertRaisesRegex(WorkflowValidationError, "snapshots are no longer supported"):
+                    validate_workflow(workflow)
+
+    def test_validator_allows_same_name_on_boundary_input_and_output(self):
+        workflow = callable_workflow_fixture()
+        workflow["output_ports"] = [{"name": "query", "type": "content"}]
+        workflow["nodes"][2]["workflowPorts"] = [{"id": "workflow:query", "name": "query", "type": "content"}]
+        workflow["connections"][3]["toPortId"] = "workflow:query"
+        validate_workflow(workflow)
+
+
+class WorkflowExecutionTest(unittest.TestCase):
+    def test_origin_input_accepts_declared_content_type(self):
+        workflow = {
+            "schema_version": WORKFLOW_SCHEMA_VERSION,
+            "name": "content_origin",
+            "input_ports": [{"name": "origin", "type": "content"}],
+            "output_ports": [],
+            "nodes": [
+                {"id": "input", "type": "input", "workflowPorts": [
+                    {"id": "workflow:origin", "name": "origin", "type": "content"},
+                ]},
+                {"id": "output", "type": "output", "workflowPorts": []},
+            ],
+            "connections": [{
+                "fromId": "input", "fromPortId": "control-out",
+                "toId": "output", "toPortId": "control-in", "type": "control",
+            }],
+            "metadata": {"structs": []},
+        }
+
+        validate_workflow(workflow)
+
+    def test_llm_available_tools_input_accepts_only_list_content_when_enabled(self):
+        source = {"id": "tools", "type": "construct_list", "arguments": {"item_type": "content", "initial_value_count": 0}, "dataInputPorts": []}
+        target = {"id": "llm", "type": "llm", "arguments": {"tool_calls": True}}
+        connection = {"fromId": "tools", "fromPortId": "list-out", "toId": "llm", "toPortId": "available-tools-in", "type": "list-content"}
+        nodes = {"tools": source, "llm": target}
+        self.assertTrue(is_valid_connection(connection, nodes, [], []))
+        self.assertFalse(is_valid_connection({**connection, "type": "message"}, nodes, [], []))
+        target["arguments"]["tool_calls"] = False
+        self.assertFalse(is_valid_connection(connection, nodes, [], []))
+
+    def test_construct_map_content_and_get(self):
+        workflow_map = [
+            {
+                "id": "construct",
+                "type": "construct_map_content",
+                "arguments": {"mappings": [{"key": "done", "value": "已完成"}]},
+                "successors": {"next": 1},
+                "data_outputs": {"map-out": [[1, "map-in"]]},
+            },
+            {
+                "id": "get",
+                "type": "map_content_get",
+                "successors": {"next": 2},
+                "data_inputs": {"map-in": [0, "map-out", None], "key-in": [None, None, "done"]},
+                "data_outputs": {"content-out": [[2, "result"]]},
+            },
+            {"data_inputs": {"result": [1, "content-out", None]}},
+        ]
+
+        workflow_construct_map_content(0, workflow_map)
+        workflow_map_content_get(1, workflow_map)
+
+        self.assertEqual(workflow_map[2]["data_inputs"]["result"][2], "已完成")
+
+    def test_map_content_get_rejects_unmapped_key(self):
+        workflow_map = [
+            {
+                "id": "get",
+                "type": "map_content_get",
+                "successors": {"next": 1},
+                "data_inputs": {"map-in": [None, None, {"done": "已完成"}], "key-in": [None, None, "missing"]},
+                "data_outputs": {"content-out": []},
+            },
+            {},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "key is not mapped"):
+            workflow_map_content_get(0, workflow_map)
+
+    def test_construct_message_reads_role_from_port(self):
+        workflow_map = [
+            {
+                "id": "message",
+                "type": "construct_message",
+                "arguments": {"role_source": "port", "role": "user"},
+                "successors": {"next": 1},
+                "data_inputs": {
+                    "content-in": [None, None, "hello"],
+                    "role-in": [None, None, "assistant"],
+                },
+                "data_outputs": {"content-out": [[1, "content-in"]]},
+            },
+            {"data_inputs": {"content-in": [0, "content-out", None]}},
+        ]
+
+        workflow_construct_message(0, workflow_map)
+
+        self.assertEqual(
+            workflow_map[1]["data_inputs"]["content-in"][2],
+            '{"role":"assistant","content":"hello"}',
+        )
+
+    def test_construct_message_rejects_missing_port_role(self):
+        workflow_map = [
+            {
+                "id": "message",
+                "type": "construct_message",
+                "arguments": {"role_source": "port", "role": "user"},
+                "successors": {"next": 1},
+                "data_inputs": {"content-in": [None, None, "hello"]},
+                "data_outputs": {"content-out": []},
+            },
+            {},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "role input is missing"):
+            workflow_construct_message(0, workflow_map)
+
+    def test_construct_list_preserves_declared_port_order(self):
+        workflow_map = [
+            {
+                "id": "messages",
+                "type": "construct_list",
+                "arguments": {"item_type": "content", "initial_value_count": 2},
+                "successors": {"next": 1},
+                "data_inputs": {
+                    "content-in-1": [None, None, '{"role":"user","content":"second"}'],
+                    "content-in-0": [None, None, '{"role":"system","content":"first"}'],
+                },
+                "data_outputs": {"list-out": [[1, "messages-in"]]},
+            },
+            {
+                "id": "llm",
+                "data_inputs": {"messages-in": [0, "list-out", None]},
+            },
+        ]
+
+        workflow_construct_list(0, workflow_map)
+
+        self.assertEqual(
+            workflow_map[1]["data_inputs"]["messages-in"][2],
+            [
+                '{"role":"system","content":"first"}',
+                '{"role":"user","content":"second"}',
+            ],
+        )
+
+    def test_llm_rejects_missing_or_invalid_messages(self):
+        base_node = {
+            "id": "llm",
+            "type": "llm",
+            "arguments": {"tools": []},
+            "successors": {"next": 1},
+            "data_outputs": {"output": []},
+        }
+        invalid_values = [None, [], ["not-a-message"], ['{"role":"invalid","content":"text"}']]
+
+        for value in invalid_values:
+            with self.subTest(value=value):
+                workflow_map = [
+                    {
+                        **base_node,
+                        "data_inputs": {"messages-in": [None, None, value]},
+                    },
+                    {},
+                ]
+                with self.assertRaisesRegex(ValueError, "llm messages input"):
+                    workflow_llm(0, workflow_map)
+
+    def test_llm_passes_think_setting_to_model_request(self):
+        workflow_map = [
+            {
+                "id": "llm",
+                "type": "llm",
+                "arguments": {"model": "model-id", "think": False, "tools": []},
+                "successors": {"next": 1},
+                "data_inputs": {"messages-in": [None, None, ['{"role":"user","content":"hello"}']]},
+                "data_outputs": {"output": [[1, "result"]]},
+            },
+            {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}},
+        ]
+        fake_tools = type("ToolsModule", (), {"registered_tools": []})()
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("llm.chat_with_model", return_value=("answer", "hidden reasoning", [])) as chat:
+            self.assertEqual(workflow_llm(0, workflow_map), 1)
+
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}], "model-id", tools=[], think=False
+        )
+        self.assertEqual(workflow_map[1]["data_inputs"]["result"][2], "answer")
+
+    def test_llm_defaults_to_all_metadata_tools_and_dynamic_input_filters_them(self):
+        schemas = [
+            {"function": {"name": "local_echo"}},
+            {"function": {"name": "other_local"}},
+        ]
+        remote_schema = {"type": "function", "function": {"name": "remote_echo", "parameters": {}}}
+        fake_tools = type("ToolsModule", (), {"registered_tools": schemas})()
+        metadata_tools = [
+            {"name": "local_echo", "kind": "local"},
+            {"name": "other_local", "kind": "local"},
+            {"name": "remote_echo", "kind": "remote"},
+        ]
+        workflow_map = [{
+            "id": "llm", "type": "llm",
+            "arguments": {"model": "model-id", "think": False, "tool_calls": True, "tools": []},
+            "_metadata_tools": metadata_tools,
+            "successors": {"next": 1},
+            "data_inputs": {"messages-in": [None, None, ['{"role":"user","content":"hello"}']]},
+            "data_outputs": {"output": [[1, "result"]]},
+        }, {"id": "next", "data_inputs": {"result": [0, "output", None]}, "data_outputs": {}}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("tool_server_client.get_remote_tool_schemas", return_value=[remote_schema]) as get_remote, \
+             patch("llm.chat_with_model", return_value=("answer", "", [])) as chat:
+            self.assertEqual(workflow_llm(0, workflow_map), 1)
+
+        get_remote.assert_called_once_with({"remote_echo"})
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}],
+            "model-id",
+            tools=[*schemas, remote_schema],
+            think=False,
+        )
+
+    def test_llm_dynamic_tools_accept_local_and_remote_metadata_tools(self):
+        local_schema = {"function": {"name": "local_echo"}}
+        remote_schema = {"type": "function", "function": {"name": "remote_echo"}}
+        fake_tools = type("ToolsModule", (), {"registered_tools": [local_schema]})()
+        workflow_map = [{
+            "id": "llm", "type": "llm", "arguments": {"model": "model-id", "tools": []},
+            "_metadata_tools": [{"name": "local_echo", "kind": "local"}, {"name": "remote_echo", "kind": "remote"}],
+            "successors": {"next": 1},
+            "data_inputs": {
+                "messages-in": [None, None, ['{"role":"user","content":"hello"}']],
+                "available-tools-in": [0, "list-out", ["remote_echo", "local_echo"]],
+            },
+        }, {"id": "next", "successors": {}, "data_inputs": {}, "data_outputs": {}}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), \
+             patch("tool_server_client.get_remote_tool_schemas", return_value=[remote_schema]), \
+             patch("llm.chat_with_model", return_value=("answer", "", [])) as chat:
+            workflow_llm(0, workflow_map)
+        chat.assert_called_once_with(
+            [{"role": "user", "content": "hello"}], "model-id",
+            tools=[local_schema, remote_schema], think=False,
+        )
+
+    def test_llm_rejects_tools_not_declared_in_metadata(self):
+        fake_tools = type("ToolsModule", (), {"registered_tools": [{"function": {"name": "local_echo"}}]})()
+        workflow_map = [{
+            "id": "llm", "type": "llm", "arguments": {"model": "model-id", "tools": []},
+            "_metadata_tools": [{"name": "local_echo", "kind": "local"}],
+            "data_inputs": {
+                "messages-in": [None, None, ['{"role":"user","content":"hello"}']],
+                "available-tools-in": [0, "list-out", ["remote_echo"]],
+            },
+        }, {}]
+        with patch.dict("sys.modules", {"tools.tool": fake_tools}), patch("llm.chat_with_model"):
+            with self.assertRaisesRegex(ValueError, "metadata.tools"):
+                workflow_llm(0, workflow_map)
+
+    def test_list_append_outputs_new_list_without_mutating_input(self):
+        for position, expected in (("start", ["new", "first"]), ("end", ["first", "new"])):
+            with self.subTest(position=position):
+                input_items = ["first"]
+                workflow_map = [
+                    {
+                        "id": "append",
+                        "type": "list_append",
+                        "arguments": {"item_type": "content", "position": position},
+                        "successors": {"next": 1},
+                        "data_inputs": {
+                            "list-in": [None, None, input_items],
+                            "item-in": [None, None, "new"],
+                        },
+                        "data_outputs": {"list-out": [[1, "workflow:result"]]},
+                    },
+                    {
+                        "id": "output",
+                        "type": "output",
+                        "workflowPorts": [
+                            {"id": "workflow:result", "name": "result", "type": "list-content"}
+                        ],
+                        "successors": {},
+                        "data_inputs": {"workflow:result": [0, "list-out", None]},
+                        "data_outputs": {},
+                    },
+                ]
+
+                result = run_scheduled_workflow(workflow_map, 0)["result"]
+
+                self.assertEqual(result, expected)
+                self.assertIsNot(result, input_items)
+                self.assertEqual(input_items, ["first"])
+
+    def test_run_scheduled_workflow_traverses_to_output(self):
+        workflow_map = [
+            {
+                "id": "input",
+                "type": "input",
+                "successors": {"next": 1},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+            {
+                "id": "content",
+                "type": "construct_content",
+                "arguments": {"append_items": [{"type": "fixed", "value": "done"}]},
+                "successors": {"next": 2},
+                "data_inputs": {},
+                "data_outputs": {"content-out": [[2, "workflow:result"]]},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [
+                    {"id": "workflow:result", "name": "result", "type": "content"}
+                ],
+                "successors": {},
+                "data_inputs": {"workflow:result": [1, "content-out", None]},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_scheduled_workflow(workflow_map, 0), {"result": "done"})
+
+    @patch("workflow_run_repository.record_process_workflow_run")
+    def test_run_scheduled_workflow_records_workflow_inputs_and_outputs(self, record_run):
+        workflow_map = [
+            {
+                "id": "input", "name": "用户输入", "type": "input", "_workflow_call_stack": ["example"],
+                "workflowPorts": [{"id": "workflow:query", "name": "query"}],
+                "successors": {"next": 1}, "data_outputs": {"workflow:query": [[1, "workflow:result"]]},
+            },
+            {
+                "id": "output", "type": "output", "_workflow_call_stack": ["example"],
+                "workflowPorts": [{"id": "workflow:result", "name": "result"}],
+                "successors": {}, "data_inputs": {"workflow:result": [0, "workflow:query", "hello"]},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_scheduled_workflow(workflow_map, 0), {"result": "hello"})
+        record = record_run.call_args.args[0]
+        self.assertEqual(record["workflow_name"], "example")
+        self.assertEqual(record["input"], {"query": "hello"})
+        self.assertEqual(record["output"], {"result": "hello"})
+        self.assertEqual(record["status"], "completed")
+        self.assertEqual([entry["node_type"] for entry in record["node_trace"]], ["input", "output"])
+        self.assertEqual(record["node_trace"][0]["node_name"], "用户输入")
+        self.assertEqual(record["node_trace"][0]["node_id"], "input")
+        self.assertIsNone(record["node_trace"][1]["node_name"])
+        self.assertTrue(all(entry["duration_ms"] >= 0 for entry in record["node_trace"]))
+
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("main.time.perf_counter", side_effect=[0, 181, 182])
+    def test_run_scheduled_workflow_stops_when_execution_exceeds_timeout(
+        self, perf_counter, delete_contexts
+    ):
+        workflow_map = [{"id": "slow", "type": "test", "successors": {}}]
+        with patch.dict("workflow_nodes.nodes_map", {"test": lambda current_id, _: current_id}):
+            with self.assertRaisesRegex(
+                TimeoutError, "workflow execution exceeded 180 seconds"
+            ):
+                run_scheduled_workflow(workflow_map, 0, execution_timeout_ms=180000)
+
+        self.assertEqual(perf_counter.call_count, 3)
+        delete_contexts.assert_called_once_with(set())
+
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("workflow_context_repository.create_context")
+    def test_run_scheduled_workflow_cleans_created_contexts_on_success(
+        self, create_context, delete_contexts
+    ):
+        create_context.return_value = "ctx-parent"
+        workflow_map = [
+            {
+                "id": "create",
+                "type": "context_create",
+                "arguments": {"value_type": "content", "context_id": "custom-context"},
+                "successors": {"next": 1},
+                "data_inputs": {"initial-value": [None, None, "value"]},
+                "data_outputs": {"context-id": []},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_scheduled_workflow(workflow_map, 0), {})
+
+        invocation_id = create_context.call_args.args[0]
+        self.assertIsInstance(invocation_id, str)
+        self.assertTrue(invocation_id)
+        self.assertEqual(create_context.call_args.args[3], "custom-context")
+        delete_contexts.assert_called_once_with({"ctx-parent"})
+        self.assertNotIn("_workflow_invocation_id", workflow_map[0])
+        self.assertNotIn("_workflow_context_ids", workflow_map[0])
+
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("workflow_context_repository.create_context")
+    def test_run_scheduled_workflow_cleans_created_contexts_on_failure(
+        self, create_context, delete_contexts
+    ):
+        create_context.return_value = "ctx-failed"
+        workflow_map = [
+            {
+                "id": "create",
+                "type": "context_create",
+                "arguments": {"value_type": "content"},
+                "successors": {},
+                "data_inputs": {"initial-value": [None, None, "value"]},
+                "data_outputs": {"context-id": []},
+            }
+        ]
+
+        with self.assertRaisesRegex(ValueError, "workflow successor is not connected"):
+            run_scheduled_workflow(workflow_map, 0)
+
+        delete_contexts.assert_called_once_with({"ctx-failed"})
+
+    @patch("workflow_context_repository.delete_contexts")
+    def test_cleanup_failure_does_not_replace_workflow_result(self, delete_contexts):
+        from workflow_context_repository import WorkflowContextError
+
+        delete_contexts.side_effect = WorkflowContextError("cleanup failed")
+        workflow_map = [
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            }
+        ]
+
+        with self.assertLogs("main", level="ERROR"):
+            self.assertEqual(run_scheduled_workflow(workflow_map, 0), {})
+
+    @patch("workflow_context_repository.delete_contexts")
+    def test_cleanup_failure_does_not_replace_workflow_error(self, delete_contexts):
+        from workflow_context_repository import WorkflowContextError
+
+        delete_contexts.side_effect = WorkflowContextError("cleanup failed")
+        workflow_map = [{"id": "broken", "type": "missing"}]
+
+        with self.assertLogs("main", level="ERROR"):
+            with self.assertRaisesRegex(ValueError, "unsupported workflow node type"):
+                run_scheduled_workflow(workflow_map, 0)
+
+    @patch("workflow_parser.parse_workflow")
+    @patch("workflow_parser._read_workspace_workflow_record_by_name")
+    @patch("workflow_validator.validate_workflow")
+    @patch("workflow_context_repository.delete_contexts")
+    @patch("workflow_context_repository.create_context")
+    @patch("workflow_run_repository.record_process_workflow_run")
+    def test_child_workflow_uses_and_cleans_independent_context_scope(
+        self,
+        record_process_workflow_run,
+        create_context,
+        delete_contexts,
+        validate_workflow,
+        read_workflow,
+        parse_workflow,
+    ):
+        create_context.side_effect = ["ctx-parent", "ctx-child"]
+        child_document = {"input_ports": [], "output_ports": []}
+        read_workflow.return_value = (child_document, {"runtime": {"read": 0, "write": 0}})
+        parse_workflow.return_value = [
+            {
+                "id": "child-input",
+                "type": "input",
+                "workflowPorts": [],
+                "successors": {"next": 1},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+            {
+                "id": "child-create",
+                "type": "context_create",
+                "arguments": {"value_type": "content"},
+                "successors": {"next": 2},
+                "data_inputs": {"initial-value": [None, None, "child"]},
+                "data_outputs": {"context-id": []},
+            },
+            {
+                "id": "child-output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+        ]
+        parent_map = [
+            {
+                "id": "parent-create",
+                "type": "context_create",
+                "arguments": {"value_type": "content"},
+                "successors": {"next": 1},
+                "data_inputs": {"initial-value": [None, None, "parent"]},
+                "data_outputs": {"context-id": []},
+            },
+            {
+                "id": "child-call",
+                "type": "spawn_and_wait_subprocess",
+                "arguments": {},
+                "successors": {"next": 2},
+                "data_inputs": {"workflow-file": [None, None, "Child"], "arguments-json": [None, None, "{}"]},
+                "data_outputs": {},
+            },
+            {
+                "id": "parent-output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_scheduled_workflow(parent_map, 0), {})
+
+        parent_invocation = create_context.call_args_list[0].args[0]
+        child_invocation = create_context.call_args_list[1].args[0]
+        self.assertNotEqual(parent_invocation, child_invocation)
+        self.assertEqual(
+            [call.args[0] for call in delete_contexts.call_args_list],
+            [{"ctx-child"}, {"ctx-parent"}],
+        )
+        validate_workflow.assert_called_once_with(child_document)
+
+    def test_scheduled_workflow_completes_foreach(self):
+        input_items = ["first", "second", "third"]
+        workflow_map = [
+            {
+                "id": "input",
+                "type": "input",
+                "successors": {"next": 1},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+            {
+                "id": "foreach",
+                "type": "foreach",
+                "successors": {"item": 2, "next": 3},
+                "data_inputs": {"list-in": [0, "list-out", input_items]},
+                "data_outputs": {"item-out": [[2, "content-in"]]},
+            },
+            {
+                "id": "body",
+                "type": "construct_message",
+                "successors": {"next": 1},
+                "data_inputs": {"content-in": [1, "item-out", None]},
+                "data_outputs": {"content-out": []},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "workflowPorts": [],
+                "successors": {},
+                "data_inputs": {},
+                "data_outputs": {},
+            },
+        ]
+
+        self.assertEqual(run_scheduled_workflow(workflow_map, 0), {})
+        self.assertEqual(
+            workflow_map[2]["data_inputs"]["content-in"],
+            [1, "item-out", "third"],
+        )
+        self.assertEqual(len(workflow_map[2]["data_inputs"]["content-in"]), 3)
+        self.assertEqual(input_items, ["first", "second", "third"])
+        self.assertNotIn("_foreach_items", workflow_map[1])
+
+    def test_deserialize_json_converts_content_and_list_content(self):
+        workflow_map = [
+            {
+                "id": "deserialize",
+                "type": "deserialize_json",
+                "arguments": {
+                    "outputs": [
+                        {"key": "meta", "type": "content"},
+                        {"key": "items", "type": "list-content"},
+                    ]
+                },
+                "successors": {"next": 1},
+                "data_inputs": {
+                    "content-in": [2, "content-out", '{"meta":{"ok":true},"items":["plain",7,{"id":1},null]}']
+                },
+                "data_outputs": {
+                    "meta": [[1, "meta-in"]],
+                    "items": [[1, "items-in"]],
+                },
+            },
+            {
+                "data_inputs": {
+                    "meta-in": [0, "meta", None],
+                    "items-in": [0, "items", None],
+                }
+            },
+        ]
+
+        self.assertEqual(workflow_deserialize_json(0, workflow_map), 1)
+        self.assertEqual(workflow_map[1]["data_inputs"]["meta-in"][2], '{"ok":true}')
+        self.assertEqual(
+            workflow_map[1]["data_inputs"]["items-in"][2],
+            ["plain", "7", '{"id":1}', "null"],
+        )
+
+    def test_deserialize_json_does_not_propagate_partial_outputs(self):
+        workflow_map = [
+            {
+                "id": "deserialize",
+                "type": "deserialize_json",
+                "arguments": {
+                    "outputs": [
+                        {"key": "first", "type": "content"},
+                        {"key": "missing", "type": "content"},
+                    ]
+                },
+                "successors": {"next": 1},
+                "data_inputs": {"content-in": [2, "content-out", '{"first":"value"}']},
+                "data_outputs": {"first": [[1, "first-in"]]},
+            },
+            {"data_inputs": {"first-in": [0, "first", None]}},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "key is missing"):
+            workflow_deserialize_json(0, workflow_map)
+        self.assertIsNone(workflow_map[1]["data_inputs"]["first-in"][2])
+
+
+if __name__ == "__main__":
+    unittest.main()

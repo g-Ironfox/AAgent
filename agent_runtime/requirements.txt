@@ -1,0 +1,4 @@
+pymongo
+requests
+redis
+jsonschema==4.25.1

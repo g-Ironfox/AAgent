@@ -1,0 +1,2 @@
+-r ../benchmark_common/requirements.txt
+-r ../alfworld_runner/requirements.txt

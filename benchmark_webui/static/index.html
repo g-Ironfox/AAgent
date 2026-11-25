@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AAgent · Benchmark</title><link rel="stylesheet" href="/static/style.css?v=1"><script src="/static/app.js?v=3" defer></script></head>
+<body>
+<header><div class="brand"><span class="logo">A</span><div><strong>AAgent <span>Benchmark</span></strong><small>ALFWorld evaluation console</small></div></div><div id="worker-status" class="connection">正在连接 worker…</div></header>
+<main>
+<div class="page-title"><div><p class="eyebrow">EVALUATION WORKSPACE</p><h1>让每一次测试都有迹可循</h1><p class="muted">发布评测，跟踪运行进度，查看 Agent 与环境的完整交互。</p></div><button id="refresh" class="secondary">刷新</button></div>
+<div id="notice" role="status" hidden></div>
+<div class="workspace">
+<aside class="panel"><div class="panel-heading"><h2>发布测试</h2><span class="tag">ALFWorld</span></div>
+<form id="job-form">
+<label>测试名称<input name="name" value="ALFWorld evaluation" maxlength="120" required></label>
+<label>Workflow<select name="workflow_file_id" id="workflow" required><option value="">正在加载…</option></select></label>
+<p class="hint">选择含终端输入、输出节点的 ALFWorld Workflow。</p>
+<label>数据集<select name="split"><option value="valid_unseen">Valid unseen · 未见场景</option><option value="valid_seen">Valid seen · 已见场景</option><option value="train">Train · 训练集</option></select></label>
+<div class="form-row"><label>Episodes<input name="episodes" type="number" value="1" min="1" max="10000" required></label><label>每轮步数上限<input name="max_steps" type="number" value="50" min="1" max="1000" required></label></div>
+<label>随机种子<input name="seed" type="number" value="42" min="0" max="2147483647" required></label>
+<details class="advanced"><summary>高级设置</summary><div class="form-row"><label>动作超时 / 秒<input name="action_timeout" type="number" value="180" min="1" max="3600" required></label><label>启动超时 / 秒<input name="startup_timeout" type="number" value="60" min="1" max="600" required></label></div><label>Workflow inputs · JSON<textarea name="inputs" rows="4" spellcheck="false">{}</textarea></label><label class="check"><input name="admissible_commands" type="checkbox">提供合法动作列表</label><p class="hint">启用后会改变测试条件，请与默认评测分开比较。</p></details>
+<button type="submit" id="submit">发布测试 <span aria-hidden="true">↗</span></button>
+</form></aside>
+<section class="content"><div class="panel jobs-panel"><div class="panel-heading"><div><h2>测试任务</h2><p class="hint">自动更新 · 点击查看详情</p></div><select id="status-filter" aria-label="筛选任务状态"><option value="">全部状态</option><option value="queued">排队中</option><option value="running">运行中</option><option value="completed">已完成</option><option value="failed">失败</option></select></div><div id="jobs" class="jobs"><p class="empty">正在加载任务…</p></div><button id="more-jobs" class="text-button" hidden>加载更多任务</button></div>
+<div class="panel detail-panel" id="detail"><div class="empty large"><span class="empty-icon">◎</span><h2>从一次评测开始</h2><p>发布测试，或选择已有任务查看结果与交互轨迹。</p></div></div>
+</section></div>
+</main>
+<template id="detail-template"><div class="panel-heading"><div><p class="eyebrow">RUN DETAIL</p><h2 id="detail-name"></h2><p id="detail-meta" class="hint mono"></p></div><button id="reuse" class="secondary">复用配置</button></div><div id="job-error" class="error" hidden></div><div id="dispatch-error" class="pending" hidden></div><div id="run-progress"><div class="progress"><i id="progress-bar"></i></div><p id="progress-text" class="hint"></p></div><div class="metrics"><div><span>已处理 / 总数</span><strong id="metric-progress">—</strong></div><div><span>成功率 · 已处理</span><strong id="metric-rate">—</strong></div><div><span>成功 / 错误</span><strong id="metric-results">—</strong></div><div><span>耗时</span><strong id="metric-duration">—</strong></div></div><div class="section-heading"><h3>Episodes</h3><span class="hint">本页步数分布 · 点击柱形查看轨迹</span></div><div id="chart" aria-label="Episode 步数分布"></div><div class="table-scroll"><table><thead><tr><th>Episode</th><th>状态</th><th>步数</th><th>得分</th><th>耗时</th></tr></thead><tbody id="episodes"></tbody></table></div><div class="pager"><button id="prev-episodes" class="text-button" disabled>上一页</button><span id="episode-page" class="hint"></span><button id="next-episodes" class="text-button" disabled>下一页</button></div><div class="section-heading trace-heading"><div><h3>交互轨迹 <span id="trace-episode" class="tag"></span></h3><p id="terminal-id" class="hint mono"></p></div><span id="live" class="tag">实时更新</span></div><div id="trace" class="trace" aria-live="polite"></div><button id="more-events" class="text-button" hidden>加载后续记录</button><p id="trace-trimmed" class="hint" hidden>当前显示最近 1000 条记录，完整轨迹已保存在 MongoDB。</p></template>
+</body></html>
